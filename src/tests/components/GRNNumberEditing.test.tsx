@@ -1,6 +1,5 @@
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { GrnHeaderStep } from '@/features/grn/screens/GrnHeaderStep';
 
 const mockForm = {
@@ -41,34 +40,27 @@ beforeEach(() => {
 });
 
 it('keeps a cleared generated number editable so the operator can enter a replacement', async () => {
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<GrnHeaderStep mode="create" />); });
-  const numberInput = () => renderer.root.findAllByType(TextInput)
-    .find(input => input.props.placeholder === 'GRN####');
-  expect(numberInput()?.props.value).toBe('A0002');
-  await act(async () => { numberInput()!.props.onChangeText(''); });
-  await act(async () => { renderer.update(<GrnHeaderStep mode="create" />); });
-  expect(numberInput()).toBeDefined();
-  expect(numberInput()?.props.value).toBe('');
-  expect(numberInput()?.props.editable).not.toBe(false);
-  await act(async () => { numberInput()!.props.onChangeText('fxf301'); });
+  await render(<GrnHeaderStep mode="create" />);
+  const numberInput = () => screen.getByPlaceholderText('GRN####');
+  expect(numberInput()).toHaveDisplayValue('A0002');
+  await fireEvent.changeText(numberInput(), '');
+  await screen.rerender(<GrnHeaderStep mode="create" />);
+  expect(numberInput()).toHaveDisplayValue('');
+  expect(numberInput().props.editable).not.toBe(false);
+  await fireEvent.changeText(numberInput(), 'fxf301');
   expect(mockForm.handleGrNoChange).toHaveBeenLastCalledWith('FXF301');
-  await act(async () => { renderer.update(<GrnHeaderStep mode="create" />); });
-  expect(numberInput()?.props.value).toBe('FXF301');
-  await act(async () => { renderer.unmount(); });
+  await screen.rerender(<GrnHeaderStep mode="create" />);
+  expect(numberInput()).toHaveDisplayValue('FXF301');
 });
 
 it('shows loading only during the actual initial number request and allows manual input after failure', async () => {
   mockForm.header.gr_no = '';
   mockForm.isGeneratingNumber = true;
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<GrnHeaderStep mode="create" />); });
-  const numberInputs = () => renderer.root.findAllByType(TextInput)
-    .filter(input => input.props.placeholder === 'GRN####');
-  expect(numberInputs()).toHaveLength(0);
+  await render(<GrnHeaderStep mode="create" />);
+  // hidden-but-mounted input must also count as absent
+  expect(screen.queryByPlaceholderText('GRN####', { includeHiddenElements: true })).not.toBeOnTheScreen();
   mockForm.isGeneratingNumber = false;
-  await act(async () => { renderer.update(<GrnHeaderStep mode="create" />); });
-  expect(numberInputs()).toHaveLength(1);
-  expect(numberInputs()[0].props.value).toBe('');
-  await act(async () => { renderer.unmount(); });
+  await screen.rerender(<GrnHeaderStep mode="create" />);
+  expect(screen.getAllByPlaceholderText('GRN####')).toHaveLength(1);
+  expect(screen.getByPlaceholderText('GRN####')).toHaveDisplayValue('');
 });

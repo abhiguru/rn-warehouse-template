@@ -3,8 +3,7 @@
  * passed, ask the server about the request code, keep asking with a doubling pause while the question gets no answer.
  * Time is faked; NetInfo and the RPC call are stand-ins.
  */
-import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, renderHook } from '@testing-library/react-native';
 import { bumpNetInfoGeneration } from '@/config/netInfoGeneration';
 import {
   LOST_ANSWER_FIRST_RETRY_MS,
@@ -168,20 +167,12 @@ describe('after NetInfo was configured again', () => {
   });
 
   it('useIsDisconnected listens again', async () => {
-    let seen = false;
-    const Probe = () => {
-      seen = useIsDisconnected();
-      return null;
-    };
-    let tree: ReturnType<typeof create>;
-    await act(async () => {
-      tree = create(React.createElement(Probe));
-    });
+    const { result, unmount } = await renderHook(() => useIsDisconnected());
     expect(mockListeners).toHaveLength(1);
     await act(async () => {
       mockListeners[0]({ isConnected: false });
     });
-    expect(seen).toBe(true);
+    expect(result.current).toBe(true);
     await act(async () => {
       configureAgain();
     });
@@ -189,10 +180,8 @@ describe('after NetInfo was configured again', () => {
     await act(async () => {
       mockListeners[0]({ isConnected: true });
     });
-    expect(seen).toBe(false);
-    await act(async () => {
-      tree!.unmount();
-    });
+    expect(result.current).toBe(false);
+    await unmount();
     expect(mockListeners).toHaveLength(0);
   });
 });

@@ -4,7 +4,7 @@
  * export; "Export CSV" builds the CSV of the chosen period on the phone and hands it to the share sheet.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDevice } from '@/services/sensor-service';
 import { getSensorHistory } from '@/services/sensor-history-service';
@@ -52,7 +52,6 @@ jest.mock('@/utils/logger', () => {
 
 const NOW = new Date(2026, 9, 12, 10, 0).getTime();
 const daysAgo = (d: number) => new Date(NOW - d * 86_400_000).toISOString();
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -92,56 +91,55 @@ beforeEach(async () => {
   getSensorHistoryLong.mockResolvedValue(history);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
 });
 
 async function open(firstReadingAt: string) {
   jest.mocked(getDevice).mockResolvedValue(sensor(firstReadingAt) as never);
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<SensorDetailScreen />);
-  });
-  mounted.push(tree);
+  user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+  await render(<SensorDetailScreen />);
   await act(async () => {
     await jest.advanceTimersByTimeAsync(0);
   });
-  const exportButton = () => tree.root.findAll(n => n.props.testID === 'sensor-export-csv' && typeof n.props.onPress === 'function')[0];
-  return {
-    radios: () => tree.root.findAll(n => n.props.accessibilityRole === 'radio' && typeof n.props.onPress === 'function').map(n => n.props.accessibilityLabel as string),
-    pick: (label: string) => act(async () => { tree.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0].props.onPress(); }),
-    exportButton,
-    hasExport: () => exportButton() !== undefined,
-    exportNow: () => act(async () => { await exportButton().props.onPress(); }),
-    setSupport: (supported: boolean) => act(async () => { noteRpcSupport('sensorHourly', supported); }),
-  };
 }
+let user: ReturnType<typeof userEvent.setup>;
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const radios = () => screen.queryAllByRole('radio', everything).map(n => n.props.accessibilityLabel as string);
+const pick = (label: string) => user.press(screen.getAllByLabelText(label)[0]);
+const hasExport = () => screen.queryAllByTestId('sensor-export-csv', everything).length > 0;
+const exportNow = async () => {
+  await user.press(screen.getAllByTestId('sensor-export-csv')[0]);
+  await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+};
+const setSupport = (supported: boolean) => act(async () => { noteRpcSupport('sensorHourly', supported); });
 
 describe('the long ranges', () => {
   it('are offered once the sensor has the data: 6 months at 200 days, 1 year at 400, 2 years at 800', async () => {
-    expect((await open(daysAgo(200))).radios()).toEqual(['Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 days', 'Last 6 months']);
+    await open(daysAgo(200));
+    expect(radios()).toEqual(['Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 days', 'Last 6 months']);
   });
 
   it('all three with two years of data', async () => {
-    const screen = await open(daysAgo(800));
-    expect(screen.radios()).toEqual(['Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 days', 'Last 6 months', 'Last 1 year', 'Last 2 years']);
+    await open(daysAgo(800));
+    expect(radios()).toEqual(['Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 days', 'Last 6 months', 'Last 1 year', 'Last 2 years']);
   });
 
   it('are left out, apart from the year, once the backend is known not to have the hourly summary, and the export goes', async () => {
-    const screen = await open(daysAgo(800));
-    expect(screen.hasExport()).toBe(true);
-    await screen.setSupport(false);
-    expect(screen.radios()).toEqual(['Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 days', 'Last 1 year']);
-    expect(screen.hasExport()).toBe(false);
+    await open(daysAgo(800));
+    expect(hasExport()).toBe(true);
+    await setSupport(false);
+    expect(radios()).toEqual(['Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 days', 'Last 1 year']);
+    expect(hasExport()).toBe(false);
   });
 
   it('go back to 7 days when the chosen one disappears', async () => {
-    const screen = await open(daysAgo(800));
-    await screen.pick('Last 2 years');
+    await open(daysAgo(800));
+    await pick('Last 2 years');
     const { getSensorHistoryLong } = jest.requireMock('@/services/sensor-hourly-service');
     expect(getSensorHistoryLong).toHaveBeenCalledWith('s7', 730);
-    await screen.setSupport(false);
-    expect(screen.radios()).not.toContain('Last 2 years');
+    await setSupport(false);
+    expect(radios()).not.toContain('Last 2 years');
     // 7 days is read the ordinary way again.
     expect(getSensorHistory).toHaveBeenLastCalledWith('s7', 7);
   });
@@ -155,9 +153,9 @@ describe('Export CSV', () => {
   it('builds the CSV of the chosen period on the phone and shares it as a .csv file', async () => {
     jest.mocked(getSensorHourlyRows).mockResolvedValue({ success: true, device: { id: 's7', name: 'Chamber, 7', location: 'North' }, rows: hours } as never);
     jest.mocked(shareCsvFile).mockResolvedValue({ success: true });
-    const screen = await open(daysAgo(800));
-    await screen.pick('Last 6 months');
-    await screen.exportNow();
+    await open(daysAgo(800));
+    await pick('Last 6 months');
+    await exportNow();
 
     const [, range] = jest.mocked(getSensorHourlyRows).mock.calls[0];
     expect(jest.mocked(getSensorHourlyRows).mock.calls[0][0]).toBe('s7');
@@ -171,16 +169,16 @@ describe('Export CSV', () => {
 
   it('tells why when the server refuses, and shares nothing', async () => {
     jest.mocked(getSensorHourlyRows).mockResolvedValue({ success: false, code: 'DEVICE_NOT_FOUND', message: 'This sensor is not on this facility any more.' });
-    const screen = await open(daysAgo(40));
-    await screen.exportNow();
+    await open(daysAgo(40));
+    await exportNow();
     expect(shareCsvFile).not.toHaveBeenCalled();
     expect(showAlert).toHaveBeenCalledWith("Couldn't export", 'This sensor is not on this facility any more.');
   });
 
   it('says there is nothing to export for a period with no hourly readings', async () => {
     jest.mocked(getSensorHourlyRows).mockResolvedValue({ success: true, device: { id: 's7', name: 'x', location: '' }, rows: [] } as never);
-    const screen = await open(daysAgo(40));
-    await screen.exportNow();
+    await open(daysAgo(40));
+    await exportNow();
     expect(shareCsvFile).not.toHaveBeenCalled();
     expect(showAlert).toHaveBeenCalledWith('Nothing to export', 'There are no hourly readings in this period.');
   });
@@ -188,8 +186,8 @@ describe('Export CSV', () => {
   it('says so when the share sheet cannot open', async () => {
     jest.mocked(getSensorHourlyRows).mockResolvedValue({ success: true, device: { id: 's7', name: 'x', location: '' }, rows: hours } as never);
     jest.mocked(shareCsvFile).mockResolvedValue({ success: false, error: 'boom' });
-    const screen = await open(daysAgo(40));
-    await screen.exportNow();
+    await open(daysAgo(40));
+    await exportNow();
     expect(showAlert).toHaveBeenCalledWith("Couldn't export", "Couldn't open the share sheet for the CSV file. Try again.");
   });
 });

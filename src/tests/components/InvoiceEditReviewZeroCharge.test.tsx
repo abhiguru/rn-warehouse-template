@@ -6,8 +6,7 @@
  * administrator or supervisor as "remove the reason".
  */
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import { makeInvoiceStore, openForEdit, invoiceLine, IDS } from '@/tests/helpers/invoiceFixtures';
 import { updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import { t } from '@/i18n';
@@ -33,11 +32,53 @@ jest.mock('react-native-keyboard-aware-scroll-view', () => ({
   listenToKeyboardEvents: () => (component: unknown) => component,
 }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
+// Stand-ins that draw what the test looks at and call the step's real props. An open dialog is an alert: its title, its
+// message one line per Text (so the line breaks can be checked exactly) and its buttons.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; message?: string; confirmText?: string; cancelText?: string; onConfirm: () => unknown; onCancel?: () => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    return props.visible ? (
+      <View accessible accessibilityRole="alert">
+        <Text testID="dialog-title">{props.title}</Text>
+        {(props.message ?? '').split('\n').map((messageLine, index) => (
+          <Text key={index} testID="dialog-message-line">{messageLine}</Text>
+        ))}
+        {props.onCancel ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={props.cancelText ?? 'Cancel'} onPress={props.onCancel}>
+            <Text>{props.cancelText ?? 'Cancel'}</Text>
+          </Pressable>
+        ) : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={props.confirmText ?? 'Confirm'} onPress={props.onConfirm}>
+          <Text>{props.confirmText ?? 'Confirm'}</Text>
+        </Pressable>
+      </View>
+    ) : null;
+  },
+}));
+// The summary says whether a reason is required, the charge of each line it was given, and draws buttons that write a
+// reason (or erase it) through the step's real onZeroChargeReasonChange.
+jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({
+  InvoiceCalculationSummary: (props: { zeroChargeReasonRequired: boolean; items: { charge: number }[]; onZeroChargeReasonChange: (reason: string) => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const button = (name: string, reason: string) => (
+      <Pressable accessibilityRole="button" accessibilityLabel={name} onPress={() => props.onZeroChargeReasonChange(reason)}>
+        <Text>{name}</Text>
+      </Pressable>
+    );
+    return (
+      <View>
+        <Text>{`Zero-charge reason required: ${String(props.zeroChargeReasonRequired)}`}</Text>
+        <Text>{`Summary charges: ${props.items.map((item) => item.charge).join(', ')}`}</Text>
+        {button('Write the reason: Agreed with the owner', 'Agreed with the owner')}
+        {button('Write the reason: Sample lot', 'Sample lot')}
+        {button('Erase the reason', '')}
+      </View>
+    );
+  },
+}));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
-jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({ InvoiceCalculationSummary: 'InvoiceCalculationSummary' }));
-jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: 'InvoiceSuccessDialog' }));
+jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: () => null }));
 jest.mock('@/services/print-service', () => ({ printInvoiceRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateInvoicePDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
@@ -60,27 +101,31 @@ function loadInvoice(storedReason: string | undefined) {
 }
 
 let rpc: jest.Mock;
-async function render() {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<InvoiceEditStep3 />); });
-  return tree;
+const user = () => userEvent.setup({ delay: 0 });
+async function open() {
+  await render(<InvoiceEditStep3 />);
 }
-const summary = (tree: ReactTestRenderer) => tree.root.findByType('InvoiceCalculationSummary' as unknown as React.ElementType);
-// The dialogs that are open (the stand-in keeps the props of ConfirmDialog).
-const shown = (tree: ReactTestRenderer) =>
-  tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType).filter((dialog) => dialog.props.visible);
-const pressUpdate = async (tree: ReactTestRenderer) => {
-  const button = tree.root.find(
-    (node) => node.props.accessibilityLabel === t('invoice.review.saveInvoice') && typeof node.props.onPress === 'function'
-  );
-  await act(async () => { await button.props.onPress(); });
+const reasonRequired = (value: boolean) => expect(screen.getByText(`Zero-charge reason required: ${value}`)).toBeOnTheScreen();
+const writeReason = async (name: string) => { await user().press(screen.getByRole('button', { name })); };
+const shown = () => screen.queryAllByRole('alert');
+/** The open dialog: its title, its message line by line, and its buttons. */
+const dialog = () => {
+  const own = within(shown()[0]);
+  return {
+    own,
+    title: own.getByTestId('dialog-title').props.children as string,
+    lines: own.getAllByTestId('dialog-message-line').map((node) => node.props.children as string),
+  };
+};
+const pressUpdate = async () => {
+  await user().press(screen.getAllByLabelText(t('invoice.review.saveInvoice'))[0]);
 };
 /** Press Update and answer its question with "Save invoice"; the header that went to the server. */
-const update = async (tree: ReactTestRenderer) => {
-  await pressUpdate(tree);
-  const dialog = shown(tree)[0];
-  expect(dialog.props.title).toBe(t('invoice.review.updateTitle', { number: '42' }));
-  await act(async () => { await dialog.props.onConfirm(); });
+const update = async () => {
+  await pressUpdate();
+  expect(dialog().title).toBe(t('invoice.review.updateTitle', { number: '42' }));
+  await user().press(dialog().own.getByRole('button', { name: 'Save invoice' }));
+  await waitFor(() => expect(rpc.mock.calls.some(([name]) => name === 'update_invoice')).toBe(true));
   return rpc.mock.calls.find(([name]) => name === 'update_invoice')![1].p_invoice_data;
 };
 
@@ -100,65 +145,60 @@ afterEach(() => jest.restoreAllMocks());
 describe('staff updating an invoice that has a zero-charge line', () => {
   it('send the stored reason again when nothing about the free lines changed', async () => {
     loadInvoice('Sample lot');
-    const tree = await render();
-    expect(summary(tree).props.zeroChargeReasonRequired).toBe(false);
+    await open();
+    reasonRequired(false);
 
-    const sent = await update(tree);
+    const sent = await update();
 
     expect(sent.zero_charge_reason).toBe('Sample lot');
-    await act(async () => { tree.unmount(); });
   });
 
   it('are stopped when the invoice was stored without a reason', async () => {
     loadInvoice(undefined);
-    const tree = await render();
-    expect(summary(tree).props.zeroChargeReasonRequired).toBe(true);
+    await open();
+    reasonRequired(true);
 
-    await pressUpdate(tree);
+    await pressUpdate();
 
-    expect(shown(tree)).toHaveLength(1);
-    expect(shown(tree)[0].props.title).toBe('Enter a reason for the zero charge');
-    expect(shown(tree)[0].props.message).toBe('An item has a charge of 0. Enter the reason before updating the invoice.');
+    expect(shown()).toHaveLength(1);
+    expect(dialog().title).toBe('Enter a reason for the zero charge');
+    expect(dialog().lines).toEqual(['An item has a charge of 0. Enter the reason before updating the invoice.']);
     expect(rpc).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('send the stored reason again when another line became free, and can replace it', async () => {
     loadInvoice('Sample lot');
     await act(async () => { mockStore.dispatch(updateEditedItem({ temp_id: `edit_${PAID}_0`, values: { charge: 0 } })); });
-    const tree = await render();
-    expect(summary(tree).props.zeroChargeReasonRequired).toBe(false);
+    await open();
+    reasonRequired(false);
     expect(mockStore.getState().invoiceForm.header.zero_charge_reason).toBe('Sample lot');
 
-    await act(async () => { summary(tree).props.onZeroChargeReasonChange('Agreed with the owner'); });
-    const sent = await update(tree);
+    await writeReason('Write the reason: Agreed with the owner');
+    const sent = await update();
 
     expect(sent.zero_charge_reason).toBe('Agreed with the owner');
-    await act(async () => { tree.unmount(); });
   });
 
   it('are stopped after erasing the stored reason', async () => {
     loadInvoice('Sample lot');
-    const tree = await render();
-    await act(async () => { summary(tree).props.onZeroChargeReasonChange(''); });
+    await open();
+    await writeReason('Erase the reason');
 
-    await pressUpdate(tree);
+    await pressUpdate();
 
-    expect(shown(tree)[0].props.title).toBe('Enter a reason for the zero charge');
+    expect(dialog().title).toBe('Enter a reason for the zero charge');
     expect(rpc).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('need no reason once every line has a charge, and none is sent', async () => {
     loadInvoice('Sample lot');
     await act(async () => { mockStore.dispatch(updateEditedItem({ temp_id: `edit_${FREE}_0`, values: { charge: 3 } })); });
-    const tree = await render();
-    expect(summary(tree).props.zeroChargeReasonRequired).toBe(false);
+    await open();
+    reasonRequired(false);
 
-    const sent = await update(tree);
+    const sent = await update();
 
     expect(sent).not.toHaveProperty('zero_charge_reason');
-    await act(async () => { tree.unmount(); });
   });
 });
 
@@ -166,89 +206,83 @@ describe.each(['admin', 'supervisor'])('%s updating an invoice that has a zero-c
   it('may leave the reason empty; null is sent', async () => {
     mockRole = role;
     loadInvoice(undefined);
-    const tree = await render();
-    expect(summary(tree).props.zeroChargeReasonRequired).toBe(false);
+    await open();
+    reasonRequired(false);
 
-    const sent = await update(tree);
+    const sent = await update();
 
     expect(sent).toHaveProperty('zero_charge_reason', null);
-    await act(async () => { tree.unmount(); });
   });
 
   it('send the stored reason back when they change nothing, so it is not removed by accident', async () => {
     mockRole = role;
     loadInvoice('Sample lot');
-    const tree = await render();
+    await open();
 
-    const sent = await update(tree);
+    const sent = await update();
 
     expect(sent.zero_charge_reason).toBe('Sample lot');
-    await act(async () => { tree.unmount(); });
   });
 
   it('remove the stored reason by erasing it', async () => {
     mockRole = role;
     loadInvoice('Sample lot');
-    const tree = await render();
-    await act(async () => { summary(tree).props.onZeroChargeReasonChange(''); });
+    await open();
+    await writeReason('Erase the reason');
 
-    const sent = await update(tree);
+    const sent = await update();
 
     expect(sent).toHaveProperty('zero_charge_reason', null);
-    await act(async () => { tree.unmount(); });
   });
 
   it('may write one, and it is sent', async () => {
     mockRole = role;
     loadInvoice(undefined);
-    const tree = await render();
-    await act(async () => { summary(tree).props.onZeroChargeReasonChange('Sample lot'); });
+    await open();
+    await writeReason('Write the reason: Sample lot');
 
-    const sent = await update(tree);
+    const sent = await update();
 
     expect(sent.zero_charge_reason).toBe('Sample lot');
-    await act(async () => { tree.unmount(); });
   });
 });
 
 describe.each(['staff', 'admin', 'supervisor'])('the question before the update, for %s', (role) => {
-  const question = async (tree: ReactTestRenderer) => {
-    await pressUpdate(tree);
-    expect(shown(tree)).toHaveLength(1);
-    const dialog = shown(tree)[0];
-    expect(dialog.props.title).toBe('Save changes to invoice 42?');
-    expect([dialog.props.cancelText, dialog.props.confirmText]).toEqual(['Cancel', 'Save invoice']);
-    return dialog.props.message as string;
+  const question = async () => {
+    await pressUpdate();
+    expect(shown()).toHaveLength(1);
+    expect(dialog().title).toBe('Save changes to invoice 42?');
+    expect(dialog().own.getByRole('button', { name: 'Cancel' })).toBeOnTheScreen();
+    expect(dialog().own.getByRole('button', { name: 'Save invoice' })).toBeOnTheScreen();
+    return dialog().lines.join('\n');
   };
 
   it('says that 1 item has a charge of 0', async () => {
     mockRole = role;
     loadInvoice('Sample lot');
-    const tree = await render();
+    await open();
 
-    const message = await question(tree);
+    const message = await question();
 
     expect(message.split('\n').slice(-2)).toEqual(['', '1 item has a charge of 0.']);
     expect(message.startsWith('Example Traders\nTotal ')).toBe(true);
     expect(rpc).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('counts the lines, and says nothing once every line has a charge', async () => {
     mockRole = role;
     loadInvoice('Sample lot');
     await act(async () => { mockStore.dispatch(updateEditedItem({ temp_id: `edit_${PAID}_0`, values: { charge: 0 } })); });
-    let tree = await render();
-    expect((await question(tree)).split('\n').at(-1)).toBe('2 items have a charge of 0.');
-    await act(async () => { tree.unmount(); });
+    await open();
+    expect((await question()).split('\n').at(-1)).toBe('2 items have a charge of 0.');
+    await screen.unmount();
 
     await act(async () => {
       mockStore.dispatch(updateEditedItem({ temp_id: `edit_${PAID}_0`, values: { charge: 5 } }));
       mockStore.dispatch(updateEditedItem({ temp_id: `edit_${FREE}_0`, values: { charge: 3 } }));
     });
-    tree = await render();
-    expect(await question(tree)).not.toContain('charge of 0');
-    await act(async () => { tree.unmount(); });
+    await open();
+    expect(await question()).not.toContain('charge of 0');
   });
 });
 
@@ -256,48 +290,45 @@ describe.each(['staff', 'admin', 'supervisor'])('the question before the update,
 // used to give the average charge of the group (2.5) to both lines, so no line
 // was free any more and the update went out without the reason.
 describe('changing a group rate on the items step of such an invoice', () => {
-  const groupField = (tree: ReactTestRenderer, label: string) =>
-    tree.root.findAllByType(TextInput).find((node) => node.props.testID === label)!;
+  const groupField = (label: string) => screen.getByTestId(label);
   const lines = () => mockStore.getState().invoiceForm.items.map((item) => [item.charge, item.labour_rate, item.tax]);
 
   it('the group tax leaves the free line free, and the update carries the charges and the reason as stored', async () => {
     loadInvoice('Sample lot');
-    let itemsStep!: ReactTestRenderer;
-    await act(async () => { itemsStep = create(<InvoiceEditStep2 />); });
+    await render(<InvoiceEditStep2 />);
     // A free and a paid line: the group's charge shows their average (owner, 2026-10-19), which is never written to the lines.
-    expect(groupField(itemsStep, 'group|i1:::M1|charge').props).toMatchObject({ value: '2.50', placeholder: '2.50' });
+    expect(groupField('group|i1:::M1|charge')).toHaveDisplayValue('2.50');
+    expect(groupField('group|i1:::M1|charge')).toHaveProp('placeholder', '2.50');
 
-    await act(async () => { groupField(itemsStep, 'group|i1:::M1|tax').props.onChangeText('12'); });
+    await fireEvent.changeText(groupField('group|i1:::M1|tax'), '12');
 
     expect(lines()).toEqual([[0, 2, 12], [5, 2, 12]]);
-    expect(groupField(itemsStep, 'group|i1:::M1|charge').props).toMatchObject({ value: '2.50', placeholder: '2.50' });
-    await act(async () => { itemsStep.unmount(); });
+    expect(groupField('group|i1:::M1|charge')).toHaveDisplayValue('2.50');
+    expect(groupField('group|i1:::M1|charge')).toHaveProp('placeholder', '2.50');
+    await screen.unmount();
 
-    const tree = await render();
-    const sent = await update(tree);
+    await open();
+    const sent = await update();
     expect(sent.zero_charge_reason).toBe('Sample lot');
     const sentLines = rpc.mock.calls.find(([name]) => name === 'update_invoice')![1].p_invoice_items;
     expect(sentLines.map((sentLine: { charge: number; tax: number }) => [sentLine.charge, sentLine.tax])).toEqual([[0, 12], [5, 12]]);
-    await act(async () => { tree.unmount(); });
   });
 
   it('a group charge makes every line of the group paid, and no reason is sent with the update', async () => {
     loadInvoice('Sample lot');
-    let itemsStep!: ReactTestRenderer;
-    await act(async () => { itemsStep = create(<InvoiceEditStep2 />); });
+    await render(<InvoiceEditStep2 />);
 
-    await act(async () => { groupField(itemsStep, 'group|i1:::M1|charge').props.onChangeText('4'); });
+    await fireEvent.changeText(groupField('group|i1:::M1|charge'), '4');
 
     expect(lines()).toEqual([[4, 2, 5], [4, 2, 5]]);
-    await act(async () => { itemsStep.unmount(); });
+    await screen.unmount();
 
     // No line is free, so the summary shows no reason field (it shows it for a line with a charge of 0 only).
-    const tree = await render();
-    expect(summary(tree).props.items.map((item: InvoiceItemData) => item.charge)).toEqual([4, 4]);
-    const sent = await update(tree);
+    await open();
+    expect(screen.getByText('Summary charges: 4, 4')).toBeOnTheScreen();
+    const sent = await update();
     expect('zero_charge_reason' in sent).toBe(false);
     // The text is still in the form, should a line be made free again before saving.
     expect(mockStore.getState().invoiceForm.header.zero_charge_reason).toBe('Sample lot');
-    await act(async () => { tree.unmount(); });
   });
 });

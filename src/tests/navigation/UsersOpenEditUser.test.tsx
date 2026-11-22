@@ -8,8 +8,7 @@
  * and the person it loaded.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
@@ -63,14 +62,11 @@ const USERS = [
   { id: 'u2', name: 'Dev Staff', mobile: '9000000002', role: 'staff', active: true, assigned_customers_count: 0 },
 ];
 
-let tree: ReactTestRenderer;
 const settle = async () => {
   await act(async () => { await jest.runAllTimersAsync(); });
 };
 const pathname = () => routerStore.getRouteInfo().pathname;
 const routeNames = () => (routerStore.state?.routes[0]?.state?.routes ?? []).map((route) => route.name);
-const shownText = () =>
-  tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join('')).join(' | ');
 
 beforeEach(async () => {
   jest.useFakeTimers();
@@ -96,42 +92,37 @@ beforeEach(async () => {
     users: UsersScreen,
     'user-edit/[id]': UserEditScreen,
   });
-  await act(async () => {
-    tree = create(<ExpoRoot context={context} location="/users" />);
-  });
+  await render(<ExpoRoot context={context} location="/users" />);
   await settle();
 });
 
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.useRealTimers();
 });
 
-const rowFor = (label: string) =>
-  tree.root.find((node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === label);
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const rowFor = (label: string) => screen.getByLabelText(label);
+const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
 
 it('pressing a user row opens Edit user for that person', async () => {
   expect(pathname()).toBe('/users');
-  const row = rowFor('Dev Customer One, Customer, +91 90000 00003, 1 customer assigned');
-  await act(async () => { row.props.onPress(); });
+  await user().press(rowFor('Dev Customer One, Customer, +91 90000 00003, 1 customer assigned'));
   await settle();
 
   expect(pathname()).toBe('/user-edit/u3');
   expect(routeNames()).toEqual(['users', 'user-edit/[id]']);
   expect(adminUserService.getUserDetails).toHaveBeenCalledWith('u3');
-  const text = shownText();
-  expect(text).toContain('Edit user');
-  expect(text).toContain('Dev Customer One');
+  expect(screen.getAllByText('Edit user')[0]).toBeOnTheScreen();
+  expect(screen.getAllByText('Dev Customer One')[0]).toBeOnTheScreen();
 });
 
 it('Edit user shows the title and a Back button in the stack header, even while loading', async () => {
   // WH-216: the title and Back come from the stack header (Stack.Screen options), which the loading state also renders.
   jest.mocked(adminUserService.getUserDetails).mockReturnValue(new Promise(() => undefined) as never);
-  await act(async () => { rowFor('Dev Staff, Staff, +91 90000 00002').props.onPress(); });
+  await user().press(rowFor('Dev Staff, Staff, +91 90000 00002'));
   await settle();
 
   expect(pathname()).toBe('/user-edit/u2');
-  expect(shownText()).toContain('Edit user');
-  const back = tree.root.findAll((node) => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === 'Back');
-  expect(back.length).toBeGreaterThan(0);
+  expect(screen.getAllByText('Edit user')[0]).toBeOnTheScreen();
+  expect(screen.getAllByRole('button', { name: 'Back' }).length).toBeGreaterThan(0);
 });

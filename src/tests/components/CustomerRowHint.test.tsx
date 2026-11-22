@@ -1,7 +1,7 @@
 /** G-22: the row's spoken hint no longer tells a TalkBack user to swipe left. */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import CustomersScreen from '../../../app/customers';
 import { customerService } from '@/services/customer-service';
 import { showAlert } from '@/utils/alert';
@@ -30,40 +30,32 @@ const rows = [
   { id: 'c1', name: 'Hilltop Fresh Mart', mobile: '9999900320', city: 'Rajkot', active: true },
   { id: 'c2', name: 'Old Stores', mobile: '9999900321', city: 'Surat', active: false },
 ];
-const rowOf = (screen: ReactTestRenderer, name: string) =>
-  screen.root.find(node => typeof node.type === 'string' && node.props.accessibilityRole === 'button' &&
-    typeof node.props.accessibilityHint === 'string' && String(node.props.accessibilityLabel).startsWith(name));
+const rowOf = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}`) });
 
-let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: true, data: rows, pagination: { total_count: 2 } } as never);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
 const mount = async () => {
-  await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
-  return tree as ReactTestRenderer;
+  await render(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>);
+  await screen.findByText('Hilltop Fresh Mart');
 };
 
 it('says only that the row opens the customer, for an active and an inactive customer', async () => {
-  const screen = await mount();
-  expect(rowOf(screen, 'Hilltop Fresh Mart').props.accessibilityHint).toBe('Opens the customer.');
-  expect(rowOf(screen, 'Old Stores').props.accessibilityHint).toBe('Opens the customer.');
+  await mount();
+  expect(rowOf('Hilltop Fresh Mart')).toHaveProp('accessibilityHint', 'Opens the customer.');
+  expect(rowOf('Old Stores')).toHaveProp('accessibilityHint', 'Opens the customer.');
 });
 
 it('keeps the Deactivate and Activate actions for TalkBack', async () => {
-  const screen = await mount();
-  expect(rowOf(screen, 'Hilltop Fresh Mart').props.accessibilityActions).toEqual([{ name: 'toggleActive', label: 'Deactivate' }]);
-  expect(rowOf(screen, 'Old Stores').props.accessibilityActions).toEqual([{ name: 'toggleActive', label: 'Activate' }]);
+  await mount();
+  expect(rowOf('Hilltop Fresh Mart')).toHaveProp('accessibilityActions', [{ name: 'toggleActive', label: 'Deactivate' }]);
+  expect(rowOf('Old Stores')).toHaveProp('accessibilityActions', [{ name: 'toggleActive', label: 'Activate' }]);
 });
 
 it('opens the customer page when the row is pressed', async () => {
   const { router } = require('expo-router');
-  const screen = await mount();
-  const row = screen.root.findAll(node => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Hilltop Fresh Mart'))[0];
-  await act(async () => { row.props.onPress(); });
+  await mount();
+  await userEvent.setup({ delay: 0 }).press(rowOf('Hilltop Fresh Mart'));
   expect(router.push).toHaveBeenCalledWith({ pathname: '/customer/[id]', params: { id: 'c1' } });
 });

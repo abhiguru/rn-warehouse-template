@@ -3,14 +3,20 @@
  * shared SectionHeader, not with a local copy of its style.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import SettingsScreen from '../../../app/settings';
 import ProfileScreen from '../../../app/profile';
 import HelpScreen from '../../../app/help';
-import { SectionHeader } from '@/components/ui/SectionHeader';
 import { setLanguage } from '@/i18n';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 
 let mockState: Record<string, unknown>;
+// The real SectionHeader, with its calls recorded: a title drawn with a local copy of its style is not one of them.
+jest.mock('@/components/ui/SectionHeader', () => {
+  const actual = jest.requireActual('@/components/ui/SectionHeader');
+  const recorded = jest.fn(actual.SectionHeader);
+  return { ...actual, SectionHeader: recorded, default: recorded };
+});
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -35,7 +41,6 @@ jest.mock('@/store/slices/authSlice', () => ({
 }));
 jest.mock('@/services/admin-user-service', () => ({ adminUserService: { getUsersList: jest.fn() } }));
 
-let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   setLanguage('en');
   mockState = {
@@ -46,16 +51,16 @@ beforeEach(() => {
     },
   };
 });
-afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
-});
-
-async function titlesOf(screen: React.ReactElement): Promise<string[]> {
-  await act(async () => {
-    tree = create(screen);
-  });
-  return tree!.root.findAllByType(SectionHeader).map(node => node.props.title);
+// SectionHeader draws its title as an element with the header role, named by its title.
+async function titlesOf(ui: React.ReactElement): Promise<string[]> {
+  jest.mocked(SectionHeader).mockClear();
+  await render(ui);
+  // The titles the shared component was asked to draw (a re-render repeats them).
+  const drawn = [...new Set(jest.mocked(SectionHeader).mock.calls.map(([props]) => props.title))];
+  // The screen's own title is a header too, with no label: only the section headers carry one. Each drawn title is one.
+  const named = screen.getAllByRole('header').map(node => node.props.accessibilityLabel as string | undefined);
+  drawn.forEach(title => expect(named).toContain(title));
+  return drawn;
 }
 
 it('Settings', async () => {

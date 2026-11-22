@@ -4,7 +4,6 @@
  * facility's `rpc` answers. The person sees the alert of their role, nothing is saved, and the form keeps what was typed.
  */
 import 'expo-router/build/testing-library/mocks';
-import { act } from 'react-test-renderer';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { showAlert } from '@/utils/alert';
 import { newFlowStore } from '@/tests/helpers/invoiceFlowStore';

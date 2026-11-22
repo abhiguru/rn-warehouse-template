@@ -4,8 +4,7 @@
  * version the page read, and a cancelled invoice shows its tag, date and reason with Edit and Cancel gone.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import InvoiceDetailScreen from '../../../app/invoice-details/[id]';
 import { getInvoiceDetails, getInvoiceItemsDetailed, getInvoiceReasons, cancelInvoice } from '@/services/invoice-service';
 import type { InvoiceDetailsResponse, InvoiceItemsDetailedResponse } from '@/services/invoice-service';
@@ -50,27 +49,39 @@ jest.mock('@/services/invoice-service', () => ({
   getInvoiceDetails: jest.fn(), getInvoiceItemsDetailed: jest.fn(), getInvoiceReasons: jest.fn(), cancelInvoice: jest.fn(),
 }));
 jest.mock('@/components/invoice-details', () => ({
-  InvoiceHeroHeader: (props: { cancelled?: boolean }) => (props.cancelled ? 'HeroCancelled' : 'HeroLive'),
-  InvoiceTabNavigator: 'InvoiceTabNavigator',
+  // Stand-ins that draw what the test looks at: whether the hero says cancelled, and a button for the Overview tab.
+  InvoiceHeroHeader: (props: { cancelled?: boolean }) => {
+    const { Text } = require('react-native');
+    return <Text>{props.cancelled ? 'HeroCancelled' : 'HeroLive'}</Text>;
+  },
+  InvoiceTabNavigator: (props: { on_tab_change: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="overview tab" onPress={() => props.on_tab_change('overview')}>
+        <Text>overview</Text>
+      </Pressable>
+    );
+  },
   InvoiceOverviewTab: jest.requireActual('@/components/invoice-details/InvoiceOverviewTab').InvoiceOverviewTab,
   InvoiceLineItemsTab: () => null,
   InvoiceBreakdownTab: () => null,
 }));
 
-let renderer: ReturnType<typeof create>;
-const texts = () => renderer.root.findAllByType(Text).map(n => [n.props.children].flat().join(''));
-const byLabel = (label: string) =>
-  renderer.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === label);
+const user = () => userEvent.setup({ delay: 0 });
+// What is drawn on screen; a check that something is NOT there passes `hidden` to see mounted-but-hidden ones too.
+const texts = (hidden = false) =>
+  screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map(n => [n.props.children].flat().join(''));
+const byLabel = (label: string | RegExp, hidden = false) => screen.queryAllByLabelText(label, { includeHiddenElements: hidden });
 const press = async (label: string) => {
-  await act(async () => { byLabel(label)[0].props.onPress(); });
+  await user().press(screen.getAllByLabelText(label)[0]);
 };
 // The sheet's own confirm button has the same label as the page's: it is the last one drawn.
 const confirm = async () => {
-  await act(async () => { const all = byLabel('Cancel invoice'); all[all.length - 1].props.onPress(); });
+  const all = screen.getAllByLabelText('Cancel invoice');
+  await user().press(all[all.length - 1]);
 };
 const type = async (value: string) => {
-  const input = renderer.root.find(n => n.props.testID === 'cancel-invoice-reason' && typeof n.props.onChangeText === 'function');
-  await act(async () => { input.props.onChangeText(value); });
+  await user().type(screen.getByTestId('cancel-invoice-reason'), value);
 };
 
 const header = (extra: Record<string, unknown> = {}) => ({
@@ -81,10 +92,10 @@ const detail = (extra: Record<string, unknown> = {}) =>
   ({ success: true, data: { header: header(extra), items: [] } }) as unknown as InvoiceDetailsResponse;
 
 async function open() {
-  await act(async () => { renderer = create(<InvoiceDetailScreen />); });
-  await act(async () => {
-    renderer.root.findByType('InvoiceTabNavigator' as unknown as React.ElementType).props.on_tab_change('overview');
-  });
+  await render(<InvoiceDetailScreen />);
+  await user().press(await screen.findByRole('button', { name: 'overview tab' }));
+  // The Overview tab is drawn once its Share PDF action is there.
+  await screen.findByLabelText('Share PDF');
 }
 
 beforeEach(() => {
@@ -94,14 +105,13 @@ beforeEach(() => {
   jest.mocked(getInvoiceItemsDetailed).mockResolvedValue({ success: false } as InvoiceItemsDetailedResponse);
   jest.mocked(getInvoiceReasons).mockResolvedValue(null);
 });
-afterEach(async () => { await act(async () => { renderer?.unmount(); }); });
 
 describe('a live invoice', () => {
   it('offers Cancel invoice and no Delete to an administrator or supervisor', async () => {
     jest.mocked(getInvoiceDetails).mockResolvedValue(detail());
     await open();
     expect(byLabel('Cancel invoice')).toHaveLength(1);
-    expect(byLabel('Delete Invoice')).toHaveLength(0);
+    expect(byLabel('Delete Invoice', true)).toHaveLength(0);
     expect(byLabel('Edit').length).toBeGreaterThan(0);
   });
 
@@ -109,7 +119,7 @@ describe('a live invoice', () => {
     mockCanDelete = false;
     jest.mocked(getInvoiceDetails).mockResolvedValue(detail());
     await open();
-    expect(byLabel('Cancel invoice')).toHaveLength(0);
+    expect(byLabel('Cancel invoice', true)).toHaveLength(0);
   });
 
   it('asks for a reason first: nothing is sent for a reason under 3 characters, the sheet says why', async () => {
@@ -135,7 +145,7 @@ describe('a live invoice', () => {
     expect(cancelInvoice).toHaveBeenCalledWith('fictional-invoice', 'Wrong customer', '2026-10-02T04:00:00.123Z');
     expect(getInvoiceDetails).toHaveBeenCalledTimes(2);
     expect(showAlert).toHaveBeenCalledWith('Invoice 10002 cancelled.');
-    expect(byLabel('Cancel invoice')).toHaveLength(0);
+    expect(byLabel('Cancel invoice', true)).toHaveLength(0);
   });
 
   it('a refusal for payments is worded and the invoice stays as it is', async () => {
@@ -177,20 +187,20 @@ describe('a cancelled invoice', () => {
     jest.mocked(getInvoiceDetails).mockResolvedValue(detail(cancelled));
     await open();
     expect(texts()).toEqual(expect.arrayContaining(['Cancelled on 05/10/26 by Ravi Shah', 'Reason: Wrong customer']));
-    expect(byLabel('Cancel invoice')).toHaveLength(0);
-    expect(byLabel('Edit')).toHaveLength(0);
-    expect(JSON.stringify(renderer.toJSON())).toContain('HeroCancelled');
+    expect(byLabel('Cancel invoice', true)).toHaveLength(0);
+    expect(byLabel('Edit', true)).toHaveLength(0);
+    expect(screen.getByText('HeroCancelled')).toBeOnTheScreen();
   });
 
   it('offers Print on a live invoice and not on a cancelled one', async () => {
-    const printButtons = () => renderer.root.findAll(n => typeof n.props.onPress === 'function' && /^print/i.test(String(n.props.accessibilityLabel ?? '')));
+    const printButtons = (hidden = false) => byLabel(/^print/i, hidden);
     jest.mocked(getInvoiceDetails).mockResolvedValue(detail({}));
     await open();
-    expect(printButtons().length).toBeGreaterThan(0);
-    await act(async () => { renderer.unmount(); });
+    expect(screen.queryAllByRole('button', { name: /^print/i }).length).toBeGreaterThan(0);
+    await screen.unmount();
     jest.mocked(getInvoiceDetails).mockResolvedValue(detail(cancelled));
     await open();
-    expect(printButtons()).toHaveLength(0);
+    expect(printButtons(true)).toHaveLength(0);
   });
 
   it('shows a customer the date and reason, not who cancelled it', async () => {
@@ -199,6 +209,6 @@ describe('a cancelled invoice', () => {
     jest.mocked(getInvoiceDetails).mockResolvedValue(detail(cancelled));
     await open();
     expect(texts()).toEqual(expect.arrayContaining(['Cancelled on 05/10/26', 'Reason: Wrong customer']));
-    expect(texts().join('|')).not.toContain('Ravi Shah');
+    expect(texts(true).join('|')).not.toContain('Ravi Shah');
   });
 });

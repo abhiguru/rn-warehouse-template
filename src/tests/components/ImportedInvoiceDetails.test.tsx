@@ -3,12 +3,10 @@
  * Delete are gone. An invoice that was not imported (or one from a server that does not say) keeps them.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import InvoiceDetailScreen from '../../../app/invoice-details/[id]';
 import { getInvoiceDetails, getInvoiceItemsDetailed, getInvoiceReasons } from '@/services/invoice-service';
 import type { InvoiceDetailsResponse, InvoiceItemsDetailedResponse } from '@/services/invoice-service';
-
-let mockHero: any;
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'fictional-invoice' }),
@@ -45,16 +43,26 @@ jest.mock('@/services/invoice-service', () => ({
   getInvoiceDetails: jest.fn(), getInvoiceItemsDetailed: jest.fn(), getInvoiceReasons: jest.fn(), cancelInvoice: jest.fn(),
 }));
 jest.mock('@/components/invoice-details', () => ({
-  InvoiceHeroHeader: (props: unknown) => { mockHero = props; return null; },
-  InvoiceTabNavigator: 'InvoiceTabNavigator',
+  // Stand-ins that draw what the test looks at: the Imported mark and a button for the Overview tab.
+  InvoiceHeroHeader: (props: { imported?: boolean }) => {
+    const { Text } = require('react-native');
+    return <Text>{props.imported === true ? 'Imported' : props.imported === false ? 'Not imported' : 'Imported unknown'}</Text>;
+  },
+  InvoiceTabNavigator: (props: { on_tab_change: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="overview tab" onPress={() => props.on_tab_change('overview')}>
+        <Text>overview</Text>
+      </Pressable>
+    );
+  },
   InvoiceOverviewTab: jest.requireActual('@/components/invoice-details/InvoiceOverviewTab').InvoiceOverviewTab,
   InvoiceLineItemsTab: () => null,
   InvoiceBreakdownTab: () => null,
 }));
 
-let renderer: ReturnType<typeof create>;
-const byLabel = (label: string) =>
-  renderer.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === label);
+// A button that is NOT offered must also be absent when mounted but hidden.
+const absent = (label: string) => screen.queryAllByLabelText(label, { includeHiddenElements: true });
 const detail = (extra: Record<string, unknown> = {}) =>
   ({
     success: true,
@@ -68,31 +76,29 @@ const detail = (extra: Record<string, unknown> = {}) =>
   }) as unknown as InvoiceDetailsResponse;
 async function open(extra: Record<string, unknown>) {
   jest.mocked(getInvoiceDetails).mockResolvedValue(detail(extra));
-  await act(async () => { renderer = create(<InvoiceDetailScreen />); });
-  await act(async () => {
-    renderer.root.findByType('InvoiceTabNavigator' as unknown as React.ElementType).props.on_tab_change('overview');
-  });
+  await render(<InvoiceDetailScreen />);
+  await userEvent.setup({ delay: 0 }).press(await screen.findByRole('button', { name: 'overview tab' }));
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockHero = undefined;
   jest.mocked(getInvoiceItemsDetailed).mockResolvedValue({ success: false } as InvoiceItemsDetailedResponse);
   jest.mocked(getInvoiceReasons).mockResolvedValue(null);
 });
-afterEach(async () => { await act(async () => { renderer?.unmount(); }); });
 
 it('an imported invoice shows the mark and offers no Edit, Cancel invoice or Delete', async () => {
   await open({ imported: true });
-  expect(mockHero.imported).toBe(true);
-  expect(byLabel('Edit')).toHaveLength(0);
-  expect(byLabel('Cancel invoice')).toHaveLength(0);
-  expect(byLabel('Delete Invoice')).toHaveLength(0);
+  expect(screen.getByText('Imported')).toBeOnTheScreen();
+  // The overview is drawn (its other actions are there), so the missing ones are really closed.
+  expect(await screen.findByLabelText('Share PDF')).toBeOnTheScreen();
+  expect(absent('Edit')).toHaveLength(0);
+  expect(absent('Cancel invoice')).toHaveLength(0);
+  expect(absent('Delete Invoice')).toHaveLength(0);
 });
 
 it.each([[false], [undefined]])('an invoice that is not imported (flag %s) keeps Edit and Cancel invoice', async flag => {
   await open(flag === undefined ? {} : { imported: flag });
-  expect(mockHero.imported).toBe(false);
-  expect(byLabel('Edit').length).toBeGreaterThan(0);
-  expect(byLabel('Cancel invoice')).toHaveLength(1);
+  expect(screen.getByText('Not imported')).toBeOnTheScreen();
+  expect((await screen.findAllByRole('button', { name: 'Edit' })).length).toBeGreaterThan(0);
+  expect(screen.getAllByRole('button', { name: 'Cancel invoice' })).toHaveLength(1);
 });

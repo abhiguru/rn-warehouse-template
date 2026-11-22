@@ -4,7 +4,7 @@
  * default on the last step). Only the store, the safe area and the icons are stand-ins.
  */
 import React from 'react';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
@@ -30,17 +30,8 @@ const WIZARDS = {
   invoice: (edit: boolean) => <InvoiceStepIndicator steps={invoiceSteps()} currentStep={1} completedSteps={[]} onCancel={jest.fn()} invoiceNo="42" isEditMode={edit} />,
 } as const;
 
-const render = async (element: React.ReactElement) => {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(element); });
-  return tree;
-};
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll((n) => (n.type as unknown) === 'Text' || (n.type as { displayName?: string })?.displayName === 'Text')
-    .flatMap((n: ReactTestInstance) => n.children.filter((c): c is string => typeof c === 'string'));
-const pressClose = async (tree: ReactTestRenderer) => {
-  const close = tree.root.find((n) => n.props.accessibilityHint === t('components.steps.cancelHint') && typeof n.props.onPress === 'function');
-  await act(async () => { close.props.onPress(); });
+const pressClose = async () => {
+  await userEvent.setup({ delay: 0 }).press(screen.getByHintText(t('components.steps.cancelHint')));
   const [title, message, buttons] = jest.mocked(showAlert).mock.calls.at(-1)!;
   return { title, message, buttons: buttons!.map((button) => button.text) };
 };
@@ -54,13 +45,13 @@ describe('the leaving question, one scheme for the three wizards', () => {
     ['dispatch', true, 'Discard changes to this dispatch?', 'Your changes to this dispatch will be lost.', 'Discard changes'],
     ['invoice', true, 'Discard changes to this invoice?', 'Your changes to this invoice will be lost.', 'Discard changes'],
   ] as const)('%s, edit %s: asks "%s" with Keep editing and "%s"', async (wizard, edit, title, message, discard) => {
-    const tree = await render(WIZARDS[wizard](edit));
-    expect(await pressClose(tree)).toEqual({ title, message, buttons: ['Keep editing', discard] });
+    await render(WIZARDS[wizard](edit));
+    expect(await pressClose()).toEqual({ title, message, buttons: ['Keep editing', discard] });
   });
 
   it('never asks "Cancel dispatch" in a dispatch edit', async () => {
-    const tree = await render(WIZARDS.dispatch(true));
-    expect((await pressClose(tree)).title).not.toBe('Cancel dispatch');
+    await render(WIZARDS.dispatch(true));
+    expect((await pressClose()).title).not.toBe('Cancel dispatch');
   });
 });
 
@@ -69,8 +60,8 @@ describe('the header names the document, and an edit says "Edit <document>"', ()
     ['grn', false, 'GRN'], ['dispatch', false, 'Dispatch'], ['invoice', false, 'Invoice'],
     ['grn', true, 'Edit GRN'], ['dispatch', true, 'Edit dispatch'], ['invoice', true, 'Edit invoice'],
   ] as const)('%s, edit %s: "%s"', async (wizard, edit, title) => {
-    const tree = await render(WIZARDS[wizard](edit));
-    expect(texts(tree)).toContain(title);
+    await render(WIZARDS[wizard](edit));
+    expect(screen.getAllByText(title)[0]).toBeOnTheScreen();
   });
 
   it.each([
@@ -79,8 +70,8 @@ describe('the header names the document, and an edit says "Edit <document>"', ()
     ['invoice', 'ઇન્વૉઇસમાં ફેરફાર કરો'],
   ] as const)('%s edit, in Gujarati: "%s"', async (wizard, title) => {
     setLanguage('gu');
-    const tree = await render(WIZARDS[wizard](true));
-    expect(texts(tree)).toContain(title);
+    await render(WIZARDS[wizard](true));
+    expect(screen.getAllByText(title)[0]).toBeOnTheScreen();
   });
 
   it('the step names read "<Doc> details", Items, Review in all three', () => {
@@ -98,8 +89,8 @@ describe('the Gujarati leaving questions', () => {
     ['invoice', true, undefined, undefined, 'ફેરફાર છોડી દો'],
   ] as const)('%s, edit %s', async (wizard, edit, title, message, discard) => {
     setLanguage('gu');
-    const tree = await render(WIZARDS[wizard](edit));
-    const asked = await pressClose(tree);
+    await render(WIZARDS[wizard](edit));
+    const asked = await pressClose();
     if (title) expect(asked.title).toBe(title);
     if (message) expect(asked.message).toBe(message);
     expect(asked.buttons[1]).toBe(discard);
@@ -108,10 +99,10 @@ describe('the Gujarati leaving questions', () => {
 
 describe('the bottom bar has no GRN default on the last step', () => {
   it('shows "Next", not "Create GRN", when a wizard passes no label on the last step', async () => {
-    const tree = await render(<WizardBottomBar currentStep={3} totalSteps={3} onNext={jest.fn()} />);
-    const labels = tree.root.findAll((n) => typeof n.props.accessibilityLabel === 'string').map((n) => n.props.accessibilityLabel);
-    expect(labels).not.toContain('Create GRN');
-    expect(texts(tree)).not.toContain('Create GRN');
-    expect(texts(tree)).toContain('Next');
+    await render(<WizardBottomBar currentStep={3} totalSteps={3} onNext={jest.fn()} />);
+    // A check that something is NOT drawn must also see a node that is mounted but hidden.
+    expect(screen.queryAllByLabelText('Create GRN', { includeHiddenElements: true })).toHaveLength(0);
+    expect(screen.queryAllByText('Create GRN', { includeHiddenElements: true })).toHaveLength(0);
+    expect(screen.getAllByText('Next')[0]).toBeOnTheScreen();
   });
 });

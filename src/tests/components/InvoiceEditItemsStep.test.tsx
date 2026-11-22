@@ -5,7 +5,7 @@
  * in edit mode, on the real hook and a real invoice-form slice.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { showAlert } from '@/utils/alert';
 import { setLanguage } from '@/i18n/language';
@@ -28,28 +28,34 @@ jest.mock('react-native-keyboard-aware-scroll-view', () => ({
   // The items table (a stand-in here) is a keyboard-aware FlashList.
   listenToKeyboardEvents: () => (component: unknown) => component,
 }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// A stand-in: an open dialog is an alert with its title and message.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; message?: string }) => {
+    const { Text, View } = require('react-native');
+    return props.visible ? (
+      <View accessible accessibilityRole="alert">
+        <Text>{props.title}</Text>
+        <Text>{props.message}</Text>
+      </View>
+    ) : null;
+  },
+}));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
-jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: 'InvoiceItemsEditor' }));
+jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: () => null }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
 const line = (id: number, overrides: Partial<InvoiceItemData> = {}): InvoiceItemData => invoiceLine(overrides, id);
 
-async function render() {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<InvoiceEditStep2 />); });
-  return tree;
+async function open() {
+  await render(<InvoiceEditStep2 />);
 }
-const pressNext = async (tree: ReactTestRenderer) => {
-  const next = tree.root.find(
-    (node) => typeof node.type !== 'string' && node.props.accessibilityLabel === 'Review' && typeof node.props.onPress === 'function'
-  );
-  await act(async () => { await next.props.onPress(); });
+const pressNext = async () => {
+  await userEvent.setup({ delay: 0 }).press(screen.getByLabelText('Review'));
 };
-const shown = (tree: ReactTestRenderer) =>
-  tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType).filter((dialog) => dialog.props.visible);
+// A check that no dialog is open must also see one that is mounted but hidden.
+const shown = (hidden = false) => screen.queryAllByRole('alert', { includeHiddenElements: hidden });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -62,28 +68,26 @@ describe('invoice edit, items step', () => {
 
   it('goes on to the review with a line whose charge is 0', async () => {
     load([line(0, { charge: 0 }), line(1)]);
-    const tree = await render();
+    await open();
 
-    await pressNext(tree);
+    await pressNext();
 
     expect(showAlert).not.toHaveBeenCalled();
-    expect(shown(tree)).toHaveLength(0);
+    expect(shown(true)).toHaveLength(0);
     expect(router.navigate).toHaveBeenCalledWith('/invoice-edit/inv-42/step3');
-    await act(async () => { tree.unmount(); });
   });
 
   it('stops for a line with a duration of 0 and speaks of the duration only', async () => {
     load([line(0, { duration: 0 }), line(1, { charge: 0 })]);
-    const tree = await render();
+    await open();
 
-    await pressNext(tree);
+    await pressNext();
 
-    expect(shown(tree)).toHaveLength(1);
+    expect(shown()).toHaveLength(1);
     // The same sentence as in a new invoice, with the number of lines.
-    expect(shown(tree)[0].props.title).toBe('Check the item prices');
-    expect(shown(tree)[0].props.message).toBe('1 item has a duration of 0. The duration must be greater than 0.');
+    expect(within(shown()[0]).getByText('Check the item prices')).toBeOnTheScreen();
+    expect(within(shown()[0]).getByText('1 item has a duration of 0. The duration must be greater than 0.')).toBeOnTheScreen();
     expect(router.navigate).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   // Every other failure of the items check used to be answered with "Every
@@ -95,36 +99,33 @@ describe('invoice edit, items step', () => {
     ['a charge out of range', { charge: 1000000 }, 'Charge is too large'],
   ])('stops for %s and says what is wrong with it', async (_what, overrides, message) => {
     load([line(0, overrides), line(1)]);
-    const tree = await render();
+    await open();
 
-    await pressNext(tree);
+    await pressNext();
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith('Check the item prices', message);
     expect(router.navigate).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('names each kind of failure once when several lines fail', async () => {
     load([line(0, { duration: 0.3 }), line(1, { duration: 0.2, tax: 150 }), line(2)]);
-    const tree = await render();
+    await open();
 
-    await pressNext(tree);
+    await pressNext();
 
     expect(showAlert).toHaveBeenCalledWith('Check the item prices', 'Duration must be at least half a month\nTax cannot exceed 100%');
-    await act(async () => { tree.unmount(); });
   });
 
   it('says it in Gujarati', async () => {
     load([line(0, { duration: 0.3 })]);
-    const tree = await render();
+    await open();
 
     // The message is worded when Next is pressed, in the language of that moment.
     setLanguage('gu');
-    await pressNext(tree);
+    await pressNext();
 
     expect(showAlert).toHaveBeenCalledWith('આઇટમના દર તપાસો', 'સમયગાળો ઓછામાં ઓછો અડધો મહિનો હોવો જોઈએ');
-    await act(async () => { tree.unmount(); });
     setLanguage('en');
   });
 });

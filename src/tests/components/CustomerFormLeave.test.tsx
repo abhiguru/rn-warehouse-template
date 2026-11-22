@@ -4,8 +4,8 @@
  * and form (the in-memory route context, as src/hooks/__tests__/useLeaveGuard.test.tsx).
  */
 import React from 'react';
-import { Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { Text } from 'react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
@@ -46,7 +46,6 @@ jest.mock('@/services/customer-service', () => ({
 
 const c1 = { id: 'c1', name: '24 Seven Foods', mobile: '9999900302', city: 'Rajkot', active: true, created_at: '2026-01-01' };
 
-let tree: ReactTestRenderer;
 let backKey: ReturnType<typeof installHardwareBack>;
 const settle = async () => { await act(async () => { await jest.runAllTimersAsync(); }); };
 const pathname = () => routerStore.getRouteInfo().pathname;
@@ -55,14 +54,15 @@ const lastAlert = () => {
   const [title, message, buttons] = calls[calls.length - 1];
   return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
 };
-const nameInput = () =>
-  tree.root.findAllByType(TextInput).find(node => node.props.accessibilityLabel === 'Customer name, required');
+const nameInput = () => screen.getByLabelText('Customer name, required');
 const go = async (path: string) => {
   await act(async () => { router.push(path as never); });
   await settle();
 };
 const type = async (text: string) => {
-  await act(async () => { nameInput()?.props.onChangeText(text); });
+  const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+  await user.clear(nameInput());
+  await user.paste(nameInput(), text);
 };
 
 beforeEach(async () => {
@@ -79,12 +79,11 @@ beforeEach(async () => {
     'customer-edit/[id]': CustomerEditRoute,
     'customer-form': CustomerFormRoute,
   });
-  await act(async () => { tree = create(<ExpoRoot context={context} location="/" />); });
+  await render(<ExpoRoot context={context} location="/" />);
   await settle();
 });
 
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   backKey.restore();
   jest.useRealTimers();
 });
@@ -93,7 +92,7 @@ describe('Edit customer', () => {
   it('leaves without a question when nothing changed', async () => {
     await go('/customer/c1');
     await go('/customer-edit/c1');
-    expect(nameInput()?.props.value).toBe('24 Seven Foods');
+    expect(nameInput()).toHaveDisplayValue('24 Seven Foods');
 
     await act(async () => { router.back(); });
     await settle();

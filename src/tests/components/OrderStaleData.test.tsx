@@ -5,15 +5,15 @@
  * says when the orders were loaded (§14.9).
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import OrderFlashList from '@/components/lists/OrderFlashList';
 import { OrderService } from '@/services/order-service';
 import type { Order, OrderServiceResponse } from '@/types/order.types';
 
 let mockOffline = false;
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => mockOffline, useNetworkStatus: () => ({ isConnected: !mockOffline }) }));
-jest.mock('@shopify/flash-list', () => ({ FlashList: 'FlashList' }));
+// The list stand-in draws the header, the headings and the footer, and keeps the list's props on a host element.
+jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 jest.mock('react-native-paper', () => Object.fromEntries(
   ['ActivityIndicator', 'Badge', 'IconButton', 'Portal', 'Snackbar', 'Surface'].map(name => [name, name])
 ));
@@ -44,41 +44,42 @@ jest.mock('@/components/CustomerSearchBottomSheet', () => ({
 }));
 jest.mock('@/services/order-service', () => ({ OrderService: { getOrdersList: jest.fn() } }));
 
-type Tree = ReturnType<typeof create>;
 const getOrdersList = jest.mocked(OrderService.getOrdersList);
 const orders = [{ id: 'fictional-order', customer_id: 'fictional-customer', status: 'OPEN', item_count: 1 }] as Order[];
 const page = (from: number, count: number) => Array.from({ length: count }, (_, i) =>
   ({ id: `fictional-order-${from + i}`, customer_id: 'fictional-customer', status: 'OPEN', item_count: 1 })) as Order[];
-const texts = (tree: Tree) => tree.root.findAllByType(Text).map(node => [node.props.children].flat().join(''));
 const TIME = /\d{1,2}:\d{2} (am|pm)/;
-const strip = (tree: Tree) => tree.root.findAll(node => node.props.testID === 'orders-stale-strip');
-const pressable = (tree: Tree, testID: string) =>
-  tree.root.findAll(node => node.props.testID === testID && typeof node.props.onPress === 'function')[0];
-const list = (tree: Tree) => tree.root.findByType('FlashList' as unknown as React.ElementType);
-const rows = (tree: Tree) => list(tree).props.data.filter((row: { type: string }) => row.type !== 'header');
-// A list row drawn on its own (FlashList is a stub here, so it draws no rows itself).
-const draw = (element: React.ReactElement) => {
-  let drawn!: Tree;
-  act(() => { drawn = create(element); });
-  return drawn;
-};
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+const strip = (all = false) => screen.queryAllByTestId('orders-stale-strip', all ? hidden : undefined);
+// The list stand-in (src/tests/helpers/flashListMock.tsx) draws the header, the headings and the footer, and keeps the
+// list's props on a host element. The order rows are a null stand-in (MemoizedOrderItem), so the rows the list was
+// given are read from that prop.
+const hosts = (type: string) => (screen.root ? [screen.root, ...screen.root.queryAll(() => true)] : []).filter(node => (node.type as unknown) === type);
+const list = () => hosts('FlashList')[0];
+const rows = () => list().props.data.filter((row: { type: string }) => row.type !== 'header');
 // The screen-reader "Refresh" action (WH-220) sits on the list's title ("Orders"), which every state shows: the
 // same refresh as the pull.
-const refreshTarget = (tree: Tree) => {
-  const title = tree.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header'
-    && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+const refreshTarget = () => {
+  const title = screen.getAllByRole('header').filter(node => Array.isArray(node.props.accessibilityActions)
+    && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
   expect(title).toHaveLength(1);
   expect(title[0].props.children).toBe('Orders');
   return title[0];
 };
-const refresh = (tree: Tree) => {
-  const target = refreshTarget(tree);
-  return () => target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } });
+type Host = ReturnType<typeof list>;
+/** The parts the list host draws in order: its header part, then each row (a heading is its section header, and under it the Last updated line). */
+const listParts = () => list().children.filter(child => typeof child !== 'string') as Host[];
+const firstHeadingIndex = () => listParts().findIndex(part => within(part).queryAllByRole('header').some(node => !node.props.accessibilityActions));
+const headingIndex = () => {
+  const index = firstHeadingIndex();
+  expect(index).toBeGreaterThanOrEqual(0); // a list with no heading must not fall back to its header part
+  return index;
 };
-const footer = (tree: Tree) => {
-  const Footer = list(tree).props.ListFooterComponent;
-  return Footer ? draw(Footer) : null;
-};
+const firstHeading = () => listParts()[headingIndex()];
+const underFirstHeading = () => listParts()[headingIndex() + 1];
+const refresh = () => fireEvent(refreshTarget(), 'accessibilityAction', { nativeEvent: { actionName: 'refresh' } });
 
 beforeEach(() => {
   mockOffline = false;
@@ -87,126 +88,102 @@ beforeEach(() => {
 
 it('keeps the orders after a failed refresh in a strip with the load time and Try again, until a refresh works', async () => {
   getOrdersList.mockResolvedValueOnce({ success: true, data: orders } as OrderServiceResponse<Order[]>);
-  let tree!: Tree;
-  await act(async () => { tree = create(<OrderFlashList />); });
-  expect(strip(tree)).toHaveLength(0);
+  await render(<OrderFlashList />);
+  expect(strip(true)).toHaveLength(0);
 
   getOrdersList.mockResolvedValueOnce({ success: false, message: 'Warehouse connection unavailable' });
-  const runRefresh = refresh(tree);
-  await act(async () => { runRefresh(); });
-  expect(strip(tree).length).toBeGreaterThan(0);
-  expect(texts(tree)).toContain("Couldn't refresh orders.");
-  const stale = texts(tree).find(text => text.startsWith('Showing the orders loaded at '));
-  expect(stale).toMatch(new RegExp(`^Showing the orders loaded at ${TIME.source}\\.$`));
-  expect(rows(tree).map((row: { data: Order }) => row.data.id)).toEqual(['fictional-order']);
+  await refresh();
+  expect(strip().length).toBeGreaterThan(0);
+  expect(screen.getByText("Couldn't refresh orders.")).toBeOnTheScreen();
+  expect(screen.getByText(new RegExp(`^Showing the orders loaded at ${TIME.source}\\.$`))).toBeOnTheScreen();
+  expect(rows().map((row: { data: Order }) => row.data.id)).toEqual(['fictional-order']);
   // No snackbar: the error stays on screen instead of going after four seconds.
-  expect(tree.root.findAll(node => node.type === ('Snackbar' as unknown))).toHaveLength(0);
+  expect(hosts('Snackbar')).toHaveLength(0);
 
   // Try again: the strip stays while the retry runs and its button is disabled.
   let complete!: (value: OrderServiceResponse<Order[]>) => void;
   getOrdersList.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
-  const retry = pressable(tree, 'orders-stale-strip-retry');
+  const retry = screen.getByTestId('orders-stale-strip-retry');
   expect(retry.props.accessibilityLabel).toBe('Try loading the orders again');
-  await act(async () => { retry.props.onPress(); });
+  await user.press(retry);
   expect(getOrdersList).toHaveBeenCalledTimes(3);
-  expect(strip(tree).length).toBeGreaterThan(0);
-  expect(pressable(tree, 'orders-stale-strip-retry').props.disabled).toBe(true);
+  expect(strip().length).toBeGreaterThan(0);
+  expect(screen.getByTestId('orders-stale-strip-retry')).toBeDisabled();
+  expect(screen.getByTestId('orders-stale-strip-retry').props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
 
   await act(async () => { complete({ success: true, data: [{ ...orders[0], id: 'fresh-order' }] } as OrderServiceResponse<Order[]>); });
-  expect(strip(tree)).toHaveLength(0);
-  expect(rows(tree).map((row: { data: Order }) => row.data.id)).toEqual(['fresh-order']);
-  await act(async () => { tree.unmount(); });
+  expect(strip(true)).toHaveLength(0);
+  expect(rows().map((row: { data: Order }) => row.data.id)).toEqual(['fresh-order']);
 });
 
 it('says a failed next page in the last row with Try again, and appends the page when it works', async () => {
   getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(0, 20), metadata: { has_more: true } });
-  let tree!: Tree;
-  await act(async () => { tree = create(<OrderFlashList />); });
-  expect(footer(tree)).toBeNull();
+  await render(<OrderFlashList />);
+  expect(screen.queryByTestId('orders-load-more-error-retry', hidden)).not.toBeOnTheScreen();
+  expect(screen.queryAllByText('Loading more orders…', hidden)).toHaveLength(0); // the old check was no footer at all
 
   getOrdersList.mockResolvedValueOnce({ success: false, message: 'Warehouse connection unavailable' });
-  await act(async () => { await list(tree).props.onEndReached(); });
-  const failed = footer(tree)!;
-  expect(texts(failed)).toContain("Couldn't load more orders.");
-  const retry = pressable(failed, 'orders-load-more-error-retry');
+  await fireEvent(list(), 'endReached');
+  expect(screen.getByText("Couldn't load more orders.")).toBeOnTheScreen();
+  const retry = screen.getByTestId('orders-load-more-error-retry');
   expect(retry.props.accessibilityLabel).toBe('Try loading more orders again');
-  expect(rows(tree)).toHaveLength(20);
+  expect(rows()).toHaveLength(20);
 
   getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(20, 3), metadata: { has_more: false } });
-  await act(async () => { await retry.props.onPress(); });
+  await user.press(retry);
   expect(getOrdersList.mock.calls[2][0]).toEqual(expect.objectContaining({ offset: 20 }));
-  expect(rows(tree)).toHaveLength(23);
-  expect(footer(tree)).toBeNull();
-  await act(async () => { tree.unmount(); });
+  expect(rows()).toHaveLength(23);
+  expect(screen.queryByTestId('orders-load-more-error-retry', hidden)).not.toBeOnTheScreen();
+  expect(screen.queryAllByText('Loading more orders…', hidden)).toHaveLength(0); // the old check was no footer at all
+  expect(screen.queryByText("Couldn't load more orders.", hidden)).not.toBeOnTheScreen();
 });
 
 it('says when the orders were loaded under the first heading only while offline', async () => {
   getOrdersList.mockResolvedValue({ success: true, data: orders } as OrderServiceResponse<Order[]>);
-  let tree!: Tree;
-  const firstHeading = () => {
-    const { renderItem, data } = list(tree).props;
-    return draw(renderItem({ item: data[0], index: 0 }));
-  };
-  await act(async () => { tree = create(<OrderFlashList />); });
-  expect(texts(firstHeading()).some(text => text.startsWith('Last updated'))).toBe(false);
+  await render(<OrderFlashList />);
+  expect(screen.queryByText(/^Last updated/, hidden)).not.toBeOnTheScreen();
 
   mockOffline = true;
-  await act(async () => { tree.update(<OrderFlashList />); });
-  const updated = texts(firstHeading()).find(text => text.startsWith('Last updated'));
-  expect(updated).toMatch(new RegExp(`^Last updated ${TIME.source}$`));
-  await act(async () => { tree.unmount(); });
+  await screen.rerender(<OrderFlashList />);
+  expect(underFirstHeading()).toHaveTextContent(new RegExp(`^Last updated ${TIME.source}$`));
 });
 
 it('counts "20+" in the first heading while more pages remain, and the plain count once all are loaded', async () => {
   getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(0, 20), metadata: { has_more: true } });
-  let tree!: Tree;
-  const heading = () => {
-    const { renderItem, data } = list(tree).props;
-    return draw(renderItem({ item: data[0], index: 0 }));
-  };
-  const spoken = (drawn: Tree) => drawn.root.findAll(node => typeof node.props.accessibilityLabel === 'string')[0].props.accessibilityLabel;
-  await act(async () => { tree = create(<OrderFlashList />); });
-  expect(texts(heading())).toContain('20+');
-  expect(spoken(heading())).toMatch(/, more than 20 orders$/);
+  await render(<OrderFlashList />);
+  expect(within(firstHeading()).getByText('20+')).toBeOnTheScreen();
+  expect(within(firstHeading()).getByLabelText(/, more than 20 orders$/)).toBeOnTheScreen();
 
   getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(20, 3), metadata: { has_more: false } });
-  await act(async () => { await list(tree).props.onEndReached(); });
-  expect(texts(heading())).toContain('23');
-  expect(texts(heading())).not.toContain('23+');
-  expect(spoken(heading())).toMatch(/, 23 orders$/);
-  await act(async () => { tree.unmount(); });
+  await fireEvent(list(), 'endReached');
+  expect(screen.getByText('23')).toBeOnTheScreen();
+  expect(screen.queryByText('23+', hidden)).not.toBeOnTheScreen();
+  expect(screen.getByLabelText(/, 23 orders$/)).toBeOnTheScreen();
 });
 
 it('offline, the line under the first heading shows the date as well as the time when the orders were loaded on an earlier day (WH-220)', async () => {
   getOrdersList.mockResolvedValue({ success: true, data: orders } as OrderServiceResponse<Order[]>);
   const real = Date.now();
   jest.useFakeTimers({ now: new Date(2026, 9, 9, 16, 5), doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
-  let tree!: Tree;
   try {
-    await act(async () => { tree = create(<OrderFlashList />); });
+    await render(<OrderFlashList />);
     jest.setSystemTime(real);
     mockOffline = true;
-    await act(async () => { tree.update(<OrderFlashList />); });
-    const { renderItem, data } = list(tree).props;
-    expect(texts(draw(renderItem({ item: data[0], index: 0 }))).find(text => text.startsWith('Last updated'))).toBe('Last updated 09/10/26, 4:05 pm');
+    await screen.rerender(<OrderFlashList />);
+    expect(underFirstHeading()).toHaveTextContent('Last updated 09/10/26, 4:05 pm');
   } finally {
     jest.useRealTimers();
   }
-  await act(async () => { tree.unmount(); });
 });
 
 it('the list offers a screen-reader Refresh action that reloads the orders like a pull (WH-220)', async () => {
   getOrdersList.mockResolvedValue({ success: true, data: orders } as OrderServiceResponse<Order[]>);
-  let tree!: Tree;
-  await act(async () => { tree = create(<OrderFlashList />); });
-  expect(refreshTarget(tree).props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
+  await render(<OrderFlashList />);
+  expect(refreshTarget().props.accessibilityActions).toEqual([{ name: 'refresh', label: 'Refresh' }]);
   const before = getOrdersList.mock.calls.length;
-  const runRefresh = refresh(tree);
-  await act(async () => { runRefresh(); });
+  await refresh();
   expect(getOrdersList.mock.calls.length).toBe(before + 1);
-  const target = refreshTarget(tree);
-  await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'activate' } }); });
+  await fireEvent(refreshTarget(), 'accessibilityAction', { nativeEvent: { actionName: 'activate' } });
   expect(getOrdersList.mock.calls.length).toBe(before + 1);
-  expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Refresh orders')).toHaveLength(0);
-  await act(async () => { tree.unmount(); });
+  expect(screen.queryByLabelText('Refresh orders', hidden)).not.toBeOnTheScreen();
 });

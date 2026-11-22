@@ -3,7 +3,7 @@
  * "GRN_GRN_23-24_0042.pdf"). The real page and handler run; only the PDF service and the share call are faked.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import GRNDetailScreen from '../../../app/grn-details/[id]';
 import { setLanguage } from '@/i18n';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
@@ -11,8 +11,6 @@ import { generateGRNPDF } from '@/services/pdf-service';
 import { nameCases, expectSafeNames } from '@/tests/helpers/pdfFileNames';
 
 const mockGetGRNDetails = jest.fn();
-let mockOverviewProps: any;
-let mockTabProps: any;
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'grn-1', tab: 'overview' }),
@@ -66,15 +64,25 @@ jest.mock('@/services/grn-detail-service', () => ({
 jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNImage: jest.fn(), deleteGRNImage: jest.fn() }));
 jest.mock('@/components/grn-details', () => ({
   GRNHeroHeader: () => null,
-  GRNTabNavigator: (props: unknown) => {
-    mockTabProps = props;
-    return null;
-  },
-  GRNOverviewTab: (props: unknown) => {
-    mockOverviewProps = props;
-    return null;
+  // Draws the tab buttons the page's tab bar draws, and calls the page's own onTabChange.
+  GRNTabNavigator: (props: { onTabChange: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return ['overview', 'invoices', 'images'].map((tab) => (
+      <Pressable key={tab} accessibilityRole="button" accessibilityLabel={`${tab} tab`} onPress={() => props.onTabChange(tab)}>
+        <Text>{tab}</Text>
+      </Pressable>
+    ));
   },
   GRNItemsTab: () => null,
+  // Draws a Share PDF button that calls the page's own onSharePDF.
+  GRNOverviewTab: (props: { onSharePDF: () => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="Share PDF" onPress={() => props.onSharePDF()}>
+        <Text>Share PDF</Text>
+      </Pressable>
+    );
+  },
   GRNDispatchesTab: () => null,
   GRNInvoicesTab: () => null,
   GRNImagesTab: () => null,
@@ -87,11 +95,11 @@ const grnNumbered = (grNo: string) => ({
 
 const shareNumbered = async (grNo: string) => {
   mockGetGRNDetails.mockResolvedValue(grnNumbered(grNo));
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<GRNDetailScreen />); });
-  await act(async () => { mockTabProps.onTabChange('overview'); });
-  await act(async () => { await mockOverviewProps.onSharePDF(); });
-  await act(async () => { tree.unmount(); });
+  await render(<GRNDetailScreen />);
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(await screen.findByRole('button', { name: 'overview tab' }));
+  await user.press(screen.getByRole('button', { name: 'Share PDF' }));
+  await screen.unmount();
 };
 
 beforeEach(() => {

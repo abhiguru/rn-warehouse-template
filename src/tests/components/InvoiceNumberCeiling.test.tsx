@@ -9,8 +9,7 @@
  * invoice-form slice; the server and the router are mocked.
  */
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import invoiceFormReducer, { setItems, updateHeader } from '@/store/slices/invoiceFormSlice';
@@ -66,7 +65,6 @@ const CUSTOMER = '22222222-3333-4444-8555-666666666666';
 const LINE = '33333333-4444-4555-8666-777777777777';
 const RANGE = 'Invoice number must be between 1 and 99999999';
 
-let tree: ReactTestRenderer;
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -83,38 +81,37 @@ beforeEach(async () => {
       temp_id: 't1', disp_trl_id: LINE, grn_item_id: 'g1', item_name: 'Example Potatoes',
       qty: 10, charge: 5, labour_rate: 2, tax: 5, duration: 1, no_of_days: 30,
     }] as never));
-    tree = create(<InvoiceFormStep1 />);
   });
+  await render(<InvoiceFormStep1 />);
 });
 
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   setLanguage('en');
   jest.restoreAllMocks();
 });
 
-const numberField = () =>
-  tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Invoice number')!;
+const numberField = () => screen.getByLabelText('Invoice number');
+// Typed straight into the handler, past the field's own maxLength: the form must not keep a ninth digit either.
 const type = async (text: string) => {
-  await act(async () => { numberField().props.onChangeText(text); });
+  await fireEvent.changeText(numberField(), text);
 };
 const pressNext = async () => {
-  const next = tree.root.find((node) =>
-    typeof node.type !== 'string' && node.props.accessibilityLabel === t('common.next') && 'onPress' in node.props);
-  await act(async () => { await next.props.onPress(); });
+  await userEvent.setup({ delay: 0 }).press(screen.getByLabelText(t('common.next')));
 };
-const screenText = () => JSON.stringify(tree.toJSON());
+// The words on the screen; a check that something is NOT there passes `hidden` to see mounted-but-hidden Texts too.
+const screenText = (hidden = false) =>
+  screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map((node) => [node.props.children].flat(Infinity).join('')).join('\n');
 const wentOn = () =>
   [router.push, router.navigate].some((go) => jest.mocked(go).mock.calls.some(([to]) => String(to).includes('step2')));
 
 describe('the invoice number field of a new invoice', () => {
   it('takes 8 digits at most: a ninth typed digit is not kept', async () => {
-    expect(numberField().props.maxLength).toBe(8);
+    expect(numberField()).toHaveProp('maxLength', 8);
 
     await type('123456789');
 
     expect(mockStore.getState().invoiceForm.header.inv_no).toBe(12345678);
-    expect(numberField().props.value).toBe('12345678');
+    expect(numberField()).toHaveDisplayValue('12345678');
   });
 
   it('refuses 100000000 on Next with the range message under the field, and stays', async () => {
@@ -133,7 +130,7 @@ describe('the invoice number field of a new invoice', () => {
 
     await pressNext();
 
-    expect(screenText()).not.toContain(RANGE);
+    expect(screenText(true)).not.toContain(RANGE);
     expect(wentOn()).toBe(true);
   });
 

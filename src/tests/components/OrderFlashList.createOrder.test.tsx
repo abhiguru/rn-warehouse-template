@@ -7,7 +7,7 @@
  * their customer search; an account with no business is told so in the sheet.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import OrderFlashList from '@/components/lists/OrderFlashList';
 import { OrderService } from '@/services/order-service';
@@ -73,7 +73,9 @@ const ORDERS_FOR_BOTH = answer([
   { id: 'order-birch', customer_id: BIRCH.id, status: 'OPEN', item_count: 1 },
 ]);
 
-let tree: ReactTestRenderer | undefined;
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
 beforeEach(() => {
   resetScreenFocus();
   getOrdersList.mockReset().mockResolvedValue(NO_ORDERS);
@@ -81,70 +83,65 @@ beforeEach(() => {
   mockSearchSheet.open.mockClear();
   push.mockClear();
 });
-afterEach(() => {
-  if (tree) act(() => tree!.unmount());
-  tree = undefined;
-});
 
 async function renderList(profile: Record<string, unknown>) {
   mockProfile = profile;
-  await act(async () => {
-    tree = create(<OrderFlashList />);
-  });
+  await render(<OrderFlashList />);
 }
-const pressable = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const tapCreateOrder = () => act(async () => pressable('Create order').props.onPress());
-const texts = () => tree!.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-const businessRows = () => tree!.root.findAll(node => typeof node.props.testID === 'string' && node.props.testID.startsWith('order-business-business-') && typeof node.props.onPress === 'function');
-// The list draws no snackbar at all now: load errors are inline (§13.9).
-const snackbar = () => tree!.root.findAll(node => (node.type as unknown) === 'Snackbar')[0];
-const chooserIsOpen = () => texts().includes('Choose a business');
+const pressable = (label: string) => screen.getByRole('button', { name: label });
+const tapCreateOrder = () => user.press(pressable('Create order'));
+const has = (text: string) => expect(screen.getByText(text)).toBeOnTheScreen();
+const lacks = (text: string | RegExp) => expect(screen.queryByText(text, hidden)).not.toBeOnTheScreen();
+const businessRows = (all = false) => screen.queryAllByTestId(/^order-business-business-/, all ? hidden : undefined);
+// The list draws no snackbar at all now: load errors are inline (§13.9). The stand-in is a host element with no role or text.
+const snackbars = () => (screen.root ? [screen.root, ...screen.root.queryAll(() => true)] : []).filter(node => (node.type as unknown) === 'Snackbar');
+const chooserIsOpen = (open: boolean) => (open ? has('Choose a business') : lacks('Choose a business'));
 
 describe('a customer account with two businesses', () => {
   it('chooses one in a sheet when it has no order yet, and opens that business\'s order', async () => {
     await renderList(customerWith(AMBER.id, BIRCH.id));
     // Before the tap: the empty list, no chooser, nothing asked of the facility.
-    expect(texts()).toContain('No orders yet');
-    expect(chooserIsOpen()).toBe(false);
+    has('No orders yet');
+    chooserIsOpen(false);
     expect(mockReadOwnBusinesses).not.toHaveBeenCalled();
 
     await tapCreateOrder();
-    expect(chooserIsOpen()).toBe(true);
+    chooserIsOpen(true);
     expect(businessRows().map(row => row.props.testID)).toEqual(['order-business-business-amber', 'order-business-business-birch']);
-    expect(businessRows().map(row => row.findAll(node => (node.type as unknown) === 'Text').map(node => node.props.children).slice(1)))
+    expect(businessRows().map(row => row.queryAll(node => (node.type as unknown) === 'Text').map(node => node.props.children).slice(1)))
       .toEqual([['Amber Field Traders', 'Northgate'], ['Birchwood Produce', 'Southmere']]);
     expect(push).not.toHaveBeenCalled();
     // The dead end this replaces was a snackbar.
-    expect(snackbar()).toBeUndefined();
-    expect(texts().join(' ')).not.toMatch(/Select an existing|No assigned customer/);
+    expect(snackbars()).toHaveLength(0);
+    lacks(/Select an existing|No assigned customer/);
 
-    await act(async () => businessRows()[1].props.onPress());
+    await user.press(businessRows()[1]);
     expect(push).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledWith('/orders/business-birch');
-    expect(chooserIsOpen()).toBe(false);
-    expect(snackbar()).toBeUndefined();
+    chooserIsOpen(false);
+    expect(snackbars()).toHaveLength(0);
     expect(mockSearchSheet.open).not.toHaveBeenCalled();
   });
 
   it('chooses in the same sheet when both businesses already have orders', async () => {
     getOrdersList.mockResolvedValue(ORDERS_FOR_BOTH);
     await renderList(customerWith(AMBER.id, BIRCH.id));
-    expect(texts()).not.toContain('No orders yet');
+    lacks('No orders yet');
 
     await tapCreateOrder();
-    expect(chooserIsOpen()).toBe(true);
+    chooserIsOpen(true);
     expect(businessRows()).toHaveLength(2);
-    await act(async () => businessRows()[0].props.onPress());
+    await user.press(businessRows()[0]);
     expect(push).toHaveBeenCalledWith('/orders/business-amber');
-    expect(snackbar()).toBeUndefined();
+    expect(snackbars()).toHaveLength(0);
   });
 
   it('stays on the list when the sheet is closed with the X', async () => {
     await renderList(customerWith(AMBER.id, BIRCH.id));
     await tapCreateOrder();
-    expect(chooserIsOpen()).toBe(true);
-    await act(async () => pressable('Close').props.onPress());
-    expect(chooserIsOpen()).toBe(false);
+    chooserIsOpen(true);
+    await user.press(pressable('Close'));
+    chooserIsOpen(false);
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -152,15 +149,15 @@ describe('a customer account with two businesses', () => {
     mockReadOwnBusinesses.mockReset().mockRejectedValueOnce(new Error('offline')).mockResolvedValue([AMBER, BIRCH]);
     await renderList(customerWith(AMBER.id, BIRCH.id));
     await tapCreateOrder();
-    expect(texts()).toEqual(expect.arrayContaining(['Choose a business', "Couldn't load your businesses", 'Check your connection and try again.']));
-    expect(businessRows()).toHaveLength(0);
-    expect(snackbar()).toBeUndefined();
+    for (const text of ['Choose a business', "Couldn't load your businesses", 'Check your connection and try again.']) has(text);
+    expect(businessRows(true)).toHaveLength(0);
+    expect(snackbars()).toHaveLength(0);
 
-    await act(async () => pressable('Try again').props.onPress());
+    await user.press(pressable('Try again'));
     expect(mockReadOwnBusinesses).toHaveBeenCalledTimes(2);
-    expect(texts()).not.toContain("Couldn't load your businesses");
+    lacks("Couldn't load your businesses");
     expect(businessRows().map(row => row.props.accessibilityLabel)).toEqual(['Amber Field Traders, Northgate', 'Birchwood Produce, Southmere']);
-    await act(async () => businessRows()[1].props.onPress());
+    await user.press(businessRows()[1]);
     expect(push).toHaveBeenCalledWith('/orders/business-birch');
   });
 });
@@ -172,7 +169,7 @@ describe('a customer account with one business', () => {
     expect(push).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledWith('/orders/business-birch');
     expect(mockReadOwnBusinesses).not.toHaveBeenCalled();
-    expect(chooserIsOpen()).toBe(false);
+    chooserIsOpen(false);
     expect(mockSearchSheet.open).not.toHaveBeenCalled();
   });
 });
@@ -183,10 +180,10 @@ describe('a customer account with no business on the phone', () => {
     await renderList(customerWith());
     await tapCreateOrder();
     expect(mockReadOwnBusinesses).toHaveBeenCalledTimes(1);
-    expect(texts()).toEqual(expect.arrayContaining(['No business linked', 'No business is linked to your account. Ask your facility to link one.']));
-    expect(businessRows()).toHaveLength(0);
+    for (const text of ['No business linked', 'No business is linked to your account. Ask your facility to link one.']) has(text);
+    expect(businessRows(true)).toHaveLength(0);
     expect(push).not.toHaveBeenCalled();
-    expect(snackbar()).toBeUndefined();
+    expect(snackbars()).toHaveLength(0);
     expect(mockSearchSheet.open).not.toHaveBeenCalled();
   });
 
@@ -195,8 +192,8 @@ describe('a customer account with no business on the phone', () => {
     await renderList({ id: 'profile-fictional', role: 'customer', name: 'Fictional Grower' });
     await tapCreateOrder();
     expect(businessRows()).toHaveLength(2);
-    expect(texts()).not.toContain('No business linked');
-    await act(async () => businessRows()[0].props.onPress());
+    lacks('No business linked');
+    await user.press(businessRows()[0]);
     expect(push).toHaveBeenCalledWith('/orders/business-amber');
   });
 });
@@ -206,7 +203,7 @@ describe('the staff roles', () => {
     await renderList({ id: 'profile-fictional', role, name: 'Fictional Employee' });
     await tapCreateOrder();
     expect(mockSearchSheet.open).toHaveBeenCalledTimes(1);
-    expect(chooserIsOpen()).toBe(false);
+    chooserIsOpen(false);
     expect(mockReadOwnBusinesses).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
   });

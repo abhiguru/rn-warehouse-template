@@ -4,7 +4,7 @@
  * "Discard changes to this GRN?" as before.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { GrnHeaderStep } from '@/features/grn/screens/GrnHeaderStep';
 import grnFormReducer, { loadGRNData, resetForm, updateHeader } from '@/store/slices/grnFormSlice';
@@ -48,9 +48,8 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@/components/GhostTextInput', () => ({ GhostTextInput: require('react').forwardRef(() => null) }));
 jest.mock('@/services/vehicle-suggestion-service', () => ({ getTopVehicleSuggestion: jest.fn() }));
 
-let tree: ReturnType<typeof create> | undefined;
-const mount = async () => { await act(async () => { tree = create(<GrnHeaderStep mode="edit" />); }); return tree!; };
-const close = () => tree!.root.find((node) => node.props.accessibilityLabel === 'Close GRN edit' && typeof node.props.onPress === 'function');
+const mount = async () => { await render(<GrnHeaderStep mode="edit" />); };
+const close = () => screen.getByRole('button', { name: 'Close GRN edit' });
 
 beforeEach(() => {
   setLanguage('en');
@@ -60,16 +59,14 @@ beforeEach(() => {
   const header = grnFormReducer(undefined, resetForm()).header;
   mockStore.dispatch(loadGRNData({ grnId: 'g1', header: { ...header, gr_no: 'A0010', registration: 'GJ01XX0000' }, items: [] }));
 });
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
 it('closes with no question when nothing was changed', async () => {
   await mount();
 
-  await act(async () => { close().props.onPress(); });
+  await userEvent.press(close());
 
   expect(showAlert).not.toHaveBeenCalled();
 });
@@ -78,7 +75,7 @@ it('asks "Discard changes to this GRN?" once a character of the vehicle number w
   mockStore.dispatch(updateHeader({ registration: 'GJ01XX0001' }));
   await mount();
 
-  await act(async () => { close().props.onPress(); });
+  await userEvent.press(close());
 
   expect(showAlert).toHaveBeenCalledTimes(1);
   expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Discard changes to this GRN?');

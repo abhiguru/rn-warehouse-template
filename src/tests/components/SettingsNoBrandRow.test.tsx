@@ -4,7 +4,7 @@
  * neutral build.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import SettingsScreen from '../../../app/settings';
 import { setLanguage } from '@/i18n';
 import { registerSampleBrand } from '@/tests/helpers/sampleBrand';
@@ -35,8 +35,8 @@ jest.mock('@/store/slices/authSlice', () => ({
 }));
 jest.mock('@/services/admin-user-service', () => ({ adminUserService: { getUsersList: jest.fn() } }));
 
-let tree: ReactTestRenderer | undefined;
-const ids = () => tree!.root.findAll(node => typeof node.props.testID === 'string').map(node => node.props.testID as string);
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
 
 beforeEach(() => {
   setLanguage('en');
@@ -45,30 +45,20 @@ beforeEach(() => {
     auth: { userProfile: { id: 'u1', name: 'Asha Fictional', role: 'admin', mobile: '919000000001' } },
   };
 });
-afterEach(async () => {
-  if (tree) await act(async () => tree!.unmount());
-  tree = undefined;
-});
-async function render() {
-  await act(async () => {
-    tree = create(<SettingsScreen />);
-  });
-}
 
 describe('the App colours row', () => {
   it('is hidden in a build with one brand, while Appearance and Language stay', async () => {
-    await render();
-    expect(ids()).toContain('settings-pref-appearance');
-    expect(ids()).toContain('settings-pref-language');
-    expect(ids()).not.toContain('settings-pref-brand');
-    const sheet = tree!.root.findAll(node => node.props.testID === 'settings-sheet-brand' && 'visible' in node.props);
-    expect(sheet.every(node => node.props.visible === false)).toBe(true); // the sheet is never opened without a choice
+    await render(<SettingsScreen />);
+    expect(screen.getByTestId('settings-pref-appearance')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-pref-language')).toBeOnTheScreen();
+    expect(screen.queryAllByTestId('settings-pref-brand', everything)).toHaveLength(0);
+    // The sheet is never opened without a choice.
+    expect(screen.queryAllByTestId('settings-sheet-brand', everything).every(node => node.props.visible === false)).toBe(true);
   });
 
   it('is shown in a build with a second brand, reading the current brand', async () => {
     registerSampleBrand();
-    await render();
-    const row = tree!.root.findAll(node => node.props.testID === 'settings-pref-brand' && typeof node.props.onPress === 'function' && node.props.accessibilityLabel)[0];
-    expect(row.props.accessibilityLabel).toBe('App colours, Orange');
+    await render(<SettingsScreen />);
+    expect(screen.getByTestId('settings-pref-brand')).toHaveAccessibleName('App colours, Orange');
   });
 });

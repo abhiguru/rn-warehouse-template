@@ -8,7 +8,7 @@
  *   jest.mock('@/hooks/useRevealFocusedField', () => require('@/tests/helpers/revealWiring').recordRevealRefs());
  */
 import { expect, jest } from '@jest/globals';
-import type { ReactTestInstance } from 'react-test-renderer';
+import type { Host } from '@/tests/helpers/fieldBlock';
 import type { useRevealScrollRef } from '@/hooks/useRevealFocusedField';
 
 export type RecordedRevealRef = ReturnType<typeof useRevealScrollRef>;
@@ -32,7 +32,7 @@ export function recordRevealRefs() {
 export const REVEAL_HANDLER_NAMES = ['onScrollBeginDrag', 'onTouchStartCapture', 'onTouchEndCapture', 'onTouchCancelCapture', 'onChangeCapture'] as const;
 
 /** `node` (a scroll view or list) carries the five handlers (WH-249 added touch end and touch cancel) of `ref.revealHandlers`, by identity. */
-export function expectRevealWired(node: ReactTestInstance, ref: RecordedRevealRef) {
+export function expectRevealWired(node: Host, ref: RecordedRevealRef) {
   for (const name of REVEAL_HANDLER_NAMES) {
     expect(typeof ref.revealHandlers[name]).toBe('function');
     expect(node.props[name]).toBe(ref.revealHandlers[name]);

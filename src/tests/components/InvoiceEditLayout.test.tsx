@@ -8,8 +8,7 @@
  * - The form is reset when the layout goes.
  */
 import React from 'react';
-import { ActivityIndicator } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { loadInvoiceData } from '@/features/invoice/services/invoiceFormService';
 import { editPayload, makeInvoiceStore, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
@@ -18,13 +17,18 @@ import { showAlert } from '@/utils/alert';
 import InvoiceEditLayout from '../../../app/invoice-edit/[id]/_layout';
 
 let mockStore: InvoiceStore;
+// How many times the steps' Stack was drawn: it must stay 0 while the invoice loads, even for the first render.
+const mockStepsDrawn = { count: 0 };
 jest.mock('@/store/hooks', () => require('@/tests/helpers/invoiceFixtures').storeHooks(() => mockStore));
 let mockCanUpdate = true;
 jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ canUpdate: mockCanUpdate }) }));
 jest.mock('expo-router', () => {
   const React = require('react');
   const Stack = Object.assign(
-    (props: { screenOptions?: unknown }) => React.createElement('Stack', { screenOptions: props.screenOptions }),
+    (props: { screenOptions?: unknown }) => {
+      mockStepsDrawn.count += 1;
+      return React.createElement('Stack', { screenOptions: props.screenOptions, testID: 'invoice-edit-steps' });
+    },
     { Screen: () => null }
   );
   return {
@@ -56,25 +60,32 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-let tree: ReactTestRenderer;
-const render = async () => {
-  await act(async () => { tree = create(<InvoiceEditLayout />); });
+type Host = ReturnType<typeof screen.getByText>;
+/** Every host element below one, in order (the stand-in "Stack" and the spinner have no role, label or text to query by). */
+const below = (node: Host): Host[] => node.children.flatMap((child) => (!child || typeof child === 'string' ? [] : [child as Host, ...below(child as Host)]));
+const hostsOfType = (type: string) => {
+  const root = screen.root as Host | null;
+  return root ? [root, ...below(root)].filter((node) => (node.type as unknown) === type) : [];
 };
-const text = () => JSON.stringify(tree.toJSON());
-const hasSteps = () => tree.root.findAllByType('Stack' as unknown as React.ElementType).length > 0;
+const spinners = () => hostsOfType('ActivityIndicator');
+const user = () => userEvent.setup({ delay: 0 });
+const open = async () => render(<InvoiceEditLayout />);
+// A check that something is NOT on the screen must also see a mounted-but-hidden one.
+const hidden = { includeHiddenElements: true } as const;
+const hasSteps = () => screen.queryByTestId('invoice-edit-steps', hidden) !== null;
+const words = (isHidden = false) => screen.queryAllByText(/^/, { includeHiddenElements: isHidden }).map((node) => [node.props.children].flat(Infinity).join('')).join('\n');
 const press = async (label: string) => {
-  const control = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-  await act(async () => { control.props.onPress(); });
+  await user().press(screen.getAllByLabelText(label)[0]);
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockStore = makeInvoiceStore();
   mockCanUpdate = true;
+  mockStepsDrawn.count = 0;
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
@@ -83,22 +94,24 @@ describe('while the invoice loads', () => {
     const answer = deferred<unknown>();
     load.mockReturnValue(answer.promise as never);
 
-    await render();
+    await open();
 
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1);
-    expect(text()).toContain('Loading invoice');
+    expect(spinners()).toHaveLength(1);
+    expect(words()).toContain('Loading invoice');
     expect(hasSteps()).toBe(false);
     expect(mockStore.getState().invoiceForm.invoice_id).toBe('inv-42');
     await act(async () => { answer.resolve(loaded()); });
   });
 
-  it('is on the spinner already in the first render, not after the first effect', () => {
+  it('is on the spinner already in the first render, not after the first effect', async () => {
     load.mockReturnValue(new Promise(() => {}) as never);
 
-    act(() => { tree = create(<InvoiceEditLayout />); });
+    await open();
 
+    // The steps were never drawn, not even for a first render that an effect then replaced.
+    expect(mockStepsDrawn.count).toBe(0);
     expect(hasSteps()).toBe(false);
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1);
+    expect(spinners()).toHaveLength(1);
   });
 });
 
@@ -106,11 +119,12 @@ describe('when the invoice is loaded', () => {
   it('draws the steps, with the swipe back turned off, and the form holds the invoice', async () => {
     load.mockResolvedValue(loaded());
 
-    await render();
+    await open();
 
     expect(hasSteps()).toBe(true);
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0);
-    const stack = tree.root.findByType('Stack' as unknown as React.ElementType);
+    expect(spinners()).toHaveLength(0);
+    // The stack's options are only a prop of the router's Stack (no query reaches them): read from its stand-in.
+    const stack = screen.getByTestId('invoice-edit-steps');
     expect(stack.props.screenOptions).toMatchObject({ headerShown: false, gestureEnabled: false });
     const form = mockStore.getState().invoiceForm;
     expect(form.invoice_id).toBe('inv-42');
@@ -120,14 +134,14 @@ describe('when the invoice is loaded', () => {
 
   it('does not load again when the invoice is already in the form', async () => {
     load.mockResolvedValue(loaded());
-    await render();
-    await act(async () => { tree.unmount(); });
+    await open();
+    await screen.unmount();
     // Opened again on the same invoice with the form still holding it.
     const { header, items } = editPayload([invoiceLine()]);
     mockStore.dispatch({ type: 'invoiceForm/loadInvoiceEditData', payload: { invoiceId: 'inv-42', header, items, grId: header.gr_id } });
     load.mockClear();
 
-    await render();
+    await open();
 
     expect(load).not.toHaveBeenCalled();
     expect(hasSteps()).toBe(true);
@@ -138,12 +152,12 @@ describe('when the invoice cannot be loaded', () => {
   it('shows a full screen error with Try again and Close, and does not leave by itself', async () => {
     load.mockResolvedValue({ success: false, message: 'Server said no' } as never);
 
-    await render();
+    await open();
 
     expect(hasSteps()).toBe(false);
-    expect(text()).toContain("Couldn't open the invoice");
-    expect(text()).toContain('Try again');
-    expect(text()).toContain('Close');
+    expect(words()).toContain("Couldn't open the invoice");
+    expect(words()).toContain('Try again');
+    expect(words()).toContain('Close');
     expect(router.back).not.toHaveBeenCalled();
     expect(router.dismissTo).not.toHaveBeenCalled();
   });
@@ -151,28 +165,28 @@ describe('when the invoice cannot be loaded', () => {
   it('Try again loads once more, and the steps come when it works', async () => {
     load.mockResolvedValueOnce({ success: false, message: 'Server said no' } as never);
     load.mockResolvedValueOnce(loaded());
-    await render();
+    await open();
 
     await press('Try again');
 
+    await waitFor(() => expect(hasSteps()).toBe(true));
     expect(load).toHaveBeenCalledTimes(2);
-    expect(hasSteps()).toBe(true);
-    expect(text()).not.toContain("Couldn't open the invoice");
+    expect(words(true)).not.toContain("Couldn't open the invoice");
   });
 
   it('a cancelled invoice offers Close only: Try again could never work', async () => {
     load.mockResolvedValue({ success: false, code: 'cancelled', message: 'A cancelled invoice cannot be changed.' } as never);
-    await render();
+    await open();
 
-    expect(text()).toContain("Couldn't open the invoice");
-    expect(text()).toContain('Close');
-    expect(text()).not.toContain('Try again');
+    expect(words()).toContain("Couldn't open the invoice");
+    expect(words()).toContain('Close');
+    expect(words(true)).not.toContain('Try again');
   });
 
   it('Close goes to the invoice\'s page', async () => {
     load.mockRejectedValue(new Error('Network request failed'));
-    await render();
-    expect(text()).toContain("Couldn't open the invoice");
+    await open();
+    expect(words()).toContain("Couldn't open the invoice");
 
     await press('Close');
 
@@ -185,66 +199,58 @@ describe('someone who may not edit', () => {
     mockCanUpdate = false;
     load.mockResolvedValue(loaded());
 
-    await render();
+    await open();
 
     expect(router.replace).toHaveBeenCalledWith('/(tabs)/invoices');
     expect(hasSteps()).toBe(false);
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0);
+    expect(spinners()).toHaveLength(0);
   });
 });
 
 describe('when the layout goes', () => {
   it('resets the form', async () => {
     load.mockResolvedValue(loaded());
-    await render();
+    await open();
     expect(mockStore.getState().invoiceForm.invoice_id).toBe('inv-42');
     const session = mockStore.getState().invoiceForm.formSession;
 
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
 
     const form = mockStore.getState().invoiceForm;
     expect(form.invoice_id).toBeNull();
     expect(form.items).toEqual([]);
     expect(form.baseline).toBeNull();
     expect(form.formSession).toBeGreaterThan(session);
-    // The unmount in afterEach finds nothing to do.
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 
   it('drops a load that answers after it went', async () => {
     const answer = deferred<unknown>();
     load.mockReturnValue(answer.promise as never);
-    await render();
+    await open();
 
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
     await act(async () => { answer.resolve(loaded()); });
 
     expect(mockStore.getState().invoiceForm.invoice_id).toBeNull();
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 });
 
 describe('a second edit of the same invoice (R2-10)', () => {
   it('does not empty the first edit\'s form when it closes; the last layout to close does', async () => {
     load.mockResolvedValue(loaded());
-    await render();
-    const first = tree;
+    const first = await open();
     expect(mockStore.getState().invoiceForm.baseline).not.toBeNull();
 
     // Opened on top of the first, with the form still holding the invoice.
-    let second!: ReactTestRenderer;
-    await act(async () => { second = create(<InvoiceEditLayout />); });
-    expect(second.root.findAllByType('Stack' as unknown as React.ElementType)).toHaveLength(1);
-    await act(async () => { second.unmount(); });
+    const second = await open();
+    expect(hostsOfType('Stack')).toHaveLength(1);
+    await second.unmount();
 
     expect(mockStore.getState().invoiceForm.baseline).not.toBeNull();
     expect(mockStore.getState().invoiceForm.header.inv_no).toBe(42);
 
-    tree = first;
-    await act(async () => { first.unmount(); });
+    await first.unmount();
     expect(mockStore.getState().invoiceForm.baseline).toBeNull();
-    // afterEach unmounts again
-    await act(async () => { tree = create(<InvoiceEditLayout />); });
   });
 });
 
@@ -252,11 +258,11 @@ describe('another invoice\'s form is open (J1)', () => {
   it('turns the visit away: nothing is loaded, the form that is open is not touched, the screen goes back', async () => {
     const release = registerInvoiceForm({ kind: 'edit', id: 'inv-7' });
     try {
-      await render();
+      await open();
 
       expect(load).not.toHaveBeenCalled();
       expect(hasSteps()).toBe(false);
-      expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0);
+      expect(spinners()).toHaveLength(0);
       expect(mockStore.getState().invoiceForm.invoice_id).toBeNull();
       expect(router.back).toHaveBeenCalledTimes(1);
       // The message, and the buttons: Close and "Open it" (which takes the person back to the form that is open).
@@ -271,17 +277,17 @@ describe('another invoice\'s form is open (J1)', () => {
     mockStore.dispatch({ type: 'invoiceForm/updateHeader', payload: { inv_no: 7 } });
     const releaseEdit = registerInvoiceForm({ kind: 'edit', id: 'inv-7' });
     try {
-      await render();
+      await open();
       expect(showAlert).toHaveBeenCalledWith('Another invoice is open', 'Finish or cancel the edit of invoice 7 first.', expect.any(Array));
     } finally {
       releaseEdit();
     }
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
     jest.mocked(showAlert).mockClear();
 
     const releaseNew = registerInvoiceForm({ kind: 'create' });
     try {
-      await render();
+      await open();
       expect(showAlert).toHaveBeenCalledWith('Another invoice is open', 'Finish or cancel the new invoice first.', expect.any(Array));
     } finally {
       releaseNew();
@@ -292,14 +298,13 @@ describe('another invoice\'s form is open (J1)', () => {
     const release = registerInvoiceForm({ kind: 'edit', id: 'inv-7' });
     try {
       mockStore.dispatch({ type: 'invoiceForm/updateHeader', payload: { inv_no: 7 } });
-      await render();
+      await open();
 
-      await act(async () => { tree.unmount(); });
+      await screen.unmount();
 
       expect(mockStore.getState().invoiceForm.header.inv_no).toBe(7);
     } finally {
       release();
     }
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 });

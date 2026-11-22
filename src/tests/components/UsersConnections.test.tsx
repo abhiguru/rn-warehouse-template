@@ -1,11 +1,9 @@
 /** G-34: the FAS sync connection is listed after the people under Connections, without a phone number, and is not counted. */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import UsersScreen from '../../../app/users';
 import { adminUserService } from '@/services/admin-user-service';
 import { router } from 'expo-router';
-import { showAlert } from '@/utils/alert';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'admin', name: 'Dev Administrator' } } };
 // The stale-list strip reads the network state from NetInfo (a native module, absent under Jest): the phone is online.
@@ -40,23 +38,11 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+// Every text on the screen, in the order it is drawn.
+const shownTexts = () => screen.queryAllByText(/./, everything).map(node => [node.props.children].flat(Infinity).join(''));
 
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
-const lastAlert = () => {
-  const calls = jest.mocked(showAlert).mock.calls;
-  const [title, message, buttons] = calls[calls.length - 1];
-  return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
-};
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
 
 jest.mock('@/services/admin-user-service', () => ({ adminUserService: { getUsersList: jest.fn() } }));
 import { Platform, StyleSheet } from 'react-native';
@@ -75,25 +61,27 @@ describe('Users with a connection', () => {
     // The server sends the connection among the people, as an admin profile with +91 00000 00000.
     const fas = user('9', 'FAS sync', 'admin', { mobile: '0000000000', is_service_account: true });
     jest.mocked(adminUserService.getUsersList).mockResolvedValue(answer([people[0], fas, ...people.slice(1)], 7) as never);
-    await act(async () => { tree = create(<UsersScreen />); });
+    await render(<UsersScreen />);
 
-    const text = shownText();
-    expect(text).toContain('6 users');
-    expect(text).not.toContain('7 users');
-    expect(text).toContain('CONNECTIONS');
-    expect(text).not.toContain('+91 00000 00000');
+    expect(screen.getAllByText(/\b6 users/)[0]).toBeOnTheScreen();
+    expect(screen.queryAllByText(/\b7 users/, everything)).toHaveLength(0);
+    expect(screen.getAllByText('CONNECTIONS')[0]).toBeOnTheScreen();
+    expect(screen.queryAllByText(/\+91 00000 00000/, everything)).toHaveLength(0);
     // Order: the people, then the heading, then the connection.
-    expect(text.indexOf('Person 6')).toBeLessThan(text.indexOf('CONNECTIONS'));
-    expect(text.indexOf('CONNECTIONS')).toBeLessThan(text.indexOf('FAS sync'));
-    const row = tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith('FAS sync') && typeof node.props.onPress === 'function');
-    expect(row.props.accessibilityLabel).toBe('FAS sync, Connection');
+    const texts = shownTexts();
+    const at = (text: string) => texts.findIndex(shown => shown.includes(text));
+    expect(at('Person 6')).toBeGreaterThanOrEqual(0);
+    expect(at('Person 6')).toBeLessThan(at('CONNECTIONS'));
+    expect(at('CONNECTIONS')).toBeGreaterThanOrEqual(0);
+    expect(at('CONNECTIONS')).toBeLessThan(at('FAS sync'));
+    expect(screen.getAllByLabelText(/^FAS sync/)[0]).toHaveAccessibleName('FAS sync, Connection');
   });
 
   it('shows no Connections heading when there is none', async () => {
     jest.mocked(adminUserService.getUsersList).mockResolvedValue(answer([user('1', 'Person 1', 'admin')]) as never);
-    await act(async () => { tree = create(<UsersScreen />); });
-    expect(shownText()).not.toContain('CONNECTIONS');
-    expect(shownText()).toContain('1 user');
+    await render(<UsersScreen />);
+    expect(screen.queryAllByText('CONNECTIONS', everything)).toHaveLength(0);
+    expect(screen.getAllByText(/\b1 user\b/)[0]).toBeOnTheScreen();
   });
 });
 
@@ -109,12 +97,12 @@ describe('CR-26: a connection beyond the first rows is still found', () => {
       success: true,
       data: { users: all.slice(offset, offset + limit), pagination: { total_count: all.length, limit, offset, has_more: offset + limit < all.length } },
     })) as never);
-    await act(async () => { tree = create(<UsersScreen />); });
-    const text = shownText();
-    expect(text).toContain('24 users');
-    expect(text).not.toContain('25 users');
-    // The list draws only the first rows; its data holds the heading row before the connection.
-    const list = tree!.root.findAll(node => Array.isArray(node.props.data) && node.props.data.length > 10)[0];
+    await render(<UsersScreen />);
+    expect(screen.getAllByText(/\b24 users/)[0]).toBeOnTheScreen();
+    expect(screen.queryAllByText(/\b25 users/, everything)).toHaveLength(0);
+    // The list draws only the first rows; its data holds the heading row before the connection. The rows that are
+    // not drawn have no text to query, so the list's data prop is read.
+    const list = screen.root!.queryAll(node => Array.isArray(node.props.data) && node.props.data.length > 10)[0];
     const kinds = (list.props.data as { kind: string; user?: { name: string } }[]).map(row => (row.kind === 'user' ? row.user!.name : row.kind));
     expect(kinds).toHaveLength(26);
     expect(kinds.slice(-2)).toEqual(['connectionsHeader', 'FAS sync']);

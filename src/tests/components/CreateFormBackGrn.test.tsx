@@ -4,7 +4,7 @@
  * does (owner decision 7 of 2026-10-11). The header is the real one.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { toLocalISODate } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
@@ -96,19 +96,16 @@ beforeEach(() => {
 });
 afterEach(() => back.restore());
 
-async function render(element: React.ReactElement = <GRNFormStep1 />) {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(element); });
-  return tree;
+async function show(element: React.ReactElement = <GRNFormStep1 />) {
+  await render(element);
 }
 const pressBack = async () => {
   let taken = false;
   await act(async () => { taken = back.press(); });
   return taken;
 };
-const pressX = async (tree: ReactTestRenderer) => {
-  const close = tree.root.find((node) => node.props.accessibilityLabel === 'Close new GRN' && typeof node.props.onPress === 'function');
-  await act(async () => { close.props.onPress(); });
+const pressX = async () => {
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Close new GRN' }));
 };
 /** The last question shown, with its buttons made comparable. */
 const question = () => {
@@ -134,7 +131,7 @@ const ENTERED: [string, () => void][] = [
 
 describe('Back on step 1 of a new GRN', () => {
   it('leaves for the GRN list at once while nothing was entered', async () => {
-    const tree = await render();
+    await show();
 
     expect(await pressBack()).toBe(true);
 
@@ -142,12 +139,11 @@ describe('Back on step 1 of a new GRN', () => {
     expect(router.replace).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/(tabs)/grn');
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it.each(ENTERED)('asks "Discard this GRN?" and stays when the form has %s', async (_what, enter) => {
     enter();
-    const tree = await render();
+    await show();
 
     expect(await pressBack()).toBe(true);
 
@@ -161,49 +157,45 @@ describe('Back on step 1 of a new GRN', () => {
     expect(router.replace).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('the X closes at once, asking nothing, while nothing was entered (WH-217)', async () => {
-    const tree = await render();
+    await show();
 
-    await pressX(tree);
+    await pressX();
 
     expect(showAlert).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/grn');
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 
   it.each(ENTERED)('the X asks, and does not leave, when the form has %s (WH-217)', async (_what, enter) => {
     enter();
-    const tree = await render();
+    await show();
 
-    await pressX(tree);
+    await pressX();
 
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question().title).toBe('Discard this GRN?');
     expect(router.replace).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('asks exactly what the X asks', async () => {
     mockForm.header.customer_id = 'c1';
-    const tree = await render();
+    await show();
 
     await pressBack();
     const fromBack = question();
-    await pressX(tree);
+    await pressX();
 
     expect(showAlert).toHaveBeenCalledTimes(2);
     expect(question()).toEqual(fromBack);
-    await act(async () => { tree.unmount(); });
   });
 
   it('"Discard" empties the form and goes to the GRN list, as the X\'s does', async () => {
     mockForm.header.customer_id = 'c1';
-    const tree = await render();
+    await show();
     await pressBack();
 
     await answer('Discard GRN');
@@ -211,12 +203,11 @@ describe('Back on step 1 of a new GRN', () => {
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/grn');
-    await act(async () => { tree.unmount(); });
   });
 
   it('"Keep editing" stays on the form with everything in it', async () => {
     mockForm.header.customer_id = 'c1';
-    const tree = await render();
+    await show();
     await pressBack();
 
     await answer('Keep editing');
@@ -227,18 +218,16 @@ describe('Back on step 1 of a new GRN', () => {
     // Back asks again the next time.
     await pressBack();
     expect(showAlert).toHaveBeenCalledTimes(2);
-    await act(async () => { tree.unmount(); });
   });
 });
 
 describe('Back on step 1 of a new GRN while a picker is open', () => {
-  const open = async (tree: ReactTestRenderer, label: string) => {
-    const field = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-    await act(async () => { field.props.onPress(); });
+  const open = async (label: string) => {
+    await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: label }));
   };
   /** The screen draws itself again, as it does when a field loses focus or a photo finishes uploading. */
-  const drawAgain = async (tree: ReactTestRenderer) => {
-    await act(async () => { tree.update(<GRNFormStep1 />); });
+  const drawAgain = async () => {
+    await screen.rerender(<GRNFormStep1 />);
   };
   const PICKERS: [string, string][] = [
     ['supervisor', 'Supervisor, Fictional Supervisor'],
@@ -247,10 +236,10 @@ describe('Back on step 1 of a new GRN while a picker is open', () => {
 
   it.each(PICKERS)('the open %s picker takes Back: it closes, and the form asks nothing', async (name, label) => {
     mockForm.header.note = 'Bags are wet';
-    const tree = await render();
-    await open(tree, label);
-    await drawAgain(tree);
-    await drawAgain(tree);
+    await show();
+    await open(label);
+    await drawAgain();
+    await drawAgain();
 
     expect(await pressBack()).toBe(true);
 
@@ -264,31 +253,29 @@ describe('Back on step 1 of a new GRN while a picker is open', () => {
     expect(sheetBackPresses).toEqual([name]);
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(question().title).toBe('Discard this GRN?');
-    await act(async () => { tree.unmount(); });
   });
 
   it.each(PICKERS)('the open %s picker takes Back in an empty form too: the form is not left', async (name, label) => {
-    const tree = await render();
-    await open(tree, label);
-    await drawAgain(tree);
+    await show();
+    await open(label);
+    await drawAgain();
 
     expect(await pressBack()).toBe(true);
 
     expect(sheetBackPresses).toEqual([name]);
     expect(router.replace).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('keeps one listener of its own however often the screen draws itself', async () => {
-    const tree = await render();
+    await show();
     expect(back.count()).toBe(1);
 
     mockForm.header.note = 'Bags are wet';
-    await drawAgain(tree);
-    await drawAgain(tree);
+    await drawAgain();
+    await drawAgain();
 
     expect(back.count()).toBe(1);
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
     expect(back.count()).toBe(0);
   });
 });
@@ -298,20 +285,19 @@ describe('Back on step 1 of a GRN that is being edited', () => {
 
   it('is left to the system while nothing was changed: the edit flow goes back as it did', async () => {
     mockLoadedSignature = null;
-    const tree = await render(<GRNEditStep1 />);
+    await show(<GRNEditStep1 />);
 
     expect(await pressBack()).toBe(false);
 
     expect(showAlert).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('asks the question the X asks once the form differs from the GRN as it was loaded, and stays', async () => {
     mockForm.header.customer_id = 'c1';
     mockLoadedSignature = 'the GRN as it was loaded';
-    const tree = await render(<GRNEditStep1 />);
+    await show(<GRNEditStep1 />);
 
     expect(await pressBack()).toBe(true);
     expect(showAlert).toHaveBeenCalledTimes(1);
@@ -320,15 +306,13 @@ describe('Back on step 1 of a GRN that is being edited', () => {
     expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
 
-    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Close GRN edit' && typeof node.props.onPress === 'function');
-    await act(async () => { close.props.onPress(); });
+    await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Close GRN edit' }));
     expect(question()).toEqual(fromBack);
-    await act(async () => { tree.unmount(); });
   });
 
   it('"Discard" empties the form and goes to the GRN list, as the X\'s does; "Keep editing" stays', async () => {
     mockLoadedSignature = 'the GRN as it was loaded';
-    const tree = await render(<GRNEditStep1 />);
+    await show(<GRNEditStep1 />);
     await pressBack();
     await answer('Keep editing');
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
@@ -338,6 +322,5 @@ describe('Back on step 1 of a GRN that is being edited', () => {
     await answer('Discard changes');
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/grn');
-    await act(async () => { tree.unmount(); });
   });
 });

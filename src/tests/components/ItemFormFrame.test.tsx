@@ -1,7 +1,6 @@
 /** G-28: Add and Edit item draw Back + a centred title, keep Save out of the header, and show the header while Edit item loads. */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, within } from '@testing-library/react-native';
 import ItemFormScreen from '../../../app/item-form';
 import ItemEditScreen from '../../../app/item-edit/[id]';
 import { itemService } from '@/services/item-service';
@@ -41,23 +40,6 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
-const lastAlert = () => {
-  const calls = jest.mocked(showAlert).mock.calls;
-  const [title, message, buttons] = calls[calls.length - 1];
-  return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
-};
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
 
 const GARLIC = { id: 'i2', name: 'Garlic', packaging: 'Bag', description: '', active: true };
 beforeEach(() => {
@@ -67,39 +49,38 @@ beforeEach(() => {
   jest.mocked(itemService.updateItem).mockResolvedValue({ success: true, message: 'ok' } as never);
   jest.mocked(itemService.createItem).mockResolvedValue({ success: true, message: 'ok' } as never);
 });
-const renderEdit = async () => { await act(async () => { tree = create(<ItemEditScreen />); }); };
-const renderAdd = async () => { await act(async () => { tree = create(<ItemFormScreen />); }); };
-const typeInto = async (label: string, text: string) => {
-  const field = tree!.root.find(node => node.props.accessibilityLabel === label && typeof node.props.onChangeText === 'function');
-  await act(async () => { field.props.onChangeText(text); });
-};
+const renderEdit = async () => { await render(<ItemEditScreen />); };
+const renderAdd = async () => { await render(<ItemFormScreen />); };
 
-const within = (testID: string) => tree!.root.find(node => node.props.testID === testID);
-const labelsIn = (testID: string) => within(testID).findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel);
+const inside = (testID: string) => within(screen.getByTestId(testID));
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
 
 describe('Edit item frame', () => {
   it('shows the title and a Back button while the item loads', async () => {
     jest.mocked(itemService.getItemById).mockReturnValue(new Promise(() => undefined) as never);
     await renderEdit();
-    expect(shownText()).toContain('Edit item');
-    expect(byLabel('Back')).toBeTruthy();
-    expect(shownText()).toContain('Loading item…');
+    expect(screen.getByText('Edit item')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeOnTheScreen();
+    expect(screen.getByText('Loading item…')).toBeOnTheScreen();
   });
 
   it('puts Save item in a bottom bar, not in the header', async () => {
     await renderEdit();
-    expect(labelsIn('item-header')).toContain('Back');
-    expect(labelsIn('item-header')).not.toContain('Save item');
-    expect(within('item-header').findAllByType(Text).map(node => flat(node.props.children))).toEqual(expect.arrayContaining(['Back', 'Edit item']));
-    expect(labelsIn('item-bottom-bar')).toContain('Save item');
+    await screen.findByDisplayValue('Garlic');
+    expect(inside('item-header').getByLabelText('Back')).toBeOnTheScreen();
+    expect(inside('item-header').queryByLabelText('Save item', hidden)).not.toBeOnTheScreen();
+    expect(inside('item-header').getByText('Back')).toBeOnTheScreen();
+    expect(inside('item-header').getByText('Edit item')).toBeOnTheScreen();
+    expect(inside('item-bottom-bar').getByLabelText('Save item')).toBeOnTheScreen();
   });
 });
 
 describe('Add item frame', () => {
   it('has an Add item button in the bottom bar and nothing to save in the header', async () => {
     await renderAdd();
-    expect(labelsIn('item-header')).not.toContain('Save item');
-    expect(labelsIn('item-header')).not.toContain('Add item');
-    expect(labelsIn('item-bottom-bar')).toContain('Add item');
+    expect(inside('item-header').queryByLabelText('Save item', hidden)).not.toBeOnTheScreen();
+    expect(inside('item-header').queryByLabelText('Add item', hidden)).not.toBeOnTheScreen();
+    expect(inside('item-bottom-bar').getByLabelText('Add item')).toBeOnTheScreen();
   });
 });

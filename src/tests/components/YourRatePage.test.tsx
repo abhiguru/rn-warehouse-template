@@ -3,8 +3,7 @@
  * lots of the item are invoiced at, never named as the item's default, a customer rate or a GRN rate.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import YourRatePage from '../../../app/grn-rate/[grnId]/[itemId]';
 import { getGrnItemRates } from '@/services/item-pricing-service';
@@ -34,19 +33,19 @@ const answer = (rates: RpcGrnItemRate[], price_type: 'monthly' | 'one_time' = 'm
   ({ gr_id: 'g1', grn_date: '2026-10-01', price_type, invoiced: false, rates });
 const RICE = lot({ grn_item_id: 'r1', item_id: 'rice', item_name: 'Fictional Rice', source: 'customer', unit_price: 7.25, labour_rate: 2.75, tax_percent: 12 });
 
-let tree: ReactTestRenderer;
-const open = async () => { await act(async () => { tree = create(<YourRatePage />); }); };
-/** The plain texts, without the wrapper of the figure line. */
+const open = async () => { await render(<YourRatePage />); };
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+/** The plain texts, in the order they are drawn, without the wrapper of the figure line. */
 const texts = () =>
-  tree.root.findAllByType(Text)
+  screen.queryAllByText(/[\s\S]*/, everything)
     .map(n => [n.props.children].flat(Infinity))
     .filter(parts => parts.every(part => typeof part === 'string'))
     .map(parts => parts.join(''));
-const cards = () => tree.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('your-rate-card-') && typeof n.type === 'string');
+const cards = () => screen.queryAllByTestId(/^your-rate-card-/, everything);
 
 beforeEach(() => jest.clearAllMocks());
 afterEach(() => {
-  act(() => tree.unmount());
   mockParams = { grnId: 'g1', itemId: 'gur', no: 'WM0001' };
 });
 
@@ -81,7 +80,7 @@ describe('Your rate', () => {
     read.mockResolvedValue(answer([lot({ source: 'customer', unit_price: 3.75 })]));
     await open();
     const customer = texts();
-    act(() => tree.unmount());
+    await screen.unmount();
     read.mockResolvedValue(answer([lot({ source: 'grn', unit_price: 3.75 })]));
     await open();
     expect(texts()).toEqual(customer);
@@ -116,7 +115,7 @@ describe('Your rate', () => {
     await open();
     expect(texts()).toContain('There is no rate for this item on this GRN yet.');
     expect(texts()).not.toContain('YOUR RATE');
-    act(() => tree.root.findAll(n => n.props.testID === 'your-rate-missing')[0].findAll(n => typeof n.props.onPress === 'function')[0].props.onPress());
+    await userEvent.setup({ delay: 0 }).press(within(screen.getByTestId('your-rate-missing')).getByRole('button'));
     expect(router.back).toHaveBeenCalled();
   });
 
@@ -124,8 +123,7 @@ describe('Your rate', () => {
     mockParams = { grnId: 'g1', itemId: 'gur' };
     read.mockRejectedValueOnce(new Error('down')).mockResolvedValue(answer([lot({})]));
     await open();
-    const retry = tree.root.findAll(n => n.props.testID === 'your-rate-error')[0].findAll(n => typeof n.props.onPress === 'function')[0];
-    await act(async () => { retry.props.onPress(); });
+    await userEvent.setup({ delay: 0 }).press(within(screen.getByTestId('your-rate-error')).getByRole('button'));
     expect(read).toHaveBeenCalledTimes(2);
     expect(texts()).toContain('Goods received on 01/10/26');
   });

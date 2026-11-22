@@ -1,8 +1,7 @@
 /** G-55: an item row wears the same cube glyph, not a person's initials. */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, within } from '@testing-library/react-native';
 import ItemsScreen from '../../../app/items';
 import { itemService } from '@/services/item-service';
 import { getItemStoragePrices } from '@/services/item-pricing-service';
@@ -37,23 +36,9 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
-const lastAlert = () => {
-  const calls = jest.mocked(showAlert).mock.calls;
-  const [title, message, buttons] = calls[calls.length - 1];
-  return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
-};
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+const rowFor = (name: string) => screen.findByLabelText(new RegExp(`^${name}`));
 
 const ITEMS = [
   { id: 'i1', name: 'Dry Red Chillies', packaging: 'Bag', description: '', active: true },
@@ -63,7 +48,7 @@ const ITEMS = [
 const listOf = (data: unknown[], total = data.length) => ({ success: true, message: '', data, pagination: { total_count: total } });
 const renderItems = async () => {
   jest.mocked(itemService.getItemList).mockResolvedValue(listOf(ITEMS, 91) as never);
-  await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
+  await render(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>);
 };
 beforeEach(() => {
   jest.clearAllMocks();
@@ -73,15 +58,15 @@ beforeEach(() => {
 describe('item row', () => {
   it('shows a cube icon and no initials', async () => {
     await renderItems();
-    const row = rowFor('Dry Red Chillies');
-    const texts = row.findAllByType(Text).map(node => flat(node.props.children));
-    expect(texts).toContain('Dry Red Chillies · Bag');
-    expect(texts).not.toContain('DR');
-    const icons = row.findAll(node => (node.type as unknown) === 'Icon').map(node => node.props.name);
+    const row = await rowFor('Dry Red Chillies');
+    expect(within(row).getByText('Dry Red Chillies · Bag')).toBeOnTheScreen();
+    expect(within(row).queryByText('DR', hidden)).not.toBeOnTheScreen();
+    // The glyph is an icon element with no role or text a query can reach: its name is read from the row's host tree.
+    const icons = row.queryAll(node => (node.type as unknown) === 'Icon').map(node => node.props.name);
     expect(icons).toContain('cube-outline');
     expect(icons).not.toContain('package-variant');
     // The glyph is decoration: it is hidden from screen readers.
-    const glyph = row.findAll(node => node.props.importantForAccessibility === 'no-hide-descendants');
+    const glyph = row.queryAll(node => node.props.importantForAccessibility === 'no-hide-descendants');
     expect(glyph.length).toBeGreaterThan(0);
   });
 });

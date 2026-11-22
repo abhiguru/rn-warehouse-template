@@ -4,8 +4,8 @@
  * that can create.
  */
 import React from 'react';
-import { StyleSheet } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { registerDispatchForm } from '@/features/dispatch/utils/openDispatchForms';
 import { showAlert } from '@/utils/alert';
@@ -44,18 +44,12 @@ const CASES = [
   { name: 'Invoices', Screen: InvoicesTab, label: 'Create invoice', route: '/invoice-form/step1' },
 ] as const;
 
-function render(Screen: React.ComponentType, brand: string, mode: Mode) {
+async function mount(Screen: React.ComponentType, brand: string, mode: Mode) {
   mockState = { ...mockState, theme: { preference: mode, brand } };
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(<Screen />);
-  });
-  return tree;
+  await render(<Screen />);
 }
 
-function findFab(tree: ReactTestRenderer, label: string) {
-  return tree.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function');
-}
+const findFab = (label: string) => screen.queryByRole('button', { name: label });
 
 describe.each(CASES)('$name tab create action', ({ Screen, label, route }) => {
   beforeEach(() => {
@@ -67,25 +61,20 @@ describe.each(CASES)('$name tab create action', ({ Screen, label, route }) => {
     'is a 56 px brand.fill floating button in %s %s',
     async (brand, mode) => {
       const t = getTokens(brand, mode);
-      const tree = render(Screen, brand, mode);
-      const [fab] = findFab(tree, label);
-      expect(fab).toBeDefined();
-      const style = StyleSheet.flatten(
-        typeof fab.props.style === 'function' ? fab.props.style({ pressed: false }) : fab.props.style
-      );
-      expect(style).toMatchObject({ position: 'absolute', width: 56, height: 56, backgroundColor: t.brand.fill });
+      await mount(Screen, brand, mode);
+      const fab = screen.getByRole('button', { name: label });
+      expect(fab).toBeOnTheScreen();
+      expect(fab).toHaveStyle({ position: 'absolute', width: 56, height: 56, backgroundColor: t.brand.fill });
       // The Invoices tab asks the server whether a bill may start (WH-205) before it opens the form, so the press is awaited.
-      await act(async () => { await fab.props.onPress(); });
+      await userEvent.press(fab);
       expect(mockPush).toHaveBeenCalledWith(route);
-      act(() => tree.unmount());
     }
   );
 
-  it('is hidden for roles that cannot create', () => {
+  it('is hidden for roles that cannot create', async () => {
     mockCanCreate = false;
-    const tree = render(Screen, 'orange', 'light');
-    expect(findFab(tree, label)).toHaveLength(0);
-    act(() => tree.unmount());
+    await mount(Screen, 'orange', 'light');
+    expect(findFab(label)).not.toBeOnTheScreen();
   });
 });
 
@@ -97,38 +86,35 @@ describe('Dispatches tab: Create dispatch', () => {
     jest.mocked(showAlert).mockClear();
   });
 
-  it('empties the form before step 1 opens, so a new dispatch carries nothing an earlier form left', () => {
-    const tree = render(DispatchTab, 'orange', 'light');
-    const [fab] = findFab(tree, 'Create dispatch');
+  it('empties the form before step 1 opens, so a new dispatch carries nothing an earlier form left', async () => {
+    await mount(DispatchTab, 'orange', 'light');
 
-    act(() => fab.props.onPress());
+    await userEvent.press(screen.getByRole('button', { name: 'Create dispatch' }));
 
     expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'dispatchForm/resetForm' }));
     expect(mockPush).toHaveBeenCalledWith('/dispatch-form/step1');
     expect(mockDispatch.mock.invocationCallOrder[0]).toBeLessThan(mockPush.mock.invocationCallOrder[0]);
-    act(() => tree.unmount());
   });
 
-  it('a second tap before the tab is back in front opens nothing more', () => {
-    const tree = render(DispatchTab, 'orange', 'light');
-    const [fab] = findFab(tree, 'Create dispatch');
+  it('a second tap before the tab is back in front opens nothing more', async () => {
+    await mount(DispatchTab, 'orange', 'light');
+    const fab = screen.getByRole('button', { name: 'Create dispatch' });
 
-    act(() => { fab.props.onPress(); fab.props.onPress(); });
+    // Two taps in one go, before the screen draws again: the host's click handler is what a tap calls.
+    await act(async () => { fab.props.onClick(); fab.props.onClick(); });
 
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockDispatch).toHaveBeenCalledTimes(1);
-    act(() => tree.unmount());
   });
 
   // Review 2026-10-20, finding 3: the form that is open (maybe hidden under other screens) is asked about BEFORE the
   // store is emptied; emptying it first would leave the open form without its data.
-  it('while another dispatch form is open: says which, and resets and opens nothing', () => {
+  it('while another dispatch form is open: says which, and resets and opens nothing', async () => {
     const release = registerDispatchForm({ kind: 'edit', id: 'd-7', number: 'DD0007' });
     try {
-      const tree = render(DispatchTab, 'orange', 'light');
-      const [fab] = findFab(tree, 'Create dispatch');
+      await mount(DispatchTab, 'orange', 'light');
 
-      act(() => fab.props.onPress());
+      await userEvent.press(screen.getByRole('button', { name: 'Create dispatch' }));
 
       expect(showAlert).toHaveBeenCalledWith('Another dispatch is open', 'Finish or cancel the edit of dispatch DD0007 first.', expect.any(Array));
       expect(mockDispatch).not.toHaveBeenCalled();
@@ -136,9 +122,8 @@ describe('Dispatches tab: Create dispatch', () => {
 
       // A later tap, once that form is closed, opens as usual.
       release();
-      act(() => fab.props.onPress());
+      await userEvent.press(screen.getByRole('button', { name: 'Create dispatch' }));
       expect(mockPush).toHaveBeenCalledWith('/dispatch-form/step1');
-      act(() => tree.unmount());
     } finally {
       release();
     }

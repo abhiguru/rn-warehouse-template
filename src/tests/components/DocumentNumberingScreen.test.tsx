@@ -4,8 +4,7 @@
  * example; a change is confirmed (existing documents keep their numbers) and then sent with set_document_numbering.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import DocumentNumberingScreen from '../../../app/document-numbering';
 import { getDocumentNumbering, setDocumentNumbering, type NumberingRule } from '@/services/documentNumberingService';
 import { setLanguage } from '@/i18n';
@@ -45,22 +44,25 @@ const RULES = [
   rule({ document_type: 'invoice', scheme: 'year', prefix: '', width: 1, fy_reset: true, hint: '#', check: true, existing_documents: 7 }),
 ];
 
-let tree: ReactTestRenderer | undefined;
+const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
 const mount = async () => {
-  await act(async () => { tree = create(<DocumentNumberingScreen />); });
-  return tree as ReactTestRenderer;
+  await render(<DocumentNumberingScreen />);
 };
-const texts = (screen: ReactTestRenderer) => screen.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
-const byId = (screen: ReactTestRenderer, testID: string): ReactTestInstance =>
-  screen.root.findAll(node => node.props.testID === testID && (typeof node.props.onPress === 'function' || typeof node.props.onChangeText === 'function'))[0];
-const press = async (screen: ReactTestRenderer, testID: string) => { await act(async () => { byId(screen, testID).props.onPress(); }); };
-const type = async (screen: ReactTestRenderer, testID: string, text: string) => { await act(async () => { byId(screen, testID).props.onChangeText(text); }); };
-const hasId = (screen: ReactTestRenderer, testID: string) => screen.root.findAll(node => node.props.testID === testID).length > 0;
-const rowLabel = (screen: ReactTestRenderer, type: string): string =>
-  screen.root.findAll(node => node.props.testID === `numbering-row-${type}` && typeof node.props.accessibilityLabel === 'string')[0].props.accessibilityLabel;
-const choose = async (screen: ReactTestRenderer, label: string) => {
-  const radio = screen.root.findAll(node => node.props.accessibilityRole === 'radio' && typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel ?? '').startsWith(label))[0];
-  await act(async () => { radio.props.onPress(); });
+const shown = (text: string) => expect(screen.getByText(text)).toBeOnTheScreen();
+const notShown = (text: string) => expect(screen.queryByText(text)).not.toBeOnTheScreen();
+const byId = (testID: string) => screen.getByTestId(testID);
+const hasId = (testID: string) => screen.queryByTestId(testID) !== null;
+const press = async (testID: string) => { await user.press(byId(testID)); };
+const type = async (testID: string, text: string) => {
+  await user.clear(byId(testID));
+  await user.type(byId(testID), text);
+};
+// Every drawn element, the root included (the root's own queryAll leaves it out).
+const everyNode = (predicate: (node: ReturnType<typeof screen.getByTestId>) => boolean) =>
+  [screen.root!, ...screen.root!.queryAll(() => true)].filter(predicate);
+const rowLabel = (type: string): string => byId(`numbering-row-${type}`).props.accessibilityLabel;
+const choose = async (label: string) => {
+  await user.press(screen.getByRole('radio', { name: new RegExp(`^${label}`) }));
 };
 
 beforeEach(() => {
@@ -76,9 +78,7 @@ beforeEach(() => {
   });
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.useRealTimers();
   jest.restoreAllMocks();
 });
@@ -94,23 +94,23 @@ describe('who may open it', () => {
 
   it.each(['supervisor', 'staff', 'customer', undefined])('%s is told it is for administrators and nothing is read', async role => {
     mockRole = role;
-    const screen = await mount();
-    expect(texts(screen)).toContain('Administrators only');
+    await mount();
+    shown('Administrators only');
     expect(getDocumentNumbering).not.toHaveBeenCalled();
-    expect(hasId(screen, 'numbering-row-grn')).toBe(false);
+    expect(screen.queryByTestId('numbering-row-grn')).not.toBeOnTheScreen();
   });
 
   it('an administrator reads the rules and sees a row for each document type', async () => {
-    const screen = await mount();
+    await mount();
     expect(getDocumentNumbering).toHaveBeenCalledTimes(1);
-    for (const id of ['grn', 'dispatch', 'invoice']) expect(hasId(screen, `numbering-row-${id}`)).toBe(true);
+    for (const id of ['grn', 'dispatch', 'invoice']) expect(screen.getByTestId(`numbering-row-${id}`)).toBeOnTheScreen();
   });
 });
 
 describe('the rows', () => {
   it('say the rule in words, whether it is checked, and how many numbers do not follow it', async () => {
-    const screen = await mount();
-    const label = (type: string) => rowLabel(screen, type);
+    await mount();
+    const label = (type: string) => rowLabel(type);
     expect(label('grn')).toContain('GRN');
     expect(label('grn')).toContain('Letter series from A, for example A0001');
     expect(label('grn')).toContain('A number outside the rule is refused');
@@ -123,175 +123,173 @@ describe('the rows', () => {
 
   it('shows the way to try again when the rules cannot be read', async () => {
     jest.mocked(getDocumentNumbering).mockRejectedValueOnce(new Error('x'));
-    const screen = await mount();
-    expect(hasId(screen, 'numbering-error')).toBe(true);
-    expect(hasId(screen, 'numbering-row-grn')).toBe(false);
-    const retry = screen.root.findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === 'Try again'))[0];
-    await act(async () => { retry.props.onPress(); });
-    expect(hasId(screen, 'numbering-row-grn')).toBe(true);
+    await mount();
+    expect(screen.getByTestId('numbering-error')).toBeOnTheScreen();
+    expect(screen.queryByTestId('numbering-row-grn')).not.toBeOnTheScreen();
+    await user.press(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByTestId('numbering-row-grn')).toBeOnTheScreen();
   });
 });
 
 describe('the edit sheet', () => {
   it('offers the four schemes for a GRN and the fields of the one in use', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    const radios = screen.root.findAll(node => node.props.accessibilityRole === 'radio' && typeof node.props.onPress === 'function');
+    await mount();
+    await press('numbering-row-grn');
+    const radios = screen.getAllByRole('radio');
     expect(radios.map(node => node.props.accessibilityLabel)).toEqual([
       'Letters and digits (A0001)', 'Financial year (GRN/26-27/0001)', 'Plain sequence (I0001)', 'Typed by hand',
     ]);
-    expect(['firstLetter', 'width', 'perLetter'].every(f => hasId(screen, `numbering-field-${f}`))).toBe(true);
-    expect(hasId(screen, 'numbering-field-prefix')).toBe(false);
-    expect(hasId(screen, 'numbering-field-start')).toBe(false);
+    expect(['firstLetter', 'width', 'perLetter'].every(f => hasId(`numbering-field-${f}`))).toBe(true);
+    expect(screen.queryByTestId('numbering-field-prefix')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('numbering-field-start')).not.toBeOnTheScreen();
   });
 
   it('changes the fields and the example with the scheme', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    expect(texts(screen)).toContain('The first number looks like A0001');
+    await mount();
+    await press('numbering-row-grn');
+    shown('The first number looks like A0001');
 
-    await choose(screen, 'Financial year');
-    expect(['prefix', 'width', 'start'].every(f => hasId(screen, `numbering-field-${f}`))).toBe(true);
-    expect(hasId(screen, 'numbering-field-firstLetter')).toBe(false);
-    expect(hasId(screen, 'numbering-field-perLetter')).toBe(false);
+    await choose('Financial year');
+    expect(['prefix', 'width', 'start'].every(f => hasId(`numbering-field-${f}`))).toBe(true);
+    expect(screen.queryByTestId('numbering-field-firstLetter')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('numbering-field-perLetter')).not.toBeOnTheScreen();
     // Today (28 Oct 2026) is in financial year 2026-27.
-    expect(texts(screen)).toContain('The first number looks like 26-27/0001');
-    await type(screen, 'numbering-field-prefix', 'GRN/');
-    await type(screen, 'numbering-field-width', '5');
-    await type(screen, 'numbering-field-start', '42');
-    expect(texts(screen)).toContain('The first number looks like GRN/26-27/00042');
+    shown('The first number looks like 26-27/0001');
+    await type('numbering-field-prefix', 'GRN/');
+    await type('numbering-field-width', '5');
+    await type('numbering-field-start', '42');
+    shown('The first number looks like GRN/26-27/00042');
 
-    await choose(screen, 'Plain sequence');
-    expect(texts(screen)).toContain('The first number looks like 0001');
+    await choose('Plain sequence');
+    shown('The first number looks like 0001');
 
-    await choose(screen, 'Typed by hand');
-    for (const f of ['firstLetter', 'width', 'perLetter', 'prefix', 'start']) expect(hasId(screen, `numbering-field-${f}`)).toBe(false);
-    expect(texts(screen)).toContain('You type each number.');
+    await choose('Typed by hand');
+    for (const f of ['firstLetter', 'width', 'perLetter', 'prefix', 'start']) expect(screen.queryByTestId(`numbering-field-${f}`)).not.toBeOnTheScreen();
+    shown('You type each number.');
   });
 
   it('offers an invoice the two whole-number options only, with the first number and no check', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-invoice');
-    const radios = screen.root.findAll(node => node.props.accessibilityRole === 'radio' && typeof node.props.onPress === 'function');
+    await mount();
+    await press('numbering-row-invoice');
+    const radios = screen.getAllByRole('radio');
     expect(radios.map(node => node.props.accessibilityLabel)).toEqual(['Start again every financial year', 'Keep counting across years']);
-    expect(hasId(screen, 'numbering-field-start')).toBe(true);
-    for (const f of ['firstLetter', 'width', 'perLetter', 'prefix']) expect(hasId(screen, `numbering-field-${f}`)).toBe(false);
-    expect(screen.root.findAll(node => node.props.accessibilityRole === 'switch').length).toBe(0);
-    await type(screen, 'numbering-field-start', '1001');
-    expect(texts(screen)).toContain('The first number looks like 1001');
+    expect(screen.getByTestId('numbering-field-start')).toBeOnTheScreen();
+    for (const f of ['firstLetter', 'width', 'perLetter', 'prefix']) expect(screen.queryByTestId(`numbering-field-${f}`)).not.toBeOnTheScreen();
+    expect(screen.queryAllByRole('switch')).toHaveLength(0);
+    await type('numbering-field-start', '1001');
+    shown('The first number looks like 1001');
   });
 
   it('keeps Save off until something changed', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    expect(byId(screen, 'numbering-save').props.disabled).toBe(true);
-    await type(screen, 'numbering-field-perLetter', '500');
-    expect(byId(screen, 'numbering-save').props.disabled).toBe(false);
+    await mount();
+    await press('numbering-row-grn');
+    expect(byId('numbering-save')).toBeDisabled();
+    await type('numbering-field-perLetter', '500');
+    expect(byId('numbering-save')).toBeEnabled();
   });
 
   it('does not go on while a field is wrong, and says which', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await type(screen, 'numbering-field-width', '9');
-    expect(texts(screen)).toContain('Fix the fields above to see an example.');
-    await press(screen, 'numbering-save');
-    expect(texts(screen)).toContain('Enter a whole number from 1 to 7.');
-    expect(hasId(screen, 'numbering-confirm')).toBe(false);
+    await mount();
+    await press('numbering-row-grn');
+    await type('numbering-field-width', '9');
+    shown('Fix the fields above to see an example.');
+    await press('numbering-save');
+    shown('Enter a whole number from 1 to 7.');
+    expect(screen.queryByTestId('numbering-confirm')).not.toBeOnTheScreen();
     expect(setDocumentNumbering).not.toHaveBeenCalled();
   });
 
   it('refuses a financial-year number that would not fit 20 characters', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await choose(screen, 'Financial year');
-    await type(screen, 'numbering-field-prefix', 'ABCDEFGHIJ');
-    await type(screen, 'numbering-field-width', '7');
-    await press(screen, 'numbering-save');
-    expect(texts(screen)).toContain('The number would be longer than 20 characters. Use fewer digits or a shorter prefix.');
+    await mount();
+    await press('numbering-row-grn');
+    await choose('Financial year');
+    await type('numbering-field-prefix', 'ABCDEFGHIJ');
+    await type('numbering-field-width', '7');
+    await press('numbering-save');
+    shown('The number would be longer than 20 characters. Use fewer digits or a shorter prefix.');
   });
 });
 
 describe('saving', () => {
   it('asks first, says existing documents keep their numbers, and then sends only the fields of the scheme', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await choose(screen, 'Financial year');
-    await type(screen, 'numbering-field-prefix', 'GRN/');
-    await press(screen, 'numbering-save');
+    await mount();
+    await press('numbering-row-grn');
+    await choose('Financial year');
+    await type('numbering-field-prefix', 'GRN/');
+    await press('numbering-save');
 
     // The confirm step is in the same sheet; nothing is sent yet.
     expect(setDocumentNumbering).not.toHaveBeenCalled();
-    expect(texts(screen)).toContain('Change the numbering?');
-    expect(texts(screen)).toContain('New numbers look like GRN/26-27/0001.');
-    expect(texts(screen)).toContain('12 existing documents keep their numbers.');
+    shown('Change the numbering?');
+    shown('New numbers look like GRN/26-27/0001.');
+    shown('12 existing documents keep their numbers.');
 
-    await press(screen, 'numbering-confirm');
+    await press('numbering-confirm');
     expect(setDocumentNumbering).toHaveBeenCalledTimes(1);
     expect(setDocumentNumbering).toHaveBeenCalledWith('grn', { scheme: 'year', prefix: 'GRN/', width: 4, start: 1, check: true });
     expect(showToast).toHaveBeenCalledWith('Numbering saved. The next number is GRN/26-27/0001.');
     // The sheet is closed and the rules are read again.
-    expect(hasId(screen, 'numbering-confirm')).toBe(false);
+    expect(screen.queryByTestId('numbering-confirm')).not.toBeOnTheScreen();
     expect(getDocumentNumbering).toHaveBeenCalledTimes(2);
   });
 
   it('sends a letters rule with its three fields, and an invoice rule with the first number only', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await type(screen, 'numbering-field-firstLetter', 'x');
-    await press(screen, 'numbering-save');
-    await press(screen, 'numbering-confirm');
+    await mount();
+    await press('numbering-row-grn');
+    await type('numbering-field-firstLetter', 'x');
+    await press('numbering-save');
+    await press('numbering-confirm');
     expect(setDocumentNumbering).toHaveBeenLastCalledWith('grn', { scheme: 'letters', first_letter: 'X', width: 4, per_letter: 1000, check: true });
 
-    await press(screen, 'numbering-row-invoice');
-    await choose(screen, 'Keep counting');
-    await type(screen, 'numbering-field-start', '1001');
-    await press(screen, 'numbering-save');
-    await press(screen, 'numbering-confirm');
+    await press('numbering-row-invoice');
+    await choose('Keep counting');
+    await type('numbering-field-start', '1001');
+    await press('numbering-save');
+    await press('numbering-confirm');
     expect(setDocumentNumbering).toHaveBeenLastCalledWith('invoice', { scheme: 'sequence', start: 1001 });
   });
 
   it('sends a free rule as the scheme alone', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await choose(screen, 'Typed by hand');
-    await press(screen, 'numbering-save');
-    expect(texts(screen)).toContain('You will type each number.');
-    await press(screen, 'numbering-confirm');
+    await mount();
+    await press('numbering-row-grn');
+    await choose('Typed by hand');
+    await press('numbering-save');
+    shown('You will type each number.');
+    await press('numbering-confirm');
     expect(setDocumentNumbering).toHaveBeenLastCalledWith('grn', { scheme: 'free' });
   });
 
   it('switching the check on says how many existing numbers do not follow the rule (they are kept)', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-dispatch');
-    const toggle = screen.root.findAll(node => node.props.accessibilityRole === 'switch' && typeof node.props.onPress === 'function')[0];
-    await act(async () => { toggle.props.onPress(); });
-    await press(screen, 'numbering-save');
-    expect(texts(screen)).toContain('40 existing documents keep their numbers.');
-    expect(texts(screen)).toContain('3 existing numbers do not follow this rule. They are kept.');
-    await press(screen, 'numbering-confirm');
+    await mount();
+    await press('numbering-row-dispatch');
+    await user.press(screen.getByRole('switch'));
+    await press('numbering-save');
+    shown('40 existing documents keep their numbers.');
+    shown('3 existing numbers do not follow this rule. They are kept.');
+    await press('numbering-confirm');
     expect(setDocumentNumbering).toHaveBeenLastCalledWith('dispatch', { scheme: 'sequence', prefix: 'I', width: 4, start: 1, check: true });
   });
 
   it('shows a refusal in words, keeps the sheet open and sends nothing else', async () => {
     jest.mocked(setDocumentNumbering).mockRejectedValueOnce(new Error('The prefix can have up to 10 characters: capital letters, digits, / and -.'));
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await choose(screen, 'Financial year');
-    await press(screen, 'numbering-save');
-    await press(screen, 'numbering-confirm');
-    expect(texts(screen)).toContain('The prefix can have up to 10 characters: capital letters, digits, / and -.');
-    expect(hasId(screen, 'numbering-confirm')).toBe(true);
+    await mount();
+    await press('numbering-row-grn');
+    await choose('Financial year');
+    await press('numbering-save');
+    await press('numbering-confirm');
+    shown('The prefix can have up to 10 characters: capital letters, digits, / and -.');
+    expect(screen.getByTestId('numbering-confirm')).toBeOnTheScreen();
     expect(showToast).not.toHaveBeenCalled();
     expect(getDocumentNumbering).toHaveBeenCalledTimes(1);
   });
 
   it('says so when the rule was already as chosen', async () => {
     jest.mocked(setDocumentNumbering).mockResolvedValueOnce({ changed: false, document_type: 'grn', existing_documents: 12, not_following: 0, next_number: 'A0013', hint: 'A####', reason: null });
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await type(screen, 'numbering-field-perLetter', '500');
-    await press(screen, 'numbering-save');
-    await press(screen, 'numbering-confirm');
+    await mount();
+    await press('numbering-row-grn');
+    await type('numbering-field-perLetter', '500');
+    await press('numbering-save');
+    await press('numbering-confirm');
     expect(showToast).toHaveBeenCalledWith('The numbering is as it was.');
   });
 });
@@ -301,75 +299,74 @@ describe('what the save tells the administrator', () => {
     jest.mocked(setDocumentNumbering).mockResolvedValueOnce({
       changed: true, document_type: 'grn', existing_documents: 12, not_following: 5, next_number: 'GRN/26-27/0001', hint: 'GRN/26-27/####', reason: null,
     });
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await choose(screen, 'Financial year');
-    await press(screen, 'numbering-save');
-    await press(screen, 'numbering-confirm');
+    await mount();
+    await press('numbering-row-grn');
+    await choose('Financial year');
+    await press('numbering-save');
+    await press('numbering-confirm');
     expect(showToast).toHaveBeenCalledWith('Numbering saved. The next number is GRN/26-27/0001. 5 existing numbers do not follow the rule. They are kept.');
   });
 
   it('says nothing about numbers outside the rule when there are none', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await choose(screen, 'Financial year');
-    await press(screen, 'numbering-save');
-    await press(screen, 'numbering-confirm');
+    await mount();
+    await press('numbering-row-grn');
+    await choose('Financial year');
+    await press('numbering-save');
+    await press('numbering-confirm');
     expect(showToast).toHaveBeenCalledWith('Numbering saved. The next number is GRN/26-27/0001.');
   });
 
   it('says on the confirm step that the next number continues after the numbers already issued', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await choose(screen, 'Financial year');
-    await press(screen, 'numbering-save');
-    expect(texts(screen)).toContain('New numbers look like 26-27/0001.');
-    expect(texts(screen)).toContain('The next number continues after the numbers already issued in this format.');
+    await mount();
+    await press('numbering-row-grn');
+    await choose('Financial year');
+    await press('numbering-save');
+    shown('New numbers look like 26-27/0001.');
+    shown('The next number continues after the numbers already issued in this format.');
   });
 
   it('does not say it when no document of the type exists yet', async () => {
     jest.mocked(getDocumentNumbering).mockResolvedValue([rule({ existing_documents: 0 }), RULES[1], RULES[2]]);
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await choose(screen, 'Financial year');
-    await press(screen, 'numbering-save');
-    expect(texts(screen)).toContain('New numbers look like 26-27/0001.');
-    expect(texts(screen)).not.toContain('continues after');
+    await mount();
+    await press('numbering-row-grn');
+    await choose('Financial year');
+    await press('numbering-save');
+    shown('New numbers look like 26-27/0001.');
+    expect(screen.queryByText(/continues after/)).not.toBeOnTheScreen();
   });
 });
 
 describe('leaving the edit sheet', () => {
-  const closeButton = (screen: ReactTestRenderer) =>
-    screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Close')[0];
+  const closeButton = () => screen.getByRole('button', { name: 'Close' });
   const lastAlertButtons = () => jest.mocked(showAlert).mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
 
   it('closes at once when nothing was changed', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await act(async () => { closeButton(screen).props.onPress(); });
+    await mount();
+    await press('numbering-row-grn');
+    await user.press(closeButton());
     expect(showAlert).not.toHaveBeenCalled();
-    expect(hasId(screen, 'numbering-save')).toBe(false);
+    expect(screen.queryByTestId('numbering-save')).not.toBeOnTheScreen();
   });
 
   it('asks "Discard changes?" when something was changed, and keeps the sheet on Keep editing', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await type(screen, 'numbering-field-perLetter', '500');
-    await act(async () => { closeButton(screen).props.onPress(); });
+    await mount();
+    await press('numbering-row-grn');
+    await type('numbering-field-perLetter', '500');
+    await user.press(closeButton());
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Discard changes?');
     expect(lastAlertButtons().map(button => button.text)).toEqual(['Keep editing', 'Discard']);
-    expect(hasId(screen, 'numbering-save')).toBe(true);
-    expect(byId(screen, 'numbering-field-perLetter').props.value).toBe('500');
+    expect(screen.getByTestId('numbering-save')).toBeOnTheScreen();
+    expect(byId('numbering-field-perLetter')).toHaveDisplayValue('500');
   });
 
   it('closes the sheet and sends nothing when the changes are discarded', async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await type(screen, 'numbering-field-perLetter', '500');
-    await act(async () => { closeButton(screen).props.onPress(); });
-    await act(async () => { lastAlertButtons()[1].onPress?.(); });
-    expect(hasId(screen, 'numbering-save')).toBe(false);
+    await mount();
+    await press('numbering-row-grn');
+    await type('numbering-field-perLetter', '500');
+    await user.press(closeButton());
+    await act(async () => { lastAlertButtons()[1].onPress?.(); }); // the dialog's own Discard button (the native alert is a stand-in)
+    expect(screen.queryByTestId('numbering-save')).not.toBeOnTheScreen();
     expect(setDocumentNumbering).not.toHaveBeenCalled();
   });
 });
@@ -377,8 +374,8 @@ describe('leaving the edit sheet', () => {
 describe('in Gujarati', () => {
   it('writes counts in Gujarati digits and keeps the numbers and patterns in 0-9', async () => {
     setLanguage('gu');
-    const screen = await mount();
-    const label = rowLabel(screen, 'dispatch');
+    await mount();
+    const label = rowLabel('dispatch');
     expect(label).toContain('૩ હાલના નંબર નિયમ પ્રમાણે નથી');
     expect(label).toContain('I0001');
   });
@@ -387,74 +384,74 @@ describe('in Gujarati', () => {
 describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => [brand, mode] as const)))('themes: %s %s', (brand, mode) => {
   it('paints the screen and the open sheet with the theme\'s colours', async () => {
     mockTheme = { preference: mode, brand };
-    const screen = await mount();
+    await mount();
     const tokens = getTokens(brand, mode);
-    const colours = (root: ReactTestRenderer) =>
-      root.root
-        .findAll(node => typeof node.type === 'string' && !!node.props.style)
+    // Background and text colours of every drawn view: styles have no query, so the rendered tree is walked.
+    const colours = () =>
+      everyNode(node => typeof node.type === 'string' && !!node.props.style)
         .flatMap(node => [node.props.style].flat(Infinity).filter(Boolean).flatMap((style: Record<string, string>) => [style.backgroundColor, style.color]))
         .filter(Boolean)
         .map(colour => String(colour).toLowerCase());
-    expect(colours(screen)).toContain(tokens.background.grouped.toLowerCase());
-    await press(screen, 'numbering-row-grn');
-    expect(colours(screen)).toContain(tokens.surface.sheet.toLowerCase());
-    expect(texts(screen)).toContain('GRN numbers');
+    expect(colours()).toContain(tokens.background.grouped.toLowerCase());
+    await press('numbering-row-grn');
+    expect(colours()).toContain(tokens.surface.sheet.toLowerCase());
+    shown('GRN numbers');
   });
 });
 
 describe('a save whose answer did not come through', () => {
   const UNCONFIRMED = "We couldn't confirm the change. Refresh to see the setting the server holds before you try again.";
   const toConfirm = async () => {
-    const screen = await mount();
-    await press(screen, 'numbering-row-grn');
-    await type(screen, 'numbering-field-perLetter', '500');
-    await press(screen, 'numbering-save');
+    await mount();
+    await press('numbering-row-grn');
+    await type('numbering-field-perLetter', '500');
+    await press('numbering-save');
     jest.mocked(setDocumentNumbering).mockRejectedValueOnce(new NumberingUnconfirmedError(UNCONFIRMED));
-    await press(screen, 'numbering-confirm');
-    return screen;
+    await press('numbering-confirm');
+
   };
 
   it('keeps the edit open with the values, the row on the previous setting, and offers Refresh and Try again', async () => {
-    const screen = await toConfirm();
-    expect(texts(screen)).toContain(UNCONFIRMED);
-    expect(hasId(screen, 'numbering-refresh')).toBe(true);
-    expect(hasId(screen, 'numbering-try-again')).toBe(true);
+    await toConfirm();
+    shown(UNCONFIRMED);
+    expect(screen.getByTestId('numbering-refresh')).toBeOnTheScreen();
+    expect(screen.getByTestId('numbering-try-again')).toBeOnTheScreen();
     // The sheet did not close and nothing was said to be saved.
-    expect(hasId(screen, 'numbering-confirm')).toBe(true);
+    expect(screen.getByTestId('numbering-confirm')).toBeOnTheScreen();
     expect(showToast).not.toHaveBeenCalled();
-    expect(rowLabel(screen, 'grn')).toContain('A0001');
+    expect(rowLabel('grn')).toContain('A0001');
   });
 
   it('Refresh: the server holds the rule that was sent, so it says "Saved." and closes', async () => {
-    const screen = await toConfirm();
+    await toConfirm();
     jest.mocked(getDocumentNumbering).mockResolvedValue([rule({ per_letter: 500, updated_at: '2026-10-28T06:00:00Z' }), RULES[1], RULES[2]]);
-    await press(screen, 'numbering-refresh');
+    await press('numbering-refresh');
     expect(showToast).toHaveBeenCalledWith('Saved.');
-    expect(hasId(screen, 'numbering-confirm')).toBe(false);
+    expect(screen.queryByTestId('numbering-confirm')).not.toBeOnTheScreen();
   });
 
   it('Refresh: the server holds another rule, so it says "Not saved." and the edit stays', async () => {
-    const screen = await toConfirm();
-    await press(screen, 'numbering-refresh');
-    expect(texts(screen)).toContain('Not saved.');
+    await toConfirm();
+    await press('numbering-refresh');
+    shown('Not saved.');
     expect(showToast).not.toHaveBeenCalled();
-    expect(hasId(screen, 'numbering-confirm')).toBe(true);
-    expect(hasId(screen, 'numbering-try-again')).toBe(true);
+    expect(screen.getByTestId('numbering-confirm')).toBeOnTheScreen();
+    expect(screen.getByTestId('numbering-try-again')).toBeOnTheScreen();
   });
 
   it('reads the rows again from the server after the unconfirmed save, and after Refresh', async () => {
-    const screen = await toConfirm();
+    await toConfirm();
     // The server holds the new rule although the answer was lost: the row must show it without leaving the screen.
     expect(getDocumentNumbering).toHaveBeenCalledTimes(2);
     jest.mocked(getDocumentNumbering).mockResolvedValue([rule({ prefix: 'Z', hint: 'ZA####', updated_at: '2026-10-28T06:00:00Z' }), RULES[1], RULES[2]]);
-    await press(screen, 'numbering-refresh');
+    await press('numbering-refresh');
     expect(getDocumentNumbering).toHaveBeenCalledTimes(4);
   });
 
   it('Try again sends the same rule again', async () => {
-    const screen = await toConfirm();
+    await toConfirm();
     const first = jest.mocked(setDocumentNumbering).mock.calls[0];
-    await press(screen, 'numbering-try-again');
+    await press('numbering-try-again');
     expect(setDocumentNumbering).toHaveBeenCalledTimes(2);
     expect(jest.mocked(setDocumentNumbering).mock.calls[1]).toEqual(first);
     expect(showToast).toHaveBeenCalled();
@@ -463,9 +460,10 @@ describe('a save whose answer did not come through', () => {
 
 describe('pull to refresh', () => {
   it('reads the rules again', async () => {
-    const screen = await mount();
-    const control = screen.root.findAll(node => typeof node.props.onRefresh === 'function')[0];
-    await act(async () => { control.props.onRefresh(); });
+    await mount();
+    // The scroll view's pull-to-refresh has no name or role: it is the one carrying a refresh control.
+    const control = everyNode(node => Boolean(node.props.refreshControl))[0];
+    await act(async () => { control.props.refreshControl.props.onRefresh(); });
     expect(getDocumentNumbering).toHaveBeenCalledTimes(2);
   });
 });

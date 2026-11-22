@@ -3,15 +3,11 @@
  * (the rates action keeps the person's right to edit). A GRN that was not imported keeps every action.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import GRNDetailScreen from '../../../app/grn-details/[id]';
 import { setLanguage } from '@/i18n';
 
 const mockGetGRNDetails = jest.fn();
-let mockOverview: any;
-let mockHero: any;
-let mockImagesProps: any;
-let mockTabProps: any;
 let mockCanUpdate = true;
 let mockCanDelete = true;
 
@@ -65,14 +61,63 @@ jest.mock('@/services/grn-detail-service', () => ({
   removeGRNPhotoFiles: jest.fn(),
 }));
 jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNImage: jest.fn(), deleteGRNImage: jest.fn() }));
+// Stand-ins for the page's parts: each draws what this test looks at (the Imported mark, the tab buttons, Edit, Delete,
+// Edit rates, Add photo, Delete photo) and calls the real props the page hands it.
+const mockMark = (imported: unknown) => (imported === true ? 'imported' : imported === false ? 'not imported' : 'imported unknown');
 jest.mock('@/components/grn-details', () => ({
-  GRNHeroHeader: (props: unknown) => { mockHero = props; return null; },
-  GRNTabNavigator: (props: unknown) => { mockTabProps = props; return null; },
-  GRNOverviewTab: (props: unknown) => { mockOverview = props; return null; },
+  GRNHeroHeader: (props: { imported?: boolean }) => {
+    const { Text } = require('react-native');
+    return <Text>{`Hero: ${mockMark(props.imported)}`}</Text>;
+  },
+  GRNTabNavigator: (props: { onTabChange: (tab: string) => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    return (
+      <View>
+        {['overview', 'images'].map(tab => (
+          <Pressable key={tab} accessibilityRole="button" accessibilityLabel={`${tab} tab`} onPress={() => props.onTabChange(tab)}>
+            <Text>{tab}</Text>
+          </Pressable>
+        ))}
+      </View>
+    );
+  },
+  GRNOverviewTab: (props: { imported?: boolean; can_edit?: boolean; can_delete?: boolean; can_edit_rates?: boolean }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const button = (name: string, enabled: boolean | undefined) => (
+      <Pressable accessibilityRole="button" accessibilityLabel={name} disabled={enabled !== true}>
+        <Text>{name}</Text>
+      </Pressable>
+    );
+    return (
+      <View>
+        <Text>{`Overview: ${mockMark(props.imported)}`}</Text>
+        {button('Edit', props.can_edit)}
+        {button('Delete', props.can_delete)}
+        {button('Edit rates', props.can_edit_rates)}
+      </View>
+    );
+  },
   GRNItemsTab: () => null,
   GRNDispatchesTab: () => null,
   GRNInvoicesTab: () => null,
-  GRNImagesTab: (props: unknown) => { mockImagesProps = props; return null; },
+  GRNImagesTab: (props: { onUpload?: () => unknown; onDeleteImage?: () => unknown }) => {
+    const { Pressable, Text, View } = require('react-native');
+    return (
+      <View>
+        <Text>Photos</Text>
+        {typeof props.onUpload === 'function' ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Add photo" onPress={props.onUpload}>
+            <Text>Add photo</Text>
+          </Pressable>
+        ) : null}
+        {typeof props.onDeleteImage === 'function' ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Delete photo" onPress={props.onDeleteImage}>
+            <Text>Delete photo</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  },
 }));
 
 const grn = (imported?: boolean) => ({
@@ -86,61 +131,62 @@ const grn = (imported?: boolean) => ({
   },
 });
 
-let tree: ReturnType<typeof create> | undefined;
+const user = () => userEvent.setup({ delay: 0 });
 const mount = async (answer: unknown) => {
   mockGetGRNDetails.mockResolvedValue(answer);
-  await act(async () => { tree = create(<GRNDetailScreen />); });
-  await act(async () => { mockTabProps.onTabChange('overview'); });
-  await act(async () => { mockTabProps.onTabChange('images'); });
-  await act(async () => { mockTabProps.onTabChange('overview'); });
+  await render(<GRNDetailScreen />);
+  // The page has loaded when the tab buttons are drawn; then the Overview tab is opened, as before.
+  await user().press(await screen.findByRole('button', { name: 'overview tab' }));
+  await screen.findByText(/^Overview: /);
 };
+const openImagesTab = async () => {
+  await user().press(screen.getByRole('button', { name: 'images tab' }));
+  await screen.findByText('Photos');
+};
+// A negative check must also see an element that is mounted but hidden.
+const anywhere = { includeHiddenElements: true } as const;
 
 beforeEach(() => {
   jest.clearAllMocks();
   setLanguage('en');
   mockCanUpdate = true;
   mockCanDelete = true;
-  mockOverview = mockHero = mockImagesProps = undefined;
-});
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
 });
 
 describe('an imported GRN', () => {
   it('shows the Imported mark, closes Edit and Delete, and keeps the rates open', async () => {
     await mount(grn(true));
-    expect(mockHero.imported).toBe(true);
-    expect(mockOverview.imported).toBe(true);
-    expect(mockOverview.can_edit).toBe(false);
-    expect(mockOverview.can_delete).toBe(false);
-    expect(mockOverview.can_edit_rates).toBe(true);
+    expect(screen.getByText('Hero: imported')).toBeOnTheScreen();
+    expect(screen.getByText('Overview: imported')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Edit rates' })).toBeEnabled();
   });
 
   it('offers no photo to add or delete', async () => {
     await mount(grn(true));
-    await act(async () => { mockTabProps.onTabChange('images'); });
-    expect(mockImagesProps.onUpload).toBeUndefined();
-    expect(mockImagesProps.onDeleteImage).toBeUndefined();
+    await openImagesTab();
+    expect(screen.queryByRole('button', { name: 'Add photo', ...anywhere })).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Delete photo', ...anywhere })).not.toBeOnTheScreen();
   });
 
   it('keeps the rates closed for a person who may not edit', async () => {
     mockCanUpdate = false;
     await mount(grn(true));
-    expect(mockOverview.can_edit_rates).toBe(false);
+    expect(screen.getByRole('button', { name: 'Edit rates' })).toBeDisabled();
   });
 });
 
 describe.each([['a GRN that was not imported', false], ['a GRN from a server that does not say (older than migration 191)', undefined]])('%s', (_name, flag) => {
   it('has no mark and keeps Edit, Delete, rates and photos', async () => {
     await mount(grn(flag));
-    expect(mockHero.imported).toBe(false);
-    expect(mockOverview.imported).toBe(false);
-    expect(mockOverview.can_edit).toBe(true);
-    expect(mockOverview.can_delete).toBe(true);
-    expect(mockOverview.can_edit_rates).toBe(true);
-    await act(async () => { mockTabProps.onTabChange('images'); });
-    expect(typeof mockImagesProps.onUpload).toBe('function');
-    expect(typeof mockImagesProps.onDeleteImage).toBe('function');
+    expect(screen.getByText('Hero: not imported')).toBeOnTheScreen();
+    expect(screen.getByText('Overview: not imported')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Edit rates' })).toBeEnabled();
+    await openImagesTab();
+    expect(screen.getByRole('button', { name: 'Add photo' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Delete photo' })).toBeOnTheScreen();
   });
 });

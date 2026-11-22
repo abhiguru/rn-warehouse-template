@@ -3,8 +3,7 @@
  * are no steps, no Documents section and no example email in the Email box.
  */
 import React from 'react';
-import { Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { customerService } from '@/services/customer-service';
 import { showAlert } from '@/utils/alert';
@@ -48,25 +47,24 @@ const c1 = {
   document_urls: ['doc1.jpg'], image_urls: ['img1.jpg'], created_at: '2026-01-01', updated_at: '2026-02-02T10:00:00Z',
 };
 
-const input = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAllByType(TextInput).find(node => node.props.accessibilityLabel === label) as ReturnType<ReactTestRenderer['root']['findAllByType']>[number];
-const shownText = (tree: ReactTestRenderer) =>
-  tree.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
-const button = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAll(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label)[0];
-const type = async (tree: ReactTestRenderer, label: string, text: string) => {
-  await act(async () => { input(tree, label).props.onChangeText(text); });
+const user = userEvent.setup({ delay: 0 });
+const input = (label: string) => screen.getByLabelText(label);
+const shown = (text: string | RegExp) => screen.queryAllByText(text);
+const button = (label: string) => screen.getByRole('button', { name: label });
+const press = async (label: string) => {
+  await user.press(button(label));
+};
+const type = async (label: string, text: string) => {
+  await user.clear(input(label));
+  await user.paste(input(label), text);
 };
 
-let tree: ReactTestRenderer | undefined;
 const mountEdit = async () => {
   jest.mocked(useLocalSearchParams).mockImplementation(() => ({ id: 'c1' }) as never);
-  await act(async () => { tree = create(<CustomerEditRoute />); });
-  return tree as ReactTestRenderer;
+  await render(<CustomerEditRoute />);
 };
 const mountAdd = async () => {
-  await act(async () => { tree = create(<CustomerFormRoute />); });
-  return tree as ReactTestRenderer;
+  await render(<CustomerFormRoute />);
 };
 
 beforeEach(() => {
@@ -74,45 +72,46 @@ beforeEach(() => {
   jest.mocked(customerService.getCustomerById).mockResolvedValue({ success: true, message: '', data: c1 } as never);
   jest.mocked(customerService.searchCustomers).mockResolvedValue([]);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
 describe('Edit customer', () => {
   it('opens on one page titled Edit customer with the loaded values and four sections', async () => {
-    const screen = await mountEdit();
-    const text = shownText(screen);
-    expect(text).toContain('Edit customer');
-    expect(input(screen, 'Customer name, required').props.value).toBe('24 Seven Foods');
-    expect(input(screen, 'City').props.value).toBe('Rajkot');
-    for (const section of ['BASIC INFORMATION', 'ADDRESS', 'TAX DETAILS', 'CONTACT PERSON']) expect(text).toContain(section);
-    expect(text).not.toMatch(/Step \d of/);
-    expect(button(screen, 'Save customer')).toBeDefined();
+    await mountEdit();
+    expect(shown(/Edit customer/).length).toBeGreaterThan(0);
+    expect(input('Customer name, required')).toHaveDisplayValue('24 Seven Foods');
+    expect(input('City')).toHaveDisplayValue('Rajkot');
+    for (const section of ['BASIC INFORMATION', 'ADDRESS', 'TAX DETAILS', 'CONTACT PERSON']) expect(shown(section).length).toBeGreaterThan(0);
+    expect(shown(/Step \d of/)).toHaveLength(0);
+    expect(button('Save customer')).toBeOnTheScreen();
   });
 
   it('saves with nothing changed without calling the server', async () => {
-    const screen = await mountEdit();
-    await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+    await mountEdit();
+    // Save is switched off while nothing changed (WH-227), so the tap is sent past that: the handler's own guard is what is tested.
+    // Testing Library shows host views only; the Pressable's own onPress is on the fiber above the button's view.
+    let fiber = button('Save customer').unstable_fiber;
+    while (fiber && typeof fiber.memoizedProps?.onPress !== 'function') fiber = fiber.return;
+    const onPress = fiber?.memoizedProps.onPress as () => Promise<void>;
+    await act(async () => { await onPress(); });
     expect(customerService.updateCustomer).not.toHaveBeenCalled();
     expect(router.back).toHaveBeenCalledTimes(1);
   });
 
   it('keeps Save switched off until a value changes, and on after one (WH-227)', async () => {
-    const screen = await mountEdit();
-    const disabled = () => button(screen, 'Save customer').props.accessibilityState?.disabled;
+    await mountEdit();
+    const disabled = () => button('Save customer').props.accessibilityState?.disabled;
     expect(disabled()).toBe(true);
-    await type(screen, 'City', 'Rajkot X');
+    expect(button('Save customer')).toBeDisabled();
+    await type('City', 'Rajkot X');
     expect(disabled()).toBe(false);
-    await type(screen, 'City', 'Rajkot');
+    expect(button('Save customer')).toBeEnabled();
+    await type('City', 'Rajkot');
     expect(disabled()).toBe(true);
   });
 
   it('sends the changed city for the route id and keeps the saved photos', async () => {
     jest.mocked(customerService.updateCustomer).mockResolvedValue({ success: true, message: '' } as never);
-    const screen = await mountEdit();
-    await type(screen, 'City', 'Rajkot X');
-    await act(async () => { await button(screen, 'Save customer').props.onPress(); });
+    await mountEdit();
+    await type('City', 'Rajkot X');
+    await press('Save customer');
     // Only the changed field is sent (never the untouched name or mobile), with the updated_at that was read.
     expect(customerService.updateCustomer).toHaveBeenCalledWith({
       p_customer_id: 'c1',
@@ -125,20 +124,19 @@ describe('Edit customer', () => {
 
 describe('Add customer', () => {
   it('is titled Add customer and offers the same four sections and an Add customer button', async () => {
-    const screen = await mountAdd();
-    const text = shownText(screen);
-    expect(text).toContain('Add customer');
-    for (const section of ['BASIC INFORMATION', 'ADDRESS', 'TAX DETAILS', 'CONTACT PERSON']) expect(text).toContain(section);
-    expect(input(screen, 'Customer name, required').props.value).toBe('');
+    await mountAdd();
+    expect(shown(/Add customer/).length).toBeGreaterThan(0);
+    for (const section of ['BASIC INFORMATION', 'ADDRESS', 'TAX DETAILS', 'CONTACT PERSON']) expect(shown(section).length).toBeGreaterThan(0);
+    expect(input('Customer name, required')).toHaveDisplayValue('');
     expect(customerService.getCustomerById).not.toHaveBeenCalled();
   });
 
   it('creates the customer and replaces the form with the new customer page', async () => {
     jest.mocked(customerService.createCustomer).mockResolvedValue({ success: true, message: '', data: { id: 'new-id' } } as never);
-    const screen = await mountAdd();
-    await type(screen, 'Customer name, required', 'Test Doc');
-    await type(screen, 'Mobile number after plus 91, required', '9000000099');
-    await act(async () => { await button(screen, 'Add customer').props.onPress(); });
+    await mountAdd();
+    await type('Customer name, required', 'Test Doc');
+    await type('Mobile number after plus 91, required', '9000000099');
+    await press('Add customer');
     expect(customerService.createCustomer).toHaveBeenCalledWith(
       expect.objectContaining({ p_name: 'Test Doc', p_mobile: '919000000099' })
     );
@@ -146,38 +144,36 @@ describe('Add customer', () => {
   });
 
   it('groups the typed mobile number 5 + 5 and stores ten digits', async () => {
-    const screen = await mountAdd();
-    await type(screen, 'Mobile number after plus 91, required', '9000000099');
-    expect(input(screen, 'Mobile number after plus 91, required').props.value).toBe('90000 00099');
+    await mountAdd();
+    await type('Mobile number after plus 91, required', '9000000099');
+    expect(input('Mobile number after plus 91, required')).toHaveDisplayValue('90000 00099');
   });
 });
 
 describe('no documents (G-18)', () => {
   it('has no Documents section and no word about the local demo', async () => {
-    const screen = await mountAdd();
-    const text = shownText(screen);
-    expect(text).not.toMatch(/local demo/i);
-    expect(text).not.toMatch(/documents/i);
-    expect(text).not.toMatch(/uploads/i);
+    await mountAdd();
+    expect(shown(/local demo/i)).toHaveLength(0);
+    expect(shown(/documents/i)).toHaveLength(0);
+    expect(shown(/uploads/i)).toHaveLength(0);
   });
 });
 
 describe('field wording (G-49)', () => {
   it('shows the Email box without an example address', async () => {
-    const screen = await mountAdd();
-    expect(input(screen, 'Email, optional').props.placeholder).toBeUndefined();
-    expect(shownText(screen)).toContain('Optional. Used for sending invoices.');
+    await mountAdd();
+    expect(input('Email, optional').props.placeholder).toBeUndefined();
+    expect(shown(/Optional\. Used for sending invoices\./).length).toBeGreaterThan(0);
   });
 });
 
 describe('empty form (G-48)', () => {
   it('asks for the name and the mobile number, and stays on the form', async () => {
-    const screen = await mountAdd();
-    await act(async () => { await button(screen, 'Add customer').props.onPress(); });
-    const text = shownText(screen);
-    expect(text).toContain('Enter the customer name.');
-    expect(text).toContain('Enter a mobile number.');
-    expect(text).not.toContain('Enter at least 2 characters.');
+    await mountAdd();
+    await press('Add customer');
+    expect(shown(/Enter the customer name\./).length).toBeGreaterThan(0);
+    expect(shown(/Enter a mobile number\./).length).toBeGreaterThan(0);
+    expect(shown(/Enter at least 2 characters\./)).toHaveLength(0);
     expect(customerService.createCustomer).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();

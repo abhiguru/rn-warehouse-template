@@ -1,6 +1,6 @@
 /** R3a-8: a key press draws again only what it changed: its own line and group, not every mounted row. */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { formatDate, formatWeightEach } from '@/utils/formatters';
 import { makeInvoiceStore, fillNewInvoice, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { ConnectedEditor, inputOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
@@ -33,26 +33,24 @@ const fixture = (): InvoiceItemData[] =>
       invoiceLine({ item_id: `it${g}`, item_name: `Example Item ${g}`, package_mark: `P${g}`, weight: 10 * (g + 1), dispatch_date: `2026-10-0${g + 1}` }, g * 3 + i)
     )
   ).flat();
-async function render() {
+async function mount() {
   mockStore = makeInvoiceStore();
   fillNewInvoice(mockStore, fixture());
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<ConnectedEditor />); });
-  await openAllGroups(tree);
-  return tree;
+  await render(<ConnectedEditor />);
+  await openAllGroups();
 }
 const headsDrawn = () => new Set(jest.mocked(formatWeightEach).mock.calls.map(([weight]) => weight));
 const datesDrawn = () => jest.mocked(formatDate).mock.calls.map(([date]) => date);
 
 describe('typing in one group', () => {
   it('a line charge draws that group\'s head and its own line again, not the other groups or lines', async () => {
-    const tree = await render();
+    await mount();
     const key = 'cell|edit_7_0|charge'; // group 2, the second line
-    await act(async () => { inputOf(tree, key).props.onFocus({}); });
+    await fireEvent(inputOf(key), 'focus', {});
     jest.mocked(formatWeightEach).mockClear();
     jest.mocked(formatDate).mockClear();
 
-    await act(async () => { inputOf(tree, key).props.onChangeText('8'); });
+    await fireEvent.changeText(inputOf(key), '8');
 
     expect(headsDrawn()).toEqual(new Set([30]));
     // group 2's lines are dated 2026-10-03: only the typed line is drawn again, the others are not
@@ -61,7 +59,7 @@ describe('typing in one group', () => {
   });
 
   it('a change that comes while no field has the focus (the layout is looked at again) draws the same: its line alone', async () => {
-    await render();
+    await mount();
     jest.mocked(formatWeightEach).mockClear();
     jest.mocked(formatDate).mockClear();
     // 4 gives the line a smaller amount than the widest one, so no column changes its width (a wider column redraws every row).
@@ -75,12 +73,12 @@ describe('typing in one group', () => {
   });
 
   it('the "All dispatches" block of the other groups is not drawn again (the block of the same group is, as one part)', async () => {
-    const tree = await render();
+    await mount();
     const key = 'cell|edit_7_0|charge';
-    await act(async () => { inputOf(tree, key).props.onFocus({}); });
+    await fireEvent(inputOf(key), 'focus', {});
     jest.mocked(groupCellLabel).mockClear();
     // the typed charge makes group 2's charge an average with a note; its block (Charge, Labour, Tax) is one part of the list
-    await act(async () => { inputOf(tree, key).props.onChangeText('8'); });
+    await fireEvent.changeText(inputOf(key), '8');
     expect(jest.mocked(groupCellLabel).mock.calls.map(([field, item]) => `${item}:${field}`)).toEqual([
       'Example Item 2:charge',
       'Example Item 2:labour_rate',
@@ -89,26 +87,26 @@ describe('typing in one group', () => {
   });
 
   it('a group rate draws that group alone again', async () => {
-    const tree = await render();
+    await mount();
     const key = 'group|it4:::P4|charge';
-    await act(async () => { inputOf(tree, key).props.onFocus({}); });
+    await fireEvent(inputOf(key), 'focus', {});
     jest.mocked(formatWeightEach).mockClear();
     jest.mocked(formatDate).mockClear();
 
-    await act(async () => { inputOf(tree, key).props.onChangeText('6'); });
+    await fireEvent.changeText(inputOf(key), '6');
 
     expect(headsDrawn()).toEqual(new Set([50]));
     expect(new Set(datesDrawn().map(String))).toEqual(new Set(['2026-10-05']));
   });
 
   it('leaving a field with an error draws only that field\'s line', async () => {
-    const tree = await render();
+    await mount();
     const key = 'cell|edit_0_0|charge';
-    await act(async () => { inputOf(tree, key).props.onFocus({}); });
-    await act(async () => { inputOf(tree, key).props.onChangeText('1000000'); });
+    await fireEvent(inputOf(key), 'focus', {});
+    await fireEvent.changeText(inputOf(key), '1000000');
     jest.mocked(formatWeightEach).mockClear();
     jest.mocked(formatDate).mockClear();
-    await act(async () => { inputOf(tree, key).props.onBlur({}); });
+    await fireEvent(inputOf(key), 'blur', {});
     expect(headsDrawn().size).toBe(0);
     expect(datesDrawn().length).toBeLessThanOrEqual(1);
   });

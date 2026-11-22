@@ -3,8 +3,7 @@
  * the rates of another item; the choice is sent as p_rate_from_item and the toast names the rate it got.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import ItemFormScreen from '../../../app/item-form';
 import { itemService } from '@/services/item-service';
@@ -48,18 +47,19 @@ const tier = (min: number, max: number, rent: number) => ({ weight_min: min, wei
 const standard = (tiers: ReturnType<typeof tier>[], status: 'ready' | 'loading' | 'error' = 'ready') =>
   jest.mocked(useStandardRate).mockReturnValue({ rate: status === 'ready' ? { tiers, updatedAt: null, updatedByName: null } : null, status, refresh: jest.fn(), key: 'k', serverNeedsUpdate: false });
 
-let tree: ReactTestRenderer;
-const texts = () => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-const radio = (label: string) => tree.root.find(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function');
-const button = (id: string) => tree.root.find(n => n.props.testID === id && typeof n.props.onPress === 'function');
-const nameField = () => tree.root.find(n => n.props.accessibilityLabel === 'Item name, required' && typeof n.props.onChangeText === 'function');
-const addItem = async () => { await act(async () => { tree.root.find(n => typeof n.props.onPress === 'function' && n.props.children === 'Add item').props.onPress(); }); };
+let user: ReturnType<typeof userEvent.setup>;
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+const radio = (label: string) => screen.getByRole('radio', { name: label });
+const button = (id: string) => screen.getByTestId(id);
+const shown = (text: string) => expect(screen.getByText(text)).toBeOnTheScreen();
+const addItem = async () => { await user.press(screen.getByRole('button', { name: 'Add item' })); };
 
 async function open() {
-  await act(async () => { tree = create(<ItemFormScreen />); });
-  await act(async () => { nameField().props.onChangeText('Fictional Gur Box'); });
+  await render(<ItemFormScreen />);
+  await user.type(screen.getByLabelText('Item name, required'), 'Fictional Gur Box');
   // The item's own packaging word is required (WH-41).
-  await act(async () => { tree.root.find(n => n.props.accessibilityLabel === 'Packaging, required' && typeof n.props.onChangeText === 'function').props.onChangeText('Bag'); });
+  await user.type(screen.getByLabelText('Packaging, required'), 'Bag');
 }
 
 beforeEach(() => {
@@ -73,32 +73,33 @@ beforeEach(() => {
   } as never);
   jest.mocked(itemService.createItem).mockResolvedValue({ success: true, message: 'ok', data: { id: 'new', name: 'Fictional Gur Box', active: true, rate_source: 'standard' } } as never);
   jest.useFakeTimers();
+  user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   jest.setSystemTime(new Date('2026-10-14T10:00:00+05:30'));
 });
 afterEach(() => {
-  act(() => tree.unmount());
   jest.useRealTimers();
 });
 
 describe('Add item: Rate', () => {
   it('starts on Standard rate and summarises its tiers', async () => {
     await open();
+    expect(radio('Standard rate')).toBeSelected();
     expect(radio('Standard rate').props.accessibilityState.selected).toBe(true);
     expect(radio('Same as another item').props.accessibilityState.selected).toBe(false);
-    expect(texts()).toContain('0–10 kg ₹3.00 · 11–20 kg ₹4.00');
+    shown('0–10 kg ₹3.00 · 11–20 kg ₹4.00');
   });
 
   it('says where to set it when there is no standard rate yet', async () => {
     standard([]);
     await open();
-    expect(texts()).toContain('No standard rate yet. Set it in Tools and settings → Standard rate.');
+    shown('No standard rate yet. Set it in Tools and settings → Standard rate.');
   });
 
   it('says nothing about the tiers while they load or when they could not be read', async () => {
     standard([], 'loading');
     await open();
-    expect(tree.root.findAll(n => n.props.testID === 'rate-standard-summary')).toHaveLength(0);
-    expect(texts().join(' ')).not.toContain('No standard rate yet');
+    expect(screen.queryByTestId('rate-standard-summary', hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/No standard rate yet/, hidden)).not.toBeOnTheScreen();
   });
 
   it('saves with the standard rate: no p_rate_from_item, and the toast says so', async () => {
@@ -115,11 +116,11 @@ describe('Add item: Rate', () => {
 
   it('Same as another item shows a row, and saving without an item is refused', async () => {
     await open();
-    await act(async () => { radio('Same as another item').props.onPress(); });
-    expect(texts()).toContain('Choose an item');
+    await user.press(radio('Same as another item'));
+    shown('Choose an item');
     await addItem();
     expect(itemService.createItem).not.toHaveBeenCalled();
-    expect(texts()).toContain('Choose the item whose rates this item gets.');
+    shown('Choose the item whose rates this item gets.');
   });
 
   it('offers only the items that have a default rate in force today, and sends the one chosen', async () => {
@@ -131,15 +132,15 @@ describe('Add item: Rate', () => {
     ];
     jest.mocked(useItemRates).mockReturnValue({ items: ITEMS, rates, status: 'ready', refreshing: false, lastUpdated: 1, refreshError: false, error: null, refresh: jest.fn(), itemRates: () => undefined } as never);
     await open();
-    await act(async () => { radio('Same as another item').props.onPress(); });
-    await act(async () => { button('rate-source-row').props.onPress(); });
+    await user.press(radio('Same as another item'));
+    await user.press(button('rate-source-row'));
     expect(sheetProps.isVisible).toBe(true);
     let offered: { id: string }[] = [];
     await act(async () => { offered = await sheetProps.searchFn(''); });
     expect(offered.map(i => i.id)).toEqual(['ajwain-bold', 'cumin', 'garlic', 'onion']);
     jest.mocked(itemService.createItem).mockResolvedValue({ success: true, message: 'ok', data: { id: 'new', name: 'Fictional Gur Box', active: true, rate_source: 'copied' } } as never);
     await act(async () => { sheetProps.onSelect(ITEMS.find(i => i.id === 'garlic')); });
-    expect(texts()).toContain('Review Garlic Desi');
+    shown('Review Garlic Desi');
     await addItem();
     expect(jest.mocked(itemService.createItem).mock.calls[0][0].p_rate_from_item).toBe('garlic');
     expect(showToast).toHaveBeenCalledWith('Fictional Gur Box added with the rates of Review Garlic Desi.');
@@ -156,11 +157,11 @@ describe('Add item: Rate', () => {
   });
 
   it('counts for the leave guard: Same as another item asks, going back to Standard rate does not (name aside)', async () => {
-    await act(async () => { tree = create(<ItemFormScreen />); });
+    await render(<ItemFormScreen />);
     expect(mockGuard.hasChanges).toBe(false);
-    await act(async () => { radio('Same as another item').props.onPress(); });
+    await user.press(radio('Same as another item'));
     expect(mockGuard.hasChanges).toBe(true);
-    await act(async () => { radio('Standard rate').props.onPress(); });
+    await user.press(radio('Standard rate'));
     expect(mockGuard.hasChanges).toBe(false);
   });
 
@@ -168,9 +169,9 @@ describe('Add item: Rate', () => {
     const { setLanguage } = jest.requireActual('@/i18n');
     setLanguage('gu');
     try {
-      await act(async () => { tree = create(<ItemFormScreen />); });
-      expect(tree.root.find(n => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === 'પ્રમાણભૂત દર')).toBeDefined();
-      expect(texts()).toContain('૦–૧૦ કિલો ₹૩.૦૦ · ૧૧–૨૦ કિલો ₹૪.૦૦');
+      await render(<ItemFormScreen />);
+      expect(screen.getByRole('radio', { name: 'પ્રમાણભૂત દર' })).toBeOnTheScreen();
+      shown('૦–૧૦ કિલો ₹૩.૦૦ · ૧૧–૨૦ કિલો ₹૪.૦૦');
     } finally {
       setLanguage('en');
     }
@@ -181,8 +182,8 @@ describe('Add item: Rate', () => {
     const refresh = jest.fn();
     jest.mocked(useItemRates).mockReturnValue({ items: [], rates: [], status: 'error', refreshing: false, lastUpdated: null, refreshError: true, error: new Error('x'), refresh, itemRates: () => undefined } as never);
     await open();
-    await act(async () => { radio('Same as another item').props.onPress(); });
-    await act(async () => { button('rate-source-row').props.onPress(); });
+    await user.press(radio('Same as another item'));
+    await user.press(button('rate-source-row'));
     expect(sheetProps.emptySearchText).toBe("Couldn't load the items.");
     expect(sheetProps.emptyAction.label).toBe('Try again');
     sheetProps.emptyAction.onPress();
@@ -193,10 +194,12 @@ describe('Add item: Rate', () => {
     mockOffline = true;
     jest.mocked(useItemRates).mockReturnValue({ items: [], rates: [], status: 'loading', refreshing: false, lastUpdated: null, refreshError: false, error: null, refresh: jest.fn(), itemRates: () => undefined } as never);
     await open();
-    await act(async () => { radio('Same as another item').props.onPress(); });
-    expect(button('rate-source-row').props.disabled).toBe(true);
+    await user.press(radio('Same as another item'));
+    expect(button('rate-source-row')).toBeDisabled();
+    expect(button('rate-source-row').props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
     jest.mocked(useItemRates).mockReturnValue({ items: ITEMS, rates: F1, status: 'ready', refreshing: false, lastUpdated: 1, refreshError: false, error: null, refresh: jest.fn(), itemRates: () => undefined } as never);
-    await act(async () => { tree.update(<ItemFormScreen />); });
-    expect(button('rate-source-row').props.disabled).toBe(false);
+    await screen.rerender(<ItemFormScreen />);
+    expect(button('rate-source-row')).toBeEnabled();
+    expect(button('rate-source-row').props.accessibilityState).toEqual(expect.objectContaining({ disabled: false }));
   });
 });

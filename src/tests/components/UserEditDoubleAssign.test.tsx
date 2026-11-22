@@ -1,12 +1,10 @@
 /** Bundle fix F38: a second tap on the same search result assigns the customer once. */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import UserEditScreen from '../../../app/user-edit/[id]';
 import { adminUserService } from '@/services/admin-user-service';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-import { SectionHeader } from '@/components/ui/SectionHeader';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'admin', name: 'Dev Administrator' } } };
 jest.mock('@/store/hooks', () => ({
@@ -37,23 +35,17 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+let user: ReturnType<typeof userEvent.setup>;
+/** The first element with this accessibility label. */
+const byLabel = (label: string) => screen.getAllByLabelText(label)[0];
+const press = async (label: string) => { await user.press(byLabel(label)); };
 const lastAlert = () => {
   const calls = jest.mocked(showAlert).mock.calls;
   const [title, message, buttons] = calls[calls.length - 1];
   return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
 };
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
 
 jest.mock('@/services/admin-user-service', () => ({
   adminUserService: {
@@ -74,10 +66,11 @@ const STAFF = {
 };
 const loadUser = async (details: Record<string, unknown> = STAFF) => {
   jest.mocked(adminUserService.getUserDetails).mockResolvedValue({ success: true, data: details } as never);
-  await act(async () => { tree = create(<UserEditScreen />); });
+  await render(<UserEditScreen />);
 };
 beforeEach(() => {
   jest.clearAllMocks();
+  user = userEvent.setup({ delay: 0 });
   mockPicker = undefined;
   mockSearch = undefined;
   jest.mocked(adminUserService.updateUserRole).mockResolvedValue({ success: true } as never);
@@ -95,14 +88,14 @@ describe('Assigning a customer', () => {
     await act(async () => { void mockSearch!.onSelect(orchard); void mockSearch!.onSelect(orchard); });
     await act(async () => { answer({ success: true }); });
     expect(adminUserService.assignCustomerToUser).toHaveBeenCalledTimes(1);
-    expect(shownText().split('Orchard Traders').length - 1).toBe(1);
+    expect(screen.queryAllByText(/Orchard Traders/, everything)).toHaveLength(1);
   });
 });
 
 describe('Disconnecting a connection (F41)', () => {
   it('shows Disconnect for an active connection and sends status false after confirming', async () => {
     await loadUser({ ...STAFF, is_service_account: true, assigned_customers: [] });
-    expect(byLabel('Disconnect')).toBeTruthy();
+    expect(byLabel('Disconnect')).toBeOnTheScreen();
     await press('Disconnect');
     const buttons = jest.mocked(showAlert).mock.calls.at(-1)![2] as { text?: string; onPress?: () => void }[];
     await act(async () => { buttons[1].onPress?.(); });

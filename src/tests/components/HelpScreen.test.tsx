@@ -6,8 +6,8 @@
  * Help says so instead of inventing one.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+
+import { render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 
 let mockState: Record<string, unknown> = {};
@@ -28,7 +28,6 @@ jest.mock('@/config/envConfig', () => ({
 }));
 
 import HelpScreen from '../../../app/help';
-import { SectionHeader } from '@/components/ui/SectionHeader';
 
 beforeEach(() => {
   setLanguage('en');
@@ -42,16 +41,14 @@ beforeEach(() => {
 afterEach(() => setLanguage('en'));
 
 async function shown() {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<HelpScreen />);
-  });
-  const texts = tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join(''));
-  return { tree, texts };
+  await render(<HelpScreen />);
+  // A check that something is NOT on the page must also see a Text that is mounted but hidden.
+  const read = (hidden: boolean) => screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map((node) => [node.props.children].flat().join(''));
+  return { texts: read(false), allTexts: read(true) };
 }
 
 it('shows the facility, who to ask, the roles, the changes and the support details', async () => {
-  const { tree, texts } = await shown();
+  const { texts, allTexts } = await shown();
   expect(texts).toEqual(
     expect.arrayContaining([
       'Help',
@@ -79,12 +76,11 @@ it('shows the facility, who to ask, the roles, the changes and the support detai
     ])
   );
   // The signed-in person's mobile number is not on the page or in the shared details.
-  expect(texts.join('\n')).not.toContain('9000000002');
-  expect(tree.root.findAll((node) => node.props.testID === 'app-diagnostics')).not.toHaveLength(0);
+  expect(allTexts.join('\n')).not.toContain('9000000002');
+  expect(screen.getByTestId('app-diagnostics')).toBeOnTheScreen();
   // Only the own role is marked.
-  const marked = tree.root.findAll(
-    (node) => typeof node.type !== 'string' && node.props.accessibilityState?.selected === true
-  );
+  // Every host element, labelled or not, hidden or not.
+  const marked = screen.root!.queryAll((node) => node.props.accessibilityState?.selected === true, { includeSelf: true });
   expect(marked.map((node) => node.props.accessibilityLabel)).toEqual([
     'Staff, Orders, GRNs, dispatches and invoices for every customer. Cannot manage customers, items, prices or users.',
   ]);
@@ -92,51 +88,53 @@ it('shows the facility, who to ask, the roles, the changes and the support detai
 
 it('tells a central-login build to use the association sign-in on a new phone', async () => {
   mockCentral.mockReturnValue(true);
-  const { texts } = await shown();
+  const { texts, allTexts } = await shown();
   expect(texts).toContain(
     'New phone: install the app, sign in with your association sign-in, then open your facility from My facilities.'
   );
-  expect(texts.join('\n')).not.toContain("enter your facility's address");
+  expect(allTexts.join('\n')).not.toContain("enter your facility's address");
 });
 
 it('says when no facility is chosen', async () => {
   mockServer = null;
-  const { texts } = await shown();
+  const { texts, allTexts } = await shown();
   expect(texts).toContain('No facility is chosen on this phone.');
-  expect(texts).not.toContain('Server address');
+  expect(allTexts).not.toContain('Server address');
   // There is no server to be connected to, so no connection section either.
-  expect(texts).not.toContain('CONNECTION');
+  expect(allTexts).not.toContain('CONNECTION');
 });
 
 it('names the role in Gujarati and keeps the address as typed', async () => {
   setLanguage('gu');
   mockState = { ...mockState, auth: { userProfile: { id: 'profile-1', role: 'admin' } } };
-  const { texts } = await shown();
+  const { texts, allTexts } = await shown();
   expect(texts).toEqual(expect.arrayContaining(['મદદ', 'તમારો હોદ્દો: એડમિન', 'https://north-cold.example.test']));
 });
 
 // G-46: an administrator has no administrator to ask.
 it('tells an administrator to share the details with whoever set up the server', async () => {
   mockState = { ...mockState, auth: { userProfile: { id: 'profile-1', name: 'Asha Example', role: 'admin', mobile: '9000000002' } } };
-  const { texts } = await shown();
+  const { texts, allTexts } = await shown();
   expect(texts).toContain(
     "You are this facility's administrator. For problems with the app, share the details below with whoever set up your server."
   );
-  expect(texts).not.toContain('For help with the app or your account, ask an administrator of your facility.');
-  expect(texts).not.toContain("The app has no support contact details of its own. Your facility's office can tell you who to ask.");
+  expect(allTexts).not.toContain('For help with the app or your account, ask an administrator of your facility.');
+  expect(allTexts).not.toContain("The app has no support contact details of its own. Your facility's office can tell you who to ask.");
 });
 
 it('keeps "ask an administrator" for a staff member', async () => {
-  const { texts } = await shown();
+  const { texts, allTexts } = await shown();
   expect(texts).toContain('For help with the app or your account, ask an administrator of your facility.');
-  expect(texts).not.toContain(
+  expect(allTexts).not.toContain(
     "You are this facility's administrator. For problems with the app, share the details below with whoever set up your server."
   );
 });
 
 // G-43: every title is a SectionHeader.
 it('draws its section titles with the shared SectionHeader', async () => {
-  const { tree } = await shown();
-  const headers = tree.root.findAllByType(SectionHeader).map(node => node.props.title);
+
+  await shown();
+  // The page's own title is a header without a label of its own; each SectionHeader labels its title.
+  const headers = screen.getAllByRole('header').map(node => node.props.accessibilityLabel).filter(label => label !== undefined);
   expect(headers).toEqual(['Your facility', 'Connection', 'Getting help', 'Roles', 'When something changes', 'Details for support']);
 });

@@ -5,9 +5,9 @@
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AccessibilityInfo, Keyboard, TextInput } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { groupLines } from '@/tests/helpers/invoiceFixtures';
-import { openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { flashListOf, inputOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 import { expectRevealWired, recordedRevealRefs } from '@/tests/helpers/revealWiring';
 import { InvoiceItemsStep } from '../InvoiceItemsStep';
 
@@ -47,15 +47,10 @@ jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' 
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 
-async function render(mode: 'create' | 'edit' = 'create') {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<GestureHandlerRootView><InvoiceItemsStep mode={mode} /></GestureHandlerRootView>); });
-  return tree;
+async function mount(mode: 'create' | 'edit' = 'create') {
+  await render(<GestureHandlerRootView><InvoiceItemsStep mode={mode} /></GestureHandlerRootView>);
 }
-const press = async (tree: ReactTestRenderer, label: string) => {
-  const button = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-  await act(async () => { await button.props.onPress(); });
-};
+const press = async (label: string) => { await userEvent.press(screen.getByRole('button', { name: label })); };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -65,29 +60,28 @@ afterEach(() => jest.restoreAllMocks());
 
 it('the items list notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
   recordedRevealRefs.length = 0;
-  const tree = await render();
-  const lists = tree.root.findAll((n) => typeof n.type === 'string' && typeof n.props.onScrollBeginDrag === 'function');
+  await mount();
+  const lists = screen.root!.queryAll((n) => typeof n.props.onScrollBeginDrag === 'function', { includeSelf: true });
   expect(lists.length).toBeGreaterThan(0);
   // WH-243: the list (the editor passes the step's handlers on to its FlashList) carries the step's own reveal handlers
   expect(recordedRevealRefs).toHaveLength(1);
-  const flashList = tree.root.findByType('FlashList' as never);
-  expectRevealWired(flashList, recordedRevealRefs[0]);
-  await act(async () => { tree.unmount(); });
+  expectRevealWired(flashListOf(), recordedRevealRefs[0]);
 });
 
 describe('the pricing pencil', () => {
   it('is gone from a new invoice and from an edit', async () => {
     for (const mode of ['create', 'edit'] as const) {
-      const tree = await render(mode);
-      expect(tree.root.findAll((node) => /^Edit pricing for/.test(String(node.props.accessibilityLabel)))).toHaveLength(0);
+      await mount(mode);
+      expect(screen.queryAllByLabelText(/^Edit pricing for/)).toHaveLength(0);
+      await screen.unmount();
     }
   });
 });
 
 describe('How pricing works', () => {
   it('is a button whose hint does not say its label again', async () => {
-    const tree = await render('create');
-    const buttons = tree.root.findAll((node) => node.props.accessibilityLabel === 'How pricing works' && typeof node.props.onPress === 'function');
+    await mount('create');
+    const buttons = screen.getAllByRole('button', { name: 'How pricing works' });
     expect(buttons.length).toBeGreaterThan(0);
     buttons.forEach((button) => expect(button.props.accessibilityHint).toBeUndefined());
   });
@@ -95,20 +89,20 @@ describe('How pricing works', () => {
 
 describe('Next', () => {
   it('goes to the review with nothing wrong', async () => {
-    const tree = await render();
-    await press(tree, 'Review');
+    await mount();
+    await press('Review');
     expect(mockNavigateToStep).toHaveBeenCalledWith(3);
   });
 
   it('stays on the step while a figure holds refused text, and announces it', async () => {
     const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
-    const tree = await render();
-    await openAllGroups(tree);
-    const cell = tree.root.findAllByType(TextInput).find((node) => node.props.testID === 'cell|edit_0_0|charge')!;
-    await act(async () => { cell.props.onFocus({}); });
-    await act(async () => { cell.props.onChangeText('1000000'); });
+    await mount();
+    await openAllGroups();
+    const cell = inputOf('cell|edit_0_0|charge');
+    await fireEvent(cell, 'focus', {});
+    await fireEvent.changeText(cell, '1000000');
 
-    await press(tree, 'Review');
+    await press('Review');
 
     expect(mockNavigateToStep).not.toHaveBeenCalled();
     expect(announce).toHaveBeenCalledWith('Fix the highlighted figure, then continue.');
@@ -120,7 +114,7 @@ describe('closing the keyboard', () => {
     const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation((() => ({ remove: jest.fn() })) as never);
     const focused = { blur: jest.fn() };
     jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue(focused as never);
-    await render('create');
+    await mount('create');
     expect(focused.blur).not.toHaveBeenCalled();
     await act(async () => { listen.mock.calls.filter(([name]) => name === 'keyboardDidHide').forEach(([, handler]) => (handler as () => void)()); });
     expect(focused.blur).toHaveBeenCalledTimes(1);

@@ -5,8 +5,8 @@
  */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Keyboard, StyleSheet, Text, TextInput } from 'react-native';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { Keyboard, StyleSheet, View } from 'react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import CustomersScreen from '../../../app/customers';
 import { customerService } from '@/services/customer-service';
 
@@ -33,7 +33,6 @@ const rows = [
   { id: 'c2', name: 'Green Valley Traders', mobile: '9999900312', city: 'Anand', active: true },
 ];
 
-let tree: ReactTestRenderer | undefined;
 let listeners: Record<string, (event?: unknown) => void>;
 
 beforeEach(() => {
@@ -47,40 +46,43 @@ beforeEach(() => {
   jest.mocked(customerService.getCustomerList).mockReset();
   jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: true, data: rows, pagination: { total_count: 2 } } as never);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.useRealTimers();
   jest.restoreAllMocks();
 });
 
-const hasClear = (node: ReactTestInstance) => node.findAllByType(Text).some(t => t.props.children === 'Clear search');
-/** The View that holds the list and the no-match state: it carries the lift as its marginBottom. */
-const listArea = (screen: ReactTestRenderer) => {
-  const candidates = screen.root.findAll(node =>
-    node.instance != null && typeof node.props.onLayout === 'function' && hasClear(node)
-    && 'marginBottom' in (StyleSheet.flatten(node.props.style) ?? {}));
-  return candidates[candidates.length - 1];
+type Node = NonNullable<typeof screen.root>;
+/**
+ * The View that holds the list and the no-match state: it carries the lift as its marginBottom. It has no role or text,
+ * so it is found as the nearest laid-out View above the "Clear search" button.
+ */
+const listArea = (): Node => {
+  let node: Node | null = screen.getByText('Clear search');
+  while (node) {
+    if (typeof node.props.onLayout === 'function' && 'marginBottom' in (StyleSheet.flatten(node.props.style) ?? {})) return node;
+    node = node.parent;
+  }
+  throw new Error('the list area was not found above "Clear search"');
 };
-const margin = (node: ReactTestInstance) => Number((StyleSheet.flatten(node.props.style) as { marginBottom?: number }).marginBottom ?? 0);
+const margin = (node: Node) => Number((StyleSheet.flatten(node.props.style) as { marginBottom?: number }).marginBottom ?? 0);
 
 it('lifts the list area by the part the keyboard covers while the no-match state shows, and drops the lift when it hides', async () => {
-  await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
-  const field = tree!.root.findAllByType(TextInput).find(node => node.props.placeholder === 'Search customers')!;
-  await act(async () => { field.props.onChangeText('zzzz'); });
+  await render(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>);
+  await screen.findByText('Acme Foods');
+  await userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime }).paste(screen.getByPlaceholderText('Search customers'), 'zzzz');
   await act(async () => { jest.advanceTimersByTime(400); });
-  const screen = tree!;
-  expect(screen.root.findAllByType(Text).some(t => [t.props.children].flat(3).join('').includes('No customers match "zzzz"'))).toBe(true);
+  expect(screen.getByText(/No customers match "zzzz"/)).toBeOnTheScreen();
 
-  const area = listArea(screen);
-  expect(area).toBeDefined();
-  (area.instance as { measureInWindow: unknown }).measureInWindow = (cb: (x: number, y: number, w: number, h: number) => void) =>
-    cb(0, 300, 1080, 1100); // the area's un-lifted bottom is at 1400 (+ the current lift)
-  expect(margin(listArea(screen))).toBe(0);
+  expect(listArea()).toBeDefined();
+  // The jest View keeps its methods on a shared prototype, and the area's own ref is inside the screen: the one
+  // measuring View on this screen is the area, so the prototype answers for it.
+  jest.spyOn(View.prototype as unknown as { measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void }, 'measureInWindow')
+    .mockImplementation(cb => cb(0, 300, 1080, 1100)); // the area's un-lifted bottom is at 1400 (+ the current lift)
+  expect(margin(listArea())).toBe(0);
   await act(async () => { listeners.keyboardDidShow({ endCoordinates: { screenY: 1000, height: 800 } }); });
-  expect(margin(listArea(screen))).toBe(400);
+  expect(margin(listArea())).toBe(400);
   // The state stays whole: Clear search is still in the (shorter) area.
-  expect(hasClear(listArea(screen))).toBe(true);
+  expect(screen.getByText('Clear search')).toBeOnTheScreen();
   await act(async () => { listeners.keyboardDidHide(); });
-  expect(margin(listArea(screen))).toBe(0);
+  expect(margin(listArea())).toBe(0);
 });

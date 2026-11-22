@@ -4,7 +4,7 @@
  * survive that rebuild, and must not survive leaving the screen.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import LoginScreen from '../../../app/login';
 import { getLanguage, setLanguage } from '@/i18n';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
@@ -46,22 +46,23 @@ function Root() {
   const { language } = useAppLanguage();
   return <LoginScreen key={language} />;
 }
-function mount(language: 'en' | 'gu'): ReactTestRenderer {
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+async function mount(language: 'en' | 'gu') {
   mockState = { ...mockState, theme: { ...mockState.theme, language } };
-  let tree!: ReactTestRenderer;
-  act(() => { tree = create(<Root />); });
-  return tree;
+  await render(<Root />);
 }
 /** The rebuild: the saved choice changes, the root renders again and replaces the screen. */
-function rebuildIn(tree: ReactTestRenderer, language: 'en' | 'gu'): ReactTestRenderer {
+async function rebuildIn(language: 'en' | 'gu') {
   mockState = { ...mockState, theme: { ...mockState.theme, language } };
-  act(() => { tree.update(<Root />); });
-  return tree;
+  await screen.rerender(<Root />);
 }
-const phoneField = (tree: ReactTestRenderer) =>
-  tree.root.find(node => node.props.placeholder === '98765 43210' && typeof node.props.onChangeText === 'function' && typeof node.type !== 'string');
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
+const phoneField = () => screen.getByPlaceholderText('98765 43210');
+const enter = async (text: string) => {
+  await user.clear(phoneField());
+  await user.paste(phoneField(), text);
+};
 
 beforeEach(() => {
   clearSignInDraft();
@@ -70,63 +71,58 @@ beforeEach(() => {
 afterEach(() => setLanguage('en'));
 
 describe('sign-in screen and the language switch', () => {
-  it('starts with an empty mobile number', () => {
-    const tree = mount('en');
-    expect(phoneField(tree).props.value).toBe('');
-    act(() => tree.unmount());
+  it('starts with an empty mobile number', async () => {
+    await mount('en');
+    expect(phoneField()).toHaveDisplayValue('');
+    expect(phoneField().props.value).toBe('');
   });
 
-  it('keeps ten digits at most, and a pasted +91 number loses its country code', () => {
-    const tree = mount('en');
-    act(() => phoneField(tree).props.onChangeText('98765 432101'));
+  it('keeps ten digits at most, and a pasted +91 number loses its country code', async () => {
+    await mount('en');
+    await enter('98765 432101');
     // A broken field would show an eleventh digit: '98765 432101'.
-    expect(phoneField(tree).props.value).toBe('98765 43210');
-    act(() => phoneField(tree).props.onChangeText('+91 98765 43210'));
-    expect(phoneField(tree).props.value).toBe('98765 43210');
-    act(() => tree.unmount());
+    expect(phoneField()).toHaveDisplayValue('98765 43210');
+    await enter('+91 98765 43210');
+    expect(phoneField()).toHaveDisplayValue('98765 43210');
   });
 
-  it('keeps a half-typed number when the screen is rebuilt in Gujarati', () => {
-    const tree = mount('en');
-    act(() => phoneField(tree).props.onChangeText('98765 43'));
-    expect(phoneField(tree).props.value).toBe('98765 43');
-    expect(texts(tree)).toContain('Sign in');
+  it('keeps a half-typed number when the screen is rebuilt in Gujarati', async () => {
+    await mount('en');
+    await enter('98765 43');
+    expect(phoneField()).toHaveDisplayValue('98765 43');
+    expect(screen.getByText('Sign in')).toBeOnTheScreen();
 
-    rebuildIn(tree, 'gu');
+    await rebuildIn('gu');
 
     expect(getLanguage()).toBe('gu');
-    expect(texts(tree)).not.toContain('Sign in');
-    expect(texts(tree)).toContain('લૉગિન કરો');
+    expect(screen.queryByText('Sign in', hidden)).not.toBeOnTheScreen();
+    expect(screen.getByText('લૉગિન કરો')).toBeOnTheScreen();
     // A broken screen would show '' here: the new instance starts from its own empty state.
-    expect(phoneField(tree).props.value).toBe('98765 43');
-    act(() => tree.unmount());
+    expect(phoneField()).toHaveDisplayValue('98765 43');
   });
 
-  it('keeps it through a switch there and back, and keeps later typing', () => {
-    const tree = mount('en');
-    act(() => phoneField(tree).props.onChangeText('987'));
-    rebuildIn(tree, 'gu');
-    act(() => phoneField(tree).props.onChangeText('98765'));
-    rebuildIn(tree, 'en');
-    expect(phoneField(tree).props.value).toBe('98765');
-    act(() => tree.unmount());
+  it('keeps it through a switch there and back, and keeps later typing', async () => {
+    await mount('en');
+    await enter('987');
+    await rebuildIn('gu');
+    await enter('98765');
+    await rebuildIn('en');
+    expect(phoneField()).toHaveDisplayValue('98765');
   });
 
-  it('forgets the number when the screen is left without a language change', () => {
-    const first = mount('en');
-    act(() => phoneField(first).props.onChangeText('9876543210'));
-    act(() => first.unmount());
+  it('forgets the number when the screen is left without a language change', async () => {
+    await mount('en');
+    await enter('9876543210');
+    await screen.unmount();
     expect(readSignInDraft(mockOrigin)).toBe('');
-    const second = mount('en');
-    expect(phoneField(second).props.value).toBe('');
-    act(() => second.unmount());
+    await mount('en');
+    expect(phoneField()).toHaveDisplayValue('');
   });
 
-  it('does not offer a number typed for another facility', () => {
+  it('does not offer a number typed for another facility', async () => {
     saveSignInDraft('9876543210', 'https://other-facility.example.test');
-    const tree = mount('en');
-    expect(phoneField(tree).props.value).toBe('');
-    act(() => tree.unmount());
+    await mount('en');
+    expect(phoneField()).toHaveDisplayValue('');
   });
 });
 

@@ -5,7 +5,7 @@
  * is not sent again on a guess. A financial year that is not a number is left out of the request.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import InvoiceDetailScreen from '../../../app/invoice-details/[id]';
 import { getInvoiceDetails, getInvoiceItemsDetailed, getInvoiceReasons } from '@/services/invoice-service';
 import { showAlert } from '@/utils/alert';
@@ -39,9 +39,33 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/components/skeletons', () => ({ DetailSkeleton: () => null }));
-// The dialog is a host element that keeps its props: its onConfirm is the screen's own.
+// A stand-in for the dialog: open only while `visible`, one button that sends the range 10002 to 10002 through the
+// screen's own onConfirm, and, as the real dialog does, a failure thrown by onConfirm is drawn as its text.
 jest.mock('@/components/PrintRangeDialog', () => ({
-  PrintRangeDialog: (props: object) => require('react').createElement('PrintRangeDialog', props),
+  PrintRangeDialog: (props: { visible: boolean; onConfirm: (start: string, end: string) => Promise<unknown> }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const [error, setError] = require('react').useState(null as string | null);
+    if (!props.visible) return null;
+    return (
+      <View>
+        <Text>Print range dialog</Text>
+        {error ? <Text>{error}</Text> : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Confirm the range"
+          onPress={async () => {
+            try {
+              await props.onConfirm('10002', '10002');
+            } catch (failure) {
+              setError((failure as Error).message);
+            }
+          }}
+        >
+          <Text>Confirm the range</Text>
+        </Pressable>
+      </View>
+    );
+  },
 }));
 jest.mock('@/services/pdf-service', () => ({ generateInvoicePDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
@@ -58,13 +82,20 @@ jest.mock('@/services/invoice-service', () => ({
 }));
 jest.mock('@/components/invoice-details', () => ({
   InvoiceHeroHeader: () => null,
-  InvoiceTabNavigator: 'InvoiceTabNavigator',
+  // A stand-in that draws one button for the Overview tab and calls the page's real on_tab_change.
+  InvoiceTabNavigator: (props: { on_tab_change: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="overview tab" onPress={() => props.on_tab_change('overview')}>
+        <Text>overview</Text>
+      </Pressable>
+    );
+  },
   InvoiceOverviewTab: jest.requireActual('@/components/invoice-details/InvoiceOverviewTab').InvoiceOverviewTab,
   InvoiceLineItemsTab: () => null,
   InvoiceBreakdownTab: () => null,
 }));
 
-let renderer: ReturnType<typeof create>;
 const header = (extra: Record<string, unknown> = {}) => ({
   invoice_number: 10002, invoice_date: '2026-10-01', gr_no: 'A1', total: 100, tax_amount: 5, labour: 0, discount: 0,
   financial_year: '2025-26', updated_at: '2026-10-02T04:00:00.123Z', customer: { id: 'c1', name: 'Asha Traders' }, ...extra,
@@ -75,16 +106,16 @@ const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status 
 
 async function open(extra: Record<string, unknown> = {}) {
   jest.mocked(getInvoiceDetails).mockResolvedValue(detail(extra));
-  await act(async () => { renderer = create(<InvoiceDetailScreen />); });
-  await act(async () => {
-    renderer.root.findByType('InvoiceTabNavigator' as unknown as React.ElementType).props.on_tab_change('overview');
-  });
+  await render(<InvoiceDetailScreen />);
+  await user().press(await screen.findByRole('button', { name: 'overview tab' }));
 }
-const printButtons = () => renderer.root.findAll(n => typeof n.props.onPress === 'function' && /^print/i.test(String(n.props.accessibilityLabel ?? '')));
-const openDialog = async () => { await act(async () => { printButtons()[0].props.onPress(); }); };
-const dialog = () => renderer.root.findByType('PrintRangeDialog' as never);
+const user = () => userEvent.setup({ delay: 0 });
+// A button that is NOT offered must also be absent when mounted but hidden.
+const printButtons = (hidden = false) => screen.queryAllByLabelText(/^print/i, { includeHiddenElements: hidden });
+const openDialog = async () => { await user().press(screen.getAllByLabelText(/^print/i)[0]); };
+const dialogOpen = () => screen.queryByText('Print range dialog', { includeHiddenElements: true });
 const toastShown = () => jest.mocked(showToast).mock.calls;
-const confirm = (start = '10002', end = '10002') => dialog().props.onConfirm(start, end) as Promise<void>;
+const confirm = () => user().press(screen.getByRole('button', { name: 'Confirm the range' }));
 const sentBody = () => JSON.parse(mockFetch.mock.calls[0][1].body);
 
 beforeEach(() => {
@@ -97,26 +128,25 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
+afterEach(() => {
   jest.restoreAllMocks();
-  await act(async () => { renderer.unmount(); });
 });
 
 describe('who sees Print', () => {
   it.each(['admin', 'supervisor', 'staff'])('%s sees Print', async (role) => {
     mockRole = role;
     await open();
-    expect(printButtons().length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole('button', { name: /^print/i }).length).toBeGreaterThan(0);
   });
   it('a customer does not', async () => {
     mockRole = 'customer';
     await open();
-    expect(printButtons()).toHaveLength(0);
+    expect(printButtons(true)).toHaveLength(0);
   });
   it('nobody does where the facility has printing off', async () => {
     mockPrinting = false;
     await open();
-    expect(printButtons()).toHaveLength(0);
+    expect(printButtons(true)).toHaveLength(0);
   });
 });
 
@@ -125,17 +155,19 @@ describe('printing from the screen', () => {
     mockFetch.mockResolvedValue(reply(200, { success: true, message: 'ok', print_job: { print_job_id: 'j1', cups_job_id: 7, job_uri: 'x', printer: 'P', content_size: 1 } }));
     await open();
     await openDialog();
-    await act(async () => { await confirm(); });
+    await confirm();
+    await waitFor(() => expect(toastShown()).toEqual([['Sent to the printer (job 7).']]));
     expect(mockFetch.mock.calls[0][0]).toBe('https://example.invalid/functions/v1/print-invoice-preprinted');
     expect(sentBody()).toEqual({ start_inv_no_str: '10002', end_inv_no_str: '10002', inv_fin_year: 2025, request_id: expect.any(String) });
-    expect(toastShown()).toEqual([['Sent to the printer (job 7).']]);
-    expect(dialog().props.visible).toBe(false);
+    expect(dialogOpen()).not.toBeOnTheScreen();
   });
 
   it('leaves out a financial year that is not a number', async () => {
     mockFetch.mockResolvedValue(reply(200, { success: true }));
     await open({ financial_year: 'not a year' });
-    await act(async () => { await confirm(); });
+    await openDialog();
+    await confirm();
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
     expect(sentBody()).toEqual({ start_inv_no_str: '10002', end_inv_no_str: '10002', request_id: expect.any(String) });
   });
 
@@ -147,8 +179,9 @@ describe('printing from the screen', () => {
     mockFetch.mockResolvedValue(reply(status, body));
     await open();
     await openDialog();
-    await act(async () => { await expect(confirm()).rejects.toThrow(text); });
-    expect(dialog().props.visible).toBe(true);
+    await confirm();
+    expect(await screen.findByText(text)).toBeOnTheScreen();
+    expect(dialogOpen()).toBeOnTheScreen();
     expect(toastShown()).toHaveLength(0);
   });
 
@@ -156,18 +189,19 @@ describe('printing from the screen', () => {
     mockFetch.mockRejectedValue(new Error('Network request failed'));
     await open();
     await openDialog();
-    await act(async () => { await expect(confirm()).rejects.toThrow("Couldn't reach the print server. Check your connection and try again."); });
-    expect(dialog().props.visible).toBe(true);
+    await confirm();
+    expect(await screen.findByText("Couldn't reach the print server. Check your connection and try again.")).toBeOnTheScreen();
+    expect(dialogOpen()).toBeOnTheScreen();
   });
 
   it('an unconfirmed job closes the dialog and shows the "Print not confirmed" alert (Product, 2026-11-07)', async () => {
     mockFetch.mockResolvedValue(reply(502, { success: false, error: 'The printer did not confirm the job', code: 'PRINT_UNCONFIRMED', unconfirmed: true, print_job_id: 'j1' }));
     await open();
     await openDialog();
-    expect(dialog().props.visible).toBe(true);
-    await act(async () => { await confirm(); });
-    expect(dialog().props.visible).toBe(false);
-    expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.');
+    expect(dialogOpen()).toBeOnTheScreen();
+    await confirm();
+    await waitFor(() => expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.'));
+    expect(dialogOpen()).not.toBeOnTheScreen();
     expect(toastShown()).toHaveLength(0);
   });
 });

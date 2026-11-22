@@ -3,8 +3,7 @@
  * FIELD_BLOCK_ID that holds the field's message lines (the wizard bar keeps that block above itself).
  */
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { InvoiceCalculationSummary } from '../InvoiceCalculationSummary';
 import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
 import { t as tr } from '@/i18n';
@@ -30,29 +29,25 @@ const header = (over: Partial<InvoiceHeaderData> = {}): InvoiceHeaderData => ({
 });
 const FREE = { temp_id: 'f', disp_trl_id: 'f', qty: 100, charge: 0, labour_rate: 2, tax: 5, duration: 1, amount: 0, labour_amount: 200, tax_amount: 10, item_total: 210 } as InvoiceItemData;
 
-let tree: ReturnType<typeof create>;
 const mount = async (props: Partial<React.ComponentProps<typeof InvoiceCalculationSummary>>) => {
-  await act(async () => {
-    tree = create(
-      <InvoiceCalculationSummary
-        header={header()}
-        items={[FREE]}
-        onDiscountChange={jest.fn()}
-        onDiscountReasonChange={jest.fn()}
-        onZeroChargeReasonChange={jest.fn()}
-        {...props}
-      />
-    );
-  });
+  await render(
+    <InvoiceCalculationSummary
+      header={header()}
+      items={[FREE]}
+      onDiscountChange={jest.fn()}
+      onDiscountReasonChange={jest.fn()}
+      onZeroChargeReasonChange={jest.fn()}
+      {...props}
+    />
+  );
 };
-afterEach(async () => { await act(async () => { tree.unmount(); }); });
-const input = (key: string) => tree.root.findAllByType(TextInput).find((node) => node.props.testID === key)!;
+const input = (key: string) => screen.getByTestId(key);
 
 describe('Invoice step 3 field blocks', () => {
   it('Discount: the block holds the box and its error line, and no other field', async () => {
     const onError = jest.fn();
     await mount({ onDiscountErrorChange: onError });
-    await act(async () => { input('invoice-summary-discount').props.onChangeText('abc'); });
+    await fireEvent.changeText(input('invoice-summary-discount'), 'abc');
     const block = blockOf(input('invoice-summary-discount'));
     expect(block).not.toBeNull();
     expect(inputsIn(block!)).toBe(1);

@@ -6,7 +6,7 @@
  * read that follows, which is not what is tested here). Fictional data only.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import GRNDetailScreen from '../../../app/grn-details/[id]';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
@@ -15,8 +15,6 @@ import { showAlert } from '@/utils/alert';
 import { setLanguage } from '@/i18n';
 
 const mockGetGRNDetails = jest.fn();
-let mockTabProps: any;
-let mockInvoicesProps: any;
 let mockRole = 'admin';
 let mockAllowed: boolean | 'fail' = false;
 const mockRpc = jest.fn(async (name: string) => {
@@ -80,11 +78,27 @@ jest.mock('@/services/grn-detail-service', () => ({
 jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNImage: jest.fn(), deleteGRNImage: jest.fn() }));
 jest.mock('@/components/grn-details', () => ({
   GRNHeroHeader: () => null,
-  GRNTabNavigator: (props: unknown) => { mockTabProps = props; return null; },
+  // Draws the tab buttons the page's tab bar draws, and calls the page's own onTabChange.
+  GRNTabNavigator: (props: { onTabChange: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return ['overview', 'invoices', 'images'].map((tab) => (
+      <Pressable key={tab} accessibilityRole="button" accessibilityLabel={`${tab} tab`} onPress={() => props.onTabChange(tab)}>
+        <Text>{tab}</Text>
+      </Pressable>
+    ));
+  },
   GRNOverviewTab: () => null,
   GRNItemsTab: () => null,
   GRNDispatchesTab: () => null,
-  GRNInvoicesTab: (props: unknown) => { mockInvoicesProps = props; return null; },
+  // Draws the Create invoice button of the Invoices tab; it is busy while the page's creatingInvoice is true.
+  GRNInvoicesTab: (props: { onCreateInvoice: () => void; creatingInvoice: boolean }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable testID="grn-create-invoice" accessibilityRole="button" accessibilityLabel="Create invoice" accessibilityState={{ busy: props.creatingInvoice }} onPress={() => props.onCreateInvoice()}>
+        <Text>Create invoice</Text>
+      </Pressable>
+    );
+  },
   GRNImagesTab: () => null,
 }));
 
@@ -102,15 +116,21 @@ const grn = {
   },
 };
 
-let tree: ReturnType<typeof create> | undefined;
+const user = userEvent.setup({ delay: 0 });
+const createButton = () => screen.getByTestId('grn-create-invoice');
 const mount = async (role: string) => {
   mockRole = role;
   mockGetGRNDetails.mockResolvedValue(grn);
-  await act(async () => { tree = create(<GRNDetailScreen />); });
-  await act(async () => { mockTabProps.onTabChange('invoices'); });
-  expect(typeof mockInvoicesProps.onCreateInvoice).toBe('function');
+  await render(<GRNDetailScreen />);
+  await user.press(screen.getByRole('button', { name: 'invoices tab' }));
+  expect(createButton()).toBeOnTheScreen();
 };
-const tapCreate = async () => { await act(async () => { await mockInvoicesProps.onCreateInvoice(); }); };
+// The page's handler is async (it asks the server first); a pause lets its answer reach the screen.
+const settle = () => act(async () => { await new Promise((resolve) => setImmediate(resolve)); });
+const tapCreate = async () => {
+  await user.press(createButton());
+  await settle();
+};
 const lastAlert = () => jest.mocked(showAlert).mock.calls.at(-1)!;
 const buttonTexts = () => (lastAlert()[2] ?? []).map((button) => button.text);
 
@@ -118,15 +138,12 @@ beforeEach(() => {
   jest.clearAllMocks();
   setLanguage('en');
   mockAllowed = false;
-  mockInvoicesProps = undefined;
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc: mockRpc } as never);
   jest.mocked(prepareInvoiceFromGrn).mockResolvedValue({ ok: true, step: 'review' });
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
@@ -142,7 +159,7 @@ describe('GRN details, Create invoice, with no GST details', () => {
     expect(prepareInvoiceFromGrn).not.toHaveBeenCalled();
     expect(router.push).not.toHaveBeenCalled();
     // The button is free again (not stuck busy) and asks again on the next tap.
-    expect(mockInvoicesProps.creatingInvoice).toBe(false);
+    expect(createButton().props.accessibilityState).toEqual({ busy: false });
 
     await act(async () => { (lastAlert()[2] ?? []).find((button) => button.text === 'Open GST details')!.onPress?.(); });
     expect(router.push).toHaveBeenCalledWith('/gst-details');

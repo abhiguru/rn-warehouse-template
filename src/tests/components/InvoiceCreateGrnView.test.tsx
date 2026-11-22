@@ -5,7 +5,7 @@
  * form had the same fault (InvoiceEditGrnView.test.tsx).
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import InvoiceFormStep1 from '../../../app/invoice-form/step1';
 
 const mockLoadGRNData = jest.fn(async () => ({ success: true, itemCount: 1 }));
@@ -53,14 +53,10 @@ jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: ()
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
 
 it('does not load the GRN again when the screen comes back into focus', async () => {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<InvoiceFormStep1 />);
-  });
+  await render(<InvoiceFormStep1 />);
   // First focus is the screen opening; the later ones are returns to it.
   for (let focus = 0; focus < 3; focus++)
     await act(async () => { mockFocusCallbacks.forEach((callback) => callback()); });
 
   expect(mockLoadGRNData).not.toHaveBeenCalled();
-  await act(async () => { tree.unmount(); });
 });

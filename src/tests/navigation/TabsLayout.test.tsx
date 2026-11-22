@@ -1,6 +1,5 @@
 import React from 'react';
-import { act, create } from 'react-test-renderer';
-import type { ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import TabsLayout from '../../../app/(tabs)/_layout';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { initializeAuth } from '@/store/slices/authSlice';
@@ -21,28 +20,27 @@ const darkTokens = getTokens(SAMPLE_BRAND, 'dark');
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: {} } }));
 jest.mock('react-native', () => {
   const React = require('react');
-  const View = (props: Record<string, unknown>) =>
-    React.createElement('react-native-view', props);
+  // The real react-native (Testing Library needs its Text and View), with the same four stand-ins as before.
+  const actual = jest.requireActual('react-native');
+  const View = actual.View;
 
-  return {
-    View,
-    ActivityIndicator: (props: Record<string, unknown>) =>
-      React.createElement(View, {
-        ...props,
-        testID: 'auth-restore-spinner',
-      }),
-    Image: (props: Record<string, unknown>) =>
-      React.createElement(View, { ...props, testID: 'tabs-background' }),
-    StyleSheet: {
-      absoluteFill: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  // The stand-ins sit on top of the real module, whose other exports stay lazy (a spread would load every one).
+  return Object.create(actual, {
+    ActivityIndicator: {
+      enumerable: true,
+      value: (props: Record<string, unknown>) =>
+        React.createElement(View, {
+          ...props,
+          testID: 'auth-restore-spinner',
+        }),
     },
-    Platform: {
-      OS: 'ios',
+    Image: {
+      enumerable: true,
+      value: (props: Record<string, unknown>) =>
+        React.createElement(View, { ...props, testID: 'tabs-background' }),
     },
-    StatusBar: {
-      setBarStyle: jest.fn(),
-    },
-  };
+    StatusBar: { enumerable: true, value: { setBarStyle: jest.fn() } },
+  });
 });
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
@@ -151,36 +149,16 @@ const createDeferred = (): Deferred => {
   return { promise, resolve, reject };
 };
 
-const findTestId = (
-  root: ReactTestInstance,
-  testID: string
-): ReactTestInstance | undefined =>
-  root.findAll((node) => node.props.testID === testID)[0];
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const expectShown = (testID: string) => expect(screen.queryAllByTestId(testID).length > 0).toBe(true);
+const expectAbsent = (testID: string) => expect(screen.queryAllByTestId(testID, everything).length > 0).toBe(false);
+const getTestId = (testID: string) => screen.getByTestId(testID);
 
-const hasTestId = (root: ReactTestInstance, testID: string): boolean =>
-  Boolean(findTestId(root, testID));
-
-const getTestId = (
-  root: ReactTestInstance,
-  testID: string
-): ReactTestInstance => {
-  const node = findTestId(root, testID);
-  expect(node).toBeDefined();
-  return node as ReactTestInstance;
-};
-
-const renderLayout = async (): Promise<ReactTestRenderer> => {
-  let renderer!: ReactTestRenderer;
+const renderLayout = async (): Promise<void> => {
+  await render(<TabsLayout />);
   await act(async () => {
-    renderer = create(<TabsLayout />);
     await flushPromises();
-  });
-  return renderer;
-};
-
-const unmountLayout = async (renderer: ReactTestRenderer): Promise<void> => {
-  await act(async () => {
-    renderer.unmount();
   });
 };
 
@@ -241,28 +219,26 @@ describe('TabsLayout authentication gate', () => {
     authState.userProfile = { id: 'profile-1', role: 'customer' };
     authState.initializeStatus = 'settled';
     authState.initializeGeneration = getSessionGeneration();
-    const renderer = await renderLayout();
+    await renderLayout();
 
     expect(loadAuthSlice).not.toHaveBeenCalled();
     expect(initializeAuth).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
     // No second spinner: the tabs are there on the first render.
-    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(false);
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(true);
+    expectAbsent('auth-restore-spinner');
+    expectShown('protected-tabs');
     expect(replace).not.toHaveBeenCalled();
-    await unmountLayout(renderer);
   });
 
   it('redirects at once, without restoring again, when the root restore settled signed out', async () => {
     authState.initializeStatus = 'settled';
     authState.initializeGeneration = getSessionGeneration();
-    const renderer = await renderLayout();
+    await renderLayout();
 
     expect(initializeAuth).not.toHaveBeenCalled();
     expect(replace).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenCalledWith('/login');
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
-    await unmountLayout(renderer);
+    expectAbsent('protected-tabs');
   });
 
   it('restores once when the settled restore belongs to an earlier session (remount after a switch)', async () => {
@@ -270,81 +246,75 @@ describe('TabsLayout authentication gate', () => {
     authState.initializeStatus = 'settled';
     authState.initializeGeneration = getSessionGeneration();
     advanceSessionGeneration();
-    const renderer = await renderLayout();
+    await renderLayout();
 
     expect(initializeAuth).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(true);
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
+    expectShown('auth-restore-spinner');
+    expectAbsent('protected-tabs');
     await settleRestore(restore);
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(true);
-    await unmountLayout(renderer);
+    expectShown('protected-tabs');
   });
 
   it('waits for a restore already running for the current session instead of starting another', async () => {
     authState.initializeStatus = 'pending';
     authState.initializeGeneration = getSessionGeneration();
-    const renderer = await renderLayout();
+    await renderLayout();
 
     expect(initializeAuth).not.toHaveBeenCalled();
-    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(true);
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
+    expectShown('auth-restore-spinner');
+    expectAbsent('protected-tabs');
 
     authState.userProfile = { id: 'profile-1', role: 'customer' };
     authState.initializeStatus = 'settled';
     await act(async () => {
-      renderer.update(<TabsLayout />);
+      await screen.rerender(<TabsLayout />);
       await flushPromises();
     });
     expect(initializeAuth).not.toHaveBeenCalled();
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(true);
-    await unmountLayout(renderer);
+    expectShown('protected-tabs');
   });
 
   it('stops waiting when the running restore is superseded (a sign-in set the profile)', async () => {
     authState.initializeStatus = 'pending';
     authState.initializeGeneration = getSessionGeneration();
-    const renderer = await renderLayout();
-    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(true);
+    await renderLayout();
+    expectShown('auth-restore-spinner');
 
     authState.userProfile = { id: 'profile-1', role: 'customer' };
     authState.initializeStatus = 'idle';
     await act(async () => {
-      renderer.update(<TabsLayout />);
+      await screen.rerender(<TabsLayout />);
       await flushPromises();
     });
     expect(initializeAuth).not.toHaveBeenCalled();
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(true);
-    await unmountLayout(renderer);
+    expectShown('protected-tabs');
   });
 
   it('keeps the protected tabs and login redirect hidden while its own auth restoration is pending (status idle)', async () => {
-    const renderer = await renderLayout();
-    const root = renderer.root;
+    await renderLayout();
 
     expect(loadAuthSlice).toHaveBeenCalledTimes(1);
     expect(initializeAuth).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith({ __initializeAuthThunk: true });
-    expect(hasTestId(root, 'auth-restore-spinner')).toBe(true);
-    expect(hasTestId(root, 'protected-tabs')).toBe(false);
-    expect(hasTestId(root, 'tabs-background')).toBe(false);
+    expectShown('auth-restore-spinner');
+    expectAbsent('protected-tabs');
+    expectAbsent('tabs-background');
     expect(replace).not.toHaveBeenCalled();
 
-    await unmountLayout(renderer);
   });
 
   it('shows the configured pending indicator while auth restoration is pending', async () => {
-    const renderer = await renderLayout();
-    const spinner = getTestId(renderer.root, 'auth-restore-spinner');
+    await renderLayout();
+    const spinner = getTestId('auth-restore-spinner');
 
     expect(spinner.props.size).toBe('large');
     expect(spinner.props.color).toBe(lightTokens.brand.tint);
 
-    await unmountLayout(renderer);
   });
 
   it('renders every protected tab after a custom profile restores without Supabase credentials', async () => {
-    const renderer = await renderLayout();
+    await renderLayout();
 
     authState.userProfile = {
       id: 'profile-1',
@@ -352,11 +322,10 @@ describe('TabsLayout authentication gate', () => {
     };
     await settleRestore(restore);
 
-    const root = renderer.root;
-    expect(hasTestId(root, 'auth-restore-spinner')).toBe(false);
-    expect(hasTestId(root, 'protected-tabs')).toBe(true);
-    expect(hasTestId(root, 'tabs-custom-tab-bar')).toBe(true);
-    expect(hasTestId(root, 'fiori-tab-bar')).toBe(true);
+    expectAbsent('auth-restore-spinner');
+    expectShown('protected-tabs');
+    expectShown('tabs-custom-tab-bar');
+    expectShown('fiori-tab-bar');
 
     const expectedScreens = [
       'index',
@@ -367,48 +336,44 @@ describe('TabsLayout authentication gate', () => {
     ];
     expect(
       expectedScreens.map(
-        (name) => hasTestId(root, `tab-screen-${name}`)
+        (name) => screen.queryAllByTestId(`tab-screen-${name}`).length > 0
       )
     ).toEqual(expectedScreens.map(() => true));
 
     expect(replace).not.toHaveBeenCalled();
-    await unmountLayout(renderer);
   });
 
   it('renders protected tabs when a Supabase user and session are present', async () => {
-    const renderer = await renderLayout();
+    await renderLayout();
 
     authState.user = { id: 'supabase-user' };
     authState.session = { access_token: 'session-token' };
     await settleRestore(restore);
 
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(true);
+    expectShown('protected-tabs');
     expect(replace).not.toHaveBeenCalled();
-    await unmountLayout(renderer);
   });
 
   it('redirects once restoration settles with neither a profile nor credentials', async () => {
-    const renderer = await renderLayout();
+    await renderLayout();
 
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
+    expectAbsent('protected-tabs');
     await settleRestore(restore);
 
     expect(replace).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenCalledWith('/login');
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
-    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(true);
-    await unmountLayout(renderer);
+    expectAbsent('protected-tabs');
+    expectShown('auth-restore-spinner');
   });
 
   it('redirects when restoration rejects and no credentials remain', async () => {
-    const renderer = await renderLayout();
+    await renderLayout();
 
     await settleRestore(restore, 'rejected');
 
     expect(replace).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenCalledWith('/login');
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
-    await unmountLayout(renderer);
+    expectAbsent('protected-tabs');
   });
 
   it.each([
@@ -416,7 +381,7 @@ describe('TabsLayout authentication gate', () => {
     { description: 'only a Supabase session exists', user: null, session: { access_token: 'token' } },
     { description: 'the auth fields are undefined', user: undefined, session: undefined },
   ])('redirects when $description', async ({ user, session }) => {
-    const renderer = await renderLayout();
+    await renderLayout();
 
     authState.user = user;
     authState.session = session;
@@ -424,21 +389,20 @@ describe('TabsLayout authentication gate', () => {
 
     expect(replace).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenCalledWith('/login');
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
-    await unmountLayout(renderer);
+    expectAbsent('protected-tabs');
   });
 
   it('does not navigate or update after unmounting before restoration resolves', async () => {
-    const renderer = await renderLayout();
+    await renderLayout();
+    await screen.unmount();
 
-    await unmountLayout(renderer);
     await settleRestore(restore);
 
     expect(replace).not.toHaveBeenCalled();
   });
 
   it('does not navigate a second time when restoration stays authenticated', async () => {
-    const renderer = await renderLayout();
+    await renderLayout();
 
     authState.userProfile = { id: 'profile-1', role: 'customer' };
     await settleRestore(restore);
@@ -449,30 +413,28 @@ describe('TabsLayout authentication gate', () => {
     });
 
     expect(replace).not.toHaveBeenCalled();
-    expect(hasTestId(renderer.root, 'protected-tabs')).toBe(true);
-    await unmountLayout(renderer);
+    expectShown('protected-tabs');
   });
 
   it('passes the Fiori tab bar to the protected Tabs component', async () => {
-    const renderer = await renderLayout();
+    await renderLayout();
 
     authState.userProfile = { id: 'profile-1', role: 'customer' };
     await settleRestore(restore);
 
-    const tabBarController = getTestId(renderer.root, 'tabs-custom-tab-bar');
-    const tabBar = getTestId(renderer.root, 'fiori-tab-bar');
+    const tabBarController = getTestId('tabs-custom-tab-bar');
+    const tabBar = getTestId('fiori-tab-bar');
 
     expect(tabBar.props.screenOptions).toEqual({
       headerShown: false,
       sceneStyle: { backgroundColor: lightTokens.background.base },
     });
-    await unmountLayout(renderer);
   });
 
   it('ends the Redux session locally when the credentials vanish under a restored profile', async () => {
     const logout = jest.fn((options: unknown) => ({ __logoutThunk: options }));
     (loadAuthSlice as jest.Mock).mockResolvedValue({ initializeAuth, logout });
-    const renderer = await renderLayout();
+    await renderLayout();
 
     authState.userProfile = { id: 'profile-1', role: 'customer' };
     await settleRestore(restore);
@@ -489,19 +451,17 @@ describe('TabsLayout authentication gate', () => {
 
     expect(logout).toHaveBeenCalledWith({ localOnly: true });
     expect(dispatch).toHaveBeenCalledWith({ __logoutThunk: { localOnly: true } });
-    await unmountLayout(renderer);
   });
 
   it('keeps the session guard disarmed without a profile', async () => {
-    const renderer = await renderLayout();
+    await renderLayout();
     await settleRestore(restore);
 
     expect((useSessionGenerationGuard as jest.Mock).mock.calls.every(([armed]) => armed === false)).toBe(true);
-    await unmountLayout(renderer);
   });
 
   it('applies dark theme output when restored', async () => {
-    const renderer = await renderLayout();
+    await renderLayout();
 
     (useTheme as jest.Mock).mockReturnValue({
       tokens: darkTokens,
@@ -518,10 +478,9 @@ describe('TabsLayout authentication gate', () => {
       false
     );
     expect(
-      getTestId(renderer.root, 'tabs-safe-area').props.style
+      getTestId('tabs-safe-area').props.style
     ).toEqual(
       expect.objectContaining({ backgroundColor: darkTokens.background.base })
     );
-    await unmountLayout(renderer);
   });
 });

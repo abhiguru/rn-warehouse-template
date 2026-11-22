@@ -6,8 +6,9 @@
 import React from 'react';
 import { TextInput } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { act } from 'react-test-renderer';
-import type { ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
+import { expect } from '@jest/globals';
+import { fireEvent, screen } from '@testing-library/react-native';
+import { findFiber } from '@/tests/helpers/fiberTree';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { applySavedRates, bulkUpdateItemGroupPricing, updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import { InvoiceItemsEditor, type InvoiceItemsEditorHandle } from '@/features/invoice/components/items/InvoiceItemsEditor';
@@ -16,17 +17,6 @@ import type { InvoiceItemData } from '@/types/invoice.types';
 interface State {
   invoiceForm: { items: InvoiceItemData[]; itemOverrides: Record<string, string[]> };
 }
-
-const rendered: ReactTestRenderer[] = [];
-/** Remember a rendered tree so `unmountAll()` can drop it after the test (its settle timer must not outlive the test). */
-export const track = (tree: ReactTestRenderer): ReactTestRenderer => {
-  rendered.push(tree);
-  return tree;
-};
-/** Unmount every tracked tree; a test file calls it in `afterEach` inside `act`. */
-export const unmountAll = (): void => {
-  while (rendered.length > 0) rendered.pop()!.unmount();
-};
 
 export function ConnectedEditor({
   oneTime = false,
@@ -54,81 +44,101 @@ export function ConnectedEditor({
   );
 }
 
-/** The input with this test id (`cell|<temp_id>|charge`, `group|<item>:::<mark>|tax`). */
-export const inputOf = (tree: ReactTestRenderer, testID: string): ReactTestInstance => {
-  const found = tree.root.findAllByType(TextInput).filter((node) => node.props.testID === testID);
-  if (found.length === 0) throw new Error(`no input ${testID}`);
-  return found[0];
-};
-export const hasInput = (tree: ReactTestRenderer, testID: string): boolean =>
-  tree.root.findAllByType(TextInput).some((node) => node.props.testID === testID);
+/** A rendered host element (Testing Library exports no name for the type). */
+export type Host = ReturnType<typeof screen.getByRole>;
 
-/** Every Text in the tree, flattened to its string (a no-break space reads as a space). */
-export const textsOf = (tree: ReactTestRenderer): string[] =>
-  tree.root
-    .findAll((node) => (node.type as unknown) === 'Text')
-    .map((node) => {
-      const kids = node.props.children;
-      const text = Array.isArray(kids) ? kids.filter((k: unknown) => typeof k === 'string').join('') : typeof kids === 'string' ? kids : '';
-      return text.replace(/\u00a0/g, ' ');
-    });
+/** The input with this test id (`cell|<temp_id>|charge`, `group|<item>:::<mark>|tax`). */
+export const inputOf = (testID: string): Host => screen.getByTestId(testID);
+/** Query option for "not drawn at all" checks: the old tree walk saw hidden-but-mounted nodes too. Positive checks stay on visible nodes. */
+export const HIDDEN = { includeHiddenElements: true } as const;
+export const hasInput = (testID: string): boolean => screen.queryAllByTestId(testID).length > 0;
+/** For "not drawn at all" checks: also finds a node that is mounted but hidden. */
+export const hasInputMounted = (testID: string): boolean => screen.queryAllByTestId(testID, HIDDEN).length > 0;
+
+/** Every Text on screen, flattened to its string (a no-break space reads as a space). */
+export const textsOf = (): string[] =>
+  screen.root!
+    .queryAll((node) => node.type === 'Text', { includeSelf: true })
+    .map((node) => node.children.filter((child) => typeof child === 'string').join('').replace(/\u00a0/g, ' '));
 
 /**
- * The test ids of the inputs that `focus()` was called on, in order. The test renderer gives every
- * TextInput the same `focus` mock; its recorded `this` tells which input each call was for.
+ * The test ids of the inputs that `focus()` (or `blur()`) was called on, in order. The test renderer gives every
+ * TextInput the same `focus` and `blur` mock; its recorded `this` tells which input each call was for. The mocks
+ * keep their calls for the whole file: a test that counts them clears them first (`clearFocused()`).
  */
-export const focusedIds = (tree: ReactTestRenderer): string[] => {
-  const any = tree.root.findAllByType(TextInput)[0];
-  const focus = any.instance.focus as unknown as { mock: { contexts: Array<{ props?: { testID?: string } } | undefined> } };
-  return focus.mock.contexts.map((context) => String(context?.props?.testID));
-};
+type RecordedCalls = { mock: { contexts: Array<{ props?: { testID?: string } } | undefined> }; mockClear: () => void };
+const inputMock = (name: 'focus' | 'blur') => (TextInput.prototype as unknown as Record<'focus' | 'blur', RecordedCalls>)[name];
+export const focusedIds = (): string[] => inputMock('focus').mock.contexts.map((context) => String(context?.props?.testID));
+export const blurredIds = (): string[] => inputMock('blur').mock.contexts.map((context) => String(context?.props?.testID));
+export const clearFocused = (): void => { inputMock('focus').mockClear(); inputMock('blur').mockClear(); };
 
 /**
  * The real `TextInput` mode. A test file that calls these starts with
  * `jest.unmock('react-native/Libraries/Components/TextInput/TextInput')`: react-native's own input
  * releases the caller's ref and sets it again on every key it reports (`setLocalRef` depends on the
  * event count), which its jest mock does not, and the editor has to hold up under that. The host input
- * (the string-typed node with the test id) is driven with the events the device sends.
+ * (the node with the test id) is driven with the events the device sends.
  */
 const NATIVE_TARGET = 7;
-export const hostInputOf = (tree: ReactTestRenderer, testID: string): ReactTestInstance =>
-  tree.root.find((node) => typeof node.type === 'string' && node.props.testID === testID && typeof node.props.onChange === 'function');
+export const hostInputOf = (testID: string): Host => screen.getByTestId(testID);
 /** The focus event of the native input. */
-export const hostFocus = (tree: ReactTestRenderer, testID: string): void => {
-  hostInputOf(tree, testID).props.onFocus({ nativeEvent: { target: NATIVE_TARGET } });
+export const hostFocus = async (testID: string): Promise<void> => {
+  await fireEvent(hostInputOf(testID), 'focus', { nativeEvent: { target: NATIVE_TARGET } });
 };
 /** One key: the whole text now, and the number of events so far (the native input counts them). */
-export const hostKey = (tree: ReactTestRenderer, testID: string, text: string, eventCount: number): void => {
-  hostInputOf(tree, testID).props.onChange({ nativeEvent: { text, eventCount, target: NATIVE_TARGET } });
+export const hostKey = async (testID: string, text: string, eventCount: number): Promise<void> => {
+  await fireEvent(hostInputOf(testID), 'change', { nativeEvent: { text, eventCount, target: NATIVE_TARGET } });
 };
-export const hostBlur = (tree: ReactTestRenderer, testID: string): void => {
-  hostInputOf(tree, testID).props.onBlur({ nativeEvent: { target: NATIVE_TARGET } });
+export const hostBlur = async (testID: string): Promise<void> => {
+  await fireEvent(hostInputOf(testID), 'blur', { nativeEvent: { target: NATIVE_TARGET } });
 };
 /** What the host input shows. */
-export const hostText = (tree: ReactTestRenderer, testID: string): string => String(hostInputOf(tree, testID).props.text ?? hostInputOf(tree, testID).props.value);
+export const hostText = (testID: string): string => String(hostInputOf(testID).props.text ?? hostInputOf(testID).props.value);
 
 /** Calls the handlers registered for a keyboard event, from the recorded calls of a spy on `Keyboard.addListener`. */
 export const emitKeyboard = (calls: ReadonlyArray<readonly unknown[]>, event: string): void => {
   calls.filter(([name]) => name === event).forEach(([, handler]) => (handler as () => void)());
 };
 
+/**
+ * What the editor holds inside, which no screen text shows. Testing Library shows host views only, so these two
+ * readers search the component tree (`unstable_fiber`) for the component the test is about.
+ */
+const findProps = (matches: (props: Record<string, any>) => boolean): Record<string, any> =>
+  findFiber((fiber) => !!fiber.memoizedProps && matches(fiber.memoizedProps)).memoizedProps!;
+
 /** The text the editor holds for a line's charge entry (undefined: no entry, the stored figure shows). */
-export const chargeEntryOf = (tree: ReactTestRenderer, tempId: string): string | undefined =>
-  tree.root.find((node) => typeof node.type !== 'string' && node.props.item?.temp_id === tempId && 'charge' in node.props && 'lastKey' in node.props).props.charge?.text;
+export const chargeEntryOf = (tempId: string): string | undefined =>
+  findProps((props) => props.item?.temp_id === tempId && 'charge' in props && 'lastKey' in props).charge?.text;
 
 /**
  * Opens every closed dispatch table, as a user taps "Show dispatch details" on each card. The editor starts
  * with the cards of more than one line closed; most tests are about the table, so they open it first.
  */
-export const openAllGroups = async (tree: ReactTestRenderer): Promise<void> => {
-  const toggles = tree.root.findAll(
-    (node) => typeof node.type !== 'string' && node.props.accessibilityState?.expanded === false && typeof node.props.onPress === 'function'
-  );
-  await act(async () => { toggles.forEach((toggle) => toggle.props.onPress()); });
+export const openAllGroups = async (): Promise<void> => {
+  // Pressing one toggle can re-mount the next, and a press on an unmounted node does nothing: ask again until none is left.
+  for (let pass = 0; pass < 5 && screen.queryAllByRole('button', { expanded: false }).length > 0; pass += 1) {
+    for (const toggle of screen.queryAllByRole('button', { expanded: false })) await fireEvent.press(toggle);
+  }
+  expect(screen.queryAllByRole('button', { expanded: false })).toHaveLength(0);
 };
 
 /** The column widths the rows of the line table are drawn with (the pinned Dispatch column first), from the table the editor passes to its rows. */
-export const columnWidthsOf = (tree: ReactTestRenderer): number[] => {
-  const table = tree.root.findAll((node) => typeof node.type !== 'string' && node.props.table?.scrolling !== undefined)[0].props.table;
+export const columnWidthsOf = (): number[] => {
+  const table = findProps((props) => props.table?.scrolling !== undefined).table;
   return [table.pinned.width, ...table.scrolling.map((column: { width: number }) => column.width)];
 };
+
+/** The FlashList stand-in's host element, which keeps the list's props (`data`, `keyExtractor`, `getItemType` ...). */
+export const flashListOf = (): Host => {
+  const lists = screen.root!.queryAll((node) => node.type === 'FlashList', { includeSelf: true });
+  if (lists.length !== 1) throw new Error(`expected one FlashList, found ${lists.length}`);
+  return lists[0];
+};
+
+/**
+ * The text input object (the component instance, with `focus()`, `isFocused()`, `setSelection()`) behind the input with
+ * this test id. Testing Library shows host views only, so it is read from the component tree.
+ */
+export const inputObjectOf = (testID: string): any =>
+  findFiber((fiber) => typeof fiber.type !== 'string' && fiber.memoizedProps?.testID === testID && typeof fiber.stateNode?.focus === 'function').stateNode;

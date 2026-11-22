@@ -5,8 +5,8 @@
  * (WH-211: the customer State picker moved to the searchable sheet; see CustomerStateSheet.test.tsx.)
  */
 import React from 'react';
-import { Dimensions, ScrollView, Text } from 'react-native';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { Dimensions, ScrollView } from 'react-native';
+import { fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import { PreferenceSheet, type PreferenceOption } from '@/features/settings/components/PreferenceSheet';
 import { ItemGstTreatment } from '@/features/gst/ItemGstTreatment';
 import { INDIAN_STATES } from '@/features/gst/indianStates';
@@ -32,34 +32,25 @@ jest.mock('@/services/gstService', () => ({
   setItemGstTreatment: jest.fn(async (_id: string, value: string) => value),
 }));
 
-let tree: ReactTestRenderer | undefined;
-
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   jest.restoreAllMocks();
 });
 
-async function render(element: React.ReactElement) {
-  await act(async () => {
-    tree = create(element);
-  });
-}
 const flat = (style: unknown) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
-/** Pressable draws a composite over a host View, both carrying the props: keep the outermost of each pair. */
-const outermost = (nodes: ReactTestInstance[]) => nodes.filter(n => !nodes.includes(n.parent as ReactTestInstance));
-const pressables = (root: ReactTestInstance, role: string) =>
-  outermost(root.findAll(n => n.props.accessibilityRole === role && typeof n.props.onPress === 'function'));
-const rows = () => pressables(tree!.root, 'radio');
-const textOf = (node: ReactTestInstance) => node.findAllByType(Text).map(x => [x.props.children].flat().join('')).join('|');
-const rowByLabel = (label: string) => rows().find(n => textOf(n).split('|').includes(label));
-const buttonByLabel = (label: string) => pressables(tree!.root, 'button').filter(n => n.props.accessibilityLabel === label);
+type Host = ReturnType<typeof screen.getByTestId>;
+/** Every host element of the screen (the root included): for what has no role or text a query can reach. */
+const everyHost = (): Host[] => screen.container.queryAll(() => true);
+const rows = () => screen.queryAllByRole('radio');
+const rowByLabel = (label: string) => screen.getByRole('radio', { name: label });
+const closeButtons = () => screen.queryAllByRole('button', { name: tr('common.close') });
 const sheetStyle = () => {
   // SheetFrame's sheet View is the one with accessibilityViewIsModal.
-  const view = tree!.root.findAll(n => n.props.accessibilityViewIsModal === true)[0];
+  const view = everyHost().filter(n => n.props.accessibilityViewIsModal === true)[0];
   return flat(view.props.style);
 };
-
 const states: PreferenceOption<string>[] = [
   { value: '', label: 'No state' },
   ...INDIAN_STATES.map(s => ({ value: s.name, label: s.name })),
@@ -73,11 +64,12 @@ const short: PreferenceOption<string>[] = [
 describe('PreferenceSheet with a long list (the states)', () => {
   it('puts every choice inside the ScrollView with the -scroll testID and makes the sheet tall', async () => {
     await render(<PreferenceSheet visible title="State" options={states} selected="" onSelect={jest.fn()} onClose={jest.fn()} testID="s" />);
-    const scroll = tree!.root.findByType(ScrollView);
-    expect(scroll.props.testID).toBe('s-scroll');
+    const scroll = screen.getByTestId('s-scroll');
+    expect(scroll.type).toBe('RCTScrollView');
+    expect(everyHost().filter(n => (n.type as unknown) === 'RCTScrollView')).toHaveLength(1);
     expect(flat(scroll.props.style)).toEqual({ flex: 1 });
     expect(sheetStyle().height).toBe('88%');
-    const inScroll = pressables(scroll, 'radio');
+    const inScroll = within(scroll).getAllByRole('radio');
     expect(inScroll).toHaveLength(states.length);
     expect(states.length).toBeGreaterThan(30);
   });
@@ -87,9 +79,7 @@ describe('PreferenceSheet with a long list (the states)', () => {
     await render(<PreferenceSheet visible title="State" options={states} selected="" onSelect={onSelect} onClose={jest.fn()} testID="s" />);
     const last = states[states.length - 1];
     for (const option of [states.find(o => o.value === 'Gujarat')!, last]) {
-      const row = rowByLabel(option.label);
-      expect(row).toBeDefined();
-      await act(async () => row!.props.onPress());
+      await user.press(rowByLabel(option.label));
       expect(onSelect).toHaveBeenLastCalledWith(option.value);
     }
     expect(onSelect).toHaveBeenCalledTimes(2);
@@ -98,22 +88,24 @@ describe('PreferenceSheet with a long list (the states)', () => {
   it('every state is selectable', async () => {
     const onSelect = jest.fn();
     await render(<PreferenceSheet visible title="State" options={states} selected="" onSelect={onSelect} onClose={jest.fn()} />);
+    // The rows are found once, by role, and pressed with fireEvent: a role query and a full press for each of the 37
+    // states take longer than the test may.
+    const byLabel = new Map(rows().map(row => [row.props.accessibilityLabel ?? within(row).getByText(/./).props.children, row]));
     for (const option of states) {
-      await act(async () => rowByLabel(option.label)!.props.onPress());
+      await fireEvent.press(byLabel.get(option.label)!);
       expect(onSelect).toHaveBeenLastCalledWith(option.value);
     }
     expect(onSelect).toHaveBeenCalledTimes(states.length);
   });
 
   it('scrolls to the selected row (Gujarat) at its measured y when that row reports its layout', async () => {
+    // The jest ScrollView keeps scrollTo on its prototype and there is no native view: it is recorded there
+    // (the spy is undone by restoreAllMocks).
+    const scrollTo = jest.spyOn(ScrollView.prototype as unknown as { scrollTo: (options: unknown) => void }, 'scrollTo').mockImplementation(() => undefined);
     await render(<PreferenceSheet visible title="State" options={states} selected="Gujarat" onSelect={jest.fn()} onClose={jest.fn()} testID="s" />);
-    const scrollTo = jest.fn();
-    // The ref is the ScrollView instance; stand in for its native method.
-    const instance = tree!.root.findByType(ScrollView).instance as { scrollTo?: unknown };
-    instance.scrollTo = scrollTo;
-    const gujarat = rowByLabel('Gujarat')!;
+    const gujarat = rowByLabel('Gujarat');
     expect(typeof gujarat.props.onLayout).toBe('function');
-    act(() => gujarat.props.onLayout({ nativeEvent: { layout: { x: 0, y: 1234, width: 300, height: 48 } } }));
+    await fireEvent(gujarat, 'layout', { nativeEvent: { layout: { x: 0, y: 1234, width: 300, height: 48 } } });
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(scrollTo).toHaveBeenCalledWith({ y: 1234, animated: false });
   });
@@ -122,46 +114,49 @@ describe('PreferenceSheet with a long list (the states)', () => {
     await render(<PreferenceSheet visible title="State" options={states} selected="Gujarat" onSelect={jest.fn()} onClose={jest.fn()} />);
     const measuring = rows().filter(n => typeof n.props.onLayout === 'function');
     expect(measuring).toHaveLength(1);
-    expect(textOf(measuring[0])).toContain('Gujarat');
+    expect(within(measuring[0]).getByText(/Gujarat/)).toBeOnTheScreen();
   });
 
   it('exposes the selected state on the selected row only and keeps every row reachable', async () => {
     await render(<PreferenceSheet visible title="State" options={states} selected="Gujarat" onSelect={jest.fn()} onClose={jest.fn()} testID="s" />);
     const selected = rows().filter(n => n.props.accessibilityState?.selected === true);
     expect(selected).toHaveLength(1);
-    expect(textOf(selected[0])).toContain('Gujarat');
+    expect(selected).toEqual(screen.getAllByRole('radio', { selected: true }));
+    expect(within(selected[0]).getByText(/Gujarat/)).toBeOnTheScreen();
+    expect(selected[0]).toBeSelected();
     expect(selected[0].props.accessibilityState).toMatchObject({ selected: true, checked: true });
     // The backdrop (the full-screen scrim, WH-267) is hidden from the screen reader on purpose; it is looked at below.
-    const isScrim = (n: ReactTestInstance) => { const s = flat(n.props.style); return s.position === 'absolute' && s.top === 0 && s.right === 0 && s.bottom === 0 && s.left === 0; };
-    const isHidden = (n: ReactTestInstance) =>
+    const isScrim = (n: Host) => { const s = flat(n.props.style); return s.position === 'absolute' && s.top === 0 && s.right === 0 && s.bottom === 0 && s.left === 0; };
+    const isHidden = (n: Host) =>
       n.props.accessible === false || n.props.importantForAccessibility === 'no-hide-descendants' || n.props.importantForAccessibility === 'no' || n.props.accessibilityElementsHidden === true;
-    const hidden = tree!.root.findAll(n => isHidden(n) && !isScrim(n));
+    const notReachable = everyHost().filter(n => isHidden(n) && !isScrim(n));
     // Names only, so a failure prints a short list and not the tree.
-    expect(hidden.map(n => String(typeof n.type === 'string' ? n.type : n.type.displayName ?? n.type.name))).toEqual([]);
-    expect(tree!.root.findAll(n => n.props.testID === 's' && n.props.accessibilityRole === 'radiogroup').length).toBeGreaterThan(0);
+    expect(notReachable.map(n => String(n.type))).toEqual([]);
+    expect(screen.queryAllByTestId('s').filter(n => n.props.accessibilityRole === 'radiogroup').length).toBeGreaterThan(0);
   });
 
   it('the backdrop is no screen-reader stop (WH-267), and tapping it still closes the sheet', async () => {
     const onClose = jest.fn();
     await render(<PreferenceSheet visible title="State" options={states} selected="" onSelect={jest.fn()} onClose={onClose} />);
-    const backdrops = tree!.root.findAll(n => {
+    // The backdrop is hidden from the screen reader, so no query reaches it: it is the full-screen pressable host.
+    const backdrops = everyHost().filter(n => {
       const s = flat(n.props.style);
-      return typeof n.props.onPress === 'function' && s.position === 'absolute' && s.top === 0 && s.right === 0 && s.bottom === 0 && s.left === 0;
+      return n.props.importantForAccessibility === 'no' && s.position === 'absolute' && s.top === 0 && s.right === 0 && s.bottom === 0 && s.left === 0;
     });
     expect(backdrops).toHaveLength(1);
     expect(backdrops[0].props.accessible).toBe(false);
     expect(backdrops[0].props.importantForAccessibility).toBe('no');
     expect(backdrops[0].props.accessibilityLabel).toBeUndefined();
-    await act(async () => backdrops[0].props.onPress());
+    await fireEvent.press(backdrops[0]);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('the Close X closes the sheet (WH-219: it replaces Done)', async () => {
     const onClose = jest.fn();
     await render(<PreferenceSheet visible title="State" options={states} selected="" onSelect={jest.fn()} onClose={onClose} />);
-    const done = buttonByLabel(tr('common.close'));
+    const done = closeButtons();
     expect(done.length).toBeGreaterThan(0);
-    await act(async () => done[0].props.onPress());
+    await user.press(done[0]);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
@@ -171,17 +166,16 @@ describe('PreferenceSheet with a short list (language)', () => {
     const onSelect = jest.fn();
     const onClose = jest.fn();
     await render(<PreferenceSheet visible title="Language" options={short} selected="en" onSelect={onSelect} onClose={onClose} testID="l" />);
-    const scroll = tree!.root.findByType(ScrollView);
-    expect(scroll.props.testID).toBe('l-scroll');
+    const scroll = screen.getByTestId('l-scroll');
     const { maxHeight, flex } = flat(scroll.props.style);
     expect(flex).toBeUndefined();
     expect(maxHeight).toBeGreaterThan(0);
     expect(maxHeight).toBeCloseTo(Dimensions.get('window').height * 0.6);
     expect(sheetStyle().height).toBeUndefined();
     expect(rows().filter(n => typeof n.props.onLayout === 'function')).toHaveLength(0);
-    await act(async () => rowByLabel('Gujarati')!.props.onPress());
+    await user.press(rowByLabel('Gujarati'));
     expect(onSelect).toHaveBeenCalledWith('gu');
-    await act(async () => buttonByLabel(tr('common.close'))[0].props.onPress());
+    await user.press(closeButtons()[0]);
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -189,13 +183,14 @@ describe('PreferenceSheet with a short list (language)', () => {
     const make = (n: number) => Array.from({ length: n }, (_, i) => ({ value: `v${i}`, label: `Option ${i}` }));
     await render(<PreferenceSheet visible title="T" options={make(8)} selected="v0" onSelect={jest.fn()} onClose={jest.fn()} />);
     expect(sheetStyle().height).toBeUndefined();
-    await act(async () => tree!.update(<PreferenceSheet visible title="T" options={make(9)} selected="v0" onSelect={jest.fn()} onClose={jest.fn()} />));
+    await screen.rerender(<PreferenceSheet visible title="T" options={make(9)} selected="v0" onSelect={jest.fn()} onClose={jest.fn()} />);
     expect(sheetStyle().height).toBe('88%');
   });
 
   it('renders nothing when not visible', async () => {
     await render(<PreferenceSheet visible={false} title="T" options={short} selected="en" onSelect={jest.fn()} onClose={jest.fn()} />);
-    expect(tree!.root.findAllByType(ScrollView)).toHaveLength(0);
+    expect(everyHost().filter(n => (n.type as unknown) === 'RCTScrollView')).toHaveLength(0);
+    expect(screen.queryAllByRole('radio', hidden)).toHaveLength(0);
   });
 });
 
@@ -203,11 +198,11 @@ describe('the item GST treatment sheet (another caller)', () => {
   it('renders as a short sheet inside the scroll view and selecting calls the service', async () => {
     const { setItemGstTreatment } = require('@/services/gstService');
     await render(<ItemGstTreatment itemId="item-1" />);
-    await act(async () => tree!.root.findByProps({ testID: 'item-gst-treatment-row' }).props.onPress());
-    expect(tree!.root.findByType(ScrollView).props.testID).toBe('item-gst-treatment-sheet-scroll');
+    await user.press(await screen.findByTestId('item-gst-treatment-row'));
+    expect(screen.getByTestId('item-gst-treatment-sheet-scroll')).toBeOnTheScreen();
     expect(sheetStyle().height).toBeUndefined();
     expect(rows()).toHaveLength(2);
-    await act(async () => rowByLabel(tr('gst.item.exemptAgri'))!.props.onPress());
+    await user.press(rowByLabel(tr('gst.item.exemptAgri')));
     expect(setItemGstTreatment).toHaveBeenCalledWith('item-1', 'exempt_agri');
   });
 });

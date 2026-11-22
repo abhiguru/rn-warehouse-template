@@ -2,7 +2,7 @@
  * Sign-in flow (style guide §14.8) renders in all four themes with token colours.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { BRANDS, getTokens, type Brand, type Mode } from '@/theme/tokens';
 import LoginScreen from '../../../app/login';
 import OTPScreen from '../../../app/otp';
@@ -92,64 +92,57 @@ jest.mock('@/store/slices/authSlice', () => ({
 
 const THEMES = BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => [brand, mode] as const));
 
-function renderIn(element: React.ReactElement, brand: Brand, mode: Mode, auth: Record<string, unknown> = {}) {
+async function renderIn(element: React.ReactElement, brand: Brand, mode: Mode, auth: Record<string, unknown> = {}) {
   mockState = { theme: { preference: mode, brand }, auth };
-  let tree!: ReactTestRenderer;
-  act(() => { tree = create(element); });
-  return tree;
+  await render(element);
 }
 
-function allText(tree: ReactTestRenderer): string[] {
-  return tree.root
-    .findAll(node => (node.type as unknown) === 'Text')
-    .map(node => [].concat(node.props.children).join(''));
-}
+const shows = (text: string) => expect(screen.getAllByText(text)[0]).toBeOnTheScreen();
 
-function hasBackground(tree: ReactTestRenderer, colour: string) {
-  return tree.root.findAll(node => {
+// A node of the screen (a view or a composite) drawn with this background colour. Nothing but its style says it,
+// so the rendered tree is walked.
+function hasBackground(colour: string) {
+  const matches = (node: NonNullable<typeof screen.root>) => {
     const style = [].concat(node.props.style ?? []).flat(3).filter(Boolean) as Array<{ backgroundColor?: string }>;
     return style.some(s => s.backgroundColor === colour);
-  }).length > 0;
+  };
+  // The root itself is not part of its own query.
+  return matches(screen.root!) || screen.root!.queryAll(matches).length > 0;
 }
 
 describe.each(THEMES)('sign-in flow in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('login shows the §14.8 wording on the themed background', () => {
-    const tree = renderIn(<LoginScreen />, brand, mode, { isAuthenticating: false });
-    const text = allText(tree);
+  it('login shows the §14.8 wording on the themed background', async () => {
+    await renderIn(<LoginScreen />, brand, mode, { isAuthenticating: false });
     for (const words of ['Sign in', 'Enter your mobile number to get a one-time code.', 'MOBILE NUMBER', '+91', 'Change']) {
-      expect(text).toContain(words);
+      shows(words);
     }
-    expect(hasBackground(tree, t.background.base)).toBe(true);
-    act(() => tree.unmount());
+    expect(hasBackground(t.background.base)).toBe(true);
   });
 
-  it('code entry uses one-time-code autofill and offers "Wrong number?"', () => {
-    const tree = renderIn(<OTPScreen />, brand, mode, { phoneNumber: '+919876543210', isVerifyingOTP: false, isAuthenticating: false });
-    const input = tree.root.find(node => node.props.textContentType === 'oneTimeCode' && typeof node.props.onChangeText === 'function');
-    expect(input.props.autoComplete).toBe('sms-otp');
-    expect(allText(tree)).toContain('+91 98765 43210');
-    expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Wrong number? Change mobile number').length).toBeGreaterThan(0);
-    expect(hasBackground(tree, t.background.base)).toBe(true);
-    act(() => tree.unmount());
+  it('code entry uses one-time-code autofill and offers "Wrong number?"', async () => {
+    await renderIn(<OTPScreen />, brand, mode, { phoneNumber: '+919876543210', isVerifyingOTP: false, isAuthenticating: false });
+    const input = screen.getByLabelText('Verification code');
+    expect(input).toHaveProp('textContentType', 'oneTimeCode');
+    expect(input).toHaveProp('autoComplete', 'sms-otp');
+    shows('+91 98765 43210');
+    expect(screen.getAllByLabelText('Wrong number? Change mobile number')[0]).toBeOnTheScreen();
+    expect(hasBackground(t.background.base)).toBe(true);
   });
 
-  it('waiting for approval names the facility and the requested status', () => {
-    const tree = renderIn(<PendingEnrollmentScreen />, brand, mode);
-    const text = allText(tree);
-    expect(text).toContain('Waiting for approval');
-    expect(text).toContain('Fictional Cold Store');
-    expect(text).toContain('Requested');
-    expect(hasBackground(tree, t.status.critical.background)).toBe(true);
-    act(() => tree.unmount());
+  it('waiting for approval names the facility and the requested status', async () => {
+    await renderIn(<PendingEnrollmentScreen />, brand, mode);
+    shows('Waiting for approval');
+    shows('Fictional Cold Store');
+    shows('Requested');
+    expect(hasBackground(t.status.critical.background)).toBe(true);
   });
 
-  it('enrollment review renders for administrators', () => {
-    const tree = renderIn(<EnrollmentReviewScreen />, brand, mode, { userProfile: { role: 'admin' } });
-    expect(allText(tree)).toContain('Choose how each person can use this facility, then approve.');
-    expect(hasBackground(tree, t.background.base)).toBe(true);
-    act(() => tree.unmount());
+  it('enrollment review renders for administrators', async () => {
+    await renderIn(<EnrollmentReviewScreen />, brand, mode, { userProfile: { role: 'admin' } });
+    shows('Choose how each person can use this facility, then approve.');
+    expect(hasBackground(t.background.base)).toBe(true);
   });
 
   it('Paper and navigation themes come from the tokens', () => {

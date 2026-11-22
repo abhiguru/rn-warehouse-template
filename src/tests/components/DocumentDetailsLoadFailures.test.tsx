@@ -8,8 +8,7 @@
  * not as "check your connection".
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import GRNDetailScreen from '../../../app/grn-details/[id]';
 import DispatchDetailScreen from '../../../app/dispatch-details/[id]';
 
@@ -74,74 +73,72 @@ jest.mock('@/components/dispatch-details', () => ({
   mapDispatchItems: jest.fn(() => []), itemTotals: jest.fn(() => ({ totalQty: 0, totalItems: 0 })), buildInvoiceTable: jest.fn(() => []),
 }));
 
-let tree: ReactTestRenderer | undefined;
-const mount = async (screen: 'grn' | 'dispatch') => {
-  await act(async () => { tree = create(screen === 'grn' ? <GRNDetailScreen /> : <DispatchDetailScreen />); });
+const mount = async (page: 'grn' | 'dispatch') => {
+  await render(page === 'grn' ? <GRNDetailScreen /> : <DispatchDetailScreen />);
 };
-const shownText = () => tree!.root.findAllByType(Text).map(node => [node.props.children].flat(3).join(''));
-const retryLabel = (screen: 'grn' | 'dispatch') => (screen === 'dispatch' ? 'Try loading the dispatch again' : 'Try again');
-const hasControl = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function').length > 0;
+const shown = (text: string) => expect(screen.getByText(text)).toBeOnTheScreen();
+const notShown = (text: string) => expect(screen.queryByText(text)).not.toBeOnTheScreen();
+const retryLabel = (page: 'grn' | 'dispatch') => (page === 'dispatch' ? 'Try loading the dispatch again' : 'Try again');
+const retryButton = (page: 'grn' | 'dispatch') => screen.queryByRole('button', { name: retryLabel(page) });
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
 describe.each([
   ['grn', 'GRN', "Couldn't load the GRN", 'GRN not found'],
   ['dispatch', 'Dispatch', "Couldn't load the dispatch", 'Dispatch not found'],
-] as const)('%s page, real service (WH-216)', (screen, word, loadErrorTitle, notFoundTitle) => {
+] as const)('%s page, real service (WH-216)', (page, word, loadErrorTitle, notFoundTitle) => {
   const CHECK = 'Check your connection and try again.';
   const NO_PERMISSION = 'You do not have permission to perform this action.';
 
   it('a server error answer ({success:false, data:null}, "Error retrieving ...") is the load error with Try again, not "not found"', async () => {
     mockRpc.mockResolvedValue({ data: { success: false, data: null, message: `Error retrieving ${word} details: relation does not exist` }, error: null });
-    await mount(screen);
-    expect(shownText()).toContain(loadErrorTitle);
-    expect(shownText()).not.toContain(notFoundTitle);
-    expect(hasControl(retryLabel(screen))).toBe(true);
-    expect(shownText().join(' ')).not.toContain('relation does not exist');
+    await mount(page);
+    shown(loadErrorTitle);
+    notShown(notFoundTitle);
+    expect(retryButton(page)).toBeOnTheScreen();
+    expect(screen.queryByText(/relation does not exist/)).not.toBeOnTheScreen();
   });
 
   it('only the backend\'s not-found text says "not found" (and then offers no Try again)', async () => {
     mockRpc.mockResolvedValue({ data: { success: false, data: null, message: `${word} not found or access denied` }, error: null });
-    await mount(screen);
-    expect(shownText()).toContain(notFoundTitle);
-    expect(shownText()).not.toContain(loadErrorTitle);
-    expect(hasControl(retryLabel(screen))).toBe(false);
+    await mount(page);
+    shown(notFoundTitle);
+    notShown(loadErrorTitle);
+    expect(retryButton(page)).not.toBeOnTheScreen();
   });
 
   it('an empty answer without the document is the load error, not "not found"', async () => {
     mockRpc.mockResolvedValue({ data: { success: true, data: {} }, error: null });
-    await mount(screen);
-    expect(shownText()).toContain(loadErrorTitle);
-    expect(shownText()).not.toContain(notFoundTitle);
+    await mount(page);
+    shown(loadErrorTitle);
+    notShown(notFoundTitle);
   });
 
   it('a permission refusal in the answer is told in its own words, not as "check your connection"', async () => {
     mockRpc.mockResolvedValue({ data: { success: false, data: null, message: 'Permission denied: you may not view this document' }, error: null });
-    await mount(screen);
-    expect(shownText()).toContain(loadErrorTitle);
-    expect(shownText()).toContain(NO_PERMISSION);
-    expect(shownText()).not.toContain(CHECK);
+    await mount(page);
+    shown(loadErrorTitle);
+    shown(NO_PERMISSION);
+    notShown(CHECK);
   });
 
   it('a permission refusal as an rpc error is told in its own words too', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { message: 'permission denied for function get_document_details' } });
-    await mount(screen);
-    expect(shownText()).toContain(NO_PERMISSION);
-    expect(shownText()).not.toContain(CHECK);
+    await mount(page);
+    shown(NO_PERMISSION);
+    notShown(CHECK);
   });
 
   it('a network failure still says to check the connection', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { message: 'Network request failed' } });
-    await mount(screen);
-    expect(shownText()).toContain(CHECK);
+    await mount(page);
+    shown(CHECK);
   });
 });

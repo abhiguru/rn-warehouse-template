@@ -5,9 +5,9 @@
  */
 import React from 'react';
 import { AccessibilityInfo } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, track, unmountAll, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 
 let mockStore: InvoiceStore;
@@ -24,13 +24,12 @@ let changed: ((on: boolean) => void) | undefined;
 const remove = jest.fn();
 afterEach(() => {
   resetScreenReaderKnown();
-  act(() => unmountAll());
   jest.restoreAllMocks();
   changed = undefined;
   remove.mockClear();
 });
 
-async function render(initiallyOn: boolean) {
+async function mount(initiallyOn: boolean) {
   jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(initiallyOn);
   jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation(((name: string, handler: (on: boolean) => void) => {
     if (name === 'screenReaderChanged') changed = handler;
@@ -38,34 +37,35 @@ async function render(initiallyOn: boolean) {
   }) as never);
   mockStore = makeInvoiceStore();
   fillNewInvoice(mockStore, groupLines(2));
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = track(create(<ConnectedEditor />)); });
-  await openAllGroups(tree);
-  return tree;
+  await render(<ConnectedEditor />);
+  await openAllGroups();
 }
-const isTable = (tree: ReactTestRenderer) => tree.root.findAll((node) => typeof node.props.testID === 'string' && node.props.testID.startsWith('line-')).length > 0;
+const isTable = () => screen.queryAllByTestId(/^line-/).length > 0;
+const isTableMounted = () => screen.queryAllByTestId(/^line-/, HIDDEN).length > 0;
 
 describe('the lines with a screen reader', () => {
   it('are a table with none on, at font scale 1.0 and 411 dp', async () => {
-    expect(isTable(await render(false))).toBe(true);
+    await mount(false);
+    expect(isTable()).toBe(true);
   });
 
   it('are cards when it is on from the start', async () => {
-    expect(isTable(await render(true))).toBe(false);
+    await mount(true);
+    expect(isTableMounted()).toBe(false);
   });
 
   it('turn into cards when it is switched on while the step is open, and back into a table when it is switched off', async () => {
-    const tree = await render(false);
-    expect(isTable(tree)).toBe(true);
+    await mount(false);
+    expect(isTable()).toBe(true);
     await act(async () => { changed!(true); });
-    expect(isTable(tree)).toBe(false);
+    expect(isTableMounted()).toBe(false);
     await act(async () => { changed!(false); });
-    expect(isTable(tree)).toBe(true);
+    expect(isTable()).toBe(true);
   });
 
   it('stop listening when the step closes', async () => {
-    await render(false);
-    await act(async () => unmountAll());
+    await mount(false);
+    await screen.unmount();
     expect(remove).toHaveBeenCalledTimes(1);
   });
 });

@@ -3,7 +3,7 @@
  * (useKeyboardCoverLift). The step and the bar are real; the form state, the keyboard and the window are stand-ins.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { GrnHeaderStep } from '@/features/grn/screens/GrnHeaderStep';
 import { wizardKeyboardLiftCases } from '@/tests/helpers/wizardKeyboardLift';
 import { expectRevealWired, recordedRevealRefs } from '@/tests/helpers/revealWiring';
@@ -40,21 +40,15 @@ jest.mock('@/services/vehicle-suggestion-service', () => ({ getTopVehicleSuggest
 jest.mock('@/hooks/useRevealFocusedField', () => require('@/tests/helpers/revealWiring').recordRevealRefs());
 
 describe('GRN wizard, details step: the bottom bar and the keyboard', () => {
-  wizardKeyboardLiftCases(async () => {
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<GrnHeaderStep mode="create" />); });
-    return tree;
-  });
+  wizardKeyboardLiftCases(async () => { await render(<GrnHeaderStep mode="create" />); });
 
   it('notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
     recordedRevealRefs.length = 0;
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<GrnHeaderStep mode="create" />); });
-    const scrolls = tree.root.findAll(n => (n.type as unknown) === 'ScrollView' && typeof n.props.onScrollBeginDrag === 'function');
+    await render(<GrnHeaderStep mode="create" />);
+    const scrolls = screen.root!.queryAll((n) => n.type === 'ScrollView' && typeof n.props.onScrollBeginDrag === 'function', { includeSelf: true });
     expect(scrolls).toHaveLength(1);
     // WH-243: the scroll view carries the step's own reveal handlers (a dropped spread fails here)
     expect(recordedRevealRefs).toHaveLength(1);
     expectRevealWired(scrolls[0], recordedRevealRefs[0]);
-    await act(async () => { tree.unmount(); });
   });
 });

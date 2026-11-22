@@ -8,8 +8,7 @@
  * - The form is emptied when the layout goes, and a read that answers after that is dropped.
  */
 import React from 'react';
-import { ActivityIndicator } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import { loadGRNData as loadGRN } from '@/features/grn/services/grnFormService';
@@ -36,7 +35,8 @@ jest.mock('@/store/hooks', () => require('@/tests/helpers/invoiceFixtures').stor
 jest.mock('expo-router', () => {
   const React = require('react');
   const Stack = Object.assign(
-    (props: { screenOptions?: unknown }) => React.createElement('Stack', { screenOptions: props.screenOptions }),
+    // Stands in for the step stack: a plain view the test can find, carrying the screenOptions the layout passes.
+    (props: { screenOptions?: unknown }) => React.createElement(require('react-native').View, { testID: 'grn-steps', screenOptions: props.screenOptions }),
     { Screen: () => null }
   );
   return {
@@ -78,15 +78,16 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-let tree: ReactTestRenderer;
-const render = async () => {
-  await act(async () => { tree = create(<GRNEditLayout />); });
+const mount = async () => {
+  await render(<GRNEditLayout />);
 };
-const text = () => JSON.stringify(tree.toJSON());
-const hasSteps = () => tree.root.findAllByType('Stack' as unknown as React.ElementType).length > 0;
+const hasSteps = () => screen.queryByTestId('grn-steps') !== null;
+const spinner = () => screen.queryByLabelText('Loading GRN details…');
+// The ActivityIndicator itself (no role or text reaches it): the old test counted it.
+// (Nothing is drawn at all when the screen renders null: no root.)
+const indicators = () => screen.root?.queryAll((node) => node.type === 'ActivityIndicator', { includeSelf: true }) ?? [];
 const press = async (label: string) => {
-  const control = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-  await act(async () => { control.props.onPress(); });
+  await userEvent.press(screen.getByRole('button', { name: label }));
 };
 
 beforeEach(() => {
@@ -96,8 +97,7 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
@@ -106,14 +106,14 @@ describe('while the GRN is read', () => {
     const answer = deferred<unknown>();
     load.mockReturnValue(answer.promise as never);
 
-    await render();
+    await mount();
 
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1);
+    expect(spinner()).toBeOnTheScreen();
+    expect(indicators()).toHaveLength(1);
     // Read out as a busy progress bar, as the spinner this replaced was.
-    const bars = tree.root.findAll((node) => typeof node.type === 'string' && node.props.accessibilityRole === 'progressbar');
-    expect(bars).toHaveLength(1);
-    expect(bars[0].props.accessibilityState).toEqual({ busy: true });
-    expect(text()).toContain('Loading GRN details');
+    expect(spinner()).toHaveProp('accessibilityRole', 'progressbar');
+    expect(spinner()?.props.accessibilityState).toEqual({ busy: true });
+    expect(screen.getByText('Loading GRN details…')).toBeOnTheScreen();
     expect(hasSteps()).toBe(false);
     expect(mockStore.getState().grnForm.grnId).toBeNull();
     await act(async () => { answer.resolve(loaded()); });
@@ -124,12 +124,12 @@ describe('when the GRN is read', () => {
   it('draws the steps, with the swipe back turned off, and the form holds the GRN of the route', async () => {
     load.mockResolvedValue(loaded());
 
-    await render();
+    await mount();
 
     expect(load).toHaveBeenCalledTimes(1);
     expect(load).toHaveBeenCalledWith(GRN_ID);
     expect(hasSteps()).toBe(true);
-    const stack = tree.root.findByType('Stack' as unknown as React.ElementType);
+    const stack = screen.getByTestId('grn-steps');
     expect(stack.props.screenOptions).toMatchObject({ headerShown: false, gestureEnabled: false });
     const form = mockStore.getState().grnForm;
     expect(form.grnId).toBe(GRN_ID);
@@ -145,7 +145,7 @@ describe('when the GRN is read', () => {
     expect(mockStore.getState().grnForm.removedImages).toHaveLength(1);
     load.mockResolvedValue(loaded());
 
-    await render();
+    await mount();
 
     expect(load).toHaveBeenCalledTimes(1);
     const form = mockStore.getState().grnForm;
@@ -160,12 +160,12 @@ describe('when the GRN cannot be read', () => {
     mockStore.dispatch(loadGRNData({ grnId: GRN_ID, header: header('STALE'), items: [] }));
     load.mockResolvedValue({ success: false, error: 'Server said no' } as never);
 
-    await render();
+    await mount();
 
     expect(hasSteps()).toBe(false);
-    expect(text()).toContain("Couldn't load the GRN");
-    expect(text()).toContain('Try again');
-    expect(text()).toContain('Close');
+    expect(screen.getByText("Couldn't load the GRN")).toBeOnTheScreen();
+    expect(screen.getByText('Try again')).toBeOnTheScreen();
+    expect(screen.getByText('Close')).toBeOnTheScreen();
     expect(mockStore.getState().grnForm.grnId).toBeNull();
     expect(mockStore.getState().grnForm.header.gr_no).toBe('');
     expect(router.back).not.toHaveBeenCalled();
@@ -174,7 +174,7 @@ describe('when the GRN cannot be read', () => {
   it('Try again reads once more, and the steps come when it works', async () => {
     load.mockResolvedValueOnce({ success: false, error: 'Server said no' } as never);
     load.mockResolvedValueOnce(loaded());
-    await render();
+    await mount();
 
     await press('Try again');
 
@@ -185,8 +185,8 @@ describe('when the GRN cannot be read', () => {
 
   it('Close goes back', async () => {
     load.mockRejectedValue(new Error('Network request failed'));
-    await render();
-    expect(text()).toContain("Couldn't load the GRN");
+    await mount();
+    expect(screen.getByText("Couldn't load the GRN")).toBeOnTheScreen();
 
     await press('Close');
 
@@ -197,29 +197,26 @@ describe('when the GRN cannot be read', () => {
 describe('when the layout goes', () => {
   it('empties the form and leaves the form session, so a save still running is stale', async () => {
     load.mockResolvedValue(loaded());
-    await render();
+    await mount();
     expect(mockStore.getState().grnForm.grnId).toBe(GRN_ID);
     const session = currentGrnFormSession();
 
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
 
     const form = mockStore.getState().grnForm;
     expect(form.grnId).toBeNull();
     expect(form.items).toEqual([]);
     expect(currentGrnFormSession()).toBeGreaterThan(session);
-    // The unmount in afterEach finds nothing to do.
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 
   it('drops a read that answers after it went', async () => {
     const answer = deferred<unknown>();
     load.mockReturnValue(answer.promise as never);
-    await render();
+    await mount();
 
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
     await act(async () => { answer.resolve(loaded()); });
 
     expect(mockStore.getState().grnForm.grnId).toBeNull();
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 });

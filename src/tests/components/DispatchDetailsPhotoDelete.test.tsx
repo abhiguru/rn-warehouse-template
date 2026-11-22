@@ -1,6 +1,6 @@
 /** Dispatch details, Images tab: who may delete a photo of a saved dispatch, and what confirming does (D26). */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import DispatchDetailScreen from '../../../app/dispatch-details/[id]';
 import { setLanguage } from '@/i18n';
 
@@ -8,8 +8,6 @@ const mockGetDispatchDetails = jest.fn();
 const mockShowAlert = jest.fn();
 const mockDeleteDispatchImage = jest.fn();
 let mockPermissions = { canUpdate: true, canDelete: true, isCustomer: false };
-let mockImagesProps: any;
-let mockTabProps: any;
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'dispatch-1' }),
@@ -49,57 +47,68 @@ jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
 }));
 jest.mock('@/components/dispatch-details', () => ({
   DispatchHeroHeader: () => null,
-  DispatchTabNavigator: (props: unknown) => {
-    mockTabProps = props;
-    return null;
+  // Draws the tab buttons the page's tab bar draws, and calls the page's own onTabChange.
+  DispatchTabNavigator: (props: { onTabChange: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return ['overview', 'images'].map((tab) => (
+      <Pressable key={tab} accessibilityRole="button" accessibilityLabel={`${tab} tab`} onPress={() => props.onTabChange(tab)}>
+        <Text>{tab}</Text>
+      </Pressable>
+    ));
   },
   DispatchOverviewTab: () => null,
   DispatchItemsTab: () => null,
   DispatchGRNsTab: () => null,
-  DispatchInvoicesTab: () => null,
-  DispatchImagesTab: (props: unknown) => {
-    mockImagesProps = props;
-    return null;
+  // Draws Add photo and, only when the page passes onDelete, a Delete photo button that calls it.
+  DispatchImagesTab: (props: { onUpload: () => void; onDelete?: (image: { id: string; image_url: string }) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <>
+        <Pressable accessibilityRole="button" accessibilityLabel="Add photo" onPress={() => props.onUpload()}>
+          <Text>Add photo</Text>
+        </Pressable>
+        {props.onDelete && (
+          <Pressable accessibilityRole="button" accessibilityLabel="Delete photo" onPress={() => props.onDelete?.({ id: 'img-1', image_url: 'dispatch/d1/img-1.jpg' })}>
+            <Text>Delete photo</Text>
+          </Pressable>
+        )}
+      </>
+    );
   },
+  DispatchInvoicesTab: () => null,
   mapDispatchItems: jest.fn(() => []),
   itemTotals: jest.fn(() => ({ totalQty: 0, totalItems: 0 })),
   buildInvoiceTable: jest.fn(() => []),
 }));
 
-let tree: ReturnType<typeof create> | undefined;
 beforeEach(async () => {
   jest.clearAllMocks();
   setLanguage('en');
-  mockImagesProps = undefined;
   mockPermissions = { canUpdate: true, canDelete: true, isCustomer: false };
   mockGetDispatchDetails.mockResolvedValue({ success: true, data: { dispatch: { id: 'dispatch-1', disp_no: 'D1', items: [], processed_images: [] } } });
 });
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
-});
 
+const user = userEvent.setup({ delay: 0 });
 const mountOnImages = async () => {
-  await act(async () => { tree = create(<DispatchDetailScreen />); });
-  await act(async () => { mockTabProps.onTabChange('images'); });
+  await render(<DispatchDetailScreen />);
+  await user.press(screen.getByRole('button', { name: 'images tab' }));
 };
+const deleteButton = () => screen.queryByRole('button', { name: 'Delete photo' });
 
 describe('deleting a photo of a saved dispatch (D26)', () => {
-  const image = { id: 'img-1', image_url: 'dispatch/d1/img-1.jpg' };
-
   it('a customer gets no delete button on the photos', async () => {
     mockPermissions = { canUpdate: false, canDelete: false, isCustomer: true };
     await mountOnImages();
-    expect(mockImagesProps.onDelete).toBeUndefined();
+    expect(screen.getByRole('button', { name: 'Add photo' })).toBeOnTheScreen();
+    expect(deleteButton()).not.toBeOnTheScreen();
   });
 
   it('a person who can add photos can delete one: it asks first, then deletes it and reads the dispatch again', async () => {
     mockDeleteDispatchImage.mockResolvedValue({ success: true });
     await mountOnImages();
-    expect(typeof mockImagesProps.onDelete).toBe('function');
     const readsBefore = mockGetDispatchDetails.mock.calls.length;
 
-    await act(async () => { mockImagesProps.onDelete(image); });
+    await user.press(screen.getByRole('button', { name: 'Delete photo' }));
     // Nothing is deleted before the question is answered.
     expect(mockShowAlert).toHaveBeenCalledTimes(1);
     expect(mockDeleteDispatchImage).not.toHaveBeenCalled();
@@ -114,7 +123,7 @@ describe('deleting a photo of a saved dispatch (D26)', () => {
 
   it('cancelling the question deletes nothing', async () => {
     await mountOnImages();
-    await act(async () => { mockImagesProps.onDelete(image); });
+    await user.press(screen.getByRole('button', { name: 'Delete photo' }));
     const buttons = mockShowAlert.mock.calls[0][2] as { style?: string; onPress: () => void }[];
     await act(async () => { buttons.find((button) => button.style === 'cancel')!.onPress(); });
     expect(mockDeleteDispatchImage).not.toHaveBeenCalled();

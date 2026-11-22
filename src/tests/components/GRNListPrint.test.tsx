@@ -4,7 +4,7 @@
  * toast (§13.9).
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { grnListElement } from '../helpers/grnListElement';
 import { getAllGRNItems } from '@/services/grn-service';
 import { printGRNRange } from '@/services/print-service';
@@ -29,7 +29,27 @@ jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 // Reduced motion: the loading skeleton's spring would otherwise go on running after the test is over.
 jest.mock('react-native-reanimated', () => ({ __esModule: true, ...jest.requireActual('react-native-reanimated'), useReducedMotion: () => true }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
+// The print dialog is the app's own and is tested elsewhere; here it draws a Print button that confirms the range RV15001
+// as the real dialog does, and shows the text of a refusal above, as the real one does with what its confirm throws.
+jest.mock('@/components/PrintRangeDialog', () => ({
+  PrintRangeDialog: ({ onConfirm }: { onConfirm: (start: string, end: string) => Promise<void> }) => {
+    const React = require('react');
+    const { Pressable, Text } = require('react-native');
+    const [refusal, setRefusal] = React.useState(null as string | null);
+    return (
+      <>
+        {refusal ? <Text>{refusal}</Text> : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Print"
+          onPress={() => { onConfirm('RV15001', 'RV15001').catch((error: Error) => setRefusal(error.message)); }}
+        >
+          <Text>Print</Text>
+        </Pressable>
+      </>
+    );
+  },
+}));
 jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
 // Only the request is faked; the failure texts are the real ones.
 jest.mock('@/services/print-service', () => ({ ...jest.requireActual('@/services/print-service'), printGRNRange: jest.fn() }));
@@ -92,44 +112,35 @@ const row = (id: string, item_name: string, qty: number, weight: number | null) 
   package_mark: null,
 });
 
-const mounted: ReactTestRenderer[] = [];
 async function renderList(rows: ReturnType<typeof row>[]) {
   jest.mocked(getAllGRNItems).mockResolvedValue({
     success: true,
     message: '',
     data: { items: rows, pagination: { total_count: rows.length, limit: 20, offset: 0, has_more: false } },
   } as never);
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(grnListElement());
-  });
-  mounted.push(tree);
-  return tree;
+  await render(grnListElement());
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
-afterEach(async () => {
+afterEach(() => {
   jest.restoreAllMocks();
-  await act(async () => {
-    mounted.splice(0).forEach((tree) => tree.unmount());
-  });
 });
 
-const dialogOnConfirm = (tree: ReactTestRenderer) => tree.root.findByType('PrintRangeDialog' as never).props.onConfirm as (s: string, e: string) => Promise<void>;
-const confirmPrint = (tree: ReactTestRenderer) =>
-  act(async () => { await dialogOnConfirm(tree)('RV15001', 'RV15001'); });
+const confirmPrint = () => userEvent.press(screen.getByRole('button', { name: 'Print' }));
 
 it('an unconfirmed job is an alert "Print not confirmed" (the dialog closes: nothing is thrown to it)', async () => {
   jest.mocked(printGRNRange).mockResolvedValue({ success: false, kind: 'unconfirmed', unconfirmed: true, status: 502, error: 'x' } as never);
-  const tree = await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
+  await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
 
-  await confirmPrint(tree);
+  await confirmPrint();
 
-  expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.');
+  await waitFor(() => expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.'));
   expect(showToast).not.toHaveBeenCalled();
+  // Nothing is thrown to the dialog: it shows no refusal text.
+  expect(screen.queryByText(/printer/i)).not.toBeOnTheScreen();
 });
 
 it.each([
@@ -139,20 +150,21 @@ it.each([
   ['connection', "Couldn't reach the print server. Check your connection and try again."],
 ])('a %s failure is thrown to the dialog, which shows it above its buttons, and is no alert', async (kind, text) => {
   jest.mocked(printGRNRange).mockResolvedValue({ success: false, kind, error: 'x' } as never);
-  const tree = await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
+  await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
 
-  await expect(dialogOnConfirm(tree)('RV15001', 'RV15001')).rejects.toThrow(text);
+  await confirmPrint();
 
+  expect(await screen.findByText(text)).toBeOnTheScreen();
   expect(showAlert).not.toHaveBeenCalled();
   expect(showToast).not.toHaveBeenCalled();
 });
 
 it('says a print job was sent in a toast, with its number', async () => {
   jest.mocked(printGRNRange).mockResolvedValue({ success: true, print_job: { cups_job_id: 42 } } as never);
-  const tree = await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
+  await renderList([row('l1', 'Fictional potatoes', 10, 50)]);
 
-  await confirmPrint(tree);
+  await confirmPrint();
 
-  expect(showToast).toHaveBeenCalledWith('Print job 42 sent.');
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith('Print job 42 sent.'));
   expect(showAlert).not.toHaveBeenCalled();
 });

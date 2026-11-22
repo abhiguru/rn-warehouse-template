@@ -5,7 +5,7 @@
  * the waiting screen. With central login off each of them is as it was.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import SettingsScreen from '../../../app/settings';
 import ProfileScreen from '../../../app/profile';
@@ -73,20 +73,9 @@ jest.mock('@/i18n/useAppLanguage', () => ({
 }));
 jest.mock('@/components/LanguageSwitch', () => ({ LanguageSwitch: () => null }));
 
-let tree: ReactTestRenderer | undefined;
-async function render(element: React.ReactElement) {
-  await act(async () => { tree = create(element); });
-}
-const texts = () =>
-  tree!.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
-/** The outermost pressable with this accessible name. */
-const pressable = (label: string) => {
-  const found = tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-  if (!found.length) throw new Error(`nothing to press named "${label}"`);
-  return found[0];
-};
+/** The outermost button with this accessible name. */
 const press = async (label: string) => {
-  await act(async () => { await pressable(label).props.onPress(); });
+  await userEvent.press(screen.getAllByRole('button', { name: label })[0]);
 };
 const alerts = () => jest.mocked(showAlert).mock.calls;
 
@@ -97,14 +86,9 @@ beforeEach(() => {
   setCentralState({ status: 'signedIn', user: { id: 'asha', phoneNumber: '919000000001', name: null, createdAt: '' } });
   jest.mocked(leaveFacility).mockResolvedValue('left');
 });
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
-});
 
 /** The confirming button of the open dialog: the last one with that name. */
-const confirmButton = (label: string) =>
-  tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function').pop()!;
+const confirmButton = (label: string) => screen.getAllByRole('button', { name: label }).pop()!;
 const LEAVE_ROW = 'Leave this facility, Leave North Cold Store and return to My facilities. You stay signed in to the association.';
 const PHONE_ROW = 'Sign out of this phone, Ends your association sign-in and this facility on this phone.';
 const SIGN_OUT_ROW = 'Sign out, Sign out of this facility on this phone.';
@@ -114,10 +98,9 @@ const DELETE_ROW =
 /** Opens the deletion, passes the warning and types the number. */
 async function deleteWith(row: string, number: string) {
   await press(row);
-  await act(async () => { await confirmButton('Continue').props.onPress(); });
-  const field = tree!.root.find(node => typeof node.props.onChangeText === 'function' && node.props.placeholder === '10-digit mobile number');
-  await act(async () => { field.props.onChangeText(number); });
-  await act(async () => { await confirmButton('Delete my account').props.onPress(); });
+  await userEvent.press(confirmButton('Continue'));
+  await userEvent.paste(screen.getByPlaceholderText('10-digit mobile number'), number);
+  await userEvent.press(confirmButton('Delete my account'));
 }
 
 describe.each([
@@ -126,22 +109,22 @@ describe.each([
 ])('%s with central login on', (_screen, element) => {
   it('offers "Leave this facility" with the facility and "Sign out of this phone", not a plain "Sign out"', async () => {
     await render(element());
-    expect(texts()).toContain('Leave this facility');
-    expect(texts()).toContain('Leave North Cold Store and return to My facilities. You stay signed in to the association.');
-    expect(texts()).toContain('Sign out of this phone');
-    expect(texts()).not.toContain('Change warehouse server');
-    expect(texts()).not.toContain('Sign out of this facility on this phone.');
+    expect(screen.getByText('Leave this facility')).toBeOnTheScreen();
+    expect(screen.getByText('Leave North Cold Store and return to My facilities. You stay signed in to the association.')).toBeOnTheScreen();
+    expect(screen.getByText('Sign out of this phone')).toBeOnTheScreen();
+    expect(screen.queryByText('Change warehouse server', { includeHiddenElements: true })).not.toBeOnTheScreen();
+    expect(screen.queryByText('Sign out of this facility on this phone.', { includeHiddenElements: true })).not.toBeOnTheScreen();
   });
 
   it('"Leave this facility" asks first, then leaves through the shared cleanup; the association sign-in stays', async () => {
     await render(element());
     await press(LEAVE_ROW);
-    expect(texts()).toContain('Leave North Cold Store?');
-    expect(texts()).toContain(
+    expect(screen.getByText('Leave North Cold Store?')).toBeOnTheScreen();
+    expect(screen.getByText(
       'Unsaved forms are discarded. You stay signed in to the association and can open this facility again from My facilities.'
-    );
+    )).toBeOnTheScreen();
     expect(leaveFacility).not.toHaveBeenCalled();
-    await act(async () => { await confirmButton('Leave').props.onPress(); });
+    await userEvent.press(confirmButton('Leave'));
     expect(leaveFacility).toHaveBeenCalledTimes(1);
     expect(leaveFacility).toHaveBeenCalledWith(mockDispatch);
     expect(signOutEverywhere).not.toHaveBeenCalled();
@@ -156,18 +139,18 @@ describe.each([
     jest.mocked(leaveFacility).mockResolvedValue('busy');
     await render(element());
     await press(LEAVE_ROW);
-    await act(async () => { await confirmButton('Leave').props.onPress(); });
+    await userEvent.press(confirmButton('Leave'));
     expect(alerts()[0]).toEqual(['Operation in progress', 'A save is still being sent. Wait a few seconds, then try again.']);
   });
 
   it('"Sign out of this phone" ends the association sign-in too, with the wording that says so', async () => {
     await render(element());
     await press(PHONE_ROW);
-    expect(texts()).toContain('Sign out of this phone?');
-    expect(texts()).toContain(
+    expect(screen.getByText('Sign out of this phone?')).toBeOnTheScreen();
+    expect(screen.getByText(
       "You'll be signed out of the association and of the cold storage you have open. You'll need your mobile number and a one-time code to sign in again."
-    );
-    await act(async () => { await confirmButton('Sign out').props.onPress(); });
+    )).toBeOnTheScreen();
+    await userEvent.press(confirmButton('Sign out'));
     expect(signOutEverywhere).toHaveBeenCalledWith(mockDispatch);
     expect(logout).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
@@ -176,10 +159,10 @@ describe.each([
   it('facility SMS access without the association sign-in: one "Sign out" through the facility cleanup', async () => {
     setCentralState({ status: 'signedOut', user: null });
     await render(element());
-    expect(texts()).not.toContain('Sign out of this phone');
+    expect(screen.queryByText('Sign out of this phone', { includeHiddenElements: true })).not.toBeOnTheScreen();
     await press(SIGN_OUT_ROW);
-    expect(texts()).toContain("You'll need your mobile number and a one-time code to sign in again.");
-    await act(async () => { await confirmButton('Sign out').props.onPress(); });
+    expect(screen.getByText("You'll need your mobile number and a one-time code to sign in again.")).toBeOnTheScreen();
+    await userEvent.press(confirmButton('Sign out'));
     expect(leaveFacility).toHaveBeenCalledWith(mockDispatch);
     expect(logout).not.toHaveBeenCalled();
     expect(signOutEverywhere).not.toHaveBeenCalled();
@@ -190,13 +173,13 @@ describe('deletion in Settings with central login on', () => {
   it('names the facility in the row and in both steps, and says the association sign-in stays', async () => {
     await render(<SettingsScreen />);
     await press(DELETE_ROW);
-    expect(texts()).toContain('Delete your account at North Cold Store?');
-    expect(texts().some(text => text.includes('Your association sign-in and your other facilities stay'))).toBe(true);
-    await act(async () => { await confirmButton('Continue').props.onPress(); });
-    expect(texts()).toContain('Confirm deletion at North Cold Store');
-    expect(texts()).toContain(
+    expect(screen.getByText('Delete your account at North Cold Store?')).toBeOnTheScreen();
+    expect(screen.getByText(/Your association sign-in and your other facilities stay/)).toBeOnTheScreen();
+    await userEvent.press(confirmButton('Continue'));
+    expect(screen.getByText('Confirm deletion at North Cold Store')).toBeOnTheScreen();
+    expect(screen.getByText(
       'Enter the mobile number on your account to delete your account at North Cold Store. Your association sign-in stays.'
-    );
+    )).toBeOnTheScreen();
   });
 
   it('deletes the profile at this facility through the central-mode helper and does not open a sign-in screen', async () => {
@@ -212,9 +195,9 @@ describe('deletion in Settings with central login on', () => {
     await render(<SettingsScreen />);
     await deleteWith(DELETE_ROW, '9000000002');
     expect(deleteFacilityAccount).not.toHaveBeenCalled();
-    expect(texts()).toContain("This number doesn't match your account. Check it and try again.");
-    expect(confirmButton('Delete my account').props.disabled).toBe(false);
-    expect(confirmButton('Cancel').props.disabled).toBe(false);
+    expect(screen.getByText("This number doesn't match your account. Check it and try again.")).toBeOnTheScreen();
+    expect(confirmButton('Delete my account')).toBeEnabled();
+    expect(confirmButton('Cancel')).toBeEnabled();
   });
 
   it('says so when the final cleanup after the deletion was held back by a write in flight', async () => {
@@ -228,22 +211,22 @@ describe('deletion in Settings with central login on', () => {
 describe.each([
   ['Settings', () => <SettingsScreen />],
   ['Profile', () => <ProfileScreen />],
-])('%s with central login off', (screen, element) => {
+])('%s with central login off', (which, element) => {
   beforeEach(() => { mockCentralOn = false; });
 
   it('keeps the sign-out that leads to the sign-in screen', async () => {
     await render(element());
-    expect(texts()).not.toContain('Leave this facility');
-    expect(texts()).not.toContain('Sign out of this phone');
-    if (screen === 'Settings') {
-      expect(texts()).toContain('Change warehouse server');
+    expect(screen.queryByText('Leave this facility', { includeHiddenElements: true })).not.toBeOnTheScreen();
+    expect(screen.queryByText('Sign out of this phone', { includeHiddenElements: true })).not.toBeOnTheScreen();
+    if (which === 'Settings') {
+      expect(screen.getByText('Change warehouse server')).toBeOnTheScreen();
       await press('Change warehouse server, Now using North Cold Store');
       expect(router.push).toHaveBeenCalledWith('/operator-server');
     }
 
     await press(SIGN_OUT_ROW);
-    expect(texts()).toContain("You'll need your mobile number and a one-time code to sign in again.");
-    await act(async () => { await confirmButton('Sign out').props.onPress(); });
+    expect(screen.getByText("You'll need your mobile number and a one-time code to sign in again.")).toBeOnTheScreen();
+    await userEvent.press(confirmButton('Sign out'));
     expect(logout).toHaveBeenCalledTimes(1);
     expect(leaveFacility).not.toHaveBeenCalled();
     expect(signOutEverywhere).not.toHaveBeenCalled();
@@ -255,7 +238,7 @@ describe("the facility's own sign-in screen", () => {
   it('central login on: "Change" gives the SMS sign-in up, and the route guard returns to My facilities', async () => {
     setCentralState({ facilitySmsOrigin: 'https://north-cold.example.test' });
     await render(<LoginScreen />);
-    expect(texts()).toContain('North Cold Store');
+    expect(screen.getByText('North Cold Store')).toBeOnTheScreen();
     await press('Switch facility');
     expect(getCentralState().facilitySmsOrigin).toBeNull();
     expect(router.push).not.toHaveBeenCalled();
@@ -273,8 +256,8 @@ describe('the waiting screen once the facility has approved', () => {
   it('central login on: no new code is needed; the way on is My facilities', async () => {
     await render(<PendingEnrollmentScreen />);
     expect(getEnrollmentStatus).toHaveBeenCalled();
-    expect(texts()).toContain('North Cold Store approved your access. Open it from My facilities.');
-    expect(texts()).not.toContain('Sign in');
+    expect(screen.getByText('North Cold Store approved your access. Open it from My facilities.')).toBeOnTheScreen();
+    expect(screen.queryByText('Sign in', { includeHiddenElements: true })).not.toBeOnTheScreen();
     // The request came from this facility's own SMS sign-in.
     await act(async () => { setCentralState({ facilitySmsOrigin: 'https://north-cold.example.test' }); });
     await press('My facilities');
@@ -289,8 +272,8 @@ describe('the waiting screen once the facility has approved', () => {
   it('central login off: the facility asks for a new code', async () => {
     mockCentralOn = false;
     await render(<PendingEnrollmentScreen />);
-    expect(texts()).toContain('North Cold Store approved your access. Sign in again with a new code to continue.');
-    expect(texts()).toContain('Sign in');
+    expect(screen.getByText('North Cold Store approved your access. Sign in again with a new code to continue.')).toBeOnTheScreen();
+    expect(screen.getByText('Sign in')).toBeOnTheScreen();
   });
 
   it('central login off: "Sign in" replaces the waiting screen with the facility sign-in, as before', async () => {

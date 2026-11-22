@@ -1,12 +1,7 @@
 /** G-19: the save bar is an ordinary child below the scrolling form, never floating over a field. */
 import { Keyboard, StyleSheet } from 'react-native';
 import React from 'react';
-import { Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { router, useLocalSearchParams } from 'expo-router';
-import { customerService } from '@/services/customer-service';
-import { showAlert } from '@/utils/alert';
-import { showToast } from '@/utils/toast';
+import { act, render, screen } from '@testing-library/react-native';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -40,25 +35,17 @@ jest.mock('@/services/customer-service', () => ({
 import CustomerFormRoute from '../../../app/customer-form';
 import { space } from '@/theme/tokens';
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
 const mount = async () => {
-  await act(async () => { tree = create(<CustomerFormRoute />); });
-  return tree as ReactTestRenderer;
+  await render(<CustomerFormRoute />);
 };
-// WH-227: the bar is the shared FormSaveBar, so its testID is on the component and on its host View; take the View.
-const bar = (screen: ReactTestRenderer) =>
-  screen.root.find(node => node.props.testID === 'customer-save-bar' && (node.type as unknown) === 'View');
+// The bar has no role or text to find it by; its testID is on its host View.
+const bar = () => screen.getByTestId('customer-save-bar');
 
 it('draws the save bar in the flow, as the last child of the root column', async () => {
-  const screen = await mount();
-  const style = StyleSheet.flatten(bar(screen).props.style);
+  await mount();
+  const style = StyleSheet.flatten(bar().props.style);
   expect(style.position).not.toBe('absolute');
-  const column = bar(screen).parent;
+  const column = bar().parent;
   const children = column?.children.filter(child => typeof child !== 'string') ?? [];
   expect((children[children.length - 1] as { props: { testID?: string } }).props.testID).toBe('customer-save-bar');
 });
@@ -70,12 +57,12 @@ it('keeps the home-indicator space while the keyboard is hidden and gives it up 
     listeners[name] = handler;
     return { remove: jest.fn() };
   }) as never);
-  const screen = await mount();
-  expect(StyleSheet.flatten(bar(screen).props.style).paddingBottom).toBe(24 + space.md);
+  await mount();
+  expect(bar()).toHaveStyle({ paddingBottom: 24 + space.md });
   await act(async () => { listeners.keyboardDidShow({ endCoordinates: { screenY: 1350, height: 800 } }); });
-  expect(StyleSheet.flatten(bar(screen).props.style).paddingBottom).toBe(space.md);
+  expect(bar()).toHaveStyle({ paddingBottom: space.md });
   await act(async () => { listeners.keyboardDidHide(); });
-  expect(StyleSheet.flatten(bar(screen).props.style).paddingBottom).toBe(24 + space.md);
+  expect(bar()).toHaveStyle({ paddingBottom: 24 + space.md });
 });
 
 it('adds the bottom inset to the save bar on iOS only; on Android the system handles it (WH-209)', async () => {
@@ -83,12 +70,12 @@ it('adds the bottom inset to the save bar on iOS only; on Android the system han
   const original = Platform.OS;
   try {
     Platform.OS = 'android';
-    const android = await mount();
-    expect(StyleSheet.flatten(bar(android).props.style).paddingBottom).toBe(space.md);
-    await act(async () => { tree?.unmount(); });
+    await mount();
+    expect(bar()).toHaveStyle({ paddingBottom: space.md });
+    await screen.unmount();
     Platform.OS = 'ios';
-    const ios = await mount();
-    expect(StyleSheet.flatten(bar(ios).props.style).paddingBottom).toBe(24 + space.md);
+    await mount();
+    expect(bar()).toHaveStyle({ paddingBottom: 24 + space.md });
   } finally {
     Platform.OS = original;
   }

@@ -4,8 +4,7 @@
  * Settings; signed out it keeps the component's own title and language switch.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import OperatorServerScreen from '../../../app/operator-server';
 import { setLanguage } from '@/i18n';
@@ -31,13 +30,8 @@ jest.mock('@/components/OperatorServerSelection', () => ({
   OperatorServerSelection: (props: Record<string, unknown>) => mockSelection(props),
 }));
 
-let tree: ReactTestRenderer | undefined;
-async function render() {
-  await act(async () => {
-    tree = create(<OperatorServerScreen />);
-  });
-}
-const texts = () => tree!.root.findAllByType(Text).map(node => [node.props.children].flat(Infinity).join(''));
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
 const lastProps = () => mockSelection.mock.calls[mockSelection.mock.calls.length - 1][0];
 
 beforeEach(() => {
@@ -49,15 +43,11 @@ beforeEach(() => {
     auth: { userProfile: { id: 'p1', name: 'Dev Administrator', role: 'admin', mobile: '9000000001' } },
   };
 });
-afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
-});
 
 it('signed in: header title, Back, the server in use and no language switch', async () => {
-  await render();
-  expect(texts()).toContain('Change warehouse server');
-  expect(texts()).toContain('Back');
+  await render(<OperatorServerScreen />);
+  expect(screen.getByText('Change warehouse server')).toBeOnTheScreen();
+  expect(screen.getByText('Back')).toBeOnTheScreen();
   expect(lastProps()).toMatchObject({ current: mockServer, hideLanguage: true, underHeader: true });
   // One Back only: the component gets no cancel handler.
   expect(lastProps().onCancel).toBeUndefined();
@@ -65,17 +55,17 @@ it('signed in: header title, Back, the server in use and no language switch', as
 
 it('signed out: a header with Back but no title, and the component keeps its own title and language switch', async () => {
   mockState = { ...mockState, auth: { userProfile: null } };
-  await render();
-  expect(texts()).not.toContain('Change warehouse server');
+  await render(<OperatorServerScreen />);
+  expect(screen.queryByText('Change warehouse server', hidden)).not.toBeOnTheScreen();
   expect(lastProps()).toMatchObject({ current: null, hideLanguage: false });
   // CR-29: no empty heading for a screen reader to stop on.
-  const headings = tree!.root.findAll(node => node.props.accessibilityRole === 'header');
+  const headings = screen.queryAllByRole('header', hidden);
   expect(headings).toHaveLength(0);
 });
 
 it('with nothing to go back to: the plain component, no header', async () => {
   jest.mocked(router.canGoBack).mockReturnValue(false);
-  await render();
-  expect(texts()).not.toContain('Back');
+  await render(<OperatorServerScreen />);
+  expect(screen.queryByText('Back', hidden)).not.toBeOnTheScreen();
   expect(lastProps().current).toBeUndefined();
 });

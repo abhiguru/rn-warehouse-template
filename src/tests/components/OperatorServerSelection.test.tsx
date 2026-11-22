@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { logout } from '@/store/slices/authSlice';
@@ -12,6 +12,9 @@ import { commitStagedOperatorServer, discoverOperator, getActiveOperatorServer, 
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: {} } }));
 jest.mock('react-native', () => {
   const React = require('react');
+  function flatten(style: unknown): unknown {
+    return Array.isArray(style) ? Object.assign({}, ...style.map(entry => flatten(entry) as object)) : style ?? {};
+  }
   const element = (name: string) => ({ children, ...props }: Record<string, unknown>) =>
     React.createElement(name, props, children);
   return {
@@ -20,7 +23,8 @@ jest.mock('react-native', () => {
     ScrollView: element('ScrollView'), KeyboardAvoidingView: element('KeyboardAvoidingView'),
     Keyboard: { dismiss: jest.fn() },
     Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options.ios ?? options.default },
-    Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles },
+    // flatten is for Testing Library, which reads styles to find what is hidden.
+    Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles, flatten },
   };
 });
 jest.mock('expo-camera', () => ({ CameraView: () => null, useCameraPermissions: () => [{ granted: true }, jest.fn()] }));
@@ -37,7 +41,11 @@ jest.mock('@/hooks/useTheme', () => {
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), replace: jest.fn() } }));
 jest.mock('@/components/ui/Button', () => {
   const React = require('react');
-  return { Button: ({ children, ...props }: Record<string, unknown>) => React.createElement('Button', props, children) };
+  // The stand-in draws what a person finds: a pressable with the button role and its label as text.
+  return {
+    Button: ({ children, ...props }: Record<string, unknown>) =>
+      React.createElement('View', { ...props, accessible: true, accessibilityRole: 'button' }, React.createElement('Text', null, children)),
+  };
 });
 jest.mock('@/store/hooks', () => ({ useAppDispatch: () => jest.fn() }));
 // The language switch has its own controls and store access; it is not under test here.
@@ -75,24 +83,25 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-// The mocked react-native components are plain strings in the tree, so the tag names are cast
-// to the element type findByType expects (the same cast the other component tests use).
-const tag = (name: string) => name as unknown as React.ElementType;
-const BUTTON = tag('Button');
-const TEXT_INPUT = tag('TextInput');
-const TEXT = tag('Text');
 const active = { origin: 'https://active.example.test', instanceId: 'instance-active', displayName: 'Active', companyName: 'Company' };
-let renderer: ReturnType<typeof create> | undefined;
-const buttons = () => renderer!.root.findAllByType(BUTTON).map(button => button.props.children);
-const button = (label: string) => renderer!.root.findAllByType(BUTTON).find(node => node.props.children === label);
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+// react-native is replaced wholesale, so the server field and the stand-ins below are plain host elements.
+const input = () => screen.getByLabelText('Server address');
+const button = (label: string) => screen.getByRole('button', { name: label });
+const hasButton = (label: string) => screen.queryByRole('button', { name: label, ...hidden }) !== null;
+const check = () => user.press(button('Check server'));
+const typeAddress = async (text: string) => { await fireEvent.changeText(input(), text); };
+/** The host elements a stand-in draws that have no role or text (found by their type). */
+const standIns = (name: string) => {
+  const root = screen.root;
+  return root ? [root, ...root.queryAll(() => true)].filter(node => (node.type as unknown) === name) : [];
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(getActiveOperatorServer).mockReturnValue(null);
-});
-afterEach(async () => {
-  if (renderer) await act(async () => { renderer!.unmount(); });
-  renderer = undefined;
 });
 
 it('keeps only the latest server discovery after overlapping checks', async () => {
@@ -101,12 +110,12 @@ it('keeps only the latest server discovery after overlapping checks', async () =
   jest.mocked(discoverOperator).mockReset()
     .mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
-  await act(async () => { renderer = create(<OperatorServerSelection initial />); });
-  const input = () => renderer!.root.findByType(TEXT_INPUT);
-  const check = () => button('Check server')!;
+  await render(<OperatorServerSelection initial />);
 
-  await act(async () => { input().props.onChangeText('https://first.example.test'); check().props.onPress(); });
-  await act(async () => { input().props.onChangeText('https://second.example.test'); check().props.onPress(); });
+  await typeAddress('https://first.example.test');
+  await check();
+  await typeAddress('https://second.example.test');
+  await check();
   await act(async () => {
     second.resolve({ server: { origin: 'https://second.example.test', instanceId: 'instance-2', displayName: 'Second', companyName: 'Company' }, config: {} as never });
     await second.promise;
@@ -116,22 +125,23 @@ it('keeps only the latest server discovery after overlapping checks', async () =
     await first.promise;
   });
 
-  expect(input().props.value).toBe('https://second.example.test');
-  expect(renderer!.root.findAllByType(TEXT).map(node => node.props.children)).toContain('Second');
-  expect(renderer!.root.findAllByType(TEXT).map(node => node.props.children)).not.toContain('First');
+  expect(input()).toHaveDisplayValue('https://second.example.test');
+  expect(screen.getByText('Second')).toBeOnTheScreen();
+  expect(screen.queryByText('First', hidden)).not.toBeOnTheScreen();
 });
 
 it('offers no Back button on a first selection without a cancel handler', async () => {
-  await act(async () => { renderer = create(<OperatorServerSelection initial />); });
-  expect(buttons()).not.toContain('Back');
+  await render(<OperatorServerSelection initial />);
+  expect(screen.getByRole('button', { name: 'Check server' })).toBeOnTheScreen();
+  expect(hasButton('Back')).toBe(false);
 });
 
 it('leaves through Back without touching the active server, its session or any draft', async () => {
   jest.mocked(getActiveOperatorServer).mockReturnValue(active);
   const onCancel = jest.fn();
-  await act(async () => { renderer = create(<OperatorServerSelection initial onCancel={onCancel} />); });
-  await act(async () => { renderer!.root.findByType(TEXT_INPUT).props.onChangeText('https://other.example.test'); });
-  await act(async () => { button('Back')!.props.onPress(); });
+  await render(<OperatorServerSelection initial onCancel={onCancel} />);
+  await typeAddress('https://other.example.test');
+  await user.press(button('Back'));
   expect(onCancel).toHaveBeenCalledTimes(1);
   expect(discoverOperator).not.toHaveBeenCalled();
   expect(beginOperatorSwitch).not.toHaveBeenCalled();
@@ -146,10 +156,10 @@ it('re-selecting the active server while initial returns through onCancel instea
   jest.mocked(discoverOperator).mockResolvedValue({ server: active, config: {} as never });
   jest.mocked(beginOperatorSwitch).mockReturnValue(true);
   const onCancel = jest.fn();
-  await act(async () => { renderer = create(<OperatorServerSelection initial onCancel={onCancel} />); });
-  await act(async () => { renderer!.root.findByType(TEXT_INPUT).props.onChangeText(active.origin); });
-  await act(async () => { button('Check server')!.props.onPress(); });
-  await act(async () => { button('Use this server')!.props.onPress(); });
+  await render(<OperatorServerSelection initial onCancel={onCancel} />);
+  await typeAddress(active.origin);
+  await check();
+  await user.press(await screen.findByRole('button', { name: 'Use this server' }));
   expect(onCancel).toHaveBeenCalledTimes(1);
   expect(router.back).not.toHaveBeenCalled();
   expect(logout).not.toHaveBeenCalled();
@@ -162,10 +172,10 @@ it('re-selecting the active server from the settings route still goes back throu
   jest.mocked(discoverOperator).mockResolvedValue({ server: active, config: {} as never });
   jest.mocked(beginOperatorSwitch).mockReturnValue(true);
   const onCancel = jest.fn();
-  await act(async () => { renderer = create(<OperatorServerSelection onCancel={onCancel} />); });
-  await act(async () => { renderer!.root.findByType(TEXT_INPUT).props.onChangeText(active.origin); });
-  await act(async () => { button('Check server')!.props.onPress(); });
-  await act(async () => { button('Use this server')!.props.onPress(); });
+  await render(<OperatorServerSelection onCancel={onCancel} />);
+  await typeAddress(active.origin);
+  await check();
+  await user.press(await screen.findByRole('button', { name: 'Use this server' }));
   expect(router.back).toHaveBeenCalledTimes(1);
   expect(onCancel).not.toHaveBeenCalled();
 });
@@ -173,55 +183,54 @@ it('re-selecting the active server from the settings route still goes back throu
 // G-09: "Change warehouse server" inside Settings shows the server in use, has no example
 // address and no second language switch; the first-run screen keeps its look.
 const devServer = { origin: 'https://warehouse-dev.gurucold.in', displayName: 'Dev', companyName: 'Dev Cold Storage (fictional data)', instanceId: 'i1' };
-const allText = () => renderer!.root.findAllByType(TEXT).map(node => [node.props.children].flat(Infinity).join(''));
 
 it('with a current server: shows it, no placeholder, no language switch, no in-body title', async () => {
-  await act(async () => { renderer = create(<OperatorServerSelection current={devServer} hideLanguage />); });
-  const shown = allText();
-  expect(shown).toContain('In use now');
-  expect(shown).toContain('Dev Cold Storage (fictional data)');
-  expect(shown).toContain('https://warehouse-dev.gurucold.in');
-  expect(shown).toContain('Enter the address of the other server (it starts with https://), or scan its QR code.');
-  expect(shown).not.toContain('Choose your warehouse server');
-  expect(renderer!.root.findAllByType(tag('LanguageSwitch'))).toHaveLength(0);
-  const input = renderer!.root.findByType(TEXT_INPUT);
-  expect(input.props.placeholder).toBeUndefined();
-  expect(input.props.value).toBe('');
-  expect(input.props.accessibilityLabel).toBe('Server address');
+  await render(<OperatorServerSelection current={devServer} hideLanguage />);
+  expect(screen.getByText('In use now')).toBeOnTheScreen();
+  expect(screen.getByText('Dev Cold Storage (fictional data)')).toBeOnTheScreen();
+  expect(screen.getByText('https://warehouse-dev.gurucold.in')).toBeOnTheScreen();
+  expect(screen.getByText('Enter the address of the other server (it starts with https://), or scan its QR code.')).toBeOnTheScreen();
+  expect(screen.queryByText('Choose your warehouse server', hidden)).not.toBeOnTheScreen();
+  expect(standIns('LanguageSwitch')).toHaveLength(0);
+  expect(input().props.placeholder).toBeUndefined();
+  expect(input()).toHaveDisplayValue('');
+  expect(input()).toHaveAccessibleName('Server address');
   // The in-use card does not offer "Use this server".
-  expect(buttons()).not.toContain('Use this server');
+  expect(hasButton('Use this server')).toBe(false);
 });
 
 it('first run: no "In use now", the language switch and the title stay, but still no example address', async () => {
-  await act(async () => { renderer = create(<OperatorServerSelection initial />); });
-  expect(allText()).not.toContain('In use now');
-  expect(allText()).toContain('Choose your warehouse server');
-  expect(renderer!.root.findAllByType(tag('LanguageSwitch'))).toHaveLength(1);
-  expect(renderer!.root.findByType(TEXT_INPUT).props.placeholder).toBeUndefined();
+  await render(<OperatorServerSelection initial />);
+  expect(screen.queryByText('In use now', hidden)).not.toBeOnTheScreen();
+  expect(screen.getByText('Choose your warehouse server')).toBeOnTheScreen();
+  expect(standIns('LanguageSwitch')).toHaveLength(1);
+  expect(input().props.placeholder).toBeUndefined();
 });
 
 it('a network failure says the server could not be checked; the app\'s own message is kept', async () => {
-  await act(async () => { renderer = create(<OperatorServerSelection initial />); });
+  await render(<OperatorServerSelection initial />);
   jest.mocked(discoverOperator).mockRejectedValueOnce(new TypeError('Network request failed'));
-  await act(async () => { button('Check server')!.props.onPress(); });
+  await check();
   expect(showAlert).toHaveBeenLastCalledWith('Server unavailable', "Couldn't check this server. Check the address and try again.");
   jest.mocked(discoverOperator).mockRejectedValueOnce(new SyntaxError('Unexpected token < in JSON'));
-  await act(async () => { button('Check server')!.props.onPress(); });
+  await check();
   expect(showAlert).toHaveBeenLastCalledWith('Server unavailable', "Couldn't check this server. Check the address and try again.");
   jest.mocked(discoverOperator).mockRejectedValueOnce(new Error('Use an https:// address'));
-  await act(async () => { button('Check server')!.props.onPress(); });
+  await check();
   expect(showAlert).toHaveBeenLastCalledWith('Server unavailable', 'Use an https:// address');
 });
 
 it('a facility that needs a newer app shows the "Update the app" screen, not an alert; Back returns to the field', async () => {
-  await act(async () => { renderer = create(<OperatorServerSelection initial />); });
+  await render(<OperatorServerSelection initial />);
   jest.mocked(showAlert).mockClear();
   jest.mocked(discoverOperator).mockRejectedValueOnce(new AppTooOldError('requires 0.7.0', '0.7.0', '0.6.0', 'https://updates.example.test/app.apk'));
-  await act(async () => { button('Check server')!.props.onPress(); });
-  const screen = renderer!.root.findByType(tag('AppTooOldScreen'));
-  expect(screen.props).toMatchObject({ minimum: '0.7.0', current: '0.6.0', updateUrl: 'https://updates.example.test/app.apk' });
+  await check();
+  // The stand-in of the screen draws a host element with the props it was given.
+  const tooOld = standIns('AppTooOldScreen');
+  expect(tooOld).toHaveLength(1);
+  expect(tooOld[0].props).toMatchObject({ minimum: '0.7.0', current: '0.6.0', updateUrl: 'https://updates.example.test/app.apk' });
   expect(showAlert).not.toHaveBeenCalled();
-  await act(async () => { screen.props.onClose(); });
-  expect(renderer!.root.findAllByType(tag('AppTooOldScreen'))).toHaveLength(0);
-  expect(button('Check server')).toBeDefined();
+  await act(async () => { tooOld[0].props.onClose(); });
+  expect(standIns('AppTooOldScreen')).toHaveLength(0);
+  expect(button('Check server')).toBeOnTheScreen();
 });

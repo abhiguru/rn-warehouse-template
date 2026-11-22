@@ -1,7 +1,6 @@
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Text } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import CustomersScreen from '../../../app/customers';
 import { customerService } from '@/services/customer-service';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
@@ -31,8 +30,6 @@ jest.mock('@/services/customer-service', () => ({
 }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
-const shownText = (tree: ReturnType<typeof create>) =>
-  tree.root.findAllByType(Text).map(node => [node.props.children].flat().join('')).join(' | ');
 
 beforeEach(() => {
   jest.mocked(customerService.getCustomerList).mockReset();
@@ -43,16 +40,12 @@ it('shows a retryable error, not the empty state, when the list fails to load', 
   jest.mocked(customerService.getCustomerList)
     .mockResolvedValueOnce({ success: false, message: 'Failed to fetch customers', data: [] } as never)
     .mockResolvedValueOnce({ success: true, data: [], pagination: { total_count: 0 } } as never);
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
-  expect(shownText(tree)).toContain("Couldn't load customers");
-  expect(shownText(tree)).not.toContain('No customers yet');
-  const retry = tree.root.findAll(node => node.props.accessibilityRole === 'button' &&
-    node.findAllByType(Text).some(t => t.props.children === 'Try again'))[0];
-  await act(async () => { retry.props.onPress(); });
+  await render(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>);
+  expect(await screen.findByText(/Couldn't load customers/)).toBeOnTheScreen();
+  expect(screen.queryByText(/No customers yet/)).not.toBeOnTheScreen();
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Try again' }));
   expect(customerService.getCustomerList).toHaveBeenCalledTimes(2);
-  expect(shownText(tree)).toContain('No customers yet');
-  await act(async () => { tree.unmount(); });
+  expect(await screen.findByText(/No customers yet/)).toBeOnTheScreen();
 });
 
 const MODES: Mode[] = ['light', 'dark'];
@@ -68,19 +61,22 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
       ],
       pagination: { total_count: 2 },
     } as never);
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
-    const text = shownText(tree);
-    expect(text).toContain('Patel Traders');
-    expect(text).toContain('+91 98765 43210');
-    expect(text).toContain('+91 98123 45678');
-    expect(text).toContain('Deactivated');
+    await render(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>);
+    expect(await screen.findByText(/Patel Traders/)).toBeOnTheScreen();
+    expect(screen.getByText(/\+91 98765 43210/)).toBeOnTheScreen();
+    expect(screen.getByText(/\+91 98123 45678/)).toBeOnTheScreen();
+    expect(screen.getAllByText(/Deactivated/)[0]).toBeOnTheScreen();
     const tokens = getTokens(brand, mode);
-    const backgrounds = tree.root
-      .findAll(node => typeof node.type === 'string' && node.props.style)
-      .map(node => [node.props.style].flat(Infinity).find(s => s && s.backgroundColor)?.backgroundColor);
+    // The theme background is a style on a plain View, which has no role or text: the tree is walked for it.
+    const backgrounds: unknown[] = [];
+    const walk = (node: NonNullable<typeof screen.root>) => {
+      if (typeof node.type === 'string' && node.props.style) {
+        backgrounds.push(([node.props.style].flat(Infinity) as { backgroundColor?: string }[]).find(s => s && s.backgroundColor)?.backgroundColor);
+      }
+      for (const child of node.children) if (typeof child !== 'string') walk(child as NonNullable<typeof screen.root>);
+    };
+    walk(screen.root as NonNullable<typeof screen.root>);
     expect(backgrounds).toContain(tokens.background.base);
-    await act(async () => { tree.unmount(); });
   });
 });
 
@@ -89,11 +85,7 @@ describe('customer active toggle', () => {
     { id: 'c1', name: 'Patel Traders', mobile: '9876543210', city: 'Rajkot', email: null, active: true },
     { id: 'c2', name: 'Shah Cold Store', mobile: null, city: null, email: null, active: false },
   ];
-  const rowFor = (tree: ReturnType<typeof create>, name: string) =>
-    tree.root.findAll(node =>
-      typeof node.props.accessibilityLabel === 'string' &&
-      node.props.accessibilityLabel.startsWith(name) &&
-      typeof node.props.onAccessibilityAction === 'function')[0];
+  const rowFor = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}`) });
 
   beforeEach(() => {
     jest.mocked(showAlert).mockReset();
@@ -105,11 +97,12 @@ describe('customer active toggle', () => {
   });
 
   it('asks before deactivating, and only deactivates on confirm', async () => {
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
-    const row = rowFor(tree, 'Patel Traders');
-    expect(row.props.accessibilityActions).toEqual([{ name: 'toggleActive', label: 'Deactivate' }]);
-    await act(async () => { row.props.onAccessibilityAction({ nativeEvent: { actionName: 'toggleActive' } }); });
+    await render(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>);
+    await screen.findByText(/Patel Traders/);
+    const row = rowFor('Patel Traders');
+    expect(row).toHaveProp('accessibilityActions', [{ name: 'toggleActive', label: 'Deactivate' }]);
+    // The screen reader's own action on the row: there is no gesture of a person for it.
+    await fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: 'toggleActive' } });
     expect(showAlert).toHaveBeenCalledTimes(1);
     const [title, , buttons] = jest.mocked(showAlert).mock.calls[0];
     expect(title).toBe('Deactivate Patel Traders?');
@@ -117,17 +110,15 @@ describe('customer active toggle', () => {
     expect(customerService.inactivateCustomer).not.toHaveBeenCalled();
     await act(async () => { buttons?.[1].onPress?.(); });
     expect(customerService.inactivateCustomer).toHaveBeenCalledWith('c1');
-    await act(async () => { tree.unmount(); });
   });
 
   it('activates an inactive customer without asking', async () => {
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
-    const row = rowFor(tree, 'Shah Cold Store');
-    expect(row.props.accessibilityActions).toEqual([{ name: 'toggleActive', label: 'Activate' }]);
-    await act(async () => { row.props.onAccessibilityAction({ nativeEvent: { actionName: 'toggleActive' } }); });
+    await render(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>);
+    await screen.findByText(/Shah Cold Store/);
+    const row = rowFor('Shah Cold Store');
+    expect(row).toHaveProp('accessibilityActions', [{ name: 'toggleActive', label: 'Activate' }]);
+    await fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: 'toggleActive' } });
     expect(showAlert).not.toHaveBeenCalled();
     expect(customerService.restoreCustomer).toHaveBeenCalledWith('c2');
-    await act(async () => { tree.unmount(); });
   });
 });

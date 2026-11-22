@@ -5,8 +5,7 @@
  * stand-ins. Stack.Screen draws what the page puts in the stack header. Fictional data only.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import ItemPage from '../../../app/item/[id]';
 import UserEditScreen from '../../../app/user-edit/[id]';
@@ -61,19 +60,15 @@ jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithout
 
 const ITEM = { id: 'item-1', name: 'Fictional Onion', packaging: 'Bag', description: 'Red', active: true, created_at: '2026-01-01' };
 
-let tree: ReactTestRenderer | undefined;
-const mount = async (element: React.ReactElement) => {
-  await act(async () => { tree = create(element); });
-  return tree as ReactTestRenderer;
-};
-const shownText = () => tree!.root.findAllByType(Text).map(node => [node.props.children].flat(3).join(''));
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-const press = async (label: string) => {
-  const control = byLabel(label)[0];
-  if (!control) throw new Error(`No control labelled "${label}"`);
-  await act(async () => { control.props.onPress(); });
-};
-const testIds = (id: string) => tree!.root.findAll(node => node.props.testID === id);
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+const mount = async (element: React.ReactElement) => { await render(element); };
+const has = (text: string) => expect(screen.getAllByText(text)[0]).toBeOnTheScreen();
+const lacks = (text: string) => expect(screen.queryByText(text, hidden)).not.toBeOnTheScreen();
+const controls = (label: string, all = false) => screen.queryAllByRole('button', { name: label, ...(all ? hidden : {}) });
+const press = async (label: string) => { await user.press(await screen.findByRole('button', { name: label })); };
+const testIds = (id: string, all = false) => screen.queryAllByTestId(id, all ? hidden : undefined);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -81,9 +76,7 @@ beforeEach(() => {
   mockRole = 'admin';
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
   setLanguage('en');
   jest.restoreAllMocks();
 });
@@ -92,26 +85,26 @@ describe('Item page', () => {
   it('cannot be read: the title with the check-connection text, Try again, no Edit (English)', async () => {
     jest.mocked(itemService.getItemById).mockResolvedValue({ success: false, message: 'x' } as never);
     await mount(<ItemPage />);
-    expect(shownText()).toEqual(expect.arrayContaining(["Couldn't open this item", 'Check your connection and try again.']));
-    expect(byLabel('Edit')).toHaveLength(0);
+    for (const text of ["Couldn't open this item", 'Check your connection and try again.']) has(text);
+    expect(controls('Edit', true)).toHaveLength(0);
     jest.mocked(itemService.getItemById).mockResolvedValue({ success: true, data: ITEM } as never);
     await press('Try again');
-    expect(shownText()).toContain('Fictional Onion');
+    has('Fictional Onion');
   });
 
   it('cannot be read: the same in Gujarati', async () => {
     setLanguage('gu');
     jest.mocked(itemService.getItemById).mockResolvedValue({ success: false, message: 'x' } as never);
     await mount(<ItemPage />);
-    expect(shownText()).toEqual(expect.arrayContaining(['આ આઇટમ ખોલી શકાઈ નથી', 'તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.']));
+    for (const text of ['આ આઇટમ ખોલી શકાઈ નથી', 'તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.']) has(text);
   });
 
   it('is gone: "Item not found" and "It may have been deleted." with Go back, no Try again (English)', async () => {
     jest.mocked(itemService.getItemById).mockResolvedValue({ success: false, code: 'NOT_FOUND', message: 'x' } as never);
     await mount(<ItemPage />);
-    expect(shownText()).toEqual(expect.arrayContaining(['Item not found', 'It may have been deleted.']));
-    expect(shownText()).not.toContain("Couldn't open this item");
-    expect(byLabel('Try again')).toHaveLength(0);
+    for (const text of ['Item not found', 'It may have been deleted.']) has(text);
+    lacks("Couldn't open this item");
+    expect(controls('Try again', true)).toHaveLength(0);
     await press('Go back');
     expect(router.back).toHaveBeenCalledTimes(1);
   });
@@ -120,7 +113,7 @@ describe('Item page', () => {
     setLanguage('gu');
     jest.mocked(itemService.getItemById).mockResolvedValue({ success: false, code: 'NOT_FOUND', message: 'x' } as never);
     await mount(<ItemPage />);
-    expect(shownText()).toEqual(expect.arrayContaining(['આઇટમ મળી નથી', 'કદાચ તે ડિલીટ થઈ ગઈ છે.']));
+    for (const text of ['આઇટમ મળી નથી', 'કદાચ તે ડિલીટ થઈ ગઈ છે.']) has(text);
     await press('પાછા જાઓ');
     expect(router.back).toHaveBeenCalledTimes(1);
   });
@@ -128,7 +121,7 @@ describe('Item page', () => {
   it('has Edit in the header once read, and Edit opens the item form', async () => {
     jest.mocked(itemService.getItemById).mockResolvedValue({ success: true, data: ITEM } as never);
     await mount(<ItemPage />);
-    expect(byLabel('Edit').length).toBeGreaterThan(0);
+    expect(controls('Edit').length).toBeGreaterThan(0);
     await press('Edit');
     expect(router.push).toHaveBeenCalledWith({ pathname: '/item-edit/[id]', params: { id: 'item-1' } });
   });
@@ -138,17 +131,17 @@ describe('Item page', () => {
     jest.mocked(itemService.getItemById).mockResolvedValue({ success: true, data: { ...ITEM, active: false } } as never);
     await mount(<ItemPage />);
     expect(testIds('item-deactivated').length).toBeGreaterThan(0);
-    expect(shownText()).toContain(strip);
-    await act(async () => { tree!.unmount(); });
+    has(strip);
+    await screen.unmount();
     mockParams = { id: 'item-1', tab: 'pricing' };
     await mount(<ItemPage />);
-    expect(shownText()).toContain(strip);
-    await act(async () => { tree!.unmount(); });
+    has(strip);
+    await screen.unmount();
     mockParams = { id: 'item-1' };
     jest.mocked(itemService.getItemById).mockResolvedValue({ success: true, data: ITEM } as never);
     await mount(<ItemPage />);
-    expect(testIds('item-deactivated')).toHaveLength(0);
-    expect(shownText()).not.toContain(strip);
+    expect(testIds('item-deactivated', true)).toHaveLength(0);
+    lacks(strip);
   });
 });
 
@@ -158,29 +151,29 @@ describe('User page', () => {
   it('cannot be read: the title, the check-connection text and Try again (English)', async () => {
     jest.mocked(adminUserService.getUserDetails).mockRejectedValue(new Error('offline'));
     await mount(<UserEditScreen />);
-    expect(shownText()).toEqual(expect.arrayContaining(["Couldn't load this user", 'Check your connection and try again.']));
-    expect(byLabel('Try again').length).toBeGreaterThan(0);
+    for (const text of ["Couldn't load this user", 'Check your connection and try again.']) has(text);
+    expect(controls('Try again').length).toBeGreaterThan(0);
   });
 
   it('cannot be read: the same in Gujarati', async () => {
     setLanguage('gu');
     jest.mocked(adminUserService.getUserDetails).mockRejectedValue(new Error('offline'));
     await mount(<UserEditScreen />);
-    expect(shownText()).toEqual(expect.arrayContaining(['આ યુઝર લોડ કરી શકાયો નથી', 'તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.']));
+    for (const text of ['આ યુઝર લોડ કરી શકાયો નથી', 'તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.']) has(text);
   });
 
   it('is gone: says the user is no longer at this facility, with Back to Users and no Try again (English)', async () => {
     jest.mocked(adminUserService.getUserDetails).mockResolvedValue({ success: false, code: 'NOT_FOUND', message: 'x' } as never);
     await mount(<UserEditScreen />);
-    expect(shownText()).toEqual(expect.arrayContaining(["Couldn't load this user", 'This user is no longer at this facility.', 'Back to Users']));
-    expect(byLabel('Try again')).toHaveLength(0);
+    for (const text of ["Couldn't load this user", 'This user is no longer at this facility.', 'Back to Users']) has(text);
+    expect(controls('Try again', true)).toHaveLength(0);
   });
 
   it('is gone: the same in Gujarati', async () => {
     setLanguage('gu');
     jest.mocked(adminUserService.getUserDetails).mockResolvedValue({ success: false, code: 'NOT_FOUND', message: 'x' } as never);
     await mount(<UserEditScreen />);
-    expect(shownText()).toEqual(expect.arrayContaining(['આ યુઝર લોડ કરી શકાયો નથી', 'આ યુઝર હવે આ કોલ્ડ સ્ટોરેજમાં નથી.', 'યુઝર પર પાછા જાઓ']));
+    for (const text of ['આ યુઝર લોડ કરી શકાયો નથી', 'આ યુઝર હવે આ કોલ્ડ સ્ટોરેજમાં નથી.', 'યુઝર પર પાછા જાઓ']) has(text);
   });
 });
 
@@ -192,19 +185,19 @@ describe('Dispatch hero status tag', () => {
   it('says Complete once something has been dispatched, and Pending before that (English)', async () => {
     await hero(5);
     expect(tag().length).toBeGreaterThan(0);
-    expect(shownText()).toContain('Complete');
-    await act(async () => { tree!.unmount(); });
+    has('Complete');
+    await screen.unmount();
     await hero(0);
-    expect(shownText()).toContain('Pending');
-    expect(shownText()).not.toContain('Complete');
+    has('Pending');
+    lacks('Complete');
   });
 
   it('says it in Gujarati', async () => {
     setLanguage('gu');
     await hero(5);
-    expect(shownText()).toContain('પૂર્ણ');
-    await act(async () => { tree!.unmount(); });
+    has('પૂર્ણ');
+    await screen.unmount();
     await hero(0);
-    expect(shownText()).toContain('બાકી');
+    has('બાકી');
   });
 });

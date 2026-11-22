@@ -4,8 +4,8 @@
  * sits above the value.
  */
 import React from 'react';
-import { Dimensions, Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { Dimensions } from 'react-native';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import ProfileScreen from '../../../app/profile';
 import { setLanguage } from '@/i18n';
@@ -32,15 +32,13 @@ jest.mock('@/store/slices/authSlice', () => ({
 }));
 jest.mock('@/services/admin-user-service', () => ({ adminUserService: { getUsersList: jest.fn() } }));
 
-let tree: ReactTestRenderer | undefined;
-async function render(fontScale = 1) {
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+async function draw(fontScale = 1) {
   Dimensions.set({ window: { width: 360, height: 800, scale: 3, fontScale } });
-  await act(async () => {
-    tree = create(<ProfileScreen />);
-  });
-  return tree!.root;
+  await render(<ProfileScreen />);
 }
-const texts = () => tree!.root.findAllByType(Text).map(node => [node.props.children].flat(Infinity).join(''));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -54,51 +52,44 @@ beforeEach(() => {
   };
 });
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   Dimensions.set({ window: { width: 750, height: 1334, scale: 2, fontScale: 2 } });
 });
 
 describe('Profile (G-41)', () => {
   it('shows the name once', async () => {
-    await render();
-    expect(texts().filter(text => text === 'Dev Administrator')).toHaveLength(1);
+    await draw();
+    expect(screen.queryAllByText('Dev Administrator', hidden)).toHaveLength(1);
   });
 
   it('has one pressable that leads to the name edit', async () => {
-    const root = await render();
-    // Every pressable of the screen; the outermost of each (a Pressable and the view it draws share props).
-    const found = root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityRole === 'button');
-    const pressables = found.filter(node => !found.some(other => other !== node && other.findAll(inner => inner === node).length > 0));
+    await draw();
+    // Every pressable of the screen, hidden ones too (a Pressable and the view it draws are one element here).
+    const pressables = screen.queryAllByRole('button', hidden);
+    expect(pressables.length).toBeGreaterThan(0);
     let leading = 0;
     for (const pressable of pressables) {
       jest.mocked(router.push).mockClear();
-      await act(async () => {
-        pressable.props.onPress();
-      });
+      await user.press(pressable);
       if (jest.mocked(router.push).mock.calls.some(call => String(call[0]).startsWith('/user/edit/'))) leading += 1;
     }
     expect(leading).toBe(1);
   });
 
   it('lists the mobile number only, as "Mobile number"', async () => {
-    await render();
-    const all = texts();
-    expect(all).toContain('Mobile number');
-    expect(all).not.toContain('Phone');
-    expect(all).not.toContain('Name');
-    expect(all).not.toContain('Role');
-    expect(all).toContain('+91 90000 00001');
+    await draw();
+    expect(screen.getByText('Mobile number')).toBeOnTheScreen();
+    for (const absent of ['Phone', 'Name', 'Role']) expect(screen.queryByText(absent, hidden)).not.toBeOnTheScreen();
+    expect(screen.getByText('+91 90000 00001')).toBeOnTheScreen();
   });
 });
 
 describe('Profile at large text (G-13)', () => {
   it('at 2.0 the label sits above the value', async () => {
-    const root = await render(2);
-    expect(root.findAll(node => node.props.testID === 'profile-row-stacked').length).toBeGreaterThan(0);
+    await draw(2);
+    expect(screen.queryAllByTestId('profile-row-stacked').length).toBeGreaterThan(0);
   });
   it('at 1.3 the label and value share a line', async () => {
-    const root = await render(1.3);
-    expect(root.findAll(node => node.props.testID === 'profile-row-stacked')).toHaveLength(0);
+    await draw(1.3);
+    expect(screen.queryAllByTestId('profile-row-stacked', hidden)).toHaveLength(0);
   });
 });

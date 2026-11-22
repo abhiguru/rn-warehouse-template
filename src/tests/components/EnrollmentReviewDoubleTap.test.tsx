@@ -1,8 +1,6 @@
 /** G-03: a new worker can be approved straight away as Staff or Supervisor. */
 import React from 'react';
-import { ScrollView, Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { router, Stack } from 'expo-router';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import EnrollmentReviewScreen from '../../../app/enrollment-review';
 import { hasEnrollmentCustomers, listPendingEnrollments, reviewEnrollment } from '@/services/enrollmentReviewService';
 import { customerService } from '@/services/customer-service';
@@ -34,27 +32,24 @@ jest.mock('@/components/common/SearchableBottomSheet', () => ({
 }));
 
 const person = { id: 'p1', name: 'Test Farmer', display_name: null, mobile: '9000000011', created_at: '2026-10-14' };
-const thirty = Array.from({ length: 30 }, (_, i) => ({ id: 'c' + i, name: 'Customer ' + i }));
 
-let tree: ReactTestRenderer | undefined;
+const user = userEvent.setup({ delay: 0 });
 const mount = async () => {
-  await act(async () => { tree = create(<EnrollmentReviewScreen />); });
-  return tree as ReactTestRenderer;
+  await render(<EnrollmentReviewScreen />);
 };
-const shownText = (screen: ReactTestRenderer) =>
-  screen.root.findAllByType(Text).map(node => [node.props.children].flat(3).join('')).join(' | ');
-const byLabel = (screen: ReactTestRenderer, label: string) =>
-  screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === label)[0];
-const choosePerson = async (screen: ReactTestRenderer) => {
+const shown = (text: string) => expect(screen.getByText(text)).toBeOnTheScreen();
+const notShown = (text: string) => expect(screen.queryByText(text)).not.toBeOnTheScreen();
+const choosePerson = async () => {
   // The row's label is "Name, mobile, Asked on <date>".
-  const row = screen.root.findAll(node => typeof node.props.onPress === 'function' && String(node.props.accessibilityLabel).startsWith('Test Farmer, +91 90000 00011'))[0];
-  await act(async () => { row.props.onPress(); });
+  await user.press(await screen.findByLabelText(/^Test Farmer, \+91 90000 00011/));
 };
 const lastAlert = () => {
   const calls = jest.mocked(showAlert).mock.calls;
   const [title, message, buttons] = calls[calls.length - 1];
   return { title, message, buttons: (buttons ?? []) as { text: string; onPress?: () => void }[] };
 };
+const buttonInBar = (label: string) => within(screen.getByTestId('decision-bar')).getByRole('button', { name: label });
+const radio = (label: string) => screen.getByRole('radio', { name: label });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -64,25 +59,18 @@ beforeEach(() => {
   jest.mocked(hasEnrollmentCustomers).mockResolvedValue(true);
   jest.mocked(reviewEnrollment).mockResolvedValue(undefined);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-const buttonInBar = (screen: ReactTestRenderer, label: string) =>
-  screen.root.findByProps({ testID: 'decision-bar' }).findAll(node => typeof node.props.onPress === 'function' && node.findAllByType(Text).some(t => t.props.children === label))[0];
-const radio = (screen: ReactTestRenderer, label: string) =>
-  screen.root.findAll(node => typeof node.props.onPress === 'function' && node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === label)[0];
 
 describe('Bundle fix F36: a second tap while a confirmation is open', () => {
   it('queues one confirmation, and Cancel allows the next', async () => {
-    const screen = await mount();
-    await choosePerson(screen);
-    await act(async () => { radio(screen, 'Staff').props.onPress(); });
-    const approve = buttonInBar(screen, 'Approve as staff');
-    await act(async () => { approve.props.onPress(); approve.props.onPress(); });
+    await mount();
+    await choosePerson();
+    await user.press(radio('Staff'));
+    const approve = buttonInBar('Approve as staff');
+    // Two taps in one go, before the screen draws again: the host's click handler is what a tap calls.
+    await act(async () => { approve.props.onClick({}); approve.props.onClick({}); });
     expect(showAlert).toHaveBeenCalledTimes(1);
     await act(async () => { lastAlert().buttons[0].onPress?.(); });
-    await act(async () => { buttonInBar(screen, 'Approve as staff').props.onPress(); });
+    await user.press(buttonInBar('Approve as staff'));
     expect(showAlert).toHaveBeenCalledTimes(2);
   });
 });
@@ -92,9 +80,9 @@ describe('Users list after a decision (review fix)', () => {
     const { subscribeUserListChanges } = require('@/utils/userListSync');
     const seen: unknown[] = [];
     const stop = subscribeUserListChanges((change: unknown) => seen.push(change));
-    const screen = await mount();
-    await choosePerson(screen);
-    await act(async () => { buttonInBar(screen, 'Reject request').props.onPress(); });
+    await mount();
+    await choosePerson();
+    await user.press(buttonInBar('Reject request'));
     const confirm = lastAlert().buttons.find(b => b.onPress && b.text !== 'Cancel');
     expect(seen).toEqual([]);
     await act(async () => { confirm?.onPress?.(); });

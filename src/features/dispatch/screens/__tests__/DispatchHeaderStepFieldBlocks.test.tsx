@@ -3,8 +3,7 @@
  * and count) each sit in a view marked FIELD_BLOCK_ID that holds the group's message.
  */
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { DispatchHeaderStep } from '../DispatchHeaderStep';
 import { t as tr } from '@/i18n';
 import { blockOf, inputsIn, wordsIn } from '@/tests/helpers/fieldBlock';
@@ -49,11 +48,9 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 
-let tree: ReturnType<typeof create>;
-const mount = async () => { await act(async () => { tree = create(<DispatchHeaderStep mode="create" />); }); };
-const input = (label: string) => tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === label)!;
+const mount = async () => { await render(<DispatchHeaderStep mode="create" />); };
+const input = (label: string) => screen.getByLabelText(label);
 beforeEach(() => reset());
-afterEach(async () => { await act(async () => { tree.unmount(); }); });
 
 describe('Dispatch step 1 field blocks', () => {
   it('Dispatch number: the block holds the box and its error, and no other field', async () => {
@@ -76,8 +73,7 @@ describe('Dispatch step 1 field blocks', () => {
 
   it('Notes: the block holds the field and its count', async () => {
     await mount();
-    const toggle = tree.root.find((node) => node.props.accessibilityLabel === tr('dispatch.form.showOptional') && typeof node.props.onPress === 'function');
-    await act(async () => { toggle.props.onPress(); });
+    await userEvent.press(screen.getByRole('button', { name: tr('dispatch.form.showOptional') }));
     const block = blockOf(input(tr('common.notes')));
     expect(block).not.toBeNull();
     expect(inputsIn(block!)).toBe(1);

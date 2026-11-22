@@ -3,8 +3,7 @@
  * Overview alone (no tab bar) for the others; `tab=pricing` selects the Pricing tab; `item` opens that item's box once.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { customerService } from '@/services/customer-service';
 import { useItemRates } from '@/features/item-pricing/useItemRates';
@@ -38,18 +37,25 @@ jest.mock('@/services/customer-service', () => ({
 }));
 
 const customer = { id: 'orchard-b', name: 'Review Orchard B', mobile: '9999900302', city: 'Rajkot', gst: '', active: true, created_at: '2026-01-01' };
-const texts = (tree: ReactTestRenderer) => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-const shown = () => texts(tree).join(' | ');
-const host = (id: string) => tree.root.findAll(n => n.props.testID === id && typeof n.type === 'string');
-const tablist = () => tree.root.findAll(n => n.props.accessibilityRole === 'tablist' && typeof n.type === 'string');
-const tabs = () => tree.root.findAll(n => n.props.accessibilityRole === 'tab' && typeof n.props.onPress === 'function');
-const tab = (label: string) => tabs().find(n => n.props.accessibilityLabel === label)!;
+const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+const tab = (name: string) => screen.getByRole('tab', { name });
+const shownText = (text: string) => expect(screen.getByText(text)).toBeOnTheScreen();
+const notShown = (text: string) => expect(screen.queryByText(text)).not.toBeOnTheScreen();
+// The tab bar container is not an accessibility element, so no role query finds it: count it in the rendered tree.
+const tablists = () => {
+  const count = (node: unknown): number => {
+    if (!node || typeof node !== 'object') return 0;
+    if (Array.isArray(node)) return node.reduce((n: number, child) => n + count(child), 0);
+    const { props, children } = node as { props?: { accessibilityRole?: string }; children?: unknown };
+    return (props?.accessibilityRole === 'tablist' ? 1 : 0) + count(children);
+  };
+  return count(screen.toJSON());
+};
 
-let tree: ReactTestRenderer;
 async function open(role: string, params: Record<string, string> = { id: 'orchard-b' }) {
   mockRole = role;
   mockParams = params;
-  await act(async () => { tree = create(<CustomerPage />); });
+  await render(<CustomerPage />);
 }
 beforeEach(() => {
   jest.useFakeTimers();
@@ -62,43 +68,42 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
-  act(() => tree.unmount());
   jest.useRealTimers();
 });
 
 describe.each(['admin', 'supervisor'])('%s', role => {
   it('sees the tab bar with Overview and Pricing, on Overview', async () => {
     await open(role);
-    expect(tablist()).toHaveLength(1);
-    expect(tabs().map(n => n.props.accessibilityLabel)).toEqual(['Overview', 'Pricing']);
+    expect(tablists()).toBe(1);
+    expect(screen.getAllByRole('tab').map(n => n.props.accessibilityLabel)).toEqual(['Overview', 'Pricing']);
     expect(tab('Overview').props.accessibilityState).toEqual({ selected: true });
     expect(tab('Pricing').props.accessibilityState).toEqual({ selected: false });
-    expect(shown()).toContain('Rajkot');
-    expect(host('customer-pricing-tab')).toHaveLength(0);
+    shownText('Rajkot');
+    expect(screen.queryByTestId('customer-pricing-tab')).not.toBeOnTheScreen();
     expect(useItemRates).not.toHaveBeenCalled();
   });
 });
 
 it('Pricing replaces the Overview content with the customer\'s item rates, and Overview brings it back', async () => {
   await open('admin');
-  await act(async () => { tab('Pricing').props.onPress(); });
+  await user().press(tab('Pricing'));
   expect(tab('Pricing').props.accessibilityState).toEqual({ selected: true });
-  expect(host('customer-pricing-tab').length).toBeGreaterThan(0);
-  expect(texts(tree)).toContain('Review Onion Red');
-  expect(texts(tree)).toContain('Default rate: ₹3.50 per bag, per month');
-  expect(shown()).not.toContain('Rajkot');
-  expect(shown()).not.toContain('Deactivate customer');
-  await act(async () => { tab('Overview').props.onPress(); });
-  expect(host('customer-pricing-tab')).toHaveLength(0);
-  expect(shown()).toContain('Rajkot');
-  expect(shown()).toContain('Deactivate customer');
+  expect(screen.getAllByTestId('customer-pricing-tab').length).toBeGreaterThan(0);
+  shownText('Review Onion Red');
+  shownText('Default rate: ₹3.50 per bag, per month');
+  notShown('Rajkot');
+  notShown('Deactivate customer');
+  await user().press(tab('Overview'));
+  expect(screen.queryByTestId('customer-pricing-tab')).not.toBeOnTheScreen();
+  shownText('Rajkot');
+  shownText('Deactivate customer');
 });
 
 it('tab=pricing opens on the Pricing tab', async () => {
   await open('admin', { id: 'orchard-b', tab: 'pricing' });
   expect(tab('Pricing').props.accessibilityState).toEqual({ selected: true });
-  expect(host('customer-pricing-tab').length).toBeGreaterThan(0);
-  expect(shown()).not.toContain('Rajkot');
+  expect(screen.getAllByTestId('customer-pricing-tab').length).toBeGreaterThan(0);
+  notShown('Rajkot');
   expect(router.push).not.toHaveBeenCalled();
 });
 
@@ -109,24 +114,23 @@ it('item=onion also opens the onion box once, and not again after leaving the ta
     pathname: '/item-rates/[itemId]/customer/[customerId]',
     params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B', deactivated: '0' },
   });
-  await act(async () => { tab('Overview').props.onPress(); });
-  await act(async () => { tab('Pricing').props.onPress(); });
+  await user().press(tab('Overview'));
+  await user().press(tab('Pricing'));
   expect(router.push).toHaveBeenCalledTimes(1);
 });
 
 it('Edit stays in the nav bar on both tabs', async () => {
   await open('admin', { id: 'orchard-b', tab: 'pricing' });
-  const edit = () => tree.root.findAll(n => n.props.accessibilityRole === 'button' && n.props.accessibilityLabel === 'Edit' && typeof n.props.onPress === 'function')[0];
-  await act(async () => { edit().props.onPress(); });
+  await user().press(screen.getByRole('button', { name: 'Edit' }));
   expect(router.push).toHaveBeenCalledWith({ pathname: '/customer-edit/[id]', params: { id: 'orchard-b' } });
 });
 
 describe.each(['staff', 'customer'])('%s (who cannot open Item pricing)', role => {
   it('sees the Overview alone, with no tab bar, even when the link asks for Pricing; the item link opens nothing', async () => {
     await open(role, { id: 'orchard-b', tab: 'pricing', item: 'onion' });
-    expect(tablist()).toHaveLength(0);
-    expect(shown()).toContain('Rajkot');
-    expect(host('customer-pricing-tab')).toHaveLength(0);
+    expect(tablists()).toBe(0);
+    shownText('Rajkot');
+    expect(screen.queryByTestId('customer-pricing-tab')).not.toBeOnTheScreen();
     expect(router.push).not.toHaveBeenCalled();
     expect(useItemRates).not.toHaveBeenCalled();
   });

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect } from 'react';
 import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { DispatchImagesTab } from '../dispatch-details/DispatchImagesTab';
 
@@ -9,11 +9,20 @@ jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
   default: { fetch: () => Promise.resolve({ isConnected: true, isInternetReachable: true }), addEventListener: () => () => undefined },
 }));
+// The tab's connection is set by each case: it is the mocked hook, so a case can flip it between renders.
+let mockOnline = true;
+jest.mock('@/hooks/useNetworkStatus', () => ({
+  useNetworkStatus: () => ({ isConnected: mockOnline, isInternetReachable: mockOnline }),
+}));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (sel: (s: unknown) => unknown) =>
     sel({ theme: { preference: 'light', brand: 'orange' } }),
 }));
+
+beforeEach(() => {
+  mockOnline = true;
+});
 
 const user = userEvent.setup({ delay: 0 });
 const addButton = () => screen.queryByRole('button', { name: 'Add dispatch photo' });
@@ -78,4 +87,66 @@ it('offers a delete per photo, the only one included, only when the screen allow
   expect(deleteButtons()[0]).toBeDisabled();
   await screen.rerender(<DispatchImagesTab images={one} onDelete={onDelete} isUploading />);
   expect(deleteButtons()[0]).toBeDisabled();
+});
+
+const wh286Images = [{ id: 'photo-1', image_url: 'https://example.invalid/photo-1.jpg' }];
+const findPhotoImage = (nodes: readonly unknown[]): unknown => {
+  for (const node of nodes) {
+    if (typeof node === 'string') continue;
+    const inst = node as { type: unknown; children: readonly unknown[] };
+    if (inst.type === 'Image') return inst;
+    const found = findPhotoImage(inst.children);
+    if (found) return found;
+  }
+  return undefined;
+};
+const photoImage = () => {
+  const image = findPhotoImage(screen.getByRole('imagebutton').children);
+  expect(image).toBeDefined();
+  return image as never;
+};
+
+// WH-286: the phone goes offline and the photo's load error arrives before the passive effects have run.
+// OfflineError sits after the tab and raises the photo's error from its own layout effect, which runs in the
+// same commit that took the phone offline, after the tab's layout effects and before any passive effect.
+const OfflineError: React.FC<{ online: boolean; onFire: () => void }> = ({ online, onFire }) => {
+  useLayoutEffect(() => {
+    if (!online) onFire();
+  }, [online, onFire]);
+  return null;
+};
+const Harness: React.FC<{ online: boolean; onFire: () => void }> = ({ online, onFire }) => {
+  mockOnline = online;
+  return (
+    <>
+      <DispatchImagesTab images={wh286Images} />
+      <OfflineError online={online} onFire={onFire} />
+    </>
+  );
+};
+
+it('never says "Photo missing" when the load error comes in the same commit that took the phone offline', async () => {
+  const onFire = jest.fn();
+  await render(<Harness online onFire={onFire} />);
+  const photo = photoImage() as { props: { onError: (e: unknown) => void } };
+  onFire.mockImplementation(() => photo.props.onError({}));
+  await screen.rerender(<Harness online={false} onFire={onFire} />);
+  expect(onFire).toHaveBeenCalled();
+  expect(screen.queryByText('Photo missing')).not.toBeOnTheScreen();
+  expect(screen.queryByTestId('photo-missing')).not.toBeOnTheScreen();
+});
+
+it('never says "Photo missing" for a load error right after the phone goes offline', async () => {
+  await render(<DispatchImagesTab images={wh286Images} />);
+  const image = photoImage();
+  mockOnline = false;
+  await screen.rerender(<DispatchImagesTab images={wh286Images} />);
+  await fireEvent(image, 'error', {});
+  expect(screen.queryByText('Photo missing')).not.toBeOnTheScreen();
+});
+
+it('says "Photo missing" for a load error while the phone is online', async () => {
+  await render(<DispatchImagesTab images={wh286Images} />);
+  await fireEvent(photoImage(), 'error', {});
+  expect(await screen.findByText('Photo missing')).toBeOnTheScreen();
 });

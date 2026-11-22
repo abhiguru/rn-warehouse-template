@@ -3,8 +3,8 @@
  * padding around them), and Deactivate / Activate shows the spinner while the request runs.
  */
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text } from 'react-native';
-import { act, create, type ReactTestRenderer, type ReactTestInstance } from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
+import { render, screen } from '@testing-library/react-native';
 import { ItemOverviewTab } from '@/components/item-details/ItemOverviewTab';
 import { layout } from '@/theme/tokens';
 import type { Item } from '@/types/item.types';
@@ -19,17 +19,21 @@ jest.mock('@/features/gst/ItemGstTreatment', () => ({ ItemGstTreatment: () => nu
 
 const ITEM = { id: 'item-1', name: 'Fictional Onion', packaging: 'Bag', description: 'Red', active: true, created_at: '2026-01-01' } as unknown as Item;
 
-let tree: ReactTestRenderer | undefined;
-afterEach(() => act(() => { tree?.unmount(); tree = undefined; }));
-const render = (props: Partial<React.ComponentProps<typeof ItemOverviewTab>> = {}) => {
-  act(() => {
-    tree = create(<ItemOverviewTab item={ITEM} busy={false} onToggleActive={jest.fn()} onDelete={jest.fn()} {...props} />);
-  });
-  return tree as ReactTestRenderer;
+const renderTab = async (props: Partial<React.ComponentProps<typeof ItemOverviewTab>> = {}) => {
+  await render(<ItemOverviewTab item={ITEM} busy={false} onToggleActive={jest.fn()} onDelete={jest.fn()} {...props} />);
 };
 
-/** The sum of the side padding of every View between this text and the scroll content. */
-const sidePaddingAbove = (node: ReactTestInstance) => {
+/** The spinner has no role or text a query can reach, so its host elements are counted in the rendered tree. */
+type Json = ReturnType<typeof screen.toJSON>;
+const countSpinners = (node: Json | string | undefined | null): number => {
+  if (!node || typeof node === 'string') return 0;
+  if (Array.isArray(node)) return node.reduce((sum: number, child) => sum + countSpinners(child), 0);
+  return (node.type === 'ActivityIndicator' ? 1 : 0) + (node.children ?? []).reduce((sum: number, child) => sum + countSpinners(child as never), 0);
+};
+const spinners = () => countSpinners(screen.toJSON());
+
+/** The sum of the side padding of every View between this text and the scroll content (no query reaches a parent). */
+const sidePaddingAbove = (node: ReturnType<typeof screen.getByText>) => {
   let total = 0;
   for (let parent = node.parent; parent; parent = parent.parent) {
     if ((parent.type as unknown) !== 'View') continue;
@@ -40,33 +44,28 @@ const sidePaddingAbove = (node: ReactTestInstance) => {
 };
 
 describe('item overview rows', () => {
-  it('start at 16 dp: only the cell\'s own padding, none added around the rows', () => {
-    const t = render();
-    const name = t.root.findAllByType(Text).find(node => node.props.children === 'Fictional Onion');
-    expect(name).toBeDefined();
-    expect(sidePaddingAbove(name as ReactTestInstance)).toBe(layout.marginCompact);
+  it('start at 16 dp: only the cell\'s own padding, none added around the rows', async () => {
+    await renderTab();
+    expect(sidePaddingAbove(screen.getByText('Fictional Onion'))).toBe(layout.marginCompact);
   });
 });
 
 describe('Deactivate and Activate', () => {
-  const toggle = (t: ReactTestRenderer, label: string) =>
-    t.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function' || (node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label))[0];
-
-  it('show no spinner while idle', () => {
-    expect(render().root.findAllByType(ActivityIndicator)).toHaveLength(0);
+  it('show no spinner while idle', async () => {
+    await renderTab();
+    expect(spinners()).toBe(0);
   });
 
-  it('show the spinner and are marked busy and disabled while the request runs', () => {
-    const t = render({ busy: true });
-    expect(t.root.findAllByType(ActivityIndicator).length).toBeGreaterThan(0);
-    const button = toggle(t, 'Deactivate item');
-    expect(button).toBeDefined();
+  it('show the spinner and are marked busy and disabled while the request runs', async () => {
+    await renderTab({ busy: true });
+    expect(spinners()).toBeGreaterThan(0);
+    const button = screen.getByRole('button', { name: 'Deactivate item' });
     expect(button.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
   });
 
-  it('show the spinner on Activate for a deactivated item too', () => {
-    const t = render({ item: { ...ITEM, active: false }, busy: true });
-    expect(t.root.findAllByType(ActivityIndicator).length).toBeGreaterThan(0);
-    expect(toggle(t, 'Activate item')?.props.accessibilityState).toMatchObject({ busy: true });
+  it('show the spinner on Activate for a deactivated item too', async () => {
+    await renderTab({ item: { ...ITEM, active: false }, busy: true });
+    expect(spinners()).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Activate item' }).props.accessibilityState).toMatchObject({ busy: true });
   });
 });

@@ -7,7 +7,7 @@
  * decides anything.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import RootLayout from '../../../app/_layout';
 import { verifySelectedOperator } from '@/config/operatorBootstrap';
 import { AppTooOldError, clearAppTooOld, getAppTooOld, reportAppTooOld } from '@/config/appTooOld';
@@ -62,8 +62,10 @@ jest.mock('expo-system-ui', () => ({ setBackgroundColorAsync: jest.fn() }));
 jest.mock('expo-navigation-bar', () => ({ setStyle: jest.fn() }));
 jest.mock('expo-router', () => {
   const React = require('react');
-  const Stack = ({ children }: { children: React.ReactNode }) => React.createElement('AppStack', null, children);
-  Stack.Screen = ({ name }: { name: string }) => React.createElement('StackScreen', { name });
+  const { Text, View } = require('react-native');
+  // The stack and its screens draw what the test reads: a view, and one text per registered screen.
+  const Stack = ({ children }: { children: React.ReactNode }) => React.createElement(View, { testID: 'app-stack' }, children);
+  Stack.Screen = ({ name }: { name: string }) => React.createElement(Text, { testID: 'stack-screen' }, name);
   return {
     Stack,
     DarkTheme: { colors: {} },
@@ -80,15 +82,30 @@ jest.mock('@/config/supabaseConfig', () => ({
 }));
 jest.mock('@/components/OperatorServerSelection', () => {
   const React = require('react');
-  return { OperatorServerSelection: (props: Record<string, unknown>) => React.createElement('ServerSelection', props) };
+  const { Text } = require('react-native');
+  return { OperatorServerSelection: () => React.createElement(Text, { testID: 'server-selection' }, 'Server address screen') };
 });
+// The stand-ins draw their title and the button the root passes a handler to, and call that handler.
 jest.mock('@/components/ConfigErrorScreen', () => {
   const React = require('react');
-  return { __esModule: true, default: (props: Record<string, unknown>) => React.createElement('ConfigError', props) };
+  const { Pressable, Text } = require('react-native');
+  return {
+    __esModule: true,
+    default: (props: { onChangeServer: () => void }) =>
+      React.createElement(Pressable, { testID: 'config-error', accessibilityRole: 'button', accessibilityLabel: 'Change server', onPress: props.onChangeServer },
+        React.createElement(Text, null, 'Cannot reach the facility')),
+  };
 });
 jest.mock('@/components/AppTooOldScreen', () => {
   const React = require('react');
-  return { __esModule: true, default: (props: Record<string, unknown>) => React.createElement('AppTooOld', props) };
+  const { Pressable, Text, View } = require('react-native');
+  return {
+    __esModule: true,
+    default: (props: { minimum: string; current: string; updateUrl: string; onClose: () => void }) =>
+      React.createElement(View, { testID: 'app-too-old' },
+        React.createElement(Text, { testID: 'app-too-old-versions' }, `needs ${props.minimum}, this app is ${props.current}, update at ${props.updateUrl}`),
+        React.createElement(Pressable, { accessibilityRole: 'button', accessibilityLabel: 'Back', onPress: props.onClose }, React.createElement(Text, null, 'Back'))),
+  };
 });
 jest.mock('@/components/ErrorBoundary', () => ({ ErrorBoundary: ({ children }: { children: React.ReactNode }) => children }));
 jest.mock('@/components/OfflineBanner', () => ({ OfflineBanner: () => null }));
@@ -119,16 +136,21 @@ jest.mock('@/store/sessionScopedState', () => ({ clearSessionScopedState: jest.f
 jest.mock('@/store/slices/authSlice', () => ({ initializeAuth: jest.fn(() => ({ type: 'auth/initialize' })), logout: jest.fn() }));
 jest.mock('@/services/configService', () => ({ __esModule: true, default: { clearCache: jest.fn() } }));
 
-let tree: ReactTestRenderer | undefined;
+let user: ReturnType<typeof userEvent.setup>;
 async function start() {
-  await act(async () => { tree = create(<RootLayout />); });
+  await render(<RootLayout />);
   // The bootstrap and the session restore settle over a few turns.
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 }
-const shows = (type: string) => tree!.root.findAll(node => (node.type as unknown) === type).length > 0;
-const screens = () => tree!.root.findAll(node => (node.type as unknown) === 'StackScreen').map(node => node.props.name as string);
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const IDS = { ServerSelection: 'server-selection', AppStack: 'app-stack', ConfigError: 'config-error', AppTooOld: 'app-too-old' } as const;
+const on = (name: keyof typeof IDS) => expect(screen.getByTestId(IDS[name])).toBeOnTheScreen();
+const off = (name: keyof typeof IDS) => expect(screen.queryAllByTestId(IDS[name], everything)).toHaveLength(0);
+const screens = () => screen.queryAllByTestId('stack-screen', everything).map(node => node.props.children as string);
 
 beforeEach(() => {
+  user = userEvent.setup({ delay: 0 });
   jest.clearAllMocks();
   clearAppTooOld();
   mockCentralOn = false;
@@ -136,8 +158,6 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
   jest.restoreAllMocks();
 });
 
@@ -149,8 +169,7 @@ describe('no facility server chosen yet', () => {
     expect(startDailyLanCheck).toHaveBeenCalledTimes(1);
     const stop = jest.mocked(startDailyLanCheck).mock.results[0].value as jest.Mock;
     expect(stop).not.toHaveBeenCalled();
-    await act(async () => { tree!.unmount(); });
-    tree = undefined;
+    await screen.unmount();
     expect(stop).toHaveBeenCalledTimes(1);
   });
 
@@ -162,8 +181,8 @@ describe('no facility server chosen yet', () => {
 
   it('central login off: only the server address screen is shown, as before', async () => {
     await start();
-    expect(shows('ServerSelection')).toBe(true);
-    expect(shows('AppStack')).toBe(false);
+    on('ServerSelection');
+    off('AppStack');
     expect(restoreCentralSession).not.toHaveBeenCalled();
     expect(useRootRouteGuard).not.toHaveBeenCalled();
   });
@@ -171,8 +190,8 @@ describe('no facility server chosen yet', () => {
   it('central login on: the app shell renders without a server, with the central screens registered', async () => {
     mockCentralOn = true;
     await start();
-    expect(shows('ServerSelection')).toBe(false);
-    expect(shows('AppStack')).toBe(true);
+    off('ServerSelection');
+    on('AppStack');
     expect(screens()).toEqual(
       expect.arrayContaining(['central-login', 'central-otp', 'facilities', 'facility-catalogue', 'facility-address', 'facility-link', 'central-account'])
     );
@@ -186,10 +205,10 @@ describe('no facility server chosen yet', () => {
     expect(restoreCentralSession).toHaveBeenCalledTimes(1);
     // Until then the guard is told that nothing is known yet, and no screen is drawn.
     expect(jest.mocked(useRootRouteGuard).mock.calls.every(([settled]) => settled === false)).toBe(true);
-    expect(shows('AppStack')).toBe(false);
+    off('AppStack');
     await act(async () => { restored(); await new Promise(resolve => setTimeout(resolve, 0)); });
     expect(useRootRouteGuard).toHaveBeenLastCalledWith(true);
-    expect(shows('AppStack')).toBe(true);
+    on('AppStack');
   });
 });
 
@@ -222,26 +241,25 @@ describe('the connection history reads the saved session at start', () => {
 describe('the chosen facility cannot be reached', () => {
   beforeEach(() => jest.mocked(verifySelectedOperator).mockRejectedValue(new Error('Server discovery timed out')));
   const changeServer = async () => {
-    const error = tree!.root.find(node => (node.type as unknown) === 'ConfigError');
-    await act(async () => { await error.props.onChangeServer(); });
+    await user.press(screen.getByRole('button', { name: 'Change server' }));
   };
 
   it('central login off: "change server" opens the server address screen and signs nothing out', async () => {
     await start();
-    expect(shows('ConfigError')).toBe(true);
+    on('ConfigError');
     await changeServer();
-    expect(shows('ServerSelection')).toBe(true);
+    on('ServerSelection');
     expect(leaveFacility).not.toHaveBeenCalled();
   });
 
   it('central login on: "change server" leaves that facility for My facilities without sending it anything', async () => {
     mockCentralOn = true;
     await start();
-    expect(shows('ConfigError')).toBe(true);
+    on('ConfigError');
     await changeServer();
     expect(leaveFacility).toHaveBeenCalledTimes(1);
     expect(leaveFacility).toHaveBeenCalledWith(store.dispatch, { localOnly: true });
-    expect(shows('ServerSelection')).toBe(false);
+    off('ServerSelection');
   });
 });
 
@@ -249,25 +267,24 @@ describe('the chosen facility needs a newer app', () => {
   beforeEach(() =>
     jest.mocked(verifySelectedOperator).mockRejectedValue(new AppTooOldError('requires 0.7.0', '0.7.0', '0.6.0', 'https://updates.example.test/app.apk'))
   );
-  const screen = () => tree!.root.find(node => (node.type as unknown) === 'AppTooOld');
 
   it('shows the "Update the app" screen with the versions and the link, not the connection error', async () => {
     await start();
-    expect(shows('ConfigError')).toBe(false);
-    expect(screen().props).toMatchObject({ minimum: '0.7.0', current: '0.6.0', updateUrl: 'https://updates.example.test/app.apk' });
+    off('ConfigError');
+    expect(screen.getByTestId('app-too-old-versions')).toHaveTextContent('needs 0.7.0, this app is 0.6.0, update at https://updates.example.test/app.apk', { exact: true });
   });
 
   it('central login off: Back opens the server address screen and signs nothing out', async () => {
     await start();
-    await act(async () => { screen().props.onClose(); });
-    expect(shows('ServerSelection')).toBe(true);
+    await user.press(screen.getByRole('button', { name: 'Back' }));
+    on('ServerSelection');
     expect(leaveFacility).not.toHaveBeenCalled();
   });
 
   it('central login on: Back leaves that facility for My facilities without sending it anything', async () => {
     mockCentralOn = true;
     await start();
-    await act(async () => { screen().props.onClose(); });
+    await user.press(screen.getByRole('button', { name: 'Back' }));
     expect(leaveFacility).toHaveBeenCalledWith(store.dispatch, { localOnly: true });
   });
 });
@@ -275,7 +292,6 @@ describe('the chosen facility needs a newer app', () => {
 describe('a facility that needs a newer app is found out while the app is open (the phone was resumed after an upgrade)', () => {
   // (Central login on and no facility chosen renders the app shell; the screen then replaces it as it would a facility's screens.)
   beforeEach(() => jest.mocked(verifySelectedOperator).mockResolvedValue({ kind: 'selection' }));
-  const screen = () => tree!.root.find(node => (node.type as unknown) === 'AppTooOld');
   const foundOut = () => act(async () => {
     reportAppTooOld(new AppTooOldError('requires 0.8.0', '0.8.0', '0.6.0', 'https://updates.example.test/app.apk'));
   });
@@ -283,19 +299,19 @@ describe('a facility that needs a newer app is found out while the app is open (
   it('the app that was working is replaced by the "Update the app" screen with the new minimum', async () => {
     mockCentralOn = true;
     await start();
-    expect(shows('AppStack')).toBe(true);
-    expect(shows('AppTooOld')).toBe(false);
+    on('AppStack');
+    off('AppTooOld');
     await foundOut();
-    expect(shows('AppStack')).toBe(false);
-    expect(screen().props).toMatchObject({ minimum: '0.8.0', current: '0.6.0', updateUrl: 'https://updates.example.test/app.apk' });
+    off('AppStack');
+    expect(screen.getByTestId('app-too-old-versions')).toHaveTextContent('needs 0.8.0, this app is 0.6.0, update at https://updates.example.test/app.apk', { exact: true });
   });
 
   it('central login off: Back opens the server address screen', async () => {
     jest.mocked(verifySelectedOperator).mockResolvedValue({ kind: 'verified', discovery: {} as never });
     await start();
     await foundOut();
-    await act(async () => { screen().props.onClose(); });
-    expect(shows('ServerSelection')).toBe(true);
+    await user.press(screen.getByRole('button', { name: 'Back' }));
+    on('ServerSelection');
     expect(leaveFacility).not.toHaveBeenCalled();
   });
 
@@ -303,10 +319,10 @@ describe('a facility that needs a newer app is found out while the app is open (
     mockCentralOn = true;
     await start();
     await foundOut();
-    await act(async () => { screen().props.onClose(); });
+    await user.press(screen.getByRole('button', { name: 'Back' }));
     expect(leaveFacility).toHaveBeenCalledWith(store.dispatch, { localOnly: true });
     expect(getAppTooOld()).toBeNull();
-    expect(shows('AppTooOld')).toBe(false);
+    off('AppTooOld');
   });
 });
 
@@ -318,7 +334,7 @@ describe('the facility session restore with no facility server chosen', () => {
 
   it('central login off: it is never started, because nothing but the server address screen is shown', async () => {
     await start();
-    expect(shows('ServerSelection')).toBe(true);
+    on('ServerSelection');
     expect(initializeAuth).not.toHaveBeenCalled();
     expect(mockDispatch).not.toHaveBeenCalled();
   });
@@ -332,7 +348,7 @@ describe('the facility session restore with no facility server chosen', () => {
     expect(restoreCentralSession).toHaveBeenCalledTimes(1);
     // The person is not left on the spinner: the guard is told the restore has settled.
     expect(useRootRouteGuard).toHaveBeenLastCalledWith(true);
-    expect(shows('AppStack')).toBe(true);
+    on('AppStack');
   });
 });
 
@@ -364,7 +380,7 @@ describe("the cleanup of an earlier sign-in's facility session", () => {
     mockCentralOn = true;
     jest.mocked(verifySelectedOperator).mockRejectedValue(new Error('Server discovery timed out'));
     await start();
-    expect(shows('ConfigError')).toBe(true);
+    on('ConfigError');
     expect(retryStaleFacilityCleanup).toHaveBeenCalledTimes(1);
   });
 

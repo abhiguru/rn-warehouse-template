@@ -3,7 +3,7 @@
  * and shows humidity in whole percent.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDevice } from '@/services/sensor-service';
 import { getSensorHistory } from '@/services/sensor-history-service';
@@ -43,7 +43,6 @@ jest.mock('@/utils/logger', () => {
 });
 
 const NOW = new Date(2026, 9, 12, 10, 0).getTime();
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -82,30 +81,28 @@ beforeEach(async () => {
   } as never);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
 });
 
 async function open() {
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<SensorDetailScreen />);
-  });
-  mounted.push(tree);
+  await render(<SensorDetailScreen />);
   await act(async () => {
     await jest.advanceTimersByTimeAsync(0);
   });
-  return tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat().join(''));
 }
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const shows = (text: string) => expect(screen.getAllByText(text)[0]).toBeOnTheScreen();
+const notShown = (text: string) => expect(screen.queryAllByText(text, everything)).toHaveLength(0);
 
 describe('the summary card of a sensor', () => {
   it('counts the raw readings, titles itself "All readings" and shows whole-percent humidity', async () => {
-    const all = await open();
-    expect(all).toContain('All readings, last 7 days');
-    expect(all).toContain('Based on 170 readings');
-    expect(all).not.toContain('Based on 14 readings');
-    expect(all).toContain('86%');
-    expect(all).not.toContain('86.0%');
-    expect(all).toContain('83%');
+    await open();
+    shows('All readings, last 7 days');
+    shows('Based on 170 readings');
+    notShown('Based on 14 readings');
+    shows('86%');
+    notShown('86.0%');
+    shows('83%');
   });
 });

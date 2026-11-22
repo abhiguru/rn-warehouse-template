@@ -3,7 +3,7 @@
  * (useKeyboardCoverLift). The step, the store and the bar are real; the keyboard and the window are stand-ins.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { fillNewInvoice, groupLines, makeInvoiceStore, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { updateHeader } from '@/store/slices/invoiceFormSlice';
 import { wizardKeyboardLiftCases } from '@/tests/helpers/wizardKeyboardLift';
@@ -47,22 +47,18 @@ describe('Invoice wizard, details step: the bottom bar and the keyboard', () => 
     mockStore = makeInvoiceStore();
     fillNewInvoice(mockStore, groupLines(1));
     mockStore.dispatch(updateHeader({ inv_no: 42, inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no_typed: true }));
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<InvoiceFormStep1 />); });
-    return tree;
+    await render(<InvoiceFormStep1 />);
   });
 
   it('notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
     recordedRevealRefs.length = 0;
     mockStore = makeInvoiceStore();
     fillNewInvoice(mockStore, groupLines(1));
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<InvoiceFormStep1 />); });
-    const scrolls = tree.root.findAll(n => (n.type as unknown) === 'KeyboardAwareScrollView' && typeof n.props.onScrollBeginDrag === 'function');
+    await render(<InvoiceFormStep1 />);
+    const scrolls = screen.root!.queryAll((n) => n.type === 'KeyboardAwareScrollView' && typeof n.props.onScrollBeginDrag === 'function', { includeSelf: true });
     expect(scrolls).toHaveLength(1);
     // WH-243: the scroll view carries the step's own reveal handlers (a dropped spread fails here)
     expect(recordedRevealRefs).toHaveLength(1);
     expectRevealWired(scrolls[0], recordedRevealRefs[0]);
-    await act(async () => { tree.unmount(); });
   });
 });

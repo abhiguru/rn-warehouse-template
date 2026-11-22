@@ -3,16 +3,42 @@
  * type being edited, searchable, and the rows handed back with the one chosen. Today is 14 Oct 2026.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { CopyTiersSheet } from '../components/CopyTiersSheet';
 import { clearItemRatesCache } from '../useItemRates';
 import { listActiveItems, listAllRates } from '@/services/item-pricing-service';
 import { cuminRows, garlicRows, gingerRows, rate } from '@/tests/helpers/rateEditorFixtures';
 
-let sheetProps: Record<string, any> = {};
-jest.mock('@/components/common/SearchableBottomSheet', () => ({
-  SearchableBottomSheet: (props: Record<string, unknown>) => { sheetProps = props; return null; },
-}));
+// A stand-in for the bottom sheet: it draws the title, a search box, the rows the sheet's search returns (each drawn by the
+// caller's renderItem) and the empty text, and hands a pressed row to onSelect.
+jest.mock('@/components/common/SearchableBottomSheet', () => {
+  const R = require('react');
+  const { Text, TextInput, View } = require('react-native');
+  return {
+    SearchableBottomSheet: (props: {
+      title: string;
+      placeholder?: string;
+      emptyInitialText?: string;
+      searchFn: (query: string) => Promise<unknown[]>;
+      renderItem: (item: unknown, onSelect: (item: unknown) => void) => React.ReactElement;
+      onSelect: (item: unknown) => void;
+      keyExtractor: (item: unknown) => string;
+    }) => {
+      const [query, setQuery] = R.useState('');
+      const [rows, setRows] = R.useState([] as unknown[]);
+      R.useEffect(() => { void props.searchFn(query).then(setRows); }, [props.searchFn, query]);
+      return R.createElement(
+        View,
+        null,
+        R.createElement(Text, null, props.title),
+        R.createElement(TextInput, { placeholder: props.placeholder, value: query, onChangeText: setQuery }),
+        rows.length === 0
+          ? R.createElement(Text, null, props.emptyInitialText)
+          : rows.map((row: unknown) => R.createElement(View, { key: props.keyExtractor(row) }, props.renderItem(row, props.onSelect))),
+      );
+    },
+  };
+});
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>
@@ -33,51 +59,41 @@ const saffron = rate('saffron', null, 0, 100, 9, 2, 5, '2025-01-01', '2026-03-31
 const gingerOneTime = rate('ginger', null, 0, 100, 20, 0, 5, '2025-01-01', null, 'one_time', 'Review Ginger Fresh');
 const customerOnly = rate('cumin', { id: 'cust-a', name: 'Review Orchard A' }, 0, 100, 5, 1, 5, '2025-01-01', null, 'monthly', 'Review Cumin Bold');
 
-let tree: ReactTestRenderer | undefined;
-const flush = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); };
 const mount = async (over: Partial<React.ComponentProps<typeof CopyTiersSheet>> = {}) => {
   const onPick = jest.fn();
-  await act(async () => {
-    tree = create(<CopyTiersSheet visible onClose={jest.fn()} itemId="cumin" priceType="monthly" today="2026-10-14" onPick={onPick} {...over} />);
-  });
-  await flush();
+  await render(<CopyTiersSheet visible onClose={jest.fn()} itemId="cumin" priceType="monthly" today="2026-10-14" onPick={onPick} {...over} />);
   return onPick;
 };
+/** The item names the sheet offers, in order. */
+const offeredNames = () => screen.queryAllByRole('button').map(n => (n.props.accessibilityLabel as string).split(' · ')[0]);
 
 beforeEach(() => {
   jest.clearAllMocks();
   clearItemRatesCache();
-  sheetProps = {};
   jest.mocked(listActiveItems).mockResolvedValue(ITEMS);
   jest.mocked(listAllRates).mockResolvedValue([...cuminRows(), customerOnly, ...garlicRows(), ...gingerRows(), gingerOneTime, saffron]);
-});
-afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
 });
 
 it('offers the other items that have a default monthly rate in force today, not this one, not a stopped one', async () => {
   await mount();
-  expect(sheetProps.title).toBe('Choose an item to copy');
-  let offered: { name: string }[] = [];
-  let filtered: unknown[] = [];
-  await act(async () => { offered = await sheetProps.searchFn(''); filtered = await sheetProps.searchFn('gar'); });
-  expect(offered.map(i => i.name)).toEqual(['Review Garlic Desi', 'Review Ginger Fresh']);
-  expect(filtered).toHaveLength(1);
+  expect(screen.getByText('Choose an item to copy')).toBeOnTheScreen();
+  expect(await screen.findByRole('button', { name: /^Review Garlic Desi/ })).toBeOnTheScreen();
+  expect(offeredNames()).toEqual(['Review Garlic Desi', 'Review Ginger Fresh']);
+  const user = userEvent.setup({ delay: 0 });
+  await user.type(screen.getByPlaceholderText('Search items'), 'gar');
+  expect(offeredNames()).toEqual(['Review Garlic Desi']);
 });
 
 it('the one-time type offers the items with a one-time default only', async () => {
   await mount({ priceType: 'one_time' });
-  let offered: { name: string }[] = [];
-  await act(async () => { offered = await sheetProps.searchFn(''); });
-  expect(offered.map(i => i.name)).toEqual(['Review Ginger Fresh']);
+  expect(await screen.findByRole('button', { name: /^Review Ginger Fresh/ })).toBeOnTheScreen();
+  expect(offeredNames()).toEqual(['Review Ginger Fresh']);
 });
 
 it('hands back the item chosen with its default rows in force', async () => {
   const onPick = await mount();
-  let offered: { id: string; name: string }[] = [];
-  await act(async () => { offered = await sheetProps.searchFn(''); });
-  await act(async () => { sheetProps.onSelect(offered[0]); });
+  const user = userEvent.setup({ delay: 0 });
+  await user.press(await screen.findByRole('button', { name: /^Review Garlic Desi/ }));
   expect(onPick).toHaveBeenCalledTimes(1);
   const [item, rows] = onPick.mock.calls[0];
   expect(item.name).toBe('Review Garlic Desi');
@@ -87,5 +103,5 @@ it('hands back the item chosen with its default rows in force', async () => {
 it('says there is nothing to copy when no other item has such a rate', async () => {
   jest.mocked(listAllRates).mockResolvedValue([...cuminRows(), saffron]);
   await mount();
-  expect(sheetProps.emptyInitialText).toBe('No other item has a rate in force today to copy.');
+  expect(await screen.findByText('No other item has a rate in force today to copy.')).toBeOnTheScreen();
 });

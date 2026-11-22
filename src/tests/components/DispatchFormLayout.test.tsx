@@ -4,7 +4,7 @@
  * a message, the form that is open is left as it is, and the screen goes back.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { openDispatchFormBlocking, registerDispatchForm } from '@/features/dispatch/utils/openDispatchForms';
 import { showAlert } from '@/utils/alert';
@@ -18,40 +18,38 @@ jest.mock('@/store/hooks', () => ({
 let mockCanCreate = true;
 jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ canCreate: mockCanCreate }) }));
 jest.mock('expo-router', () => {
-  const Stack = (props: { screenOptions?: unknown }) => require('react').createElement('Stack', { screenOptions: props.screenOptions });
+  // Stands in for the step stack: a plain view the test can find.
+  const Stack = () => require('react').createElement(require('react-native').View, { testID: 'dispatch-steps' });
   return { Stack, router: { replace: jest.fn(), back: jest.fn(), dismissTo: jest.fn() } };
 });
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
-let tree: ReactTestRenderer;
-const render = async () => {
-  await act(async () => { tree = create(<DispatchFormLayout />); });
+const mount = async () => {
+  await render(<DispatchFormLayout />);
 };
-const hasSteps = () => tree.root.findAllByType('Stack' as unknown as React.ElementType).length > 0;
+const hasSteps = () => screen.queryByTestId('dispatch-steps') !== null;
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockCanCreate = true;
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
 describe('when no other form is open', () => {
   it('draws the steps, and is an open dispatch form until it goes', async () => {
-    await render();
+    await mount();
 
     expect(hasSteps()).toBe(true);
     expect(openDispatchFormBlocking()).toEqual({ kind: 'create' });
     expect(router.back).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();
 
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
 
     expect(openDispatchFormBlocking()).toBeNull();
-    await act(async () => { tree = create(<React.Fragment />); });
   });
 });
 
@@ -60,7 +58,7 @@ describe('when another dispatch form is open', () => {
     const open = { kind: 'edit', id: 'other-dispatch', number: 'DD0007' } as const;
     const release = registerDispatchForm(open);
     try {
-      await render();
+      await mount();
 
       expect(hasSteps()).toBe(false);
       expect(router.back).toHaveBeenCalledTimes(1);
@@ -75,7 +73,7 @@ describe('when another dispatch form is open', () => {
   it('says so for an earlier new dispatch, and "Open it" takes the person back to it', async () => {
     const release = registerDispatchForm({ kind: 'create' });
     try {
-      await render();
+      await mount();
 
       expect(showAlert).toHaveBeenCalledWith('Another dispatch is open', 'Finish or cancel the new dispatch first.', expect.any(Array));
       const buttons = jest.mocked(showAlert).mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
@@ -91,7 +89,7 @@ describe('someone who may not create', () => {
   it('is sent to the Dispatch tab and sees nothing of the form', async () => {
     mockCanCreate = false;
 
-    await render();
+    await mount();
 
     expect(router.replace).toHaveBeenCalledWith('/(tabs)/dispatch');
     expect(hasSteps()).toBe(false);

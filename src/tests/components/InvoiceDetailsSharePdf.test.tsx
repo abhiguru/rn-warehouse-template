@@ -4,7 +4,7 @@
  * title and message, any other failure keeps the old alert.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import InvoiceDetailScreen from '../../../app/invoice-details/[id]';
 import { getInvoiceDetails, getInvoiceItemsDetailed, getInvoiceReasons } from '@/services/invoice-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
@@ -50,13 +50,27 @@ jest.mock('@/services/invoice-service', () => ({
 }));
 jest.mock('@/components/invoice-details', () => ({
   InvoiceHeroHeader: () => null,
-  InvoiceTabNavigator: 'InvoiceTabNavigator',
-  InvoiceOverviewTab: 'InvoiceOverviewTab',
+  // Stand-ins: one button for the Overview tab, and an Overview that draws a Share PDF button calling the page's real on_share_pdf.
+  InvoiceTabNavigator: (props: { on_tab_change: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="overview tab" onPress={() => props.on_tab_change('overview')}>
+        <Text>overview</Text>
+      </Pressable>
+    );
+  },
+  InvoiceOverviewTab: (props: { on_share_pdf: () => unknown }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="Share PDF" onPress={props.on_share_pdf}>
+        <Text>Share PDF</Text>
+      </Pressable>
+    );
+  },
   InvoiceLineItemsTab: () => null,
   InvoiceBreakdownTab: () => null,
 }));
 
-let renderer: ReturnType<typeof create>;
 const detail = () =>
   ({
     success: true,
@@ -70,10 +84,9 @@ const detail = () =>
   }) as unknown as InvoiceDetailsResponse;
 const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, headers: { get: () => 'application/json' }, json: async () => body });
 
+const user = () => userEvent.setup({ delay: 0 });
 const share = async () => {
-  await act(async () => {
-    renderer.root.findByType('InvoiceOverviewTab' as unknown as React.ElementType).props.on_share_pdf();
-  });
+  await user().press(screen.getByRole('button', { name: 'Share PDF' }));
 };
 
 beforeEach(async () => {
@@ -84,14 +97,11 @@ beforeEach(async () => {
   jest.mocked(getInvoiceReasons).mockResolvedValue(null);
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
-  await act(async () => { renderer = create(<InvoiceDetailScreen />); });
-  await act(async () => {
-    renderer.root.findByType('InvoiceTabNavigator' as unknown as React.ElementType).props.on_tab_change('overview');
-  });
+  await render(<InvoiceDetailScreen />);
+  await user().press(await screen.findByRole('button', { name: 'overview tab' }));
 });
-afterEach(async () => {
+afterEach(() => {
   jest.restoreAllMocks();
-  await act(async () => { renderer.unmount(); });
 });
 
 describe('Share PDF on the invoice page', () => {
@@ -101,6 +111,7 @@ describe('Share PDF on the invoice page', () => {
   ])('shows the long-name refusal text when the server refuses for %s', async (_name, error) => {
     mockFetch.mockResolvedValue(reply(400, { success: false, error }));
     await share();
+    await waitFor(() => expect(showAlert).toHaveBeenCalledTimes(1));
     expect(mockFetch.mock.calls[0][0]).toBe('https://example.invalid/functions/v1/generate-invoice-pdf');
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).toHaveBeenCalledWith('Too long for a PDF', 'This document is too long to make into a PDF.');
@@ -110,6 +121,7 @@ describe('Share PDF on the invoice page', () => {
   it('keeps the old alert for any other failure', async () => {
     mockFetch.mockResolvedValue(reply(500, { success: false, error: 'Internal error' }));
     await share();
+    await waitFor(() => expect(showAlert).toHaveBeenCalledTimes(1));
     expect(showAlert).toHaveBeenCalledTimes(1);
     expect(showAlert).not.toHaveBeenCalledWith('Too long for a PDF', expect.anything());
     expect(jest.mocked(showAlert).mock.calls[0][0]).toBe("Couldn't share invoice");

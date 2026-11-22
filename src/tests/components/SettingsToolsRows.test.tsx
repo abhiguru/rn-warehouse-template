@@ -7,7 +7,8 @@
  * - Sign out has no chevron and no red (G-40).
  */
 import React from 'react';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import SettingsScreen from '../../../app/settings';
 import { setLanguage } from '@/i18n';
 import { router } from 'expo-router';
@@ -44,12 +45,14 @@ jest.mock('@/store/slices/authSlice', () => ({
 }));
 jest.mock('@/services/admin-user-service', () => ({ adminUserService: { getUsersList: jest.fn() } }));
 
-let tree: ReactTestRenderer | undefined;
-const byTestId = (id: string): ReactTestInstance =>
-  tree!.root.findAll(node => node.props.testID === id && typeof node.props.onPress === 'function' && node.props.accessibilityLabel)[0];
+let user: ReturnType<typeof userEvent.setup>;
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const byTestId = (id: string) => screen.getByTestId(id);
 
 beforeEach(async () => {
   setLanguage('en');
+  user = userEvent.setup({ delay: 0 });
   mockServer = null;
   mockHasNumbering = true;
   mockState = {
@@ -57,59 +60,50 @@ beforeEach(async () => {
     auth: { userProfile: { id: 'u1', name: 'Asha Fictional', role: 'admin', mobile: '919000000001' } },
   };
 });
-afterEach(async () => {
-  if (tree) await act(async () => tree!.unmount());
-  tree = undefined;
-});
-async function render() {
-  await act(async () => {
-    tree = create(<SettingsScreen />);
-  });
-}
 
 describe('Warehouse tools rows (G-10)', () => {
   it('say what a customer, an item and a user are', async () => {
-    await render();
-    expect(byTestId('settings-feature-customers').props.accessibilityLabel).toBe('Customers, Farmers and traders you store goods for');
-    expect(byTestId('settings-feature-items').props.accessibilityLabel).toBe('Items, Produce you store, like potatoes or garlic');
-    expect(byTestId('settings-feature-users').props.accessibilityLabel).toBe('Users, People who can sign in, their role and customers');
-    expect(byTestId('settings-feature-enrollmentReview').props.accessibilityLabel).toContain('Approve people who asked to use this facility');
+    await render(<SettingsScreen />);
+    expect(byTestId('settings-feature-customers')).toHaveAccessibleName('Customers, Farmers and traders you store goods for');
+    expect(byTestId('settings-feature-items')).toHaveAccessibleName('Items, Produce you store, like potatoes or garlic');
+    expect(byTestId('settings-feature-users')).toHaveAccessibleName('Users, People who can sign in, their role and customers');
+    expect(byTestId('settings-feature-enrollmentReview')).toHaveAccessibleName(/Approve people who asked to use this facility/);
   });
 
   it('name the standard rate and open its screen', async () => {
-    await render();
-    expect(byTestId('settings-feature-standardRate').props.accessibilityLabel).toBe('Standard rate, The rate new items get');
-    await act(async () => { byTestId('settings-feature-standardRate').props.onPress(); });
+    await render(<SettingsScreen />);
+    expect(byTestId('settings-feature-standardRate')).toHaveAccessibleName('Standard rate, The rate new items get');
+    await user.press(byTestId('settings-feature-standardRate'));
     expect(router.push).toHaveBeenCalledWith('/standard-rate');
   });
 });
 
 describe('Document numbers row (WS-8)', () => {
   it('is under Warehouse tools for an administrator and opens its screen', async () => {
-    await render();
-    expect(byTestId('settings-feature-documentNumbering').props.accessibilityLabel).toBe('Document numbers, How GRN, dispatch and invoice numbers are written');
-    await act(async () => { byTestId('settings-feature-documentNumbering').props.onPress(); });
+    await render(<SettingsScreen />);
+    expect(byTestId('settings-feature-documentNumbering')).toHaveAccessibleName('Document numbers, How GRN, dispatch and invoice numbers are written');
+    await user.press(byTestId('settings-feature-documentNumbering'));
     expect(router.push).toHaveBeenCalledWith('/document-numbering');
   });
 
   it('is not offered while the backend is older than migration 127 (it would open to a failed load)', async () => {
     mockHasNumbering = false;
-    await render();
-    expect(tree!.root.findAll(node => node.props.testID === 'settings-feature-documentNumbering')).toHaveLength(0);
-    expect(byTestId('settings-feature-items')).toBeDefined();
+    await render(<SettingsScreen />);
+    expect(screen.queryAllByTestId('settings-feature-documentNumbering', everything)).toHaveLength(0);
+    expect(byTestId('settings-feature-items')).toBeOnTheScreen();
   });
 
   it.each(['supervisor', 'staff'])('is not offered to %s', async role => {
     mockState = { ...mockState, auth: { userProfile: { id: 'u2', name: 'Fictional Person', role, mobile: '919000000002' } } };
-    await render();
-    expect(tree!.root.findAll(node => node.props.testID === 'settings-feature-documentNumbering')).toHaveLength(0);
+    await render(<SettingsScreen />);
+    expect(screen.queryAllByTestId('settings-feature-documentNumbering', everything)).toHaveLength(0);
   });
 });
 
 describe('App colours (G-45)', () => {
   it('the Preferences row reads "App colours, Sample teal"', async () => {
-    await render();
-    expect(byTestId('settings-pref-brand').props.accessibilityLabel).toBe('App colours, Sample teal');
+    await render(<SettingsScreen />);
+    expect(byTestId('settings-pref-brand')).toHaveAccessibleName('App colours, Sample teal');
   });
 });
 
@@ -121,23 +115,26 @@ describe('Change warehouse server (G-09)', () => {
       companyName: 'Dev Cold Storage (fictional data)',
       instanceId: 'i1',
     };
-    await render();
-    const row = tree!.root.findAll(node => node.props.accessibilityLabel?.startsWith?.('Change warehouse server') && typeof node.props.onPress === 'function')[0];
-    expect(row.props.accessibilityLabel).toBe('Change warehouse server, Now using Dev Cold Storage (fictional data)');
+    await render(<SettingsScreen />);
+    expect(screen.getByLabelText(/^Change warehouse server/)).toHaveAccessibleName('Change warehouse server, Now using Dev Cold Storage (fictional data)');
   });
 
   it('has no subtitle when no server is known', async () => {
-    await render();
-    const row = tree!.root.findAll(node => node.props.accessibilityLabel?.startsWith?.('Change warehouse server') && typeof node.props.onPress === 'function')[0];
-    expect(row.props.accessibilityLabel).toBe('Change warehouse server');
+    await render(<SettingsScreen />);
+    expect(screen.getByLabelText(/^Change warehouse server/)).toHaveAccessibleName('Change warehouse server');
   });
 });
 
 describe('Sign out row (G-40)', () => {
   it('has no chevron and is not drawn as destructive', async () => {
-    await render();
-    const row = tree!.root.findAll(node => node.props.testID === 'account-sign-out' && typeof node.type !== 'string' && 'showChevron' in node.props)[0];
-    expect(row.props.showChevron).toBe(false);
-    expect(row.props.destructive).toBe(false);
+    await render(<SettingsScreen />);
+    const signOut = byTestId('account-sign-out');
+    // The chevron is an icon with no role or text: found by its name under the row.
+    expect(signOut.queryAll(node => (node.type as unknown) === 'Icon' && node.props.name === 'chevron-right')).toHaveLength(0);
+    // Not destructive: the label is drawn in the colour of an ordinary row (Help), not the one of a destructive row.
+    const colourOf = (row: ReturnType<typeof byTestId>, label: string) => StyleSheet.flatten(within(row).getByText(label).props.style).color;
+    expect(colourOf(signOut, 'Sign out')).toBe(colourOf(byTestId('settings-help'), 'Help'));
+    // The Help row does have a chevron, so the check above can fail.
+    expect(byTestId('settings-help').queryAll(node => (node.type as unknown) === 'Icon' && node.props.name === 'chevron-right')).toHaveLength(1);
   });
 });

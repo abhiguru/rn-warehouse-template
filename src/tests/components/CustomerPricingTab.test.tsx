@@ -4,13 +4,12 @@
  * `item` link that opens one box once.
  */
 import React from 'react';
-import { Dimensions, Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { Dimensions } from 'react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { CustomerPricingTab } from '@/features/item-pricing/components/CustomerPricingTab';
 import { useItemRates, type UseItemRatesResult } from '@/features/item-pricing/useItemRates';
 import { F1, ITEMS, ORCHARD_B, row } from '@/tests/helpers/ratesFixtures';
-import { InlineValidation } from '@/components/fiori/InlineValidation';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -48,15 +47,20 @@ const MORE = [
   row({ item_id: 'garlic', weight_min: 41, weight_max: 100, unit_price: 8, effective_from: '2025-06-01', ...ORCHARD_B }),
 ];
 
-const texts = (tree: ReactTestRenderer) => tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-const host = (tree: ReactTestRenderer, id: string) => tree.root.findAll(n => n.props.testID === id && typeof n.type === 'string');
-const pressable = (tree: ReactTestRenderer, match: (n: any) => boolean) => tree.root.findAll(n => typeof n.props.onPress === 'function' && match(n))[0];
-const byLabel = (tree: ReactTestRenderer, label: string) => pressable(tree, n => n.props.accessibilityLabel === label);
+const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+/** A text on the screen, as written (once or more). */
+const shown = (text: string | RegExp) => screen.queryAllByText(text);
+const expectShown = (text: string | RegExp) => expect(shown(text).length).toBeGreaterThan(0);
+const expectNotShown = (text: string | RegExp) => expect(shown(text)).toHaveLength(0);
+// The rows, the empty state, the skeleton and the strips have no role or text of their own: their testID is the way to them.
+const host = (id: string) => screen.queryAllByTestId(id);
+const rowOf = (item: string) => screen.getByTestId(`customer-item-row-${item}`);
+const byLabel = (label: string) => screen.queryByRole('button', { name: label });
+const press = async (node: Parameters<ReturnType<typeof user>['press']>[0]) => { await user().press(node); };
 
 const WINDOW = Dimensions.get('window');
-let tree: ReactTestRenderer;
 async function mount(customerId = 'orchard-b', customerName = 'Review Orchard B', props: Partial<React.ComponentProps<typeof CustomerPricingTab>> = {}) {
-  await act(async () => { tree = create(<CustomerPricingTab customerId={customerId} customerName={customerName} {...props} />); });
+  await render(<CustomerPricingTab customerId={customerId} customerName={customerName} {...props} />);
 }
 beforeEach(() => {
   Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale: 1 } });
@@ -67,7 +71,6 @@ beforeEach(() => {
   jest.mocked(useItemRates).mockReturnValue(result());
 });
 afterEach(() => {
-  act(() => tree.unmount());
   Dimensions.set({ window: WINDOW });
   jest.useRealTimers();
 });
@@ -75,28 +78,28 @@ afterEach(() => {
 describe('a customer with one own rate', () => {
   it('lists the item with since, its band line, the default beside it, the section count and the footer', async () => {
     await mount();
-    const s = texts(tree);
-    expect(s).toContain('Review Onion Red');
-    expect(s).toContain('Since 01/01/26');
-    expect(s).toContain('0–100 kg · ₹3.00 · Labour ₹1.50 · Tax 5%');
-    expect(s).toContain('Default rate: ₹3.50 per bag, per month');
-    expect(s).toContain('ITEMS WITH THEIR OWN RATE');
-    expect(s).toContain('1');
-    expect(s).toContain('All other items are charged at the default rate.');
-    expect(pressable(tree, n => n.props.testID === 'customer-item-row-onion')).toBeDefined();
+    expectShown('Review Onion Red');
+    expectShown('Since 01/01/26');
+    expectShown('0–100 kg · ₹3.00 · Labour ₹1.50 · Tax 5%');
+    expectShown('Default rate: ₹3.50 per bag, per month');
+    expectShown('ITEMS WITH THEIR OWN RATE');
+    expectShown('1');
+    expectShown('All other items are charged at the default rate.');
+    expect(rowOf('onion')).toBeOnTheScreen();
     // No other customer's rate and no item without an own rate.
-    expect(s).not.toContain('Review Cumin Bold');
+    expectNotShown('Review Cumin Bold');
   });
 
   it('reads the row as one sentence', async () => {
     await mount();
-    expect(pressable(tree, n => n.props.testID === 'customer-item-row-onion').props.accessibilityLabel)
-      .toBe('Review Onion Red, Since 1 Jan 2026, 0–100 kg · ₹3.00 · Labour ₹1.50 · Tax 5%, Default rate: ₹3.50 per bag, per month');
+    expect(rowOf('onion')).toHaveAccessibleName(
+      'Review Onion Red, Since 1 Jan 2026, 0–100 kg · ₹3.00 · Labour ₹1.50 · Tax 5%, Default rate: ₹3.50 per bag, per month'
+    );
   });
 
   it('a tap on the row opens the customer\'s box of that item, with the customer\'s name', async () => {
     await mount();
-    await act(async () => { pressable(tree, n => n.props.testID === 'customer-item-row-onion').props.onPress(); });
+    await press(rowOf('onion'));
     expect(router.push).toHaveBeenCalledTimes(1);
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/[itemId]/customer/[customerId]',
@@ -110,26 +113,23 @@ describe('a customer with several own rates', () => {
 
   it('is sorted by item name, one line per band, and tags a rate that stops and one that begins later', async () => {
     await mount();
-    const rows = tree.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('customer-item-row-') && typeof n.props.onPress === 'function');
-    expect(rows.map(n => n.props.testID)).toEqual([
+    expect(screen.getAllByTestId(/^customer-item-row-/).map(n => n.props.testID)).toEqual([
       'customer-item-row-cumin', 'customer-item-row-garlic', 'customer-item-row-onion', 'customer-item-row-potato',
     ]);
-    const s = texts(tree);
     // Garlic: a line for each of its two bands.
-    expect(s).toContain('0–40 kg · ₹5.00 · Labour ₹2.50 · Tax 5%');
-    expect(s).toContain('41–100 kg · ₹8.00 · Labour ₹2.50 · Tax 5%');
-    expect(s).toContain('Rate ends 31/12/26');
-    expect(s).toContain('New rate from 01/01/27');
+    expectShown('0–40 kg · ₹5.00 · Labour ₹2.50 · Tax 5%');
+    expectShown('41–100 kg · ₹8.00 · Labour ₹2.50 · Tax 5%');
+    expectShown('Rate ends 31/12/26');
+    expectShown('New rate from 01/01/27');
     // The potato rate is not in force yet: its line is the later rate, its default is today's.
-    expect(s).toContain('Since 01/01/27');
-    expect(s).toContain('0–100 kg · ₹3.75 · Labour ₹2.00 · Tax 0%');
-    expect(s).toContain('Default rate: ₹4.00 per bag, per month');
+    expectShown('Since 01/01/27');
+    expectShown('0–100 kg · ₹3.75 · Labour ₹2.00 · Tax 0%');
+    expectShown('Default rate: ₹4.00 per bag, per month');
   });
 
   it('counts the rows in the section header', async () => {
     await mount();
-    const header = tree.root.find(n => n.props.accessibilityRole === 'header' && typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Items with their own rate'));
-    expect(header.props.accessibilityLabel).toBe('Items with their own rate, 4');
+    expect(screen.getByRole('header', { name: /^Items with their own rate/ })).toHaveAccessibleName('Items with their own rate, 4');
   });
 });
 
@@ -138,7 +138,7 @@ describe('+ Add item', () => {
     jest.mocked(useItemRates).mockReturnValue(result({ rates: [...F1, ...MORE] }));
     await mount();
     expect(sheetProps.isVisible).toBe(false);
-    await act(async () => { byLabel(tree, 'Add item').props.onPress(); });
+    await press(byLabel('Add item')!);
     expect(sheetProps.isVisible).toBe(true);
     expect(sheetProps.title).toBe('Add an item rate for Review Orchard B');
     // 7 active items; cumin, garlic, onion and potato already have one.
@@ -155,7 +155,7 @@ describe('+ Add item', () => {
   it('does not offer an item whose own rate for this customer only begins later', async () => {
     jest.mocked(useItemRates).mockReturnValue(result({ rates: [...F1, ...MORE] }));
     await mount();
-    await act(async () => { byLabel(tree, 'Add item').props.onPress(); });
+    await press(byLabel('Add item')!);
     const ids = (await sheetProps.searchFn('')).map((i: { id: string }) => i.id);
     expect(ids).not.toContain('potato');
   });
@@ -164,8 +164,8 @@ describe('+ Add item', () => {
     const ended = F1.map(r => (r.customer_id === 'orchard-b' ? { ...r, effective_to: '2026-06-30' } : r));
     jest.mocked(useItemRates).mockReturnValue(result({ rates: ended }));
     await mount();
-    expect(texts(tree)).toContain('Review Orchard B has no rates of their own yet.');
-    await act(async () => { byLabel(tree, 'Add item').props.onPress(); });
+    expectShown('Review Orchard B has no rates of their own yet.');
+    await press(byLabel('Add item')!);
     expect((await sheetProps.searchFn('')).map((i: { id: string }) => i.id)).toContain('onion');
   });
 });
@@ -173,10 +173,11 @@ describe('+ Add item', () => {
 describe('a customer with no own rate yet', () => {
   it('says so, with + Add item, and the picker offers every active item', async () => {
     await mount('orchard-z', 'Review Orchard Z');
-    expect(texts(tree)).toContain('Review Orchard Z has no rates of their own yet.');
-    expect(host(tree, 'customer-pricing-empty').length).toBeGreaterThan(0);
-    expect(texts(tree)).not.toContain('ITEMS WITH THEIR OWN RATE');
-    await act(async () => { pressable(tree, n => n.props.accessibilityLabel === '+ Add item' || n.props.children === '+ Add item').props.onPress(); });
+    expectShown('Review Orchard Z has no rates of their own yet.');
+    expect(host('customer-pricing-empty').length).toBeGreaterThan(0);
+    expectNotShown('ITEMS WITH THEIR OWN RATE');
+    expectShown('+ Add item');
+    await press(byLabel('Add item')!);
     expect(sheetProps.isVisible).toBe(true);
     expect((await sheetProps.searchFn('')).map((i: { id: string }) => i.id)).toHaveLength(ITEMS.length);
   });
@@ -186,16 +187,16 @@ describe('loading and error', () => {
   it('loading shows skeletons, no rows and no empty text', async () => {
     jest.mocked(useItemRates).mockReturnValue(result({ items: [], rates: [], status: 'loading' }));
     await mount();
-    expect(host(tree, 'customer-pricing-skeleton').length).toBeGreaterThan(0);
-    expect(texts(tree).some(s => s.includes('no rates of their own'))).toBe(false);
+    expect(host('customer-pricing-skeleton').length).toBeGreaterThan(0);
+    expectNotShown(/no rates of their own/);
   });
 
   it('an error says so and Try again reads again', async () => {
     const d = result({ items: [], rates: [], status: 'error' });
     jest.mocked(useItemRates).mockReturnValue(d);
     await mount();
-    expect(host(tree, 'customer-pricing-error').length).toBeGreaterThan(0);
-    await act(async () => { byLabel(tree, 'Try again').props.onPress(); });
+    expect(host('customer-pricing-error').length).toBeGreaterThan(0);
+    await press(byLabel('Try again')!);
     expect(d.refresh).toHaveBeenCalled();
   });
 });
@@ -210,7 +211,7 @@ describe('the `item` link', () => {
       params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B', deactivated: '0' },
     });
     expect(onOpened).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.update(<CustomerPricingTab customerId="orchard-b" customerName="Review Orchard B" openItemId="onion" onOpened={onOpened} />); });
+    await screen.rerender(<CustomerPricingTab customerId="orchard-b" customerName="Review Orchard B" openItemId="onion" onOpened={onOpened} />);
     expect(router.push).toHaveBeenCalledTimes(1);
   });
 
@@ -225,11 +226,11 @@ describe('an item that is deactivated', () => {
     const gone = row({ item_id: 'gone', item_name: 'Review Gone Seed', weight_min: 0, weight_max: 100, unit_price: 12.5, effective_from: '2026-09-01', ...ORCHARD_B });
     jest.mocked(useItemRates).mockReturnValue(result({ rates: [gone] }));
     await mount();
-    expect(host(tree, 'customer-pricing-empty')).toHaveLength(0);
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Review Gone Seed', 'Deactivated']));
-    const rowNode = pressable(tree, n => n.props.testID === 'customer-item-row-gone');
-    expect(rowNode.props.accessibilityLabel).toContain('Deactivated');
-    await act(async () => { rowNode.props.onPress(); });
+    expect(host('customer-pricing-empty')).toHaveLength(0);
+    expectShown('Review Gone Seed');
+    expectShown('Deactivated');
+    expect(rowOf('gone')).toHaveAccessibleName(/Deactivated/);
+    await press(rowOf('gone'));
     expect(router.push).toHaveBeenCalledTimes(1);
     expect(router.push).toHaveBeenCalledWith({ pathname: '/item/[id]', params: { id: 'gone', tab: 'pricing' } });
   });
@@ -239,11 +240,11 @@ describe('a deactivated customer', () => {
   it('shows the rows but no strip of its own, no + Add item, and the row link says deactivated', async () => {
     await mount('orchard-b', 'Review Orchard B', { deactivated: true });
     // The one strip is under the page header on every tab (WH-209); the tab no longer draws its own.
-    expect(host(tree, 'customer-pricing-deactivated')).toHaveLength(0);
-    expect(texts(tree)).not.toContain('This customer is deactivated. Activate them to change their rates.');
-    expect(texts(tree)).toContain('Review Onion Red');
-    expect(byLabel(tree, 'Add item')).toBeUndefined();
-    await act(async () => { pressable(tree, n => n.props.testID === 'customer-item-row-onion').props.onPress(); });
+    expect(host('customer-pricing-deactivated')).toHaveLength(0);
+    expectNotShown('This customer is deactivated. Activate them to change their rates.');
+    expectShown('Review Onion Red');
+    expect(byLabel('Add item')).toBeNull();
+    await press(rowOf('onion'));
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/[itemId]/customer/[customerId]',
       params: { itemId: 'onion', customerId: 'orchard-b', customer_name: 'Review Orchard B', deactivated: '1' },
@@ -252,8 +253,8 @@ describe('a deactivated customer', () => {
 
   it('with no own rate it says so and offers no Add item', async () => {
     await mount('orchard-z', 'Review Orchard Z', { deactivated: true });
-    expect(host(tree, 'customer-pricing-empty').length).toBeGreaterThan(0);
-    expect(byLabel(tree, 'Add item')).toBeUndefined();
+    expect(host('customer-pricing-empty').length).toBeGreaterThan(0);
+    expect(byLabel('Add item')).toBeNull();
   });
 });
 
@@ -261,15 +262,14 @@ describe('a refresh that failed (WH-209)', () => {
   it('keeps the rows and shows one error strip above them, with the time of the last good load', async () => {
     jest.mocked(useItemRates).mockReturnValue(result({ refreshError: true }));
     await mount();
-    expect(host(tree, 'customer-pricing-refresh-failed')).toHaveLength(1);
-    expect(texts(tree)).toContain('Review Onion Red');
-    const strip = tree.root.findAllByType(InlineValidation)[0];
-    expect(strip.props.variant).toBe('error');
-    expect(strip.props.message).toMatch(/refresh/i);
+    expect(host('customer-pricing-refresh-failed')).toHaveLength(1);
+    expectShown('Review Onion Red');
+    // The error variant of the strip is the one that is announced as an alert.
+    expect(screen.getByRole('alert')).toHaveAccessibleName(/refresh/i);
   });
 
   it('shows no strip when the refresh worked', async () => {
     await mount();
-    expect(host(tree, 'customer-pricing-refresh-failed')).toHaveLength(0);
+    expect(host('customer-pricing-refresh-failed')).toHaveLength(0);
   });
 });

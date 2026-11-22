@@ -42,7 +42,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Slot, Stack, router } from 'expo-router';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
@@ -59,7 +59,6 @@ import { hasAcceptedTerms } from '@/config/centralTerms';
 import { discoverOperator, onOperatorServerChange, saveOperatorServer } from '@/config/operatorServer';
 import { requestFacilityToken, verifyCentralCode } from '@/config/centralSession';
 import { exchangeCentralIdentity, getPendingEnrollmentToken, signInWithPhone, signOutPendingEnrollment } from '@/config/supabaseConfig';
-import { Button } from '@/components/ui/Button';
 import { installHardwareBack } from '@/tests/helpers/hardwareBack';
 import { showAlert } from '@/utils/alert';
 
@@ -226,7 +225,9 @@ const ROUTES = {
   otp: () => <Text>facility code</Text>,
 };
 
-let tree: ReactTestRenderer | undefined;
+let user: ReturnType<typeof userEvent.setup>;
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
 /** Every navigation asked of the router, in order: [kind, href]. */
 let navigations: Array<[string, string]> = [];
 
@@ -248,9 +249,9 @@ const rootKeys = (): string[] => {
   while (state && state.routes.length === 1 && state.routes[0].name === '__root') state = state.routes[0].state;
   return state ? state.routes.map(route => String(route.key)) : [];
 };
-const mountedFacilities = () => tree!.root.findAllByType(FacilitiesScreen).length;
-const texts = () =>
-  tree!.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join(''));
+// My facilities screens that are mounted: each draws one "Add facility" button, hidden or not.
+const mountedFacilities = () => screen.queryAllByRole('button', { name: 'Add facility', ...everything }).length;
+const texts = () => screen.queryAllByText(/[\s\S]*/, everything).map(node => [].concat(node.props.children).join(''));
 /** Time passes in steps, each its own `act`: React renders between them, as on a phone. */
 const STEP_MS = 100;
 const wait = async (ms: number) => {
@@ -259,13 +260,17 @@ const wait = async (ms: number) => {
 };
 /** Tap the facility on the My facilities that is on top. */
 const tapFacility = async () => {
-  const cells = tree!.root.findAll(node => node.props.testID === `facility-${ORIGIN}` && typeof node.props.onPress === 'function');
-  await act(async () => { cells[cells.length - 1].props.onPress(); });
+  const cells = screen.queryAllByTestId(`facility-${ORIGIN}`, everything);
+  await user.press(cells[cells.length - 1]);
+};
+/** Press the button with this label (the one on top when several screens have it). */
+const pressButtonNamed = async (label: string) => {
+  const found = screen.queryAllByRole('button', { name: label, ...everything });
+  if (found.length === 0) throw new Error(`no button "${label}"`);
+  await user.press(found[found.length - 1]);
 };
 const pressButton = async (label: string) => {
-  const found = tree!.root.findAllByType(Button).filter(node => node.props.children === label || node.props.accessibilityLabel === label);
-  if (found.length === 0) throw new Error(`no button "${label}"`);
-  await act(async () => { await found[found.length - 1].props.onPress(); });
+  await pressButtonNamed(label);
   await wait(STEP_MS);
 };
 /** The hardware Back button: the navigator's GO_BACK. */
@@ -274,17 +279,16 @@ const pressBack = async () => {
   await wait(STEP_MS);
 };
 const enterCode = async (code: string) => {
-  const input = tree!.root.find(node => node.props.textContentType === 'oneTimeCode' && typeof node.props.onChangeText === 'function');
-  await act(async () => { input.props.onChangeText(code); });
+  const input = screen.getByLabelText('Verification code');
+  await user.clear(input);
+  await user.type(input, code);
   await pressButton('Verify code');
 };
 const pushes = (href: string) => navigations.filter(([kind, to]) => kind === 'PUSH' && to === href).length;
 
 async function start(location = '/facilities') {
   process.env.EXPO_ROUTER_IMPORT_MODE = 'sync';
-  await act(async () => {
-    tree = create(<ExpoRoot context={getMockContext(ROUTES)} location={location} />);
-  });
+  await render(<ExpoRoot context={getMockContext(ROUTES)} location={location} />);
   await wait(STEP_MS);
   expect(pathname()).toBe(location);
   navigations = [];
@@ -297,6 +301,7 @@ const go = async (navigate: () => void) => {
 
 beforeEach(async () => {
   jest.useFakeTimers();
+  user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   jest.clearAllMocks();
   await AsyncStorage.clear();
   mockAuthStore.set(null);
@@ -319,8 +324,6 @@ beforeEach(async () => {
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
   mockRecordNavigation = undefined;
   jest.useRealTimers();
   jest.restoreAllMocks();
@@ -489,8 +492,7 @@ describe('back from the waiting screen (reached from My facilities)', () => {
     jest.mocked(signOutPendingEnrollment).mockImplementation(
       () => new Promise<void>(resolve => { finishSignOut = () => resolve(); })
     );
-    const controls = tree!.root.findAllByType(Button).filter(node => node.props.children === 'My facilities');
-    await act(async () => { controls[controls.length - 1].props.onPress(); });
+    await pressButtonNamed('My facilities');
     await wait(STEP_MS);
     expect(signOutPendingEnrollment).toHaveBeenCalledTimes(1);
     // Nothing has left the waiting screen yet.

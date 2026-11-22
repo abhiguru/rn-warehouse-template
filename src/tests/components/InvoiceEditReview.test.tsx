@@ -2,7 +2,7 @@
  * Invoice edit, review step: what is saved and what the person is shown.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import { updateInvoice } from '@/features/invoice/services/invoiceFormService';
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
@@ -20,12 +20,65 @@ jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// Stand-ins that draw what the test looks at and call the step's real props. An open dialog is an alert with its title,
+// its message and its confirm button; every dialog also has a button for the sheet finishing its closing (iOS).
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; message?: string; confirmText?: string; onConfirm: () => unknown; onDismissed?: () => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    return (
+      <View>
+        {props.visible ? (
+          <View accessible accessibilityRole="alert">
+            <Text>{props.title}</Text>
+            <Text>{props.message}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={props.confirmText ?? 'Confirm'} onPress={props.onConfirm}>
+              <Text>{props.confirmText ?? 'Confirm'}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <Pressable accessibilityRole="button" accessibilityLabel="Dialog finished closing" onPress={() => props.onDismissed?.()}>
+          <Text>Dialog finished closing</Text>
+        </Pressable>
+      </View>
+    );
+  },
+}));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
-// Stand-ins that keep their props, so the test can read what they are given and call back.
-jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({ InvoiceCalculationSummary: 'InvoiceCalculationSummary' }));
-jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: 'InvoiceSuccessDialog' }));
+// The summary draws buttons that report the discount field's state to the step, as the real field does.
+jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({
+  InvoiceCalculationSummary: (props: { onDiscountErrorChange: (error: string | null) => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    const { t: translate } = require('@/i18n');
+    const button = (name: string, error: string | null) => (
+      <Pressable accessibilityRole="button" accessibilityLabel={name} onPress={() => props.onDiscountErrorChange(error)}>
+        <Text>{name}</Text>
+      </Pressable>
+    );
+    return (
+      <View>
+        {button('The discount field rejects 5000', translate('invoice.summary.discountTooLarge', { amount: '₹735.00' }))}
+        {button('The discount field holds x', 'x')}
+        {button('The discount field is accepted', null)}
+      </View>
+    );
+  },
+}));
+// The success dialog says whether it is open, and draws the figures it was given.
+jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({
+  InvoiceSuccessDialog: (props: { isVisible: boolean; isEditMode?: boolean; invoiceData?: { invoice_no?: unknown; total?: unknown; estimated_total?: unknown } }) => {
+    const { Text, View } = require('react-native');
+    return props.isVisible ? (
+      <View>
+        <Text>Success dialog is open</Text>
+        <Text>{`Edit mode: ${String(props.isEditMode)}`}</Text>
+        <Text>{`Invoice number: ${String(props.invoiceData?.invoice_no)}`}</Text>
+        <Text>{`Total: ${String(props.invoiceData?.total)}`}</Text>
+        <Text>{`Estimated total: ${String(props.invoiceData?.estimated_total)}`}</Text>
+      </View>
+    ) : null;
+  },
+}));
 jest.mock('@/services/print-service', () => ({ printInvoiceRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateInvoicePDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
@@ -48,20 +101,19 @@ function loadInvoice() {
   });
 }
 
-async function render() {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<InvoiceEditStep3 />); });
-  return tree;
+const user = () => userEvent.setup({ delay: 0 });
+async function open() {
+  await render(<InvoiceEditStep3 />);
 }
-const standIn = (tree: ReactTestRenderer, name: string) => tree.root.findByType(name as unknown as React.ElementType);
-// The dialogs that are open (the stand-in keeps the props of ConfirmDialog).
-const shown = (tree: ReactTestRenderer) =>
-  tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType).filter((dialog) => dialog.props.visible);
-const pressUpdate = async (tree: ReactTestRenderer) => {
-  const button = tree.root.find(
-    (node) => node.props.accessibilityLabel === t('invoice.review.saveInvoice') && typeof node.props.onPress === 'function'
-  );
-  await act(async () => { await button.props.onPress(); });
+const shown = () => screen.queryAllByRole('alert');
+/** The open dialog's title and message texts, and its buttons. */
+const dialog = () => {
+  const own = within(shown()[0]);
+  const texts = own.getAllByText(/^/);
+  return { own, title: texts[0], message: texts[1] };
+};
+const pressUpdate = async () => {
+  await user().press(screen.getAllByLabelText(t('invoice.review.saveInvoice'))[0]);
 };
 
 beforeEach(() => {
@@ -73,74 +125,71 @@ afterEach(() => jest.restoreAllMocks());
 
 describe('a discount the field did not accept', () => {
   it('holds the update and says which discount the invoice still has', async () => {
-    const tree = await render();
+    await open();
     // Staff typed 5000 over an invoice of 735: the field keeps the text, the invoice keeps 400.
     const rejected = t('invoice.summary.discountTooLarge', { amount: '₹735.00' });
-    await act(async () => { standIn(tree, 'InvoiceCalculationSummary').props.onDiscountErrorChange(rejected); });
+    await user().press(screen.getByRole('button', { name: 'The discount field rejects 5000' }));
 
-    await pressUpdate(tree);
+    await pressUpdate();
 
-    expect(shown(tree)).toHaveLength(1);
-    const dialog = shown(tree)[0];
-    expect(dialog.props.title).toBe(t('invoice.review.discountCheckTitle'));
-    expect(dialog.props.message).toContain(rejected);
-    expect(dialog.props.message).toContain('₹400.00');
+    expect(shown()).toHaveLength(1);
+    expect(dialog().title).toHaveTextContent(t('invoice.review.discountCheckTitle'));
+    expect(dialog().message.props.children).toContain(rejected);
+    expect(dialog().message.props.children).toContain('₹400.00');
     // The dialog only informs: its one button closes it and nothing is saved.
-    expect(dialog.props.confirmText).toBe(t('common.close'));
-    await act(async () => { dialog.props.onConfirm(); });
+    await user().press(dialog().own.getByRole('button', { name: t('common.close') }));
     expect(updateInvoice).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('lets the update go on to its confirmation once the field is corrected', async () => {
-    const tree = await render();
-    await act(async () => { standIn(tree, 'InvoiceCalculationSummary').props.onDiscountErrorChange('x'); });
-    await act(async () => { standIn(tree, 'InvoiceCalculationSummary').props.onDiscountErrorChange(null); });
+    await open();
+    await user().press(screen.getByRole('button', { name: 'The discount field holds x' }));
+    await user().press(screen.getByRole('button', { name: 'The discount field is accepted' }));
 
-    await pressUpdate(tree);
+    await pressUpdate();
 
-    expect(shown(tree)).toHaveLength(1);
-    expect(shown(tree)[0].props.title).toBe(t('invoice.review.updateTitle', { number: '42' }));
+    expect(shown()).toHaveLength(1);
+    expect(dialog().title).toHaveTextContent(t('invoice.review.updateTitle', { number: '42' }));
     expect(showAlert).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 });
 
 describe('the total of an updated invoice', () => {
-  const confirmUpdate = async (tree: ReactTestRenderer) => {
-    await pressUpdate(tree);
-    const dialog = shown(tree)[0];
-    expect(dialog.props.confirmText).toBe(t('invoice.review.saveInvoice'));
-    await act(async () => { await dialog.props.onConfirm(); });
+  const confirmUpdate = async () => {
+    await pressUpdate();
+    const confirm = dialog().own.getByRole('button', { name: t('invoice.review.saveInvoice') });
+    const message = dialog().message.props.children as string;
+    await user().press(confirm);
+    await waitFor(() => expect(updateInvoice).toHaveBeenCalledTimes(1));
     // The invoice dialog opens once the question has finished closing.
-    await act(async () => { dialog.props.onDismissed(); });
-    return dialog.props.message as string;
+    for (const finished of screen.getAllByRole('button', { name: 'Dialog finished closing' })) await user().press(finished);
+    return message;
   };
 
   it('models an old server that counts periods differently: the success dialog shows the total the server stored', async () => {
     // The form holds 335 (735 less the discount of 400). The server counts 1.5 periods and stores 598.
     jest.mocked(updateInvoice).mockResolvedValue({ success: true, data: { invoice_id: 'inv-42', invoice_no: 42, total: 598 } });
-    const tree = await render();
+    await open();
 
-    const message = await confirmUpdate(tree);
+    const message = await confirmUpdate();
 
     expect(message).toContain('Total ₹335.00');
-    const dialog = standIn(tree, 'InvoiceSuccessDialog');
-    expect(dialog.props.isVisible).toBe(true);
-    expect(dialog.props.isEditMode).toBe(true);
-    expect(dialog.props.invoiceData).toMatchObject({ invoice_no: 42, total: 598, estimated_total: 335 });
+    expect(await screen.findByText('Success dialog is open')).toBeOnTheScreen();
+    expect(screen.getByText('Edit mode: true')).toBeOnTheScreen();
+    expect(screen.getByText('Invoice number: 42')).toBeOnTheScreen();
+    expect(screen.getByText('Total: 598')).toBeOnTheScreen();
+    expect(screen.getByText('Estimated total: 335')).toBeOnTheScreen();
     // The question is closed once the save is over.
-    expect(shown(tree)).toHaveLength(0);
-    await act(async () => { tree.unmount(); });
+    expect(screen.queryAllByRole('alert', { includeHiddenElements: true })).toHaveLength(0);
   });
 
   it('is left unknown when the server total could not be read back', async () => {
     jest.mocked(updateInvoice).mockResolvedValue({ success: true, data: { invoice_id: 'inv-42', invoice_no: 42, total: null } });
-    const tree = await render();
+    await open();
 
-    await confirmUpdate(tree);
+    await confirmUpdate();
 
-    expect(standIn(tree, 'InvoiceSuccessDialog').props.invoiceData).toMatchObject({ total: null, estimated_total: 335 });
-    await act(async () => { tree.unmount(); });
+    expect(await screen.findByText('Total: null')).toBeOnTheScreen();
+    expect(screen.getByText('Estimated total: 335')).toBeOnTheScreen();
   });
 });

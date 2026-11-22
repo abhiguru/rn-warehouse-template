@@ -1,8 +1,7 @@
 /** G-33: the spoken hint of an item row does not tell TalkBack users to swipe. */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import ItemsScreen from '../../../app/items';
 import { itemService } from '@/services/item-service';
 import { getItemStoragePrices } from '@/services/item-pricing-service';
@@ -37,23 +36,7 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
-const lastAlert = () => {
-  const calls = jest.mocked(showAlert).mock.calls;
-  const [title, message, buttons] = calls[calls.length - 1];
-  return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
-};
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
+const rowFor = (name: string) => screen.findByLabelText(new RegExp(`^${name}`));
 
 const ITEMS = [
   { id: 'i1', name: 'Dry Red Chillies', packaging: 'Bag', description: '', active: true },
@@ -63,7 +46,7 @@ const ITEMS = [
 const listOf = (data: unknown[], total = data.length) => ({ success: true, message: '', data, pagination: { total_count: total } });
 const renderItems = async () => {
   jest.mocked(itemService.getItemList).mockResolvedValue(listOf(ITEMS, 91) as never);
-  await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
+  await render(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>);
 };
 beforeEach(() => {
   jest.clearAllMocks();
@@ -73,7 +56,7 @@ beforeEach(() => {
 describe('item row hint', () => {
   it('only says what a tap does, and keeps the two actions', async () => {
     await renderItems();
-    const row = rowFor('Dry Red Chillies');
+    const row = await rowFor('Dry Red Chillies');
     expect(row.props.accessibilityHint).toBe('Opens the item.');
     expect(row.props.accessibilityHint).not.toContain('Swipe');
     expect(row.props.accessibilityActions).toEqual([

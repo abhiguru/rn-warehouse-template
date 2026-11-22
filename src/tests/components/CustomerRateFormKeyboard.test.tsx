@@ -5,11 +5,11 @@
  * text on focus. The form opens as a copy of Onion Red's default rate: one band, 0 to 100 kg.
  */
 import React from 'react';
-import { Dimensions, Keyboard, KeyboardAvoidingView, ScrollView, TextInput } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { Dimensions, Keyboard, ScrollView, TextInput } from 'react-native';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { CustomerRateForm } from '@/features/item-pricing/components/CustomerRateForm';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
-import { inputsWithLabel, onionRows } from '@/tests/helpers/rateEditorFixtures';
+import { inputsWithLabel, inputsWithLabelMounted, onionRows } from '@/tests/helpers/rateEditorFixtures';
 
 jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/store/hooks', () => ({
@@ -29,7 +29,6 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn(), askAlert: jest.fn() })
 jest.mock('@react-native-community/datetimepicker', () => ({ __esModule: true, default: 'DateTimePicker', DateTimePickerAndroid: { open: jest.fn() } }));
 
 const ORCHARD_A = { id: 'cust-a', name: 'Review Orchard A' };
-let tree: ReactTestRenderer | undefined;
 const listeners: Record<string, (event: unknown) => void> = {};
 
 const ratesFor = (): UseItemRatesForResult => ({
@@ -42,29 +41,51 @@ const ratesFor = (): UseItemRatesForResult => ({
   refresh: jest.fn().mockResolvedValue(undefined),
 });
 
-/** The jest stand-in of a TextInput keeps its methods on a shared prototype: give each field its own. */
-const fieldNodes = (t: ReactTestRenderer) =>
-  t.root.findAllByType(TextInput).map(node => {
-    const instance = node.instance as { focus: jest.Mock; measureInWindow: jest.Mock };
-    instance.focus = jest.fn();
-    instance.measureInWindow = jest.fn();
-    return { label: String(node.props.accessibilityLabel), instance };
-  });
-let nodes: ReturnType<typeof fieldNodes> = [];
-/** The native node of the nth field whose accessibility label starts with this text. */
-const native = (label: string, index = 0) => nodes.filter(n => n.label.startsWith(label))[index].instance;
-const input = (t: ReactTestRenderer, label: string, index = 0) => inputsWithLabel(t, label)[index];
+/**
+ * The jest stand-ins of TextInput and ScrollView keep their native methods (focus, measureInWindow, scrollTo) on a shared
+ * prototype, and the app calls them on the component instance, which Testing Library does not return. So the methods are
+ * spied on the prototype, and each call knows its field by `this.props.accessibilityLabel`.
+ */
+type FieldInstance = { props: { accessibilityLabel?: string } };
+let focused: string[] = [];
+/** The top edge that measureInWindow reports for the field whose accessibility label starts with the key. */
+let measured: Record<string, number> = {};
+const focusCount = (label: string) => focused.filter(l => l.startsWith(label)).length;
+const input = (label: string, index = 0) => inputsWithLabel(label)[index];
+/** The host elements around an element, nearest first. */
+const hostAncestors = (el: ReturnType<typeof screen.getByTestId>) => {
+  const list: ReturnType<typeof screen.getByTestId>[] = [];
+  for (let up = el.parent; up; up = up.parent) list.push(up);
+  return list;
+};
+const scrollArea = () => hostAncestors(input('Rent ₹/month')).find(n => n.type === 'RCTScrollView')!;
 
 async function open() {
   jest.mocked(useItemRatesFor).mockReturnValue(ratesFor());
-  await act(async () => { tree = create(<CustomerRateForm itemId="onion" customerId={ORCHARD_A.id} customerName={ORCHARD_A.name} customerDeactivated={false} />); });
-  nodes = fieldNodes(tree!);
-  return tree!;
+  await render(<CustomerRateForm itemId="onion" customerId={ORCHARD_A.id} customerName={ORCHARD_A.name} customerDeactivated={false} />);
 }
 const measure = (cb: (x: number, y: number, w: number, h: number) => void, y: number, h = 50) => cb(0, y, 300, h);
+const submit = (label: string) => fireEvent(input(label), 'submitEditing', {});
+
+// A stand-in for the keyboard-avoiding view that can be found again: it draws a View with a test id around its children.
+jest.mock('react-native/Libraries/Components/Keyboard/KeyboardAvoidingView', () => {
+  const R = require('react');
+  const { View } = require('react-native');
+  return { __esModule: true, default: ({ children }: { children: unknown }) => R.createElement(View, { testID: 'keyboard-avoiding' }, children) };
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
+  focused = [];
+  measured = {};
+  jest.spyOn(TextInput.prototype as unknown as { focus: () => void }, 'focus').mockImplementation(function (this: FieldInstance) {
+    focused.push(String(this.props.accessibilityLabel));
+  });
+  jest.spyOn(TextInput.prototype as unknown as { measureInWindow: (cb: never) => void }, 'measureInWindow').mockImplementation(function (this: FieldInstance, cb: never) {
+    const key = Object.keys(measured).find(k => String(this.props.accessibilityLabel).startsWith(k));
+    if (key) measure(cb, measured[key]);
+  });
+  jest.spyOn(ScrollView.prototype as unknown as { scrollTo: () => void }, 'scrollTo').mockImplementation(() => undefined);
   jest.spyOn(Keyboard, 'addListener').mockImplementation(((name: string, fn: (event: unknown) => void) => {
     listeners[name] = fn;
     return { remove: jest.fn() };
@@ -75,25 +96,25 @@ beforeEach(() => {
     doNotFake: ['nextTick', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'hrtime'],
   });
 });
+const scrollTo = () => ScrollView.prototype.scrollTo as unknown as jest.Mock;
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   jest.restoreAllMocks();
   jest.useRealTimers();
 });
 
 it('puts the fields in a scroll area that keeps taps working, inside a KeyboardAvoidingView, with the Save bar beside it', async () => {
-  const t = await open();
-  const avoiding = t.root.findByType(KeyboardAvoidingView);
-  const scroll = avoiding.findByType(ScrollView);
-  expect(scroll.props.keyboardShouldPersistTaps).toBe('handled');
-  expect(scroll.findAll(n => n.props.testID === 'add-rate-footer')).toHaveLength(0);
-  expect(avoiding.findAll(n => n.props.testID === 'add-rate-footer').length).toBeGreaterThan(0);
+  await open();
+  expect(scrollArea()).toHaveProp('keyboardShouldPersistTaps', 'handled');
+  // The scroll area and the Save bar are both inside the keyboard-avoiding view, and the bar is not inside the scroll area.
+  const footer = screen.getByTestId('add-rate-footer');
+  expect(hostAncestors(scrollArea()).some(n => n.props.testID === 'keyboard-avoiding')).toBe(true);
+  expect(hostAncestors(footer).some(n => n.props.testID === 'keyboard-avoiding')).toBe(true);
+  expect(hostAncestors(footer).some(n => n.type === 'RCTScrollView')).toBe(false);
 });
 
 it('every number field has a Next key, the last one Done', async () => {
-  const t = await open();
-  const keys = (label: string) => inputsWithLabel(t, label).map(n => n.props.returnKeyType);
+  await open();
+  const keys = (label: string) => inputsWithLabel(label).map(n => n.props.returnKeyType);
   // A customer rate has a From on its band.
   expect(keys('From (kg)')).toEqual(['next']);
   expect(keys('Up to (kg)')).toEqual(['next']);
@@ -103,96 +124,83 @@ it('every number field has a Next key, the last one Done', async () => {
 });
 
 it('Next walks From, Up to, Rent, Labour, Tax and then closes the keyboard', async () => {
-  const t = await open();
-  const submit = async (label: string) => { await act(async () => { input(t, label).props.onSubmitEditing(); }); };
+  await open();
   await submit('From (kg)');
-  expect(native('Up to').focus).toHaveBeenCalledTimes(1);
+  expect(focusCount('Up to')).toBe(1);
   await submit('Up to (kg)');
-  expect(native('Rent').focus).toHaveBeenCalledTimes(1);
+  expect(focusCount('Rent')).toBe(1);
   await submit('Rent ₹/month');
-  expect(native('Labour').focus).toHaveBeenCalledTimes(1);
+  expect(focusCount('Labour')).toBe(1);
   await submit('Labour ₹');
-  expect(native('Tax').focus).toHaveBeenCalledTimes(1);
+  expect(focusCount('Tax')).toBe(1);
   expect(Keyboard.dismiss).not.toHaveBeenCalled();
   await submit('Tax');
   expect(Keyboard.dismiss).toHaveBeenCalledTimes(1);
 });
 
 it('focusing Labour with the keypad up scrolls it 24 above the keypad', async () => {
-  const t = await open();
-  const scroll = t.root.findByType(ScrollView).instance as { scrollTo: jest.Mock };
-  scroll.scrollTo = jest.fn();
+  await open();
   // The keypad's top edge is at 400; the Labour field sits at 380 to 430.
   await act(async () => { listeners.keyboardDidShow({ endCoordinates: { screenY: 400 } }); });
-  native('Labour').measureInWindow.mockImplementation((cb: (x: number, y: number, w: number, h: number) => void) => measure(cb, 380));
-  await act(async () => { input(t, 'Labour ₹').props.onFocus(); });
+  measured = { Labour: 380 };
+  await fireEvent(input('Labour ₹'), 'focus', {});
   // Bottom edge 430 + 24 = 454; 54 below the keypad's top.
-  expect(scroll.scrollTo).toHaveBeenCalledWith({ y: 54, animated: true });
+  expect(scrollTo()).toHaveBeenCalledWith({ y: 54, animated: true });
 });
 
 it('a field already clear of the keypad does not scroll', async () => {
-  const t = await open();
-  const scroll = t.root.findByType(ScrollView).instance as { scrollTo: jest.Mock };
-  scroll.scrollTo = jest.fn();
+  await open();
   await act(async () => { listeners.keyboardDidShow({ endCoordinates: { screenY: 700 } }); });
-  native('Tax').measureInWindow.mockImplementation((cb: (x: number, y: number, w: number, h: number) => void) => measure(cb, 300));
-  await act(async () => { input(t, 'Tax').props.onFocus(); });
-  expect(scroll.scrollTo).not.toHaveBeenCalled();
+  measured = { Tax: 300 };
+  await fireEvent(input('Tax'), 'focus', {});
+  expect(scrollTo()).not.toHaveBeenCalled();
 });
 
 // The Save bar is a sibling under the scroll area (not laid over it), so the content needs no padding for it; what is left
 // to check is that a focused field is scrolled clear of the bar.
 describe('the pinned Save bar never covers a field', () => {
-  const bar = (t: ReactTestRenderer) => t.root.findAll(n => n.props.testID === 'add-rate-footer' && typeof n.props.onLayout === 'function')[0];
-
   it('scrolls a field that ends under the bar above it, with the keyboard closed', async () => {
-    const t = await open();
-    await act(async () => { bar(t).props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 170 } } }); });
-    const scroll = t.root.findByType(ScrollView).instance as { scrollTo: jest.Mock };
-    scroll.scrollTo = jest.fn();
+    await open();
+    await fireEvent(screen.getByTestId('add-rate-footer'), 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 170 } } });
     const windowHeight = Dimensions.get('window').height;
     // The field's bottom edge sits 10 above the window's bottom, inside the bar's 170.
-    native('Tax').measureInWindow.mockImplementation((cb: (x: number, y: number, w: number, h: number) => void) => measure(cb, windowHeight - 60));
-    await act(async () => { input(t, 'Tax').props.onFocus(); });
+    measured = { Tax: windowHeight - 60 };
+    await fireEvent(input('Tax'), 'focus', {});
     // Bar top is windowHeight - 170; the field must end 24 above it: bottom (wh - 10) + 24 - (wh - 170) = 184.
-    expect(scroll.scrollTo).toHaveBeenCalledWith({ y: 184, animated: true });
+    expect(scrollTo()).toHaveBeenCalledWith({ y: 184, animated: true });
   });
 });
 
 it('every number field selects its text on focus', async () => {
-  const t = await open();
+  await open();
   for (const label of ['From (kg)', 'Up to (kg)', 'Rent ₹/month', 'Labour ₹', 'Tax']) {
-    expect(inputsWithLabel(t, label).map(n => n.props.selectTextOnFocus)).toEqual([true]);
+    expect(inputsWithLabel(label).map(n => n.props.selectTextOnFocus)).toEqual([true]);
   }
 });
 
 describe('with a second band', () => {
-  const addBand = async (t: ReactTestRenderer) => {
-    await act(async () => { t.root.find(n => n.props.testID === 'add-band' && typeof n.props.onPress === 'function').props.onPress(); });
-    nodes = fieldNodes(t);
-  };
+  const addBand = () => userEvent.press(screen.getByTestId('add-band'));
 
   it('the new band opens (the bands are an accordion) and Next walks its From, Up to, Rent, then Labour and Tax', async () => {
-    const t = await open();
-    await addBand(t);
+    await open();
+    await addBand();
     // Band 1 is closed, band 2 is open: one From, Up to and Rent are on the screen, the second band's.
-    expect(inputsWithLabel(t, 'From (kg)')).toHaveLength(1);
-    expect(inputsWithLabel(t, 'Rent ₹/month')[0].props.testID).toBe('add-rate-band.1.rent');
-    await act(async () => { input(t, 'Rent ₹/month').props.onSubmitEditing(); });
-    expect(native('Labour').focus).toHaveBeenCalledTimes(1);
+    expect(inputsWithLabelMounted('From (kg)')).toHaveLength(1);
+    expect(inputsWithLabel('Rent ₹/month')[0]).toHaveProp('testID', 'add-rate-band.1.rent');
+    await submit('Rent ₹/month');
+    expect(focusCount('Labour')).toBe(1);
     expect(Keyboard.dismiss).not.toHaveBeenCalled();
   });
 
   // Next skips the fields of a closed band (they are not on the screen) and goes on to the next one that is.
   it('Next from the rent of an open first band goes on to the labour, not out of the form', async () => {
-    const t = await open();
-    await addBand(t);
+    await open();
+    await addBand();
     // Open band 1 again: band 2 is now the closed one, and its fields are not on the screen.
-    await act(async () => { t.root.find(n => n.props.testID === 'add-rate-band-0-toggle' && typeof n.props.onPress === 'function').props.onPress(); });
-    nodes = fieldNodes(t);
-    expect(inputsWithLabel(t, 'Rent ₹/month')[0].props.testID).toBe('add-rate-band.0.rent');
-    await act(async () => { input(t, 'Rent ₹/month').props.onSubmitEditing(); });
+    await userEvent.press(screen.getByTestId('add-rate-band-0-toggle'));
+    expect(inputsWithLabel('Rent ₹/month')[0]).toHaveProp('testID', 'add-rate-band.0.rent');
+    await submit('Rent ₹/month');
     expect(Keyboard.dismiss).not.toHaveBeenCalled();
-    expect(native('Labour').focus).toHaveBeenCalledTimes(1);
+    expect(focusCount('Labour')).toBe(1);
   });
 });

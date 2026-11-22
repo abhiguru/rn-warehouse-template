@@ -5,7 +5,7 @@
  * real one. Step 2 still goes back one step.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { toLocalISODate } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
@@ -86,11 +86,12 @@ beforeEach(() => {
 });
 afterEach(() => back.restore());
 
-async function render(element: React.ReactElement = <InvoiceFormStep1 />) {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(element); });
-  return tree;
+async function show(element: React.ReactElement = <InvoiceFormStep1 />) {
+  await render(element);
 }
+const pressX = async () => {
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Close new invoice' }));
+};
 const pressBack = async () => {
   let taken = false;
   await act(async () => { taken = back.press(); });
@@ -111,7 +112,7 @@ const chooseGrn = () => {
 
 describe('Back on step 1 of a new invoice', () => {
   it('leaves for the invoice list at once while only the suggested number and today\'s date are in the form', async () => {
-    const tree = await render();
+    await show();
 
     expect(await pressBack()).toBe(true);
 
@@ -121,7 +122,6 @@ describe('Back on step 1 of a new invoice', () => {
     expect(router.dismissTo).toHaveBeenCalledWith('/(tabs)/invoices');
     expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it.each([
@@ -130,7 +130,7 @@ describe('Back on step 1 of a new invoice', () => {
     ['only a picked date (today, picked in the picker)', () => { mockForm.dateChosen = true; }],
   ])('asks "Discard this invoice?" and stays when %s', async (_what, enter) => {
     enter();
-    const tree = await render();
+    await show();
 
     expect(await pressBack()).toBe(true);
 
@@ -144,29 +144,25 @@ describe('Back on step 1 of a new invoice', () => {
     expect(router.replace).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('the X closes at once, asking nothing, while only the suggested number and today\'s date are in the form (WH-217)', async () => {
-    const tree = await render();
-    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Close new invoice' && typeof node.props.onPress === 'function');
+    await show();
 
-    await act(async () => { close.props.onPress(); });
+    await pressX();
 
     expect(showAlert).not.toHaveBeenCalled();
     expect(router.dismissTo).toHaveBeenCalledTimes(1);
     expect(router.dismissTo).toHaveBeenCalledWith('/(tabs)/invoices');
     expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 
   it('asks exactly what the X asks, and "Discard" does what the X\'s does', async () => {
     chooseGrn();
-    const tree = await render();
-    const close = tree.root.find((node) => node.props.accessibilityLabel === 'Close new invoice' && typeof node.props.onPress === 'function');
+    await show();
 
     // The X: its question, then what its "Discard" does.
-    await act(async () => { close.props.onPress(); });
+    await pressX();
     const fromX = question();
     await answer('Discard invoice');
     const afterX = {
@@ -187,12 +183,11 @@ describe('Back on step 1 of a new invoice', () => {
     expect(router.dismissTo).toHaveBeenCalledWith('/(tabs)/invoices');
     expect(router.back).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('"Keep editing" stays on the form with everything in it', async () => {
     chooseGrn();
-    const tree = await render();
+    await show();
     await pressBack();
 
     await answer('Keep editing');
@@ -200,33 +195,31 @@ describe('Back on step 1 of a new invoice', () => {
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 
   it('listens for Back once', async () => {
-    const tree = await render();
+    await show();
 
     expect(back.count()).toBe(1);
-    await act(async () => { tree.unmount(); });
+    await screen.unmount();
     expect(back.count()).toBe(0);
   });
 });
 
 describe('Back on step 1 of a new invoice while the GRN picker is open', () => {
-  const openPicker = async (tree: ReactTestRenderer, label: string) => {
-    const field = tree.root.find((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-    await act(async () => { field.props.onPress(); });
+  const openPicker = async (label: string) => {
+    await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: label }));
   };
-  const drawAgain = async (tree: ReactTestRenderer) => {
-    await act(async () => { tree.update(<InvoiceFormStep1 />); });
+  const drawAgain = async () => {
+    await screen.rerender(<InvoiceFormStep1 />);
   };
 
   it('the picker takes Back: it closes, and the form asks nothing', async () => {
     chooseGrn();
-    const tree = await render();
-    await openPicker(tree, 'GRN A0010. Change GRN');
-    await drawAgain(tree);
-    await drawAgain(tree);
+    await show();
+    await openPicker('GRN A0010. Change GRN');
+    await drawAgain();
+    await drawAgain();
 
     expect(await pressBack()).toBe(true);
 
@@ -240,26 +233,24 @@ describe('Back on step 1 of a new invoice while the GRN picker is open', () => {
     expect(await pressBack()).toBe(true);
     expect(sheetBackPresses).toEqual(['grn']);
     expect(question().title).toBe('Discard this invoice?');
-    await act(async () => { tree.unmount(); });
   });
 
   it('the picker takes Back in an empty form too: the form is not left', async () => {
-    const tree = await render();
-    await openPicker(tree, 'Select GRN');
-    await drawAgain(tree);
+    await show();
+    await openPicker('Select GRN');
+    await drawAgain();
 
     expect(await pressBack()).toBe(true);
 
     expect(sheetBackPresses).toEqual(['grn']);
     expect(router.replace).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 });
 
 describe('Back on step 2 of a new invoice', () => {
   it('goes to step 1 without a question, also with a GRN chosen', async () => {
     chooseGrn();
-    const tree = await render(<InvoiceFormStep2 />);
+    await show(<InvoiceFormStep2 />);
 
     expect(await pressBack()).toBe(true);
 
@@ -269,6 +260,5 @@ describe('Back on step 2 of a new invoice', () => {
     expect(router.dismissTo).toHaveBeenCalledWith('/invoice-form/step1');
     expect(router.replace).not.toHaveBeenCalled();
     expect(mockForm.resetFormState).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 });

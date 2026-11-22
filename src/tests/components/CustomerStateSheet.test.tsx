@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { Linking, Text, TextInput } from 'react-native';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render as rtlRender, screen, userEvent } from '@testing-library/react-native';
 import { CustomerStatePicker } from '@/features/gst/CustomerStatePicker';
 import { INDIAN_STATES, stateDisplayName } from '@/features/gst/indianStates';
 import { SearchableBottomSheet } from '@/components/common/SearchableBottomSheet';
@@ -64,18 +64,16 @@ jest.mock('@gorhom/bottom-sheet', () => {
   };
 });
 
-let tree: ReactTestRenderer | undefined;
 let openUrl: jest.SpyInstance;
 
 beforeEach(() => {
   jest.useFakeTimers();
+  searchPlaceholder = () => tr('gst.customer.searchStates');
   mockListSpies.scrollToIndex.mockClear();
   mockListSpies.scrollToOffset.mockClear();
   openUrl = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as never);
 });
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   setLanguage('en');
   jest.useRealTimers();
   jest.restoreAllMocks();
@@ -87,25 +85,25 @@ const flush = async (ms = 400) => {
   });
 };
 async function render(element: React.ReactElement) {
-  await act(async () => {
-    tree = create(element);
-  });
+  await rtlRender(element);
   await flush(0);
 }
-const shown = () => tree!.root.findAllByType(Text).map(n => [n.props.children].flat(3).join(''));
-const hostByTestId = (prefix: string) =>
-  tree!.root.findAll(n => typeof n.type === 'string' && typeof n.props.testID === 'string' && n.props.testID.startsWith(prefix));
-const pressByTestId = (id: string) => tree!.root.findAll(n => n.props.testID === id && typeof n.props.onPress === 'function')[0];
-const rowIds = () => hostByTestId('customer-state-sheet-').map(n => n.props.testID.replace('customer-state-sheet-', ''));
-const rowLabels = () => hostByTestId('customer-state-sheet-').map(n => n.props.accessibilityLabel as string);
-const searchInput = () => tree!.root.findByType(TextInput);
+const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+const count = (text: string) => screen.queryAllByText(text).length;
+const stateRows = () => screen.queryAllByTestId(/^customer-state-sheet-/);
+const rowIds = () => stateRows().map(n => (n.props.testID as string).replace('customer-state-sheet-', ''));
+const rowLabels = () => stateRows().map(n => n.props.accessibilityLabel as string);
+// The State sheet's search field has its own placeholder; the generic sheet uses the shared one.
+let searchPlaceholder = () => tr('gst.customer.searchStates');
+const searchInput = () => screen.getByPlaceholderText(searchPlaceholder());
 const type = async (text: string) => {
-  await act(async () => searchInput().props.onChangeText(text));
+  if (text === '') await user().clear(searchInput());
+  else await user().type(searchInput(), text);
   await flush();
 };
 async function openStateSheet(value = '', onChange: (name: string) => void = jest.fn()) {
   await render(<CustomerStatePicker value={value} onChange={onChange} />);
-  await act(async () => tree!.root.findByProps({ testID: 'customer-state-picker' }).props.onPress());
+  await user().press(screen.getByTestId('customer-state-picker'));
   await flush();
 }
 
@@ -123,7 +121,7 @@ describe('the State sheet', () => {
     await openStateSheet('', onChange);
     await type('guj');
     expect(rowIds()).toEqual(['Gujarat']);
-    await act(async () => pressByTestId('customer-state-sheet-Gujarat').props.onPress());
+    await user().press(screen.getByTestId('customer-state-sheet-Gujarat'));
     expect(onChange).toHaveBeenCalledWith('Gujarat');
   });
 
@@ -144,9 +142,10 @@ describe('the State sheet', () => {
     expect(labels).not.toContain('Gujarat');
     await type('ગુજ');
     expect(rowLabels()).toEqual(['ગુજરાત']);
+    await type('');
     await type('guj');
     expect(rowLabels()).toEqual(['ગુજરાત']);
-    await act(async () => pressByTestId('customer-state-sheet-Gujarat').props.onPress());
+    await user().press(screen.getByTestId('customer-state-sheet-Gujarat'));
     expect(onChange).toHaveBeenCalledWith('Gujarat');
   });
 
@@ -161,22 +160,21 @@ describe('the State sheet', () => {
     await openStateSheet();
     await type('zzz');
     expect(rowIds()).toEqual([]);
-    const text = shown();
-    expect(text.filter(s => s === tr('gst.customer.noStateMatch', { search: 'zzz' }))).toHaveLength(1);
-    expect(text).toContain('No state matches "zzz".');
-    expect(text.filter(s => s === tr('components.searchSheet.noMatchHint'))).toHaveLength(1);
+    expect(count(tr('gst.customer.noStateMatch', { search: 'zzz' }))).toBe(1);
+    expect(screen.getByText('No state matches "zzz".')).toBeOnTheScreen();
+    expect(count(tr('components.searchSheet.noMatchHint'))).toBe(1);
   });
 
   it('shows the no-match text in Gujarati', async () => {
     setLanguage('gu');
     await openStateSheet();
     await type('zzz');
-    expect(shown()).toContain('"zzz" સાથે મળતું કોઈ રાજ્ય નથી.');
+    expect(screen.getByText('"zzz" સાથે મળતું કોઈ રાજ્ય નથી.')).toBeOnTheScreen();
   });
 
   it('marks the saved state selected', async () => {
     await openStateSheet('Gujarat');
-    const selected = hostByTestId('customer-state-sheet-').filter(n => n.props.accessibilityState?.selected === true);
+    const selected = stateRows().filter(n => n.props.accessibilityState?.selected === true);
     expect(selected.map(n => n.props.testID)).toEqual(['customer-state-sheet-Gujarat']);
   });
 
@@ -186,17 +184,20 @@ describe('the State sheet', () => {
     // index 0 is "No state", states follow in list order
     const gujaratIndex = INDIAN_STATES.findIndex(s => s.name === 'Gujarat') + 1;
     expect(mockListSpies.scrollToIndex).toHaveBeenCalledWith({ index: gujaratIndex, animated: false, viewPosition: 0 });
-    act(() => tree!.unmount());
+    await screen.unmount();
     mockListSpies.scrollToIndex.mockClear();
     await openStateSheet('');
     expect(mockListSpies.scrollToIndex).not.toHaveBeenCalled();
-    act(() => tree!.unmount());
+    await screen.unmount();
     await openStateSheet('Gujrat (old text)');
     expect(mockListSpies.scrollToIndex).not.toHaveBeenCalled();
   });
 });
 
 describe('SearchableBottomSheet scrollToKey', () => {
+  beforeEach(() => {
+    searchPlaceholder = () => tr('common.search');
+  });
   type Row = { id: string };
   const rows: Row[] = ['a', 'b', 'c', 'd', 'e'].map(id => ({ id }));
   const searchFn = async (query: string) => rows.filter(r => r.id.includes(query.toLowerCase()));
@@ -233,10 +234,10 @@ describe('SearchableBottomSheet scrollToKey', () => {
   it('scrolls again on the next opening (the sheet is mounted again for each opening, as the State picker does)', async () => {
     await render(sheet({ scrollToKey: 'd' }));
     await flush();
-    await act(async () => tree!.update(<></>));
+    await screen.rerender(<></>);
     await flush();
     mockListSpies.scrollToIndex.mockClear();
-    await act(async () => tree!.update(sheet({ isVisible: true, scrollToKey: 'd' })));
+    await screen.rerender(sheet({ isVisible: true, scrollToKey: 'd' }));
     await flush();
     expect(mockListSpies.scrollToIndex).toHaveBeenCalledTimes(1);
     expect(mockListSpies.scrollToIndex).toHaveBeenCalledWith({ index: 3, animated: false, viewPosition: 0 });
@@ -247,14 +248,14 @@ describe('SearchableBottomSheet scrollToKey', () => {
       await render(sheet({ scrollToKey }));
       await flush();
       expect(mockListSpies.scrollToIndex).not.toHaveBeenCalled();
-      act(() => tree!.unmount());
+      await screen.unmount();
     }
   });
 
   it('retries near the row when it is not measured yet (onScrollToIndexFailed)', async () => {
     await render(sheet({ scrollToKey: 'd' }));
     await flush();
-    act(() => mockListProps.onScrollToIndexFailed!({ index: 3, averageItemLength: 50 }));
+    await act(async () => mockListProps.onScrollToIndexFailed!({ index: 3, averageItemLength: 50 }));
     expect(mockListSpies.scrollToOffset).toHaveBeenCalledWith({ offset: 150, animated: false });
     mockListSpies.scrollToIndex.mockClear();
     await flush(150);
@@ -264,7 +265,7 @@ describe('SearchableBottomSheet scrollToKey', () => {
   it('leaves other callers unchanged: the list renders the same rows and calls no scroll', async () => {
     await render(sheet({}));
     await flush();
-    expect(shown().filter(s => s.length === 1)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(screen.queryAllByText(/^.$/).map(n => n.props.children)).toEqual(['a', 'b', 'c', 'd', 'e']);
     expect(mockListSpies.scrollToIndex).not.toHaveBeenCalled();
     expect(mockListSpies.scrollToOffset).not.toHaveBeenCalled();
   });
@@ -275,38 +276,35 @@ describe('the customer Overview contact person', () => {
     id: 'c1', name: 'Test Foods', mobile: '9999900302', city: 'Rajkot', gst: '', active: true, created_at: '2026-01-01',
     contact_name: 'Test Person', contact_mobile: '9999900399', contact_email: 'person@example.com',
   } as unknown as Customer;
-  const buttons = () =>
-    tree!.root.findAll(n => typeof n.type === 'string' && n.props.accessibilityRole === 'button' && typeof n.props.accessibilityLabel === 'string');
-  const byLabel = (label: string): ReactTestInstance =>
-    tree!.root.findAll(n => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith(label) && typeof n.props.onPress === 'function')[0];
+  const byLabel = (label: string) => screen.getByRole('button', { name: new RegExp(`^${label}`) });
 
   it("tapping the contact person's mobile opens the dialler and the email opens a new mail", async () => {
     await render(<CustomerOverviewTab customer={customer} busy={false} onToggleActive={jest.fn()} />);
-    expect(shown()).toContain('Test Person');
-    await act(async () => byLabel('Call Test Person').props.onPress());
+    expect(screen.getByText('Test Person')).toBeOnTheScreen();
+    await user().press(byLabel('Call Test Person'));
     expect(openUrl).toHaveBeenLastCalledWith('tel:9999900399');
-    await act(async () => byLabel('Email Test Person').props.onPress());
+    await user().press(byLabel('Email Test Person'));
     expect(openUrl).toHaveBeenLastCalledWith('mailto:person@example.com');
   });
 
   it("keeps the customer's own Call action separate from the contact person's", async () => {
     await render(<CustomerOverviewTab customer={customer} busy={false} onToggleActive={jest.fn()} />);
-    await act(async () => byLabel('Call Test Foods').props.onPress());
+    await user().press(byLabel('Call Test Foods'));
     expect(openUrl).toHaveBeenLastCalledWith('tel:9999900302');
   });
 
   it('a contact person with only a number shows the type alone, and an empty value stays plain', async () => {
     const onlyNumber = { ...customer, contact_name: '', contact_email: '' } as unknown as Customer;
     await render(<CustomerOverviewTab customer={onlyNumber} busy={false} onToggleActive={jest.fn()} />);
-    expect(shown()).toContain(tr('customers.form.contactPerson'));
-    expect(buttons().some(n => n.props.accessibilityLabel.startsWith('Email'))).toBe(false);
-    await act(async () => byLabel(`Call ${tr('customers.form.contactPerson')}`).props.onPress());
+    expect(screen.getByText(tr('customers.form.contactPerson'))).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /^Email/ })).not.toBeOnTheScreen();
+    await user().press(byLabel(`Call ${tr('customers.form.contactPerson')}`));
     expect(openUrl).toHaveBeenLastCalledWith('tel:9999900399');
   });
 
   it('shows no contact person card when all three values are empty', async () => {
     const none = { ...customer, contact_name: '', contact_mobile: '', contact_email: '' } as unknown as Customer;
     await render(<CustomerOverviewTab customer={none} busy={false} onToggleActive={jest.fn()} />);
-    expect(shown()).not.toContain(tr('customers.form.contactPerson'));
+    expect(screen.queryByText(tr('customers.form.contactPerson'))).not.toBeOnTheScreen();
   });
 });

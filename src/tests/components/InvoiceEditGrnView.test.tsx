@@ -5,7 +5,7 @@
  * today's price list and forgot the stored discount and its reason.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import invoiceFormReducer, { loadInvoiceEditData } from '@/store/slices/invoiceFormSlice';
 import { loadInvoiceFormData } from '@/features/invoice/services/invoiceFormService';
@@ -103,10 +103,7 @@ it('keeps the saved lines, discount and reason after the GRN was viewed', async 
     },
   });
 
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<InvoiceEditStep1 />);
-  });
+  await render(<InvoiceEditStep1 />);
   // First focus is the screen opening; the second is the return from the GRN screen.
   await act(async () => { mockFocusCallbacks.forEach((callback) => callback()); });
   await act(async () => { mockFocusCallbacks.forEach((callback) => callback()); });
@@ -117,5 +114,4 @@ it('keeps the saved lines, discount and reason after the GRN was viewed', async 
   expect(header.saved_discount).toBe(100);
   expect(header.discount_reason).toBe('Damaged bags');
   expect(discountNeedsReason(header, 'staff')).toBe(false);
-  await act(async () => { tree.unmount(); });
 });

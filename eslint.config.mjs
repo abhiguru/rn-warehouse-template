@@ -249,8 +249,7 @@ export default [
     plugins: { 'testing-library': testingLibrary, jest },
     // Aggressive reporting off: the rules count only calls from @testing-library/react-native
     // (named as the utils module, because the plugin does not know that package by itself), not any
-    // method called findBy*/getBy* (the older react-test-renderer tests call a synchronous
-    // root.findByType).
+    // method called findBy*/getBy*).
     settings: {
       'testing-library/utils-module': '@testing-library/react-native',
       'testing-library/custom-renders': 'off',

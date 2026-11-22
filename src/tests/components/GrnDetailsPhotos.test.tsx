@@ -3,7 +3,7 @@
  * answer reads the photos again.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import GRNDetailScreen from '../../../app/grn-details/[id]';
 import { setLanguage } from '@/i18n';
 
@@ -11,8 +11,6 @@ const mockGetGRNDetails = jest.fn();
 const mockUploadGRNImage = jest.fn();
 const mockDeleteGRNImage = jest.fn();
 const mockShowAlert = jest.fn();
-let mockImagesProps: any;
-let mockTabProps: any;
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'grn-1', tab: 'images' }),
@@ -69,18 +67,33 @@ jest.mock('@/features/grn/services/imageUploadService', () => ({
 }));
 jest.mock('@/components/grn-details', () => ({
   GRNHeroHeader: () => null,
-  GRNTabNavigator: (props: unknown) => {
-    mockTabProps = props;
-    return null;
+  // Draws the tab buttons the page's tab bar draws, and calls the page's own onTabChange.
+  GRNTabNavigator: (props: { onTabChange: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return ['overview', 'invoices', 'images'].map((tab) => (
+      <Pressable key={tab} accessibilityRole="button" accessibilityLabel={`${tab} tab`} onPress={() => props.onTabChange(tab)}>
+        <Text>{tab}</Text>
+      </Pressable>
+    ));
   },
   GRNOverviewTab: () => null,
   GRNItemsTab: () => null,
   GRNDispatchesTab: () => null,
-  GRNInvoicesTab: () => null,
-  GRNImagesTab: (props: unknown) => {
-    mockImagesProps = props;
-    return null;
+  // Draws Add photo and Delete photo buttons that call the page's own onUpload and onDeleteImage (for a header photo).
+  GRNImagesTab: (props: { onUpload: () => void; onDeleteImage: (image: { id: string; image_url: string; category: string }) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <>
+        <Pressable accessibilityRole="button" accessibilityLabel="Add photo" onPress={() => props.onUpload()}>
+          <Text>Add photo</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Delete photo" onPress={() => props.onDeleteImage({ id: 'h0', image_url: 'x', category: 'header' })}>
+          <Text>Delete photo</Text>
+        </Pressable>
+      </>
+    );
   },
+  GRNInvoicesTab: () => null,
 }));
 
 const grnWith = (headerPhotos: number) => ({
@@ -97,32 +110,21 @@ const grnWith = (headerPhotos: number) => ({
   },
 });
 
-let tree: ReturnType<typeof create> | undefined;
+const user = userEvent.setup({ delay: 0 });
 const mount = async () => {
-  await act(async () => {
-    tree = create(<GRNDetailScreen />);
-  });
-  await act(async () => {
-    mockTabProps.onTabChange('images');
-  });
+  await render(<GRNDetailScreen />);
+  await user.press(await screen.findByRole('button', { name: 'images tab' }));
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
   setLanguage('en');
-  mockImagesProps = undefined;
-});
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
 });
 
 it('does not offer to delete the only GRN photo', async () => {
   mockGetGRNDetails.mockResolvedValue(grnWith(1));
   await mount();
-  await act(async () => {
-    mockImagesProps.onDeleteImage({ id: 'h0', image_url: 'x', category: 'header' });
-  });
+  await user.press(screen.getByRole('button', { name: 'Delete photo' }));
   expect(mockShowAlert).not.toHaveBeenCalled();
   expect(mockDeleteGRNImage).not.toHaveBeenCalled();
 });
@@ -130,9 +132,7 @@ it('does not offer to delete the only GRN photo', async () => {
 it('asks before deleting a GRN photo when another one remains', async () => {
   mockGetGRNDetails.mockResolvedValue(grnWith(2));
   await mount();
-  await act(async () => {
-    mockImagesProps.onDeleteImage({ id: 'h0', image_url: 'x', category: 'header' });
-  });
+  await user.press(screen.getByRole('button', { name: 'Delete photo' }));
   expect(mockShowAlert).toHaveBeenCalledTimes(1);
 });
 
@@ -141,18 +141,17 @@ it('reads the photos again when adding one got no answer', async () => {
   mockUploadGRNImage.mockResolvedValue({ success: false, error: 'Network request failed' });
   await mount();
   expect(mockGetGRNDetails).toHaveBeenCalledTimes(1);
-  await act(async () => {
-    await mockImagesProps.onUpload();
-  });
-  expect(mockGetGRNDetails).toHaveBeenCalledTimes(2);
+  await user.press(screen.getByRole('button', { name: 'Add photo' }));
+  await waitFor(() => expect(mockGetGRNDetails).toHaveBeenCalledTimes(2));
 });
 
 it('does not read again after a plain refusal to add a photo', async () => {
   mockGetGRNDetails.mockResolvedValue(grnWith(1));
   mockUploadGRNImage.mockResolvedValue({ success: false, error: 'Photo is too large' });
   await mount();
-  await act(async () => {
-    await mockImagesProps.onUpload();
-  });
+  await user.press(screen.getByRole('button', { name: 'Add photo' }));
+  // Once the add has been tried and its answer handled, no second read has been made.
+  await waitFor(() => expect(mockUploadGRNImage).toHaveBeenCalledTimes(1));
+  await act(async () => { await new Promise((resolve) => setImmediate(resolve)); });
   expect(mockGetGRNDetails).toHaveBeenCalledTimes(1);
 });

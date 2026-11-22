@@ -1,7 +1,7 @@
 /** G-51: deactivating a customer says what it does. */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import CustomersScreen from '../../../app/customers';
 import { customerService } from '@/services/customer-service';
 import { showAlert } from '@/utils/alert';
@@ -52,29 +52,21 @@ const rows = [
   { id: 'c1', name: 'Hilltop Fresh Mart', mobile: '9999900320', city: 'Rajkot', active: true },
   { id: 'c2', name: 'Old Stores', mobile: '9999900321', city: 'Surat', active: false },
 ];
-const rowOf = (screen: ReactTestRenderer, name: string) =>
-  screen.root.find(node => typeof node.type === 'string' && node.props.accessibilityRole === 'button' &&
-    typeof node.props.accessibilityHint === 'string' && String(node.props.accessibilityLabel).startsWith(name));
+const rowOf = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}`) });
 
-let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(customerService.getCustomerList).mockResolvedValue({ success: true, data: rows, pagination: { total_count: 2 } } as never);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
 const mount = async () => {
-  await act(async () => { tree = create(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>); });
-  return tree as ReactTestRenderer;
+  await render(<GestureHandlerRootView><CustomersScreen /></GestureHandlerRootView>);
+  await screen.findByText('Hilltop Fresh Mart');
 };
 
 it('asks with the title and a message that says what deactivating does', async () => {
-  const screen = await mount();
-  await act(async () => {
-    rowOf(screen, 'Hilltop Fresh Mart').props.onAccessibilityAction({ nativeEvent: { actionName: 'toggleActive' } });
-  });
+  await mount();
+  // The screen reader's own action on the row: there is no gesture of a person for it.
+  await fireEvent(rowOf('Hilltop Fresh Mart'), 'accessibilityAction', { nativeEvent: { actionName: 'toggleActive' } });
   expect(showAlert).toHaveBeenCalledTimes(1);
   const [title, message, buttons] = jest.mocked(showAlert).mock.calls[0];
   expect(title).toBe('Deactivate Hilltop Fresh Mart?');
@@ -84,10 +76,11 @@ it('asks with the title and a message that says what deactivating does', async (
 });
 
 it('the visible Deactivate button of the swipe closes the row and opens the same confirmation', async () => {
-  const screen = await mount();
-  const button = screen.root.findAll(node => node.props.accessibilityLabel === 'Deactivate Hilltop Fresh Mart' && typeof node.props.onPress === 'function')[0];
-  expect(button).toBeDefined();
-  await act(async () => { button.props.onPress(); });
+  await mount();
+  const button = screen.getByRole('button', { name: 'Deactivate Hilltop Fresh Mart' });
+  // The swipe actions take no touch until the row is swiped open (pointerEvents none), and a swipe cannot be made here, so the
+  // button's own click is called, which is what its press does.
+  await act(async () => { (button.props.onClick as (event: unknown) => void)({}); });
   expect(mockClose).toHaveBeenCalledTimes(1);
   expect(showAlert).toHaveBeenCalledTimes(1);
   expect(jest.mocked(showAlert).mock.calls[0][0]).toBe('Deactivate Hilltop Fresh Mart?');

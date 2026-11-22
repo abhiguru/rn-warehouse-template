@@ -4,7 +4,7 @@
  * until the test releases it. Fictional data only.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import InvoicesTab from '../../../app/(tabs)/invoices';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
@@ -36,10 +36,9 @@ const rpc = jest.fn((name: string) => {
   });
 });
 
-let tree: ReturnType<typeof create> | undefined;
-const fab = () => tree!.root.find((n) => n.props.accessibilityLabel === 'Create invoice' && typeof n.props.onPress === 'function');
+let user: ReturnType<typeof userEvent.setup>;
 const resets = () => jest.mocked(flowStore().dispatch).mock.calls.filter(([action]) => (action as { type: string }).type === 'invoiceForm/resetForm').length;
-const tap = () => act(async () => { fab().props.onPress(); });
+const tap = () => user.press(screen.getByLabelText('Create invoice'));
 const release = (index: number, allowed = true) => act(async () => { held[index].release(allowed); });
 
 beforeEach(async () => {
@@ -51,11 +50,10 @@ beforeEach(async () => {
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc } as never);
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
-  await act(async () => { tree = create(<InvoicesTab />); });
+  user = userEvent.setup({ delay: 0 });
+  await render(<InvoicesTab />);
 });
-afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.restoreAllMocks();
 });
 

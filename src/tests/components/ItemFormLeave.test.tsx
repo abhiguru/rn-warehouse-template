@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
@@ -40,7 +40,7 @@ function ItemsList() {
 
 type Buttons = { text?: string; style?: string; onPress?: () => void }[];
 
-let tree: ReactTestRenderer;
+let user: ReturnType<typeof userEvent.setup>;
 let backKey: ReturnType<typeof installHardwareBack>;
 
 const settle = async () => {
@@ -57,8 +57,9 @@ const open = async (href: string) => {
   await settle();
 };
 const typeInto = async (label: string, text: string) => {
-  const field = tree.root.find(node => node.props.accessibilityLabel === label && typeof node.props.onChangeText === 'function');
-  await act(async () => { field.props.onChangeText(text); });
+  const field = screen.getByLabelText(label);
+  await user.clear(field);
+  await user.type(field, text);
   await settle();
 };
 
@@ -67,6 +68,7 @@ beforeEach(async () => {
   jest.clearAllMocks();
   process.env.EXPO_ROUTER_IMPORT_MODE = 'sync';
   backKey = installHardwareBack();
+  user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   jest.mocked(itemService.getItemList).mockResolvedValue({ success: true, message: '', data: [], pagination: { total_count: 0 } } as never);
   jest.mocked(itemService.getItemById).mockResolvedValue({
     success: true, message: '', data: { id: 'i2', name: 'Garlic', packaging: 'Bag', description: '', active: true },
@@ -77,14 +79,11 @@ beforeEach(async () => {
     'item-form': () => <ItemFormScreen />,
     'item-edit/[id]': () => <ItemEditScreen />,
   });
-  await act(async () => {
-    tree = create(<ExpoRoot context={context} location="/" />);
-  });
+  await render(<ExpoRoot context={context} location="/" />);
   await settle();
 });
 
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   backKey.restore();
   jest.useRealTimers();
 });
@@ -116,8 +115,7 @@ describe('Add item', () => {
 
   it('asks when only the Active switch was turned off', async () => {
     await open('/item-form');
-    const toggle = tree.root.find(node => node.props.accessibilityRole === 'switch' && typeof node.props.onPress === 'function');
-    await act(async () => { toggle.props.onPress(); });
+    await user.press(screen.getByRole('switch'));
     await act(async () => { router.back(); });
     await settle();
     expect(lastAlert().title).toBe('Discard this item?');

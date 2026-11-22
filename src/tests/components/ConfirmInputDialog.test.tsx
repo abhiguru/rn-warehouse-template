@@ -8,8 +8,8 @@
  * but the running action is possible. ConfirmDialog gets the same busy rule.
  */
 import React from 'react';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, TextInput } from 'react-native';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
+import { Keyboard, Platform, StyleSheet } from 'react-native';
 import { ConfirmInputDialog, type ConfirmInputDialogProps } from '@/components/ConfirmInputDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
@@ -47,105 +47,128 @@ function props(overrides: Partial<ConfirmInputDialogProps> = {}): ConfirmInputDi
   };
 }
 
-let tree: ReactTestRenderer;
-async function render(element: React.ReactElement) {
-  await act(async () => {
-    tree = create(element);
-  });
+const button = (label: string) => screen.getByRole('button', { name: label });
+type Node = NonNullable<typeof screen.root>;
+// The Modal, the keyboard-avoiding view, the scrolling part, the dialog card and the scrim have no role or text a query
+// can reach, so they are found by walking the rendered tree for the host element that carries their props.
+function findHosts(from: Node, match: (props: Record<string, unknown>, type: string) => boolean): Node[] {
+  const found: Node[] = [];
+  const walk = (node: Node) => {
+    if (typeof node.type === 'string' && match(node.props as Record<string, unknown>, node.type)) found.push(node);
+    for (const child of node.children) if (typeof child !== 'string') walk(child as Node);
+  };
+  walk(from);
+  return found;
 }
-const button = (label: string) =>
-  tree.root.find(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
-const isInside = (node: ReactTestInstance, ancestor: ReactTestInstance) => {
-  for (let parent = node.parent; parent; parent = parent.parent) if (parent === ancestor) return true;
-  return false;
-};
-const flatStyle = (style: unknown): Record<string, unknown> => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+function findHost(match: (props: Record<string, unknown>, type: string) => boolean, from: Node = screen.root as Node): Node {
+  const [first] = findHosts(from, match);
+  if (!first) throw new Error('not on the screen');
+  return first;
+}
+const findModal = () => findHost((_p, type) => type === 'Modal');
+const findScroll = () => findHost(p => p.keyboardShouldPersistTaps === 'handled');
+const findScrim = () => findHost(p => p.importantForAccessibility === 'no' && typeof p.onClick === 'function');
+const setup = () => userEvent.setup({ delay: 0 });
 
 const originalOS = Platform.OS;
 beforeEach(() => jest.clearAllMocks());
 afterEach(() => {
+  jest.restoreAllMocks();
   Object.defineProperty(Platform, 'OS', { configurable: true, get: () => originalOS });
-  act(() => tree?.unmount());
 });
 
 describe('ConfirmInputDialog above the keyboard', () => {
   it('draws the Modal behind both system bars', async () => {
     await render(<ConfirmInputDialog {...props()} />);
-    const modal = tree.root.findByType(Modal);
-    expect(modal.props.statusBarTranslucent).toBe(true);
-    expect(modal.props.navigationBarTranslucent).toBe(true);
+    const modal = findModal();
+    expect(modal).toHaveProp('statusBarTranslucent', true);
+    expect(modal).toHaveProp('navigationBarTranslucent', true);
   });
 
   it.each(['ios', 'android'])('pads by the keyboard on %s, offset by minus the bottom inset', async os => {
     Object.defineProperty(Platform, 'OS', { configurable: true, get: () => os });
+    // The keyboard is native: its events are caught here so the test can raise it.
+    const handlers: Record<string, (event?: unknown) => void> = {};
+    jest.spyOn(Keyboard, 'addListener').mockImplementation(((name: string, handler: (event?: unknown) => void) => {
+      handlers[name] = handler;
+      return { remove: jest.fn() };
+    }) as unknown as typeof Keyboard.addListener);
     await render(<ConfirmInputDialog {...props()} />);
-    const avoiding = tree.root.findByType(KeyboardAvoidingView);
-    expect(avoiding.props.behavior).toBe('padding');
-    expect(avoiding.props.keyboardVerticalOffset).toBe(-24);
+    // The view that avoids the keyboard is the first one inside the Modal that is told its size.
+    const avoiding = findHost(p => typeof p.onLayout === 'function', findModal());
+    await fireEvent(avoiding, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 800 } }, persist: () => undefined });
+    // A keyboard whose top edge is at 500 would cover 300 of the 800; the offset of minus the 24 bottom inset makes it 276
+    // (padding, not height or position).
+    await act(async () => {
+      handlers[os === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow']({ endCoordinates: { screenY: 500, height: 300 } });
+    });
+    expect(avoiding).toHaveStyle({ paddingBottom: 800 - (500 + 24) });
     // The overlay pads for both system bars itself, so the inset is never counted twice.
-    const overlay = avoiding.findAll(node => typeof node.type === 'string' && flatStyle(node.props.style).paddingTop !== undefined)[0];
-    expect(flatStyle(overlay.props.style)).toMatchObject({ paddingTop: 24 + 16, paddingBottom: 24 + 16 });
+    const overlay = findHosts(avoiding, p => StyleSheet.flatten(p.style as never)?.paddingTop !== undefined)[0];
+    expect(overlay).toHaveStyle({ paddingTop: 24 + 16, paddingBottom: 24 + 16 });
   });
 
   it('scrolls the body and keeps Cancel and the action outside the scrolling part', async () => {
     await render(<ConfirmInputDialog {...props()} />);
-    const scroll = tree.root.findByType(ScrollView);
-    expect(scroll.props.keyboardShouldPersistTaps).toBe('handled');
-    expect(isInside(tree.root.findByType(TextInput), scroll)).toBe(true);
-    expect(isInside(button('Cancel'), scroll)).toBe(false);
-    expect(isInside(button('Delete account'), scroll)).toBe(false);
+    const scroll = findScroll();
+    expect(scroll).toHaveProp('keyboardShouldPersistTaps', 'handled');
+    expect(within(scroll).getByLabelText('Mobile number')).toBeOnTheScreen();
+    expect(within(scroll).queryByRole('button', { name: 'Cancel' })).not.toBeOnTheScreen();
+    expect(within(scroll).queryByRole('button', { name: 'Delete account' })).not.toBeOnTheScreen();
+    expect(button('Cancel')).toBeOnTheScreen();
+    expect(button('Delete account')).toBeOnTheScreen();
     // The dialog never grows past the space left above the keyboard.
-    const dialog = scroll.parent!.parent!;
-    expect(flatStyle(dialog.props.style)).toMatchObject({ maxHeight: '100%', flexShrink: 1, maxWidth: 420 });
+    let dialog = scroll.parent;
+    while (dialog && StyleSheet.flatten(dialog.props.style)?.maxHeight === undefined) dialog = dialog.parent;
+    expect(dialog).toHaveStyle({ maxHeight: '100%', flexShrink: 1, maxWidth: 420 });
   });
 
   it('closing the keyboard does not confirm: the field has no submit handler', async () => {
     await render(<ConfirmInputDialog {...props()} />);
-    const input = tree.root.findByType(TextInput);
+    const input = screen.getByLabelText('Mobile number');
     expect(input.props.onSubmitEditing).toBeUndefined();
-    expect(input.props.returnKeyType).toBe('done');
-    expect(input.props.keyboardType).toBe('phone-pad');
-    await act(async () => input.props.onChangeText('9000000001'));
+    expect(input).toHaveProp('returnKeyType', 'done');
+    expect(input).toHaveProp('keyboardType', 'phone-pad');
+    await setup().paste(input, '9000000001');
     expect(onChangeText).toHaveBeenCalledWith('9000000001');
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it('reads out an error under the field, inside the scrolling part, and keeps both buttons', async () => {
     await render(<ConfirmInputDialog {...props({ field: { ...props().field!, error: "This number doesn't match your account." } })} />);
-    const live = tree.root.find(node => node.props.accessibilityLiveRegion === 'polite');
-    expect(live.findAll(node => node.props.children === "This number doesn't match your account.").length).toBeGreaterThan(0);
-    expect(isInside(live, tree.root.findByType(ScrollView))).toBe(true);
-    expect(button('Cancel').props.disabled).toBe(false);
-    expect(button('Delete account').props.disabled).toBe(false);
+    const live = findHost(p => p.accessibilityLiveRegion === 'polite');
+    expect(within(live).getByText("This number doesn't match your account.")).toBeOnTheScreen();
+    expect(findHosts(findScroll(), p => p.accessibilityLiveRegion === 'polite')).toHaveLength(1);
+    expect(button('Cancel').props.accessibilityState).toEqual({ disabled: false, busy: false });
+    expect(button('Delete account').props.accessibilityState).toEqual({ disabled: false, busy: false });
   });
 
   it('without a field it is a scrolling confirmation with the message aligned as asked', async () => {
     await render(<ConfirmInputDialog {...props({ field: undefined, messageAlign: 'left', message: 'Line one\n• two' })} />);
-    expect(tree.root.findAllByType(TextInput)).toHaveLength(0);
-    const message = tree.root.find(node => node.props.children === 'Line one\n• two' && typeof node.type !== 'string');
-    expect(flatStyle(message.props.style).textAlign).toBe('left');
+    expect(screen.queryByLabelText('Mobile number')).not.toBeOnTheScreen();
+    const message = screen.getByText(/Line one/);
+    expect(message).toHaveTextContent('Line one\n• two');
+    expect(message).toHaveStyle({ textAlign: 'left' });
   });
 
   it('Back and the scrim cancel while idle', async () => {
     await render(<ConfirmInputDialog {...props()} />);
-    act(() => tree.root.findByType(Modal).props.onRequestClose());
+    await act(async () => { (findModal().props.onRequestClose as () => void)(); });
     expect(onCancel).toHaveBeenCalledTimes(1);
-    const scrim = tree.root.find(node => node.props.importantForAccessibility === 'no' && typeof node.props.onPress === 'function');
-    act(() => scrim.props.onPress());
+    await setup().press(findScrim());
     expect(onCancel).toHaveBeenCalledTimes(2);
   });
 
   it('while busy: a spinner in the action, both buttons and the field disabled, Back and the scrim do nothing', async () => {
     await render(<ConfirmInputDialog {...props({ busy: true })} />);
     const confirm = button('Delete account');
-    expect(confirm.props.disabled).toBe(true);
+    expect(confirm).toBeDisabled();
     expect(confirm.props.accessibilityState).toEqual({ disabled: true, busy: true });
-    expect(confirm.findAllByType(ActivityIndicator)).toHaveLength(1);
-    expect(button('Cancel').props.disabled).toBe(true);
-    expect(tree.root.findByType(TextInput).props.editable).toBe(false);
-    act(() => tree.root.findByType(Modal).props.onRequestClose());
-    const scrim = tree.root.find(node => node.props.importantForAccessibility === 'no' && typeof node.props.onPress === 'function');
-    act(() => scrim.props.onPress());
+    expect(findHosts(confirm, (_p, type) => type === 'ActivityIndicator')).toHaveLength(1);
+    expect(button('Cancel')).toBeDisabled();
+    expect(screen.getByLabelText('Mobile number')).toHaveProp('editable', false);
+    await act(async () => { (findModal().props.onRequestClose as () => void)(); });
+    await setup().press(findScrim());
     expect(onCancel).not.toHaveBeenCalled();
   });
 });
@@ -158,18 +181,18 @@ describe('ConfirmDialog busy', () => {
   it('shows a spinner, disables both buttons and ignores Back while busy', async () => {
     await render(dialog(true));
     const confirm = button('Sign out');
-    expect(confirm.props.disabled).toBe(true);
+    expect(confirm).toBeDisabled();
     expect(confirm.props.accessibilityState).toEqual({ disabled: true, busy: true });
-    expect(confirm.findAllByType(ActivityIndicator)).toHaveLength(1);
-    expect(button('Cancel').props.disabled).toBe(true);
-    act(() => tree.root.findByType(Modal).props.onRequestClose());
+    expect(findHosts(confirm, (_p, type) => type === 'ActivityIndicator')).toHaveLength(1);
+    expect(button('Cancel')).toBeDisabled();
+    await act(async () => { (findModal().props.onRequestClose as () => void)(); });
     expect(onCancel).not.toHaveBeenCalled();
   });
 
   it('cancels with Back when idle', async () => {
     await render(dialog(false));
-    expect(button('Sign out').props.disabled).toBe(false);
-    act(() => tree.root.findByType(Modal).props.onRequestClose());
+    expect(button('Sign out').props.accessibilityState).toEqual({ disabled: false, busy: false });
+    await act(async () => { (findModal().props.onRequestClose as () => void)(); });
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });

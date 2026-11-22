@@ -5,8 +5,8 @@
  * src/hooks/__tests__/useLeaveGuard.test.tsx).
  */
 import React from 'react';
-import { Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { Text } from 'react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
@@ -47,7 +47,6 @@ jest.mock('@/services/customer-service', () => ({
 
 const c1 = { id: 'c1', name: '24 Seven Foods', mobile: '9999900302', city: 'Rajkot', active: true, created_at: '2026-01-01' };
 
-let tree: ReactTestRenderer;
 let backKey: ReturnType<typeof installHardwareBack>;
 const settle = async () => { await act(async () => { await jest.runAllTimersAsync(); }); };
 const pathname = () => routerStore.getRouteInfo().pathname;
@@ -61,13 +60,14 @@ const back = async () => {
   await act(async () => { router.back(); });
   await settle();
 };
-const input = (label: string) => tree.root.findAllByType(TextInput).find(node => node.props.accessibilityLabel === label);
+const user = () => userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
 const type = async (label: string, text: string) => {
-  await act(async () => { input(label)?.props.onChangeText(text); });
+  const u = user();
+  await u.clear(screen.getByLabelText(label));
+  await u.paste(screen.getByLabelText(label), text);
 };
 const press = async (label: string) => {
-  const target = tree.root.findAll(node => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === label)[0];
-  await act(async () => { await target.props.onPress(); });
+  await user().press(screen.getByRole('button', { name: label }));
   await settle();
 };
 
@@ -86,13 +86,12 @@ beforeEach(async () => {
     'customer-edit/[id]': CustomerEditRoute,
     'customer-form': CustomerFormRoute,
   });
-  await act(async () => { tree = create(<ExpoRoot context={context} location="/settings" />); });
+  await render(<ExpoRoot context={context} location="/settings" />);
   await settle();
   await go('/customers');
 });
 
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   backKey.restore();
   jest.useRealTimers();
 });

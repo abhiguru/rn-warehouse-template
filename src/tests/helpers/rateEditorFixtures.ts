@@ -2,9 +2,7 @@
  * Fixture F1 of the pricing spec (Review North names, today = 2026-10-14) and small finders for
  * the rate editor's tests. Not a test file: it holds no jest.mock.
  */
-import { Text } from 'react-native';
-import type { ReactTestRenderer } from 'react-test-renderer';
-import { Input } from '@/components/ui/Input';
+import { screen, within } from '@testing-library/react-native';
 import type { ItemStoragePrice, PriceType } from '@/types/item-pricing.types';
 
 let seq = 0;
@@ -54,22 +52,29 @@ export const onionRows = () => [
 ];
 export const gingerRows = () => [rate('ginger', null, 0, 100, 8, 2, 5, '2025-01-01', null, 'monthly', 'Review Ginger Fresh')];
 
-export const textsOf = (tree: ReactTestRenderer): string[] =>
-  tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
+const shownText = (props: { children?: unknown }): string => [props.children].flat(Infinity).join('');
 
-export const inputsWithLabel = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAllByType(Input).filter(n => n.props.label === label);
+/** The text of every Text on the screen, in order (a Text inside another Text appears twice). */
+export const textsOf = (): string[] => screen.queryAllByText(/[\s\S]*/).map(n => shownText(n.props));
+
+/** The text fields whose label is `label` (a required field adds ", required"), in order. */
+export const inputsWithLabel = (label: string) =>
+  screen.queryAllByDisplayValue(/^/).filter(n => n.props.accessibilityLabel === label || n.props.accessibilityLabel === `${label}, required`);
 
 /** The words a chip shows (its accessibilityLabel can be a date in words instead: "1 Nov 2026" for "01/11/26"). */
-const chipText = (node: { findAllByType: (type: typeof Text) => { props: { children?: unknown } }[] }) =>
-  node.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join('')).join('');
+const chipText = (node: ReturnType<typeof screen.getByRole>): string =>
+  within(node).queryAllByText(/[\s\S]*/).map(n => shownText(n.props)).join('');
+
+const chips = () => screen.queryAllByRole('radio');
 
 /** The chip of a radio group (ChoiceChips), found by the words it shows. */
-export const chip = (tree: ReactTestRenderer, label: string) =>
-  tree.root.findAll(n => n.props.accessibilityRole === 'radio' && typeof n.props.onPress === 'function' && chipText(n) === label)[0];
+export const chip = (label: string) => chips().find(n => chipText(n) === label)!;
 
 /** The shown label of each chip and whether it is on. */
-export const chipState = (tree: ReactTestRenderer) =>
-  tree.root
-    .findAll(n => n.props.accessibilityRole === 'radio' && typeof n.props.onPress === 'function')
-    .map(n => `${chipText(n)}:${n.props.accessibilityState?.selected ? 'on' : 'off'}`);
+export const chipState = () => chips().map(n => `${chipText(n)}:${n.props.accessibilityState?.selected ? 'on' : 'off'}`);
+
+/** For "not on the screen" counts: these also see nodes that are mounted but hidden (the old tree walk did). Positive checks use the visible helpers above. */
+const HIDDEN = { includeHiddenElements: true } as const;
+export const textsMounted = (): string[] => screen.queryAllByText(/[\s\S]*/, HIDDEN).map(n => shownText(n.props));
+export const inputsWithLabelMounted = (label: string) =>
+  screen.queryAllByDisplayValue(/^/, HIDDEN).filter(n => n.props.accessibilityLabel === label || n.props.accessibilityLabel === `${label}, required`);
