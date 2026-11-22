@@ -116,13 +116,15 @@ describe('Delete account', () => {
 describe('Settings order', () => {
   it('is profile card, Warehouse tools, Preferences, Account, Help and about', async () => {
     await render();
-    const sections = screen.queryAllByTestId(/^settings-section-/).map(node => node.props.testID);
+    const sections = screen.queryAllByTestId(/^settings-section-/, everything).map(node => node.props.testID);
     expect([...new Set(sections)].filter(id => id !== 'settings-section-development')).toEqual([
       'settings-section-tools',
       'settings-section-preferences',
       'settings-section-account',
       'settings-section-help',
     ]);
+    // The ones that count are on the screen, not only mounted.
+    ['tools', 'preferences', 'account', 'help'].forEach(id => expect(screen.getByTestId(`settings-section-${id}`)).toBeOnTheScreen());
     // The section titles are shared SectionHeaders (G-43); they print in capitals. Each is a header named by its title.
     const drawn = [...new Set(jest.mocked(SectionHeader).mock.calls.map(([props]) => props.title))];
     const headers = screen.queryAllByRole('header', everything).map(node => node.props.accessibilityLabel as string | undefined);
@@ -147,7 +149,7 @@ describe('Settings order', () => {
   ])('keeps the tool rows of the role (%s: %d)', async (role, count) => {
     signedInAs(role);
     await render();
-    const shown = new Set(screen.queryAllByTestId(/^settings-feature-/).map(node => node.props.testID));
+    const shown = new Set(screen.queryAllByTestId(/^settings-feature-/, everything).map(node => node.props.testID));
     expect(shown.size).toBe(count);
     // The tools section is on the screen when the role has rows, and not mounted at all when it has none.
     if (count > 0) expect(screen.queryAllByTestId('settings-section-tools').length).toBeGreaterThan(0);

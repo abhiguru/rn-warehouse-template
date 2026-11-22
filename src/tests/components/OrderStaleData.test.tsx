@@ -72,8 +72,13 @@ type Host = ReturnType<typeof list>;
 /** The parts the list host draws in order: its header part, then each row (a heading is its section header, and under it the Last updated line). */
 const listParts = () => list().children.filter(child => typeof child !== 'string') as Host[];
 const firstHeadingIndex = () => listParts().findIndex(part => within(part).queryAllByRole('header').some(node => !node.props.accessibilityActions));
-const firstHeading = () => listParts()[firstHeadingIndex()];
-const underFirstHeading = () => listParts()[firstHeadingIndex() + 1];
+const headingIndex = () => {
+  const index = firstHeadingIndex();
+  expect(index).toBeGreaterThanOrEqual(0); // a list with no heading must not fall back to its header part
+  return index;
+};
+const firstHeading = () => listParts()[headingIndex()];
+const underFirstHeading = () => listParts()[headingIndex() + 1];
 const refresh = () => fireEvent(refreshTarget(), 'accessibilityAction', { nativeEvent: { actionName: 'refresh' } });
 
 beforeEach(() => {
