@@ -3,7 +3,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n/language';
 import { makeInvoiceStore, fillNewInvoice, groupLines, invoiceLine, edgeLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, hasInput, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, hasInput, hasInputMounted, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
 let mockStore: InvoiceStore;
@@ -111,8 +111,8 @@ describe('a group of one line', () => {
   it('has no Charge or Labour (all lines) field (the line has its own cells), and labels Tax without "(all lines)"', async () => {
     await mount(edgeLines.smallest());
     const texts = textsOf();
-    expect(hasInput('group|garlic:::|charge')).toBe(false);
-    expect(hasInput('group|garlic:::|labour_rate')).toBe(false);
+    expect(hasInputMounted('group|garlic:::|charge')).toBe(false);
+    expect(hasInputMounted('group|garlic:::|labour_rate')).toBe(false);
     expect(texts).toEqual(expect.arrayContaining(['Labour (₹)', 'Tax (%)']));
     expect(texts.some((text) => text.includes('(all lines)'))).toBe(false);
     // Labour is the line's own cell; Tax is the group's field (the line has no Tax cell).
@@ -123,7 +123,7 @@ describe('a group of one line', () => {
 
   it('a one-time GRN has no Labour row', async () => {
     await mount([edgeLines.oneTime()[0]], true);
-    expect(hasInput('group|kashmiri:::OT-1|labour_rate')).toBe(false);
+    expect(hasInputMounted('group|kashmiri:::OT-1|labour_rate')).toBe(false);
     expect(hasInput('group|kashmiri:::OT-1|tax')).toBe(true);
   });
 });

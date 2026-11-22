@@ -8,7 +8,7 @@ import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n/language';
 import { makeInvoiceStore, fillNewInvoice, groupLines, invoiceLine, edgeLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, hasInput, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, hasInput, hasInputMounted, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
 let mockStore: InvoiceStore;
@@ -50,7 +50,7 @@ const lines = () => mockStore.getState().invoiceForm.items;
 
 const differing = () => [invoiceLine({ labour_rate: 2 }, 0), invoiceLine({ labour_rate: 3 }, 1)];
 const isTable = () =>
-  screen.queryAllByTestId('line-edit_0_0', HIDDEN).length > 0 && screen.queryAllByTestId('card-edit_0_0', HIDDEN).length === 0;
+  screen.queryAllByTestId('line-edit_0_0').length > 0 && screen.queryAllByTestId('card-edit_0_0', HIDDEN).length === 0;
 
 describe('the table is kept whatever the screen', () => {
   it('draws the table at font scale 1.0 and 411 dp', async () => {
@@ -79,7 +79,7 @@ describe('cards with a screen reader', () => {
   it('draw a card per line, with the fields of the line and one block for all lines', async () => {
     screenReaderOn();
     await mount(groupLines(2));
-    expect(screen.queryAllByTestId('card-edit_0_0', HIDDEN)).not.toHaveLength(0);
+    expect(screen.queryAllByTestId('card-edit_0_0')).not.toHaveLength(0);
     expect(screen.queryAllByTestId('line-edit_0_0', HIDDEN)).toHaveLength(0);
     expect(hasInput('cell|edit_0_0|charge')).toBe(true);
     expect(hasInput('cell|edit_1_0|charge')).toBe(true);
@@ -108,7 +108,7 @@ describe('lines that differ in labour or tax', () => {
     expect(isTable()).toBe(true);
     expect(hasInput('cell|edit_0_0|labour_rate')).toBe(true);
     expect(inputOf('cell|edit_1_0|labour_rate').props.value).toBe('3.00');
-    expect(hasInput('cell|edit_1_0|tax')).toBe(false);
+    expect(hasInputMounted('cell|edit_1_0|tax')).toBe(false);
     // "All dispatches" Labour says Mixed (the lines differ); Tax and Charge are there.
     expect(inputOf('group|i1:::M1|labour_rate').props).toMatchObject({ value: '', placeholder: 'Mixed' });
     expect(hasInput('group|i1:::M1|tax')).toBe(true);

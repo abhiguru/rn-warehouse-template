@@ -2,7 +2,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, groupLines, edgeLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, clearFocused, flashListOf, focusedIds, hasInput, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, clearFocused, flashListOf, focusedIds, hasInput, hasInputMounted, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { setFlashListWindow, resetFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import type { ItemsRow } from '../itemsModel';
@@ -44,7 +44,7 @@ describe.each([[125], [300]])('a group of %d lines', (count) => {
     await mount(groupLines(count));
     await act(async () => { setFlashListWindow(10, 18); });
     expect(chargeCells().length).toBeLessThanOrEqual(8);
-    expect(hasInput('cell|' + `edit_${count - 1}_0` + '|charge')).toBe(false);
+    expect(hasInputMounted('cell|' + `edit_${count - 1}_0` + '|charge')).toBe(false);
     expect(hasInput('cell|edit_9_0|charge')).toBe(true); // the line at row 10 (the head, the shared block, the toggle and the headings come first)
     expect(textsOf()).not.toContain('Show more');
   });
@@ -56,7 +56,7 @@ describe('Next', () => {
     await act(async () => { setFlashListWindow(0, 8); });
     // The last drawn line is the row at index 7: edit_3_0 (the head, the shared block, the toggle and the headings come first).
     expect(hasInput('cell|edit_3_0|charge')).toBe(true);
-    expect(hasInput('cell|edit_4_0|charge')).toBe(false);
+    expect(hasInputMounted('cell|edit_4_0|charge')).toBe(false);
 
     // Next walks a line's Charge, then its Labour, then the next line's Charge.
     const labour = 'cell|edit_3_0|labour_rate';
@@ -73,7 +73,7 @@ describe('Next', () => {
     // Only the head, the shared block and the toggle are drawn; the first line is the row at index 4.
     await act(async () => { setFlashListWindow(0, 3); });
     expect(hasInput('group|i1:::M1|tax')).toBe(true);
-    expect(hasInput('cell|edit_0_0|charge')).toBe(false);
+    expect(hasInputMounted('cell|edit_0_0|charge')).toBe(false);
     clearFocused();
     await fireEvent(inputOf('group|i1:::M1|tax'), 'submitEditing');
     expect(hasInput('cell|edit_0_0|charge')).toBe(true);

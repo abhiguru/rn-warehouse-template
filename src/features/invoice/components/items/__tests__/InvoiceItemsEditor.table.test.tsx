@@ -5,7 +5,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n/language';
 import { touchTarget } from '@/theme/tokens';
 import { makeInvoiceStore, fillNewInvoice, groupLines, edgeLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, hasInput, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, hasInput, hasInputMounted, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
 
 let mockStore: InvoiceStore;
 let mockWidth = 411;
@@ -102,7 +102,7 @@ describe('the table at 411 dp', () => {
     expect(texts).not.toContain('Labour (₹) (all lines)');
     expect(texts.some((text) => text.includes('One-time'))).toBe(true);
     expect(texts.some((text) => text.includes('month'))).toBe(false);
-    expect(hasInput('group|kashmiri:::OT-1|labour_rate')).toBe(false);
+    expect(hasInputMounted('group|kashmiri:::OT-1|labour_rate')).toBe(false);
     expect(hasInput('group|kashmiri:::OT-1|tax')).toBe(true);
   });
 

@@ -12,7 +12,7 @@ import { CustomerRateForm } from '@/features/item-pricing/components/CustomerRat
 import { RateForm } from '@/features/item-pricing/components/RateForm';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
 import { replaceItemRates } from '@/services/item-pricing-service';
-import { inputsWithLabel, rate, textsOf } from '@/tests/helpers/rateEditorFixtures';
+import { inputsWithLabel, inputsWithLabelMounted, rate, textsOf, textsMounted } from '@/tests/helpers/rateEditorFixtures';
 
 jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/store/hooks', () => ({
@@ -97,7 +97,7 @@ describe('criterion 1: From is shown, not typed', () => {
     expect(fields().filter(n => String(n.props.accessibilityLabel).startsWith('From'))).toHaveLength(0);
     expect(fields().some(n => String(n.props.testID).includes('from'))).toBe(false);
     // Up to stays a box.
-    expect(inputsWithLabel('Up to (kg)')).toHaveLength(1);
+    expect(inputsWithLabelMounted('Up to (kg)')).toHaveLength(1);
   });
 });
 
@@ -165,7 +165,7 @@ describe('criterion 6: a band-wide refusal shows once, at the top, and scrolls t
     // The strip at the top is the only alert saying it; the bands footer does not draw it a second time.
     expect(screen.getAllByRole('alert', { name: message })).toHaveLength(1);
     expect(screen.getByRole('alert', { name: message })).toHaveProp('testID', 'add-rate-error');
-    expect(textsOf().filter(s => s === message)).toHaveLength(1);
+    expect(textsMounted().filter(s => s === message)).toHaveLength(1);
     expect(ScrollView.prototype.scrollTo).toHaveBeenCalledWith({ y: 0, animated: true });
   });
 });
@@ -173,7 +173,7 @@ describe('criterion 6: a band-wide refusal shows once, at the top, and scrolls t
 describe('criterion 7: a customer rate keeps its From boxes, a first band above 0 and gaps', () => {
   it('shows a From box on each band', async () => {
     await openCustomer();
-    expect(inputsWithLabel('From (kg)')).toHaveLength(1);
+    expect(inputsWithLabelMounted('From (kg)')).toHaveLength(1);
     expect(inputsWithLabel('From (kg)')[0]).toHaveProp('testID', 'add-rate-firstFrom');
     expect(screen.queryByTestId('add-rate-band-0-from')).not.toBeOnTheScreen();
   });

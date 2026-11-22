@@ -40,7 +40,8 @@ async function mount(initiallyOn: boolean) {
   await render(<ConnectedEditor />);
   await openAllGroups();
 }
-const isTable = () => screen.queryAllByTestId(/^line-/, HIDDEN).length > 0;
+const isTable = () => screen.queryAllByTestId(/^line-/).length > 0;
+const isTableMounted = () => screen.queryAllByTestId(/^line-/, HIDDEN).length > 0;
 
 describe('the lines with a screen reader', () => {
   it('are a table with none on, at font scale 1.0 and 411 dp', async () => {
@@ -50,14 +51,14 @@ describe('the lines with a screen reader', () => {
 
   it('are cards when it is on from the start', async () => {
     await mount(true);
-    expect(isTable()).toBe(false);
+    expect(isTableMounted()).toBe(false);
   });
 
   it('turn into cards when it is switched on while the step is open, and back into a table when it is switched off', async () => {
     await mount(false);
     expect(isTable()).toBe(true);
     await act(async () => { changed!(true); });
-    expect(isTable()).toBe(false);
+    expect(isTableMounted()).toBe(false);
     await act(async () => { changed!(false); });
     expect(isTable()).toBe(true);
   });

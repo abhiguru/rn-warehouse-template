@@ -7,7 +7,7 @@ import React from 'react';
 import { AccessibilityInfo, StyleSheet, type StyleProp, type TextStyle } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, flashListOf, hasInput, inputOf, openAllGroups, type Host, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, flashListOf, hasInput, hasInputMounted, inputOf, openAllGroups, type Host, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { setFlashListWindow, resetFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
 import type { InvoiceItemData } from '@/types/invoice.types';
@@ -78,7 +78,7 @@ describe('rows that are reused for another line', () => {
 
     // The list scrolls on: the first rows leave and their mounted rows are reused for lines 8 to 13.
     await act(async () => { setFlashListWindow(10, 16); });
-    expect(hasInput(first)).toBe(false);
+    expect(hasInputMounted(first)).toBe(false);
     const drawn = chargeInputs();
     expect(drawn.length).toBeGreaterThanOrEqual(4);
     drawn.forEach((node) => expect(focusShown(node)).toBe(false));
@@ -109,8 +109,8 @@ describe('rows that are reused for another line', () => {
     await fireEvent(inputOf(tax), 'focus', {});
     expect(focusShown(inputOf(tax))).toBe(true);
     await act(async () => { setFlashListWindow(18, 24); });
-    expect(hasInput(tax)).toBe(false);
-    const shared = screen.queryAllByTestId(/^group\|/, HIDDEN);
+    expect(hasInputMounted(tax)).toBe(false);
+    const shared = screen.queryAllByTestId(/^group\|/);
     expect(shared).toHaveLength(3);
     shared.forEach((node) => expect(focusShown(node)).toBe(false));
   });
@@ -137,7 +137,7 @@ describe('rows that are reused for another line', () => {
     expect(inputOf(key).props.accessibilityHint).toBe('Enter a number with up to 2 decimals, for example 5.50.');
 
     await act(async () => { setFlashListWindow(12, 18); });
-    expect(hasInput(key)).toBe(false);
+    expect(hasInputMounted(key)).toBe(false);
     // and the lines now drawn in the reused rows have none of it
     chargeInputs().forEach((node) => {
       expect(node.props.accessibilityHint).toBeUndefined();

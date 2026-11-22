@@ -10,7 +10,7 @@ import { BandsTable } from '@/features/item-pricing/components/BandsTable';
 import type { FieldRegistry } from '@/features/item-pricing/components/fieldLink';
 import { initialDraft, validate, type Draft, type EditorContext } from '@/features/item-pricing/editModel';
 import type { ItemStoragePrice } from '@/types/item-pricing.types';
-import { ORCHARD_B, garlicRows, onionRows, rate, textsOf } from '@/tests/helpers/rateEditorFixtures';
+import { ORCHARD_B, garlicRows, onionRows, rate, textsOf, textsMounted } from '@/tests/helpers/rateEditorFixtures';
 import { getTokens } from '@/theme/tokens';
 
 jest.mock('@/store/hooks', () => ({
@@ -82,7 +82,7 @@ describe('shared labour and tax (the bands do not differ)', () => {
       expect(screen.getAllByText(text).length).toBeGreaterThan(0);
     }
     // The per-band columns are not there.
-    expect(textsOf().filter(s => s === 'Labour (₹)' || s === 'Tax (%)')).toHaveLength(2);
+    expect(textsMounted().filter(s => s === 'Labour (₹)' || s === 'Tax (%)')).toHaveLength(2);
     expect(screen.getAllByTestId('labour-row')).toHaveLength(1);
   });
 

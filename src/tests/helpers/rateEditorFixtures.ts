@@ -52,26 +52,29 @@ export const onionRows = () => [
 ];
 export const gingerRows = () => [rate('ginger', null, 0, 100, 8, 2, 5, '2025-01-01', null, 'monthly', 'Review Ginger Fresh')];
 
-/** Hidden-but-mounted nodes count: the old tree walk saw them, so "not on the screen" counts must too. */
-const HIDDEN = { includeHiddenElements: true } as const;
-
 const shownText = (props: { children?: unknown }): string => [props.children].flat(Infinity).join('');
 
 /** The text of every Text on the screen, in order (a Text inside another Text appears twice). */
-export const textsOf = (): string[] => screen.queryAllByText(/[\s\S]*/, HIDDEN).map(n => shownText(n.props));
+export const textsOf = (): string[] => screen.queryAllByText(/[\s\S]*/).map(n => shownText(n.props));
 
 /** The text fields whose label is `label` (a required field adds ", required"), in order. */
 export const inputsWithLabel = (label: string) =>
-  screen.queryAllByDisplayValue(/^/, HIDDEN).filter(n => n.props.accessibilityLabel === label || n.props.accessibilityLabel === `${label}, required`);
+  screen.queryAllByDisplayValue(/^/).filter(n => n.props.accessibilityLabel === label || n.props.accessibilityLabel === `${label}, required`);
 
 /** The words a chip shows (its accessibilityLabel can be a date in words instead: "1 Nov 2026" for "01/11/26"). */
 const chipText = (node: ReturnType<typeof screen.getByRole>): string =>
   within(node).queryAllByText(/[\s\S]*/).map(n => shownText(n.props)).join('');
 
-const chips = () => screen.queryAllByRole('radio', HIDDEN);
+const chips = () => screen.queryAllByRole('radio');
 
 /** The chip of a radio group (ChoiceChips), found by the words it shows. */
 export const chip = (label: string) => chips().find(n => chipText(n) === label)!;
 
 /** The shown label of each chip and whether it is on. */
 export const chipState = () => chips().map(n => `${chipText(n)}:${n.props.accessibilityState?.selected ? 'on' : 'off'}`);
+
+/** For "not on the screen" counts: these also see nodes that are mounted but hidden (the old tree walk did). Positive checks use the visible helpers above. */
+const HIDDEN = { includeHiddenElements: true } as const;
+export const textsMounted = (): string[] => screen.queryAllByText(/[\s\S]*/, HIDDEN).map(n => shownText(n.props));
+export const inputsWithLabelMounted = (label: string) =>
+  screen.queryAllByDisplayValue(/^/, HIDDEN).filter(n => n.props.accessibilityLabel === label || n.props.accessibilityLabel === `${label}, required`);

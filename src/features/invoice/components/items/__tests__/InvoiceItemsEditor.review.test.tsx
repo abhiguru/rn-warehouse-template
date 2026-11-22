@@ -8,7 +8,7 @@ import { AccessibilityInfo, Keyboard } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n/language';
 import { makeInvoiceStore, fillNewInvoice, groupLines, invoiceLine, edgeLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, blurredIds, clearFocused, focusedIds, hasInput, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, blurredIds, clearFocused, focusedIds, hasInput, hasInputMounted, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { applySavedRates, updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import { touchTarget } from '@/theme/tokens';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
@@ -65,9 +65,10 @@ const change = async (key: string, text: string) => { await fireEvent.changeText
 /** Some text of the tree contains this one (the average note and the keep-own note are one text, on two lines). */
 const hasText = (part: string) => textsOf().some((text) => text.includes(part));
 const state = () => mockStore.getState().invoiceForm;
-const byId = (testID: string) => screen.queryAllByTestId(testID, HIDDEN);
-const isTable = (id = 'edit_0_0') => byId(`line-${id}`).length > 0 && byId(`card-${id}`).length === 0;
-const isCards = (id = 'edit_0_0') => byId(`card-${id}`).length > 0 && byId(`line-${id}`).length === 0;
+const byId = (testID: string) => screen.queryAllByTestId(testID);
+const byIdMounted = (testID: string) => screen.queryAllByTestId(testID, HIDDEN);
+const isTable = (id = 'edit_0_0') => byId(`line-${id}`).length > 0 && byIdMounted(`card-${id}`).length === 0;
+const isCards = (id = 'edit_0_0') => byId(`card-${id}`).length > 0 && byIdMounted(`line-${id}`).length === 0;
 
 describe('R3a-1: the layout never flips while a field is focused', () => {
   it('WMIV0104 at 393 dp: typing a charge "1", "10", "105" key by key keeps the table and the field', async () => {
@@ -193,7 +194,7 @@ describe('R3a-2: "All dispatches" Tax stays on the screen, so its refused text c
       mockStore.dispatch(applySavedRates([{ temp_id: 'edit_0_0', charge: 5, labour_rate: 2, tax: 12 }]));
     });
     expect(hasInput(TAX_ALL)).toBe(true);
-    expect(hasInput('cell|edit_0_0|tax')).toBe(false);
+    expect(hasInputMounted('cell|edit_0_0|tax')).toBe(false);
     expect(inputOf(TAX_ALL).props.value).toBe('101');
 
     let count = -1;

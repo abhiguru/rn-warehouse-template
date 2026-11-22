@@ -31,7 +31,8 @@ beforeEach(async () => {
   await openAllGroups();
 });
 
-const rowViews = (block: Host) => within(block).queryAllByTestId(/^line-/, HIDDEN);
+const rowViews = (block: Host) => within(block).queryAllByTestId(/^line-/);
+const rowViewsMounted = (block: Host) => within(block).queryAllByTestId(/^line-/, HIDDEN);
 
 describe('Invoice step 2 field blocks', () => {
   it('a Charge cell: the block is the row (it holds the row\'s cells), not the cell', () => {
@@ -58,6 +59,6 @@ describe('Invoice step 2 field blocks', () => {
     const block = blockOf(inputOf(TAX_ALL));
     expect(block).not.toBeNull();
     expect(inputsIn(block!)).toBe(1);
-    expect(rowViews(block!)).toHaveLength(0);
+    expect(rowViewsMounted(block!)).toHaveLength(0);
   });
 });

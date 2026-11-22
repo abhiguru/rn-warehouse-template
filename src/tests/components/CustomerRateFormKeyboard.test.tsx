@@ -9,7 +9,7 @@ import { Dimensions, Keyboard, ScrollView, TextInput } from 'react-native';
 import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { CustomerRateForm } from '@/features/item-pricing/components/CustomerRateForm';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
-import { inputsWithLabel, onionRows } from '@/tests/helpers/rateEditorFixtures';
+import { inputsWithLabel, inputsWithLabelMounted, onionRows } from '@/tests/helpers/rateEditorFixtures';
 
 jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
 jest.mock('@/store/hooks', () => ({
@@ -185,7 +185,7 @@ describe('with a second band', () => {
     await open();
     await addBand();
     // Band 1 is closed, band 2 is open: one From, Up to and Rent are on the screen, the second band's.
-    expect(inputsWithLabel('From (kg)')).toHaveLength(1);
+    expect(inputsWithLabelMounted('From (kg)')).toHaveLength(1);
     expect(inputsWithLabel('Rent ₹/month')[0]).toHaveProp('testID', 'add-rate-band.1.rent');
     await submit('Rent ₹/month');
     expect(focusCount('Labour')).toBe(1);

@@ -8,7 +8,7 @@ import { AccessibilityInfo } from 'react-native';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, flashListOf, hasInput, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, flashListOf, hasInput, hasInputMounted, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { setFlashListWindow, resetFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
 import { updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import type { ItemsRow } from '../itemsModel';
@@ -67,7 +67,7 @@ async function mount() {
   await openAllGroups();
 }
 const rowsOf = (): ItemsRow[] => flashListOf().props.data;
-const byId = (testID: string) => screen.queryAllByTestId(testID, HIDDEN);
+const byId = (testID: string) => screen.queryAllByTestId(testID);
 
 /** The rows of some groups, as the index range a window must cover. */
 const windowOf = (groups: number[]): [number, number] => {
@@ -179,7 +179,7 @@ describe('every part of every card stays drawn', () => {
     mockStore = makeInvoiceStore();
     fillNewInvoice(mockStore, fiveGroups().filter((line) => line.temp_id !== tempId(MIDDLE, 1)));
     await screen.rerender(<ConnectedEditor />);
-    expect(hasInput(`cell|${tempId(MIDDLE, 1)}|charge`)).toBe(false);
+    expect(hasInputMounted(`cell|${tempId(MIDDLE, 1)}|charge`)).toBe(false);
     expect(hasInput(`cell|${tempId(MIDDLE, 0)}|charge`)).toBe(true);
     expect(textsOf()).toContain(name(MIDDLE));
     expect(rowsOf().filter((row) => row.groupKey === groupKey(MIDDLE) && row.type === 'line')).toHaveLength(2);

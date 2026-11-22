@@ -7,7 +7,7 @@ import React from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, groupLines, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, hasInput, inputOf, textsOf, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, hasInput, hasInputMounted, inputOf, textsOf, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import type { InvoiceItemsEditorHandle } from '../InvoiceItemsEditor';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
@@ -43,7 +43,7 @@ describe('a card with several dispatch lines', () => {
 
     expect(isOpen()).toBe(false);
     expect(textsOf()).toContain('Show dispatch details (2)');
-    expect(hasInput(CHARGE_1)).toBe(false);
+    expect(hasInputMounted(CHARGE_1)).toBe(false);
     expect(screen.queryByTestId('line-edit_0_0', HIDDEN)).not.toBeOnTheScreen();
     // The shared fields are there without opening it.
     expect(hasInput(`group|${GROUP}|charge`)).toBe(true);
@@ -60,7 +60,7 @@ describe('a card with several dispatch lines', () => {
 
     await press();
     expect(isOpen()).toBe(false);
-    expect(hasInput(CHARGE_1)).toBe(false);
+    expect(hasInputMounted(CHARGE_1)).toBe(false);
   });
 
   it('keeps what was typed in a line while the card is closed, and shows it again when it is opened', async () => {

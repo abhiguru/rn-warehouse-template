@@ -11,7 +11,7 @@ import { RateForm } from '@/features/item-pricing/components/RateForm';
 import { useItemRatesFor, type UseItemRatesForResult } from '@/features/item-pricing/useItemRates';
 import { replaceItemRates } from '@/services/item-pricing-service';
 import { clearRateStartFloor, rememberRateStartFloor } from '@/services/rateStartFloor';
-import { inputsWithLabel, rate } from '@/tests/helpers/rateEditorFixtures';
+import { inputsWithLabel, inputsWithLabelMounted, rate } from '@/tests/helpers/rateEditorFixtures';
 import { showToast } from '@/utils/toast';
 
 jest.mock('@/components/common/SearchableBottomSheet', () => ({ SearchableBottomSheet: () => null }));
@@ -87,7 +87,7 @@ describe('criterion 2: what the form opens with on 0-30', () => {
     expect(textOf('add-rate-band-0-rate').length).toBeGreaterThan(0);
     expect(ids('add-rate-band-0-remove')).toHaveLength(0);
     expect(ids('add-rate-band-0-toggle')).toHaveLength(0);
-    expect(inputsWithLabel('Up to (kg)')).toHaveLength(1);
+    expect(inputsWithLabelMounted('Up to (kg)')).toHaveLength(1);
     expect(inputsWithLabel('Up to (kg)')[0]).toHaveProp('testID', 'add-rate-band.1.upTo');
     expect(textOf('add-rate-band-1-from')).toEqual(['From 31 kg']);
     expect(screen.getByText("Bands already in the rate can't be changed here. Use Change rate to start a new rent from a date.")).toBeOnTheScreen();

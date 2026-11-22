@@ -37,7 +37,7 @@ async function mount(lines: InvoiceItemData[] = raiLines()) {
 }
 const widthsOf = columnWidthsOf;
 const tapOf = (key: string) => screen.getByTestId(`${key}-tap`);
-const cardsNow = () => screen.queryAllByTestId(/^line-/, HIDDEN).length === 0;
+const cardsNow = () => screen.queryAllByTestId(/^line-/).length === 0;
 const settle = async () => { await act(async () => { jest.advanceTimersByTime(400); }); };
 
 describe('the layout while a cell is focused', () => {

@@ -48,9 +48,11 @@ export type Host = ReturnType<typeof screen.getByRole>;
 
 /** The input with this test id (`cell|<temp_id>|charge`, `group|<item>:::<mark>|tax`). */
 export const inputOf = (testID: string): Host => screen.getByTestId(testID);
-/** For "is it drawn at all" checks: the old tree walk saw hidden-but-mounted nodes too, which a screen query leaves out. */
+/** Query option for "not drawn at all" checks: the old tree walk saw hidden-but-mounted nodes too. Positive checks stay on visible nodes. */
 export const HIDDEN = { includeHiddenElements: true } as const;
-export const hasInput = (testID: string): boolean => screen.queryAllByTestId(testID, HIDDEN).length > 0;
+export const hasInput = (testID: string): boolean => screen.queryAllByTestId(testID).length > 0;
+/** For "not drawn at all" checks: also finds a node that is mounted but hidden. */
+export const hasInputMounted = (testID: string): boolean => screen.queryAllByTestId(testID, HIDDEN).length > 0;
 
 /** Every Text on screen, flattened to its string (a no-break space reads as a space). */
 export const textsOf = (): string[] =>
