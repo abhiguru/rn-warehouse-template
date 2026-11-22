@@ -11,7 +11,7 @@ import { AccessibilityInfo, Keyboard, TextInput } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, chargeEntryOf, emitKeyboard, hostBlur, hostFocus, hostInputOf, hostKey, textsOf, openAllGroups, columnWidthsOf } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, chargeEntryOf, emitKeyboard, hostBlur, hostFocus, hostInputOf, hostKey, textsOf, openAllGroups, columnWidthsOf, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
 jest.unmock('react-native/Libraries/Components/TextInput/TextInput');
@@ -56,7 +56,7 @@ async function mount(lines: InvoiceItemData[] = groupLines(2)) {
 const widthsOf = columnWidthsOf;
 /** The hint "Swipe the table sideways" is shown: the columns are wider than the screen. */
 const sidewaysNow = () => textsOf().includes('Swipe the table sideways to see more');
-const cardsNow = () => screen.queryAllByTestId(/^line-/).length === 0;
+const cardsNow = () => screen.queryAllByTestId(/^line-/, HIDDEN).length === 0;
 const pause = async (ms = 400) => { await act(async () => { jest.advanceTimersByTime(ms); }); };
 const lineTotals = () => textsOf().filter((text) => /^₹[\d,]+\.\d\d$/.test(text));
 

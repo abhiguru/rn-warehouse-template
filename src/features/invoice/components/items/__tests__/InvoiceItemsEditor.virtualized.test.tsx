@@ -2,7 +2,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, groupLines, edgeLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, clearFocused, flashListOf, focusedIds, hasInput, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, clearFocused, flashListOf, focusedIds, hasInput, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { setFlashListWindow, resetFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import type { ItemsRow } from '../itemsModel';
@@ -26,7 +26,7 @@ async function mount(lines: InvoiceItemData[]) {
 }
 const rowsOf = (): ItemsRow[] => flashListOf().props.data;
 const chargeCells = () =>
-  screen.queryAllByTestId(/^cell\|.*\|charge$/);
+  screen.queryAllByTestId(/^cell\|.*\|charge$/, HIDDEN);
 
 // Rendering 300 lines takes about 3 s on a lightly loaded machine; parallel workers (npm test) make it slower.
 jest.setTimeout(20000);

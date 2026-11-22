@@ -70,7 +70,11 @@ const inputs = (): Node[] => {
 };
 const input = (label: string) => screen.getByLabelText(label);
 /** Every text on the screen, in the order drawn. */
-const shown = () => screen.getAllByText(/.+/, everything).map(node => [node.props.children].flat(3).join(''));
+const shown = () =>
+  screen.root!
+    .queryAll((node) => (node.type as unknown) === 'Text', { includeSelf: true })
+    .map(node => node.children.filter(child => typeof child === 'string').join(''))
+    .filter(text => text !== '');
 /** Where the first text that starts with the label comes among all the texts. */
 const positionOf = (label: string) => shown().findIndex(text => text.startsWith(label));
 const type = async (label: string, text: string) => {
@@ -85,9 +89,8 @@ const press = async (label: string) => {
 describe('Customer form on the shared parts (WH-227)', () => {
   it('keeps the field order from name to the contact email, with the State picker between City and Pincode', async () => {
     await mount();
-    // The labels of the two required fields hold a nested " *" text and are not texts of their own, so the first
-    // three typed fields stand for them: name, then mobile, then email.
-    const labels = ['Email', 'Full address', 'City', 'State', 'Pincode', 'GST', 'PAN', 'Contact'];
+    // The labels of the two required fields hold a nested " *" text: each label is read from its own string children.
+    const labels = ['Customer name', 'Mobile number', 'Email', 'Full address', 'City', 'State', 'Pincode', 'GST', 'PAN', 'Contact'];
     const positions = labels.map(positionOf);
     positions.forEach(p => expect(p).toBeGreaterThanOrEqual(0));
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);

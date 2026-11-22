@@ -346,7 +346,7 @@ describe('Standard rate', () => {
     await pressSave();
     // The strip is the "Reload" one: nothing may be saved again until the screen has read the rate anew.
     expect(screen.getByTestId('standard-unconfirmed')).toBeOnTheScreen();
-    expect(screen.getByText(/couldn't confirm/)).toBeOnTheScreen();
+    expect(within(screen.getByTestId('standard-unconfirmed')).getByText(/couldn't confirm/)).toBeOnTheScreen();
     expect(saveButton()).toBeDisabled();
     await screen.unmount();
     jest.mocked(getStandardRate).mockReturnValue(new Promise(() => {}));
@@ -454,7 +454,7 @@ describe('Standard rate', () => {
     await pressSave();
     expect(setStandardRate).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('standard-stale')).toBeOnTheScreen();
-    expect(screen.getByText('Someone else changed the standard rate. Reload to see their changes.')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('standard-stale')).getByText('Someone else changed the standard rate. Reload to see their changes.')).toBeOnTheScreen();
   });
 
   it('shows the figures in Gujarati digits and still sends 0-9', async () => {

@@ -8,7 +8,7 @@ import { AccessibilityInfo, Keyboard } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n/language';
 import { makeInvoiceStore, fillNewInvoice, groupLines, invoiceLine, edgeLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, blurredIds, clearFocused, focusedIds, hasInput, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, blurredIds, clearFocused, focusedIds, hasInput, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { applySavedRates, updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import { touchTarget } from '@/theme/tokens';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
@@ -65,7 +65,7 @@ const change = async (key: string, text: string) => { await fireEvent.changeText
 /** Some text of the tree contains this one (the average note and the keep-own note are one text, on two lines). */
 const hasText = (part: string) => textsOf().some((text) => text.includes(part));
 const state = () => mockStore.getState().invoiceForm;
-const byId = (testID: string) => screen.queryAllByTestId(testID);
+const byId = (testID: string) => screen.queryAllByTestId(testID, HIDDEN);
 const isTable = (id = 'edit_0_0') => byId(`line-${id}`).length > 0 && byId(`card-${id}`).length === 0;
 const isCards = (id = 'edit_0_0') => byId(`card-${id}`).length > 0 && byId(`line-${id}`).length === 0;
 

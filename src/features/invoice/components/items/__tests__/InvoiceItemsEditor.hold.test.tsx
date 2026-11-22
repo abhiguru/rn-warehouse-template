@@ -6,7 +6,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, flashListOf, inputObjectOf, inputOf, openAllGroups, columnWidthsOf } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, flashListOf, inputObjectOf, inputOf, openAllGroups, columnWidthsOf, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { SCROLL_VIEW_POSITION } from '../InvoiceItemsEditor';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
@@ -37,7 +37,7 @@ async function mount(lines: InvoiceItemData[] = raiLines()) {
 }
 const widthsOf = columnWidthsOf;
 const tapOf = (key: string) => screen.getByTestId(`${key}-tap`);
-const cardsNow = () => screen.queryAllByTestId(/^line-/).length === 0;
+const cardsNow = () => screen.queryAllByTestId(/^line-/, HIDDEN).length === 0;
 const settle = async () => { await act(async () => { jest.advanceTimersByTime(400); }); };
 
 describe('the layout while a cell is focused', () => {

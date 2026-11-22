@@ -49,6 +49,13 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** The texts that hold this wording (case as written). */
 const shown = (text: string) => screen.queryAllByText(new RegExp(escape(text)));
 const expectShown = (text: string) => expect(shown(text).length).toBeGreaterThan(0);
+/** The text straight after the title among all the texts on the screen, in the order drawn. */
+const textAfter = (title: string) => {
+  const all = screen.queryAllByText(/[\s\S]*/).map(node => [node.props.children].flat(3).join(''));
+  const at = all.indexOf(title);
+  expect(at).toBeGreaterThanOrEqual(0);
+  return all[at + 1];
+};
 const expectNotShown = (text: string) => expect(shown(text)).toHaveLength(0);
 /** The buttons whose label is, or starts with, this wording. */
 const labelled = (label: string) => screen.queryAllByRole('button', { name: new RegExp(`^${escape(label)}`) });
@@ -136,6 +143,7 @@ it('shows a retry when the customer cannot be opened', async () => {
   await mount();
   expectShown("Couldn't open this customer");
   expectShown('Check your connection and try again.');
+  expect(textAfter("Couldn't open this customer")).toBe('Check your connection and try again.');
   await press('Try again');
   expectShown('Rajkot');
 });
@@ -158,6 +166,7 @@ it('WH-216: a customer that cannot be opened says it in Gujarati, with the check
     await mount();
     expectShown('આ વેપારી ખોલી શકાયા નથી');
     expectShown('તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.');
+    expect(textAfter('આ વેપારી ખોલી શકાયા નથી')).toBe('તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.');
     expect(labelled('ફરી પ્રયાસ કરો').length).toBeGreaterThan(0);
     expect(labelled('Edit')).toHaveLength(0);
   } finally {

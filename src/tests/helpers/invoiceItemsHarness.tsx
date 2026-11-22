@@ -48,7 +48,9 @@ export type Host = ReturnType<typeof screen.getByRole>;
 
 /** The input with this test id (`cell|<temp_id>|charge`, `group|<item>:::<mark>|tax`). */
 export const inputOf = (testID: string): Host => screen.getByTestId(testID);
-export const hasInput = (testID: string): boolean => screen.queryByTestId(testID) !== null;
+/** For "is it drawn at all" checks: the old tree walk saw hidden-but-mounted nodes too, which a screen query leaves out. */
+export const HIDDEN = { includeHiddenElements: true } as const;
+export const hasInput = (testID: string): boolean => screen.queryAllByTestId(testID, HIDDEN).length > 0;
 
 /** Every Text on screen, flattened to its string (a no-break space reads as a space). */
 export const textsOf = (): string[] =>
@@ -111,7 +113,11 @@ export const chargeEntryOf = (tempId: string): string | undefined =>
  * with the cards of more than one line closed; most tests are about the table, so they open it first.
  */
 export const openAllGroups = async (): Promise<void> => {
-  for (const toggle of screen.queryAllByRole('button', { expanded: false })) await fireEvent.press(toggle);
+  // Pressing one toggle can re-mount the next, and a press on an unmounted node does nothing: ask again until none is left.
+  for (let pass = 0; pass < 5 && screen.queryAllByRole('button', { expanded: false }).length > 0; pass += 1) {
+    for (const toggle of screen.queryAllByRole('button', { expanded: false })) await fireEvent.press(toggle);
+  }
+  expect(screen.queryAllByRole('button', { expanded: false })).toHaveLength(0);
 };
 
 /** The column widths the rows of the line table are drawn with (the pinned Dispatch column first), from the table the editor passes to its rows. */

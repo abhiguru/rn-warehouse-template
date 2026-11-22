@@ -197,7 +197,7 @@ describe.each(THEMES)('central login screens in %s %s', (brand, mode) => {
       expect(screen.getByText(words)).toBeOnTheScreen();
     }
     // No facility line: this sign-in is not for one facility.
-    expect(screen.queryByText('Change')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Change', { includeHiddenElements: true })).not.toBeOnTheScreen();
     expect(hasBackground(t.background.base)).toBe(true);
   });
 
@@ -412,7 +412,7 @@ describe('central sign-in', () => {
     await type('9000000001');
     await press(button('Send code'));
     expect(alerts()[0]).toEqual(["Couldn't send the code", 'That number is not valid.']);
-    expect(screen.queryByText("The association's sign-in can't send a code right now.")).not.toBeOnTheScreen();
+    expect(screen.queryByText("The association's sign-in can't send a code right now.", { includeHiddenElements: true })).not.toBeOnTheScreen();
   });
 
   // WH-148: when the association cannot send a code (an outage, no answer, no SMS), the screen says so on a strip with the
@@ -729,7 +729,7 @@ describe('Add facility', () => {
     jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: [] });
     await render(<FacilityCatalogueScreen />);
     expect(screen.getByText('No facilities listed yet')).toBeOnTheScreen();
-    expect(screen.queryByTestId('catalogue-search')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('catalogue-search', { includeHiddenElements: true })).not.toBeOnTheScreen();
     await press(button('Enter address'));
     expect(router.push).toHaveBeenCalledWith('/facility-address');
   });
@@ -750,7 +750,7 @@ describe('Add facility', () => {
     // The retry does not reuse a cached copy.
     expect(fetchFacilityCatalogue).toHaveBeenLastCalledWith({ force: true });
     expect(names()).toHaveLength(3);
-    expect(screen.queryByText("Couldn't load the facilities")).not.toBeOnTheScreen();
+    expect(screen.queryByText("Couldn't load the facilities", { includeHiddenElements: true })).not.toBeOnTheScreen();
   });
 
   it('picking a facility adds it to the list with its town, returns to My facilities and opens it', async () => {
@@ -794,7 +794,7 @@ describe('Add facility', () => {
     for (const words of ['Dehgam, Gandhinagar', 'Deesa, Banaskantha', 'Himmatnagar, Sabarkantha', 'Rajkot']) expect(screen.getAllByText(words).length).toBeGreaterThan(0);
     // The district is not repeated when it is the town.
     expect(screen.getByText('Jamnagar')).toBeOnTheScreen();
-    expect(screen.queryByText('Jamnagar, Jamnagar')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Jamnagar, Jamnagar', { includeHiddenElements: true })).not.toBeOnTheScreen();
     expect(screen.getByTestId('catalogue-last-seen-review-north')).toHaveTextContent('Last seen 5 min ago');
     expect(screen.getByTestId('catalogue-last-seen-riverbank')).toHaveTextContent('Not reached yet');
     // Online rows and a member with no app server have no such line.
@@ -868,7 +868,7 @@ describe('Add facility', () => {
     expect(errorLine()[0]).toHaveTextContent(
       "Couldn't refresh the list. Couldn't reach the association's sign-in service. Check your connection and try again."
     );
-    expect(screen.queryByText("Couldn't load the facilities")).not.toBeOnTheScreen();
+    expect(screen.queryByText("Couldn't load the facilities", { includeHiddenElements: true })).not.toBeOnTheScreen();
 
     jest.mocked(fetchFacilityCatalogue).mockResolvedValue({ ok: true, facilities: live() });
     await pull();
@@ -938,7 +938,7 @@ describe('the linking step', () => {
 
   it('offers "My facilities" as the way out in place of "Wrong number?"', async () => {
     await render(<FacilityLinkScreen />);
-    expect(screen.queryByText('Wrong number?')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Wrong number?', { includeHiddenElements: true })).not.toBeOnTheScreen();
     await press(button('Back to My facilities'));
     // Back to the My facilities under this step, not a second one in its place.
     expect(router.dismissTo).toHaveBeenCalledWith('/facilities');

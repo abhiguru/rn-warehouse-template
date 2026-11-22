@@ -99,6 +99,7 @@ describe('G-23: customers are chosen with a search, not ticked in a list', () =>
     // A single letter is too short to search: nothing is asked and nothing is listed.
     await user.type(search, 'a');
     expect(screen.queryByText('Acme Foods')).not.toBeOnTheScreen();
+    expect(customerService.searchCustomers).not.toHaveBeenCalledWith('a', 20);
     await user.clear(search);
     await user.type(search, 'acme');
     expect(customerService.searchCustomers).toHaveBeenCalledWith('acme', 20);

@@ -52,20 +52,23 @@ export const onionRows = () => [
 ];
 export const gingerRows = () => [rate('ginger', null, 0, 100, 8, 2, 5, '2025-01-01', null, 'monthly', 'Review Ginger Fresh')];
 
+/** Hidden-but-mounted nodes count: the old tree walk saw them, so "not on the screen" counts must too. */
+const HIDDEN = { includeHiddenElements: true } as const;
+
 const shownText = (props: { children?: unknown }): string => [props.children].flat(Infinity).join('');
 
 /** The text of every Text on the screen, in order (a Text inside another Text appears twice). */
-export const textsOf = (): string[] => screen.queryAllByText(/[\s\S]*/).map(n => shownText(n.props));
+export const textsOf = (): string[] => screen.queryAllByText(/[\s\S]*/, HIDDEN).map(n => shownText(n.props));
 
 /** The text fields whose label is `label` (a required field adds ", required"), in order. */
 export const inputsWithLabel = (label: string) =>
-  screen.queryAllByDisplayValue(/^/).filter(n => n.props.accessibilityLabel === label || n.props.accessibilityLabel === `${label}, required`);
+  screen.queryAllByDisplayValue(/^/, HIDDEN).filter(n => n.props.accessibilityLabel === label || n.props.accessibilityLabel === `${label}, required`);
 
 /** The words a chip shows (its accessibilityLabel can be a date in words instead: "1 Nov 2026" for "01/11/26"). */
 const chipText = (node: ReturnType<typeof screen.getByRole>): string =>
   within(node).queryAllByText(/[\s\S]*/).map(n => shownText(n.props)).join('');
 
-const chips = () => screen.queryAllByRole('radio');
+const chips = () => screen.queryAllByRole('radio', HIDDEN);
 
 /** The chip of a radio group (ChoiceChips), found by the words it shows. */
 export const chip = (label: string) => chips().find(n => chipText(n) === label)!;

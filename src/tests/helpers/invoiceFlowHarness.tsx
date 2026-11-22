@@ -196,6 +196,12 @@ export async function startFlowApp({ location, advance, pendingTimers }: StartOp
       .queryAllByRole('button', { expanded: false })
       .filter((node) => typeof labelOf(node) === 'string' && labelOf(node).startsWith('Show dispatch details'));
     for (const toggle of closed) await fireEvent.press(toggle);
+    // A press on a node a re-render has unmounted does nothing: none of the card toggles may still be closed.
+    expect(
+      screen
+        .queryAllByRole('button', { expanded: false })
+        .filter((node) => typeof labelOf(node) === 'string' && labelOf(node).startsWith('Show dispatch details')),
+    ).toHaveLength(0);
   };
   // A step circle navigates from a timer, so the screen it opens mounts at the end of the act that ran that timer
   // and its effects schedule new timers of their own. Run rounds until none is pending (bounded).

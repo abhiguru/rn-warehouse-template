@@ -7,7 +7,7 @@ import React from 'react';
 import { AccessibilityInfo, StyleSheet, type StyleProp, type TextStyle } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, flashListOf, hasInput, inputOf, openAllGroups, type Host } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, flashListOf, hasInput, inputOf, openAllGroups, type Host, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { setFlashListWindow, resetFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
 import type { InvoiceItemData } from '@/types/invoice.types';
@@ -49,7 +49,7 @@ async function mount(data: InvoiceItemData[] = lines()) {
 }
 const rowsOf = (): ItemsRow[] => flashListOf().props.data;
 const chargeInputs = () =>
-  screen.queryAllByTestId(/^cell\|.*\|charge$/);
+  screen.queryAllByTestId(/^cell\|.*\|charge$/, HIDDEN);
 /**
  * A field shows the focus as a 2 dp ring; at rest it is a 1 dp box. A table cell has the ring on its own style, a
  * field of the "All dispatches" block (`Input`) on the frame around the text input (its parent, a few levels up).
@@ -110,7 +110,7 @@ describe('rows that are reused for another line', () => {
     expect(focusShown(inputOf(tax))).toBe(true);
     await act(async () => { setFlashListWindow(18, 24); });
     expect(hasInput(tax)).toBe(false);
-    const shared = screen.queryAllByTestId(/^group\|/);
+    const shared = screen.queryAllByTestId(/^group\|/, HIDDEN);
     expect(shared).toHaveLength(3);
     shared.forEach((node) => expect(focusShown(node)).toBe(false));
   });

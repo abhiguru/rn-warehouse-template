@@ -7,7 +7,7 @@ import React from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 
 let mockStore: InvoiceStore;
@@ -40,7 +40,7 @@ async function mount(initiallyOn: boolean) {
   await render(<ConnectedEditor />);
   await openAllGroups();
 }
-const isTable = () => screen.queryAllByTestId(/^line-/).length > 0;
+const isTable = () => screen.queryAllByTestId(/^line-/, HIDDEN).length > 0;
 
 describe('the lines with a screen reader', () => {
   it('are a table with none on, at font scale 1.0 and 411 dp', async () => {

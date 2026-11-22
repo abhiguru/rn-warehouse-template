@@ -6,7 +6,7 @@
 import React from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, inputOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, inputOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { blockOf, inputsIn, wordsIn, type Host } from '@/tests/helpers/fieldBlock';
 
 let mockStore: InvoiceStore;
@@ -31,7 +31,7 @@ beforeEach(async () => {
   await openAllGroups();
 });
 
-const rowViews = (block: Host) => within(block).queryAllByTestId(/^line-/);
+const rowViews = (block: Host) => within(block).queryAllByTestId(/^line-/, HIDDEN);
 
 describe('Invoice step 2 field blocks', () => {
   it('a Charge cell: the block is the row (it holds the row\'s cells), not the cell', () => {

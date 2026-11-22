@@ -332,7 +332,7 @@ describe('what the save tells the administrator', () => {
     await choose('Financial year');
     await press('numbering-save');
     shown('New numbers look like 26-27/0001.');
-    notShown('continues after');
+    expect(screen.queryByText(/continues after/)).not.toBeOnTheScreen();
   });
 });
 

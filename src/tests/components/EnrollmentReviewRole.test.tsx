@@ -70,6 +70,7 @@ describe('Approve as', () => {
     expect(screen.queryByText(/Admin/)).not.toBeOnTheScreen();
     expect(radio('Customer')).toBeChecked();
     expect(radio('Staff')).not.toBeChecked();
+    expect(radio('Staff').props.accessibilityState).toEqual(expect.objectContaining({ checked: false }));
     expect(buttonInBar('Approve as customer')).toBeOnTheScreen();
   });
 

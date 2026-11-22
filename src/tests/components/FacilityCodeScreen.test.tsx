@@ -77,7 +77,8 @@ it('offers the facilities of the phone and goes on to the mobile number and the 
   expect(codeInput()).toBeOnTheScreen();
   // A code the facility made has no expiry countdown and no Resend (the facility's operator gives a new one).
   expect(screen.queryByText(/^Code expires in/)).not.toBeOnTheScreen();
-  expect(screen.queryByText('Resend code')).not.toBeOnTheScreen();
+  expect(screen.queryByText("Didn't receive the code?")).not.toBeOnTheScreen();
+  expect(screen.queryByText(/^Resend/)).not.toBeOnTheScreen();
 });
 
 it('stays on the list and says why when the facility cannot be prepared', async () => {

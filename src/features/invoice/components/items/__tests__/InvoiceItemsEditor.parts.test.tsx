@@ -8,7 +8,7 @@ import { AccessibilityInfo } from 'react-native';
 import { resetScreenReaderKnown } from '@/hooks/useScreenReader';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, flashListOf, hasInput, inputOf, textsOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, flashListOf, hasInput, inputOf, textsOf, openAllGroups, HIDDEN } from '@/tests/helpers/invoiceItemsHarness';
 import { setFlashListWindow, resetFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
 import { updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import type { ItemsRow } from '../itemsModel';
@@ -67,7 +67,7 @@ async function mount() {
   await openAllGroups();
 }
 const rowsOf = (): ItemsRow[] => flashListOf().props.data;
-const byId = (testID: string) => screen.queryAllByTestId(testID);
+const byId = (testID: string) => screen.queryAllByTestId(testID, HIDDEN);
 
 /** The rows of some groups, as the index range a window must cover. */
 const windowOf = (groups: number[]): [number, number] => {

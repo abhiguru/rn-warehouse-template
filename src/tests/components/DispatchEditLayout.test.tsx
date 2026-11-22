@@ -85,6 +85,9 @@ const mount = async () => {
 };
 const hasSteps = () => screen.queryByTestId('dispatch-steps') !== null;
 const spinner = () => screen.queryByLabelText('Loading dispatch…');
+// The ActivityIndicator itself (no role or text reaches it): the old test counted it.
+// (Nothing is drawn at all when the screen renders null: no root.)
+const indicators = () => screen.root?.queryAll((node) => node.type === 'ActivityIndicator', { includeSelf: true }) ?? [];
 const press = async (label: string) => {
   await userEvent.press(screen.getByRole('button', { name: label }));
 };
@@ -108,6 +111,7 @@ describe('while the dispatch loads', () => {
     await mount();
 
     expect(spinner()).toBeOnTheScreen();
+    expect(indicators()).toHaveLength(1);
     expect(screen.getByText('Loading dispatch…')).toBeOnTheScreen();
     expect(hasSteps()).toBe(false);
     expect(form().dispatch_id).toBeNull();
@@ -121,6 +125,7 @@ describe('while the dispatch loads', () => {
 
     expect(hasSteps()).toBe(false);
     expect(spinner()).toBeOnTheScreen();
+    expect(indicators()).toHaveLength(1);
   });
 });
 
@@ -133,6 +138,7 @@ describe('when the dispatch is loaded', () => {
     expect(load).toHaveBeenCalledWith(DISPATCH_ID);
     expect(hasSteps()).toBe(true);
     expect(spinner()).not.toBeOnTheScreen();
+    expect(indicators()).toHaveLength(0);
     const stack = screen.getByTestId('dispatch-steps');
     expect(stack.props.screenOptions).toMatchObject({ headerShown: false, gestureEnabled: false });
     expect(form().dispatch_id).toBe(DISPATCH_ID);
@@ -227,6 +233,7 @@ describe('someone who may not edit', () => {
     expect(load).not.toHaveBeenCalled();
     expect(hasSteps()).toBe(false);
     expect(spinner()).not.toBeOnTheScreen();
+    expect(indicators()).toHaveLength(0);
   });
 });
 
@@ -292,6 +299,7 @@ describe("another dispatch's form is open (finding 3)", () => {
       expect(load).not.toHaveBeenCalled();
       expect(hasSteps()).toBe(false);
       expect(spinner()).not.toBeOnTheScreen();
+      expect(indicators()).toHaveLength(0);
       expect(form().dispatch_id).toBe('other-dispatch');
       expect(form().items).toHaveLength(1);
       expect(router.back).toHaveBeenCalledTimes(1);

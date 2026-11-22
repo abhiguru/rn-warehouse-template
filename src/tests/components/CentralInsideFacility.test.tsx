@@ -112,8 +112,8 @@ describe.each([
     expect(screen.getByText('Leave this facility')).toBeOnTheScreen();
     expect(screen.getByText('Leave North Cold Store and return to My facilities. You stay signed in to the association.')).toBeOnTheScreen();
     expect(screen.getByText('Sign out of this phone')).toBeOnTheScreen();
-    expect(screen.queryByText('Change warehouse server')).not.toBeOnTheScreen();
-    expect(screen.queryByText('Sign out of this facility on this phone.')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Change warehouse server', { includeHiddenElements: true })).not.toBeOnTheScreen();
+    expect(screen.queryByText('Sign out of this facility on this phone.', { includeHiddenElements: true })).not.toBeOnTheScreen();
   });
 
   it('"Leave this facility" asks first, then leaves through the shared cleanup; the association sign-in stays', async () => {
@@ -159,7 +159,7 @@ describe.each([
   it('facility SMS access without the association sign-in: one "Sign out" through the facility cleanup', async () => {
     setCentralState({ status: 'signedOut', user: null });
     await render(element());
-    expect(screen.queryByText('Sign out of this phone')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Sign out of this phone', { includeHiddenElements: true })).not.toBeOnTheScreen();
     await press(SIGN_OUT_ROW);
     expect(screen.getByText("You'll need your mobile number and a one-time code to sign in again.")).toBeOnTheScreen();
     await userEvent.press(confirmButton('Sign out'));
@@ -216,8 +216,8 @@ describe.each([
 
   it('keeps the sign-out that leads to the sign-in screen', async () => {
     await render(element());
-    expect(screen.queryByText('Leave this facility')).not.toBeOnTheScreen();
-    expect(screen.queryByText('Sign out of this phone')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Leave this facility', { includeHiddenElements: true })).not.toBeOnTheScreen();
+    expect(screen.queryByText('Sign out of this phone', { includeHiddenElements: true })).not.toBeOnTheScreen();
     if (which === 'Settings') {
       expect(screen.getByText('Change warehouse server')).toBeOnTheScreen();
       await press('Change warehouse server, Now using North Cold Store');
@@ -257,7 +257,7 @@ describe('the waiting screen once the facility has approved', () => {
     await render(<PendingEnrollmentScreen />);
     expect(getEnrollmentStatus).toHaveBeenCalled();
     expect(screen.getByText('North Cold Store approved your access. Open it from My facilities.')).toBeOnTheScreen();
-    expect(screen.queryByText('Sign in')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Sign in', { includeHiddenElements: true })).not.toBeOnTheScreen();
     // The request came from this facility's own SMS sign-in.
     await act(async () => { setCentralState({ facilitySmsOrigin: 'https://north-cold.example.test' }); });
     await press('My facilities');

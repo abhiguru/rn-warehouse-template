@@ -83,6 +83,9 @@ const mount = async () => {
 };
 const hasSteps = () => screen.queryByTestId('grn-steps') !== null;
 const spinner = () => screen.queryByLabelText('Loading GRN details…');
+// The ActivityIndicator itself (no role or text reaches it): the old test counted it.
+// (Nothing is drawn at all when the screen renders null: no root.)
+const indicators = () => screen.root?.queryAll((node) => node.type === 'ActivityIndicator', { includeSelf: true }) ?? [];
 const press = async (label: string) => {
   await userEvent.press(screen.getByRole('button', { name: label }));
 };
@@ -106,6 +109,7 @@ describe('while the GRN is read', () => {
     await mount();
 
     expect(spinner()).toBeOnTheScreen();
+    expect(indicators()).toHaveLength(1);
     // Read out as a busy progress bar, as the spinner this replaced was.
     expect(spinner()).toHaveProp('accessibilityRole', 'progressbar');
     expect(spinner()?.props.accessibilityState).toEqual({ busy: true });
