@@ -969,6 +969,8 @@ Set `accessibilityRole`, `accessibilityLabel` (when the visible text is not enou
 `accessibilityState` in step with the visual state. Use `accessibilityRole`; do not use
 React Native's `role` prop.
 
+Exception: a pressable that only repeats an action a labelled control or the system Back already gives, such as a sheet's backdrop, is hidden from screen readers with `accessible={false}` and `importantForAccessibility="no"` and has no role or label. Never hide the only way to do something.
+
 **Why.** Screen readers read these props, not the look. The app's own components already
 use a `role` prop for their look (`DialogButton`'s `primary`/`negative`), so React Native's
 `role` beside it would confuse a reader.
