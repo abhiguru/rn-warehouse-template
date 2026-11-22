@@ -3,7 +3,7 @@
 ## Expo SDK 58 — 2026-10-31
 
 - **What moved.** Expo SDK 57 to 58 (React Native 0.86.3 to 0.88.1, React 19.2.3 to 19.3.0, Expo Router 58 with React
-  Navigation 8 inside it, Jest 30 with jest-expo 58). `react-test-renderer` follows React at 19.3.0. No advisory was accepted
+  Navigation 8 inside it, Jest 30 with jest-expo 58). No advisory was accepted
   or suppressed by this step.
 - **One postinstall patch less.** Expo Router 58 no longer depends on `query-string`, so the query-string decoder adapter
   (`scripts/patch-navigation-decoder.mjs`) was removed. `decode-uri-component` is no longer installed either, so its

@@ -21,7 +21,7 @@ Prepared on SDK 57 so the step itself was smaller, then met in the step:
 | --- | --- |
 | `react-native-gesture-handler` 3 has no `Swipeable` | Done: every swipe row uses `ReanimatedSwipeable`; lint forbids `import { Swipeable }` (`eslint.config.mjs`). |
 | React Native strict TypeScript API becomes the default | Done: `npm run typecheck:strict` is 0 errors and runs in CI. Ref types use `React.ComponentRef<typeof X>` (`src/types/nativeRefs.ts`). |
-| `react-test-renderer` is no longer a dependency of jest-expo 58 | Declared as a devDependency, kept at React's version. The test suite still imports it; moving to `test-renderer` is a separate decision. |
+| `react-test-renderer` is no longer a dependency of jest-expo 58 | Removed from the project; all tests use Testing Library. |
 | `query-string` is no longer pulled in by expo-router | Done: the decoder adapter script, its test and its `check-install` entries were deleted. |
 | Android toolchain pins differ from React Native's | `scripts/check-android-sdk.mjs` compares CI's pins with `node_modules/react-native/gradle/libs.versions.toml` and names both values when they differ. Update `sdkPackages`, the CI install step and the docs together. SDK 37 is `platforms;android-37.0`. |
 | `InteractionManager` is removed in RN 0.88 | Done. |
@@ -51,8 +51,7 @@ Check `@gorhom/bottom-sheet` on gesture-handler 3 (the two sheets bring their ow
    - `scripts/patch-expo-metro.mjs` (`@expo/cli` `runServer-fork.js`; moved four times in nine days on SDK 57),
    - `scripts/patch-security-backports.mjs` with `scripts/security-backports.json`.
    Run `npm run test:setup` and `npm run verify:backports`.
-5. **Jest and jest-expo**: check that `react-test-renderer` is still installed and that `npm test` starts; move to
-   `test-renderer` only as its own change.
+5. **Jest and jest-expo**: check that `npm test` starts (`react-test-renderer` is gone; tests use Testing Library).
 6. **Sentry** (`@sentry/react-native`): take the version Expo lists for the SDK; read its migration notes.
 7. **gesture-handler** (`~3.x`) and **reanimated / worklets**: confirm `ReanimatedSwipeable` rows and the bottom sheets
    (`@gorhom/bottom-sheet`) still behave. The worklets Babel plugin comes from `babel-preset-expo`; do not add it to

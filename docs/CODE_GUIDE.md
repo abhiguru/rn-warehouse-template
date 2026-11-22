@@ -1281,12 +1281,10 @@ npm install some-package@latest   # outside Expo's version set
 
 ## 12. Tests
 
-### CG-67 New tests use React Native Testing Library
+### CG-67 Tests use React Native Testing Library
 
-Every new test uses `@testing-library/react-native` (`render`, `screen`, `userEvent`).
-The existing `react-test-renderer` tests are being converted to Testing Library in batches,
-folder by folder; a test that has not been converted yet may stay as it is until its batch
-comes up.
+Every test uses `@testing-library/react-native` (`render`, `screen`, `userEvent`).
+All tests have been converted, and `react-test-renderer` is no longer a dependency.
 
 **Why.** `react-test-renderer` is deprecated in React 19; Testing Library tests what a user
 sees and does.
