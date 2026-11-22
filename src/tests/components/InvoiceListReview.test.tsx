@@ -5,7 +5,7 @@
  * the rows were loaded. No snackbar.
  */
 import React from 'react';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import InvoiceFlashList from '@/components/lists/InvoiceFlashList';
 import { getAssignedCustomerInvoices, getInvoicesList } from '@/services/invoice-service';
 import { resetFlashListWindow } from '@/tests/helpers/windowedFlashListMock';
@@ -14,7 +14,11 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
   useFocusEffect: require('./focusHarness').useFocusEffect,
 }));
-jest.mock('@shopify/flash-list', () => require('@/tests/helpers/windowedFlashListMock'));
+// The shared stand-in hands its props to the host element, ref included; Testing Library then gives the list's ref the host instance, which has no scrollToOffset. Drop the ref, as the old renderer's null did.
+jest.mock('@shopify/flash-list', () => {
+  const mock = require('@/tests/helpers/windowedFlashListMock');
+  return { ...mock, FlashList: ({ ref: _ref, ...props }: { ref?: unknown }) => mock.FlashList(props) };
+});
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
@@ -67,14 +71,9 @@ const answer = (invoices: ReturnType<typeof invoiceOf>[], more = false) => ({
 });
 const failure = { success: false, message: 'Network unavailable', data: null };
 
-const mounted: ReactTestRenderer[] = [];
+type Host = ReturnType<typeof screen.getByText>;
 async function renderList() {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<InvoiceFlashList />);
-  });
-  mounted.push(tree);
-  return tree;
+  await render(<InvoiceFlashList />);
 }
 
 beforeEach(() => {
@@ -88,85 +87,90 @@ beforeEach(() => {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
+afterEach(() => {
   jest.restoreAllMocks();
-  await act(async () => {
-    mounted.splice(0).forEach((tree) => tree.unmount());
-  });
 });
 
-const host = (tree: ReactTestRenderer, testID: string) =>
-  tree.root.findAll((node) => typeof node.type === 'string' && node.props.testID === testID)[0];
-const card = (tree: ReactTestRenderer, n: number) => host(tree, `invoice-card-i${n}`);
-const pressable = (tree: ReactTestRenderer, testID: string) =>
-  tree.root.findAll((node) => node.props.testID === testID && typeof node.props.onPress === 'function')[0];
-const press = (node: ReactTestInstance) => act(async () => { await node.props.onPress(); });
-const list = (tree: ReactTestRenderer) => tree.root.findByType('FlashList' as never);
-const texts = (tree: ReactTestRenderer) =>
-  tree.root
-    .findAll((node) => (node.type as unknown) === 'Text')
+const user = () => userEvent.setup({ delay: 0 });
+// A negative check must also see an element that is mounted but hidden.
+const anywhere = { includeHiddenElements: true } as const;
+const present = (testID: string) => expect(screen.getByTestId(testID)).toBeOnTheScreen();
+const absent = (testID: string) => expect(screen.queryByTestId(testID, anywhere)).not.toBeOnTheScreen();
+const card = (n: number) => screen.queryByTestId(`invoice-card-i${n}`);
+/** Every host element below one, in order (the stand-in host "FlashList" has no role, label or text). */
+const below = (node: Host): Host[] => node.children.flatMap((child) => (!child || typeof child === 'string' ? [] : [child as Host, ...below(child as Host)]));
+const list = () => {
+  const found = [screen.root as Host, ...below(screen.root as Host)].filter((node) => (node.type as unknown) === 'FlashList');
+  if (found.length !== 1) throw new Error(`expected one FlashList, found ${found.length}`);
+  return found[0];
+};
+const endReached = () => fireEvent(list(), 'endReached');
+const refresh = () => act(async () => { await list().props.refreshControl.props.onRefresh(); });
+const texts = (hidden = false) =>
+  screen
+    .queryAllByText(/^/, { includeHiddenElements: hidden })
     .map((node) => [node.props.children].flat(Infinity).filter((child) => typeof child === 'string' || typeof child === 'number').join(''));
 
 describe('load errors (style guide 14.9)', () => {
   it('a failed refresh keeps the rows under a strip, and Try again loads them again', async () => {
     jest.mocked(getInvoicesList).mockResolvedValueOnce(answer([invoiceOf(1)]) as never).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.refreshControl.props.onRefresh(); });
+    await renderList();
+    await refresh();
 
-    expect(host(tree, 'invoice-stale-strip')).toBeDefined();
-    expect(texts(tree)).toContain("Couldn't refresh invoices.");
-    expect(card(tree, 1)).toBeDefined();
-    expect(tree.root.findAll((node) => (node.type as unknown) === 'Snackbar')).toHaveLength(0);
+    present('invoice-stale-strip');
+    expect(texts()).toContain("Couldn't refresh invoices.");
+    expect(card(1)).toBeOnTheScreen();
+    // No snackbar: the strip is the only place the message is (a snackbar would say it a second time).
+    expect(texts(true).filter((text) => text === "Couldn't refresh invoices.")).toHaveLength(1);
 
     jest.mocked(getInvoicesList).mockResolvedValueOnce(answer([invoiceOf(1)]) as never);
-    await press(pressable(tree, 'invoice-stale-strip-retry'));
-    expect(host(tree, 'invoice-stale-strip')).toBeUndefined();
-    expect(card(tree, 1)).toBeDefined();
+    await user().press(screen.getByTestId('invoice-stale-strip-retry'));
+    await waitFor(() => absent('invoice-stale-strip'));
+    expect(card(1)).toBeOnTheScreen();
   });
 
   it('a failed first page is the error state with Try again', async () => {
     jest.mocked(getInvoicesList).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(texts(tree)).toContain("Couldn't load invoices");
-    expect(card(tree, 1)).toBeUndefined();
+    expect(texts()).toContain("Couldn't load invoices");
+    expect(screen.queryByTestId('invoice-card-i1', anywhere)).not.toBeOnTheScreen();
 
     jest.mocked(getInvoicesList).mockResolvedValueOnce(answer([invoiceOf(1)]) as never);
-    const errorView = tree.root.findAll((node) => node.props.presentation === 'inline' && typeof node.props.onRetry === 'function')[0];
-    await act(async () => { await errorView.props.onRetry(); });
-    expect(card(tree, 1)).toBeDefined();
+    await user().press(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByTestId('invoice-card-i1')).toBeOnTheScreen();
   });
 
   it('a failed new filter does not pass the old rows off as its answer', async () => {
     jest.mocked(getInvoicesList).mockResolvedValueOnce(answer([invoiceOf(1)]) as never).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
-    expect(card(tree, 1)).toBeDefined();
+    await renderList();
+    expect(card(1)).toBeOnTheScreen();
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_search: 'onion' } };
-    await act(async () => { tree.update(<InvoiceFlashList />); });
+    await screen.rerender(<InvoiceFlashList />);
 
-    expect(card(tree, 1)).toBeUndefined();
-    expect(host(tree, 'invoice-stale-strip')).toBeUndefined();
-    expect(texts(tree)).toContain("Couldn't load invoices");
+    expect(screen.queryByTestId('invoice-card-i1', anywhere)).not.toBeOnTheScreen();
+    absent('invoice-stale-strip');
+    expect(texts()).toContain("Couldn't load invoices");
   });
 
   it('a failed next page is the last row with Try again, which asks for the same page', async () => {
     jest.mocked(getInvoicesList).mockResolvedValueOnce(answer([invoiceOf(1)], true) as never).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await renderList();
+    await endReached();
 
-    expect(host(tree, 'invoice-load-more-error')).toBeDefined();
-    expect(texts(tree)).toContain("Couldn't load more invoices.");
+    present('invoice-load-more-error');
+    expect(texts()).toContain("Couldn't load more invoices.");
     // The footer is the way to retry: reaching the end again does not loop on a dead connection.
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await endReached();
     expect(jest.mocked(getInvoicesList)).toHaveBeenCalledTimes(2);
 
     jest.mocked(getInvoicesList).mockResolvedValueOnce(answer([invoiceOf(2)]) as never);
-    await press(tree.root.findAll((node) => node.props.accessibilityLabel === 'Try loading more invoices again' && typeof node.props.onPress === 'function')[0]);
+    await user().press(screen.getByLabelText('Try loading more invoices again'));
 
+    await waitFor(() => expect(card(2)).toBeOnTheScreen());
     const offsets = jest.mocked(getInvoicesList).mock.calls.map(([params]) => params?.p_offset);
     expect(offsets).toEqual([0, 1, 1]);
-    expect(card(tree, 2)).toBeDefined();
-    expect(host(tree, 'invoice-load-more-error')).toBeUndefined();
+    absent('invoice-load-more-error');
   });
 
   it('a failed refresh keeps the offset of the rows on screen: the next page asks after them (R2-2)', async () => {
@@ -175,11 +179,11 @@ describe('load errors (style guide 14.9)', () => {
       .mockResolvedValueOnce(answer([invoiceOf(3)], true) as never)
       .mockResolvedValueOnce(failure as never)
       .mockResolvedValueOnce(answer([invoiceOf(4)]) as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.onEndReached(); });
-    await act(async () => { await list(tree).props.refreshControl.props.onRefresh(); });
-    expect(host(tree, 'invoice-stale-strip')).toBeDefined();
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await renderList();
+    await endReached();
+    await refresh();
+    present('invoice-stale-strip');
+    await endReached();
 
     expect(jest.mocked(getInvoicesList).mock.calls.map(([params]) => params?.p_offset)).toEqual([0, 2, 0, 3]);
   });
@@ -189,36 +193,37 @@ describe('load errors (style guide 14.9)', () => {
       .mockResolvedValueOnce(answer([invoiceOf(1), invoiceOf(2)], true) as never)
       .mockResolvedValueOnce(answer([invoiceOf(2), invoiceOf(3)], true) as never)
       .mockResolvedValueOnce(answer([invoiceOf(4)]) as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.onEndReached(); });
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await renderList();
+    await endReached();
+    await endReached();
 
-    expect(list(tree).props.data.filter((row: { type: string }) => row.type === 'card').map((row: { key: string }) => row.key)).toEqual(['i1', 'i2', 'i3', 'i4']);
+    // The cards drawn, in order: each invoice once.
+    expect(screen.getAllByTestId(/^invoice-card-/, anywhere).map((node) => node.props.testID)).toEqual(['invoice-card-i1', 'invoice-card-i2', 'invoice-card-i3', 'invoice-card-i4']);
     expect(jest.mocked(getInvoicesList).mock.calls.map(([params]) => params?.p_offset)).toEqual([0, 2, 4]);
   });
 
   it('offline, a list not sorted by date says at its top when the invoices were loaded', async () => {
     mockOffline = true;
     jest.mocked(getInvoicesList).mockResolvedValue(answer([invoiceOf(1)]) as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(host(tree, 'invoice-last-updated')).toBeDefined();
+    present('invoice-last-updated');
   });
 
   it('offline, a list with date headings says it under the first heading only', async () => {
     mockFilters = { ...mockFilters, request: { p_sort_field: 'inv_date' }, sort: { field: 'inv_date', order: 'desc' } };
     mockOffline = true;
     jest.mocked(getInvoicesList).mockResolvedValue(answer([invoiceOf(1, '2026-10-02'), invoiceOf(2, '2026-10-01')]) as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(tree.root.findAll((node) => typeof node.type === 'string' && node.props.testID === 'invoice-last-updated')).toHaveLength(1);
+    expect(screen.getAllByTestId('invoice-last-updated', anywhere)).toHaveLength(1);
   });
 
   it('online, there is no last-updated line', async () => {
     jest.mocked(getInvoicesList).mockResolvedValue(answer([invoiceOf(1)]) as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(host(tree, 'invoice-last-updated')).toBeUndefined();
+    absent('invoice-last-updated');
   });
 });
 
@@ -228,11 +233,11 @@ describe('WH-220: the offline line shows the date of an earlier load', () => {
     const real = Date.now();
     jest.useFakeTimers({ now: new Date(2026, 9, 9, 16, 5), doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
     try {
-      const tree = await renderList();
+      await renderList();
       jest.setSystemTime(real);
       mockOffline = true;
-      await act(async () => { tree.update(<InvoiceFlashList />); });
-      expect(texts(tree)).toContain('Last updated 09/10/26, 4:05 pm');
+      await screen.rerender(<InvoiceFlashList />);
+      expect(texts()).toContain('Last updated 09/10/26, 4:05 pm');
     } finally {
       jest.useRealTimers();
     }

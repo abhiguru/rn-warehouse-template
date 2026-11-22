@@ -3,7 +3,7 @@
  * an earlier year is never confused with the same number of the current year.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { printInvoiceRange } from '@/services/print-service';
 import InvoiceFormStep3 from '../../../app/invoice-form/step3';
 
@@ -45,9 +45,16 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
-let mockDialogProps: { onConfirm: (s: string, e: string) => Promise<void> } | undefined;
+// A stand-in that draws one button, which confirms the range 412 to 412 through the page's real onConfirm.
 jest.mock('@/components/PrintRangeDialog', () => ({
-  PrintRangeDialog: (props: { onConfirm: (s: string, e: string) => Promise<void> }) => { mockDialogProps = props; return null; },
+  PrintRangeDialog: (props: { onConfirm: (s: string, e: string) => Promise<void> }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="Print range 412 to 412" onPress={() => props.onConfirm('412', '412')}>
+        <Text>Print range 412 to 412</Text>
+      </Pressable>
+    );
+  },
 }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
 jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({ InvoiceCalculationSummary: 'InvoiceCalculationSummary' }));
@@ -59,11 +66,9 @@ jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
 it('prints with the financial year of the invoice (2025-26 -> 2025)', async () => {
   jest.mocked(printInvoiceRange).mockResolvedValue({ success: true } as never);
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<InvoiceFormStep3 />); });
+  await render(<InvoiceFormStep3 />);
 
-  await act(async () => { await mockDialogProps!.onConfirm('412', '412'); });
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Print range 412 to 412' }));
 
-  expect(printInvoiceRange).toHaveBeenCalledWith('412', '412', 2025);
-  await act(async () => { tree.unmount(); });
+  await waitFor(() => expect(printInvoiceRange).toHaveBeenCalledWith('412', '412', 2025));
 });

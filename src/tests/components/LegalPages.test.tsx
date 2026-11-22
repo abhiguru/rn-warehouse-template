@@ -11,8 +11,7 @@
 import React from 'react';
 import fs from 'fs';
 import path from 'path';
-import { Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -59,33 +58,32 @@ const FORBIDDEN = [
   'Cloud hosting',
 ];
 
-let tree: ReactTestRenderer | undefined;
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   delete process.env.EXPO_PUBLIC_COMPANY_NAME;
   delete process.env.EXPO_PUBLIC_LEGAL_EMAIL;
   delete process.env.EXPO_PUBLIC_LEGAL_TEXT;
 });
 
-async function pageText(render: () => React.JSX.Element): Promise<string> {
-  await act(async () => {
-    tree = create(render());
-  });
-  return tree!.root
-    .findAllByType(Text)
+/**
+ * Every text of the page, one line each. A page is a long document: it is read as the whole of its text elements
+ * (host Text, hidden ones too), so a check on a sentence needs no role or name.
+ */
+async function pageText(element: () => React.JSX.Element): Promise<string> {
+  await render(element());
+  return screen.root!
+    .queryAll((node) => (node.type as unknown) === 'Text')
     .map((node) => [node.props.children].flat(Infinity).join(''))
     .join('\n');
 }
 
-describe.each(PAGES)('%s page', (_name, render) => {
+describe.each(PAGES)('%s page', (_name, element) => {
   it('names the connected cold storage and prints no placeholder or missing feature', async () => {
     mockServer = {
       companyName: 'Dev Cold Storage (fictional data)',
       displayName: 'Dev',
       origin: 'https://warehouse-dev.gurucold.in',
     };
-    const text = await pageText(render);
+    const text = await pageText(element);
     expect(text).toContain('Dev Cold Storage (fictional data)');
     expect(text).toContain(`Last updated: ${legalUpdatedLabel()}`);
     for (const word of FORBIDDEN) expect(text).not.toContain(word);
@@ -94,7 +92,7 @@ describe.each(PAGES)('%s page', (_name, render) => {
 
   it('says "the cold storage that runs your server" when no name is known', async () => {
     mockServer = null;
-    const text = await pageText(render);
+    const text = await pageText(element);
     expect(text).toContain('the cold storage that runs your server');
     for (const word of FORBIDDEN) expect(text).not.toContain(word);
     expect(text).not.toContain('Email:');
@@ -103,7 +101,7 @@ describe.each(PAGES)('%s page', (_name, render) => {
   it('prints the contact address only when the build is given one', async () => {
     mockServer = null;
     process.env.EXPO_PUBLIC_LEGAL_EMAIL = 'office@cold.test';
-    const text = await pageText(render);
+    const text = await pageText(element);
     expect(text).toContain('Email: office@cold.test');
   });
 });
@@ -122,11 +120,10 @@ describe('where the records are kept', () => {
 describe('CR-70: wording of the legal pages', () => {
   it('prints the cold storage name only inside sentences, never as a line of its own after one', async () => {
     mockServer = { companyName: 'Review North Cold Storage', displayName: 'North', origin: 'https://n.example.test' };
-    for (const [, render] of PAGES) {
-      const lines = (await pageText(render)).split('\n');
+    for (const [, element] of PAGES) {
+      const lines = (await pageText(element)).split('\n');
       expect(lines).not.toContain('Review North Cold Storage');
-      act(() => tree?.unmount());
-      tree = undefined;
+      await screen.unmount();
     }
   });
 
@@ -286,13 +283,11 @@ describe('WH-140: the facility template (default build)', () => {
       expect(text).toContain('Phone: Not given yet');
       expect(text).not.toMatch(/undefined|null|\{\{|\}\}|\[object/);
       expect(text).not.toContain('Himmatnagar');
-      act(() => tree?.unmount());
-      tree = undefined;
+      await screen.unmount();
     }
     mockServer = connected({ legalName: '', city: '', state: '', grievanceName: '', grievanceEmail: '', grievancePhone: '' });
     expect((await pageLines(1)).join('\n')).toContain('Name: Not given yet');
-    act(() => tree?.unmount());
-    tree = undefined;
+    await screen.unmount();
     const terms = (await pageLines(0)).join('\n');
     expect(terms).toContain('The courts where the cold storage has its seat have jurisdiction');
     expect(terms).toContain('between you and North Cold ("the cold storage")');
@@ -321,8 +316,7 @@ describe('WH-140: the facility template (default build)', () => {
       expect(text).toContain('the cold storage that runs your server');
       expect(text).not.toContain('Email:');
       expect(text).not.toContain('Phone:');
-      act(() => tree?.unmount());
-      tree = undefined;
+      await screen.unmount();
     }
   });
 
@@ -333,16 +327,14 @@ describe('WH-140: the facility template (default build)', () => {
       expect(text).not.toContain('Sample Cold Storage Association');
       expect(text).not.toMatch(/Association|Publisher|Ahmedabad/);
       for (const word of FORBIDDEN) expect(text).not.toContain(word);
-      act(() => tree?.unmount());
-      tree = undefined;
+      await screen.unmount();
     }
   });
 
   it('is English in a Gujarati phone: the same words and no Gujarati letters', async () => {
     mockServer = connected(FULL_LEGAL);
     const english = (await pageLines(1)).join('\n');
-    act(() => tree?.unmount());
-    tree = undefined;
+    await screen.unmount();
     mockLanguage = 'gu';
     const gujarati = (await pageLines(1)).join('\n');
     expect(gujarati).toBe(english);

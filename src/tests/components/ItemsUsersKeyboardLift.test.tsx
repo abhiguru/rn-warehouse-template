@@ -5,8 +5,8 @@
  */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Keyboard, StyleSheet } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { Keyboard, StyleSheet, View } from 'react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import ItemsScreen from '../../../app/items';
 import UsersScreen from '../../../app/users';
 import { itemService } from '@/services/item-service';
@@ -38,7 +38,6 @@ jest.mock('@/services/admin-user-service', () => ({ adminUserService: { getUsers
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 
-let tree: ReactTestRenderer | undefined;
 let listeners: Record<string, (event?: unknown) => void>;
 
 beforeEach(() => {
@@ -52,19 +51,18 @@ beforeEach(() => {
   jest.spyOn(Keyboard, 'isVisible').mockReturnValue(false);
   jest.mocked(getItemStoragePrices).mockResolvedValue({ success: true, data: [], pagination: { total_count: 0, limit: 1, offset: 0, has_more: false } } as never);
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.useRealTimers();
   jest.restoreAllMocks();
 });
 
-const container = (testID: string) => tree!.root.find(node => node.props.testID === testID && node.instance != null);
-const margin = (testID: string) => Number((StyleSheet.flatten(container(testID).props.style) as { marginBottom?: number }).marginBottom ?? 0);
+const margin = (testID: string) => Number((StyleSheet.flatten(screen.getByTestId(testID).props.style) as { marginBottom?: number }).marginBottom ?? 0);
 
 async function checkLift(testID: string) {
-  (container(testID).instance as { measureInWindow: unknown }).measureInWindow = (cb: (x: number, y: number, w: number, h: number) => void) =>
-    cb(0, 100, 1080, 1300); // un-lifted bottom at 1400
+  // The jest View keeps measureInWindow on a shared prototype and there are no native views: it is given a place
+  // (the spy is undone by restoreAllMocks).
+  jest.spyOn(View.prototype as unknown as { measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void }, 'measureInWindow')
+    .mockImplementation(cb => cb(0, 100, 1080, 1300)); // un-lifted bottom at 1400
   expect(margin(testID)).toBe(0);
   await act(async () => { listeners.keyboardDidShow({ endCoordinates: { screenY: 1000, height: 800 } }); });
   expect(margin(testID)).toBe(400);
@@ -74,12 +72,12 @@ async function checkLift(testID: string) {
 
 it('Items: the container takes the covered part as its bottom margin while the keyboard is up, and none when it hides', async () => {
   jest.mocked(itemService.getItemList).mockResolvedValue({ success: true, message: '', data: [], pagination: { total_count: 0 } } as never);
-  await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
+  await render(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>);
   await checkLift('items-screen');
 });
 
 it('Users: the container takes the covered part as its bottom margin while the keyboard is up, and none when it hides', async () => {
   jest.mocked(adminUserService.getUsersList).mockResolvedValue({ success: true, data: { users: [], pagination: { total_count: 0, limit: 20, offset: 0, has_more: false } } } as never);
-  await act(async () => { tree = create(<UsersScreen />); });
+  await render(<UsersScreen />);
   await checkLift('users-screen');
 });

@@ -5,7 +5,7 @@
  * button works again once the list is in front again.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import InvoiceFlashList from '@/components/lists/InvoiceFlashList';
 import { getAssignedCustomerInvoices, getInvoicesList } from '@/services/invoice-service';
@@ -24,12 +24,15 @@ jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null
 jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
 jest.mock('@/components/list-items', () => ({ MemoizedInvoiceItem: () => null }));
-// The empty list's "Create invoice" button, kept so the test can tap it.
-let mockOnCreatePress: (() => void) | undefined;
+// The empty list's "Create invoice" button: a stand-in that draws it and calls the list's real onCreatePress.
 jest.mock('@/components/list/ListEmptyState', () => ({
   ListEmptyState: ({ onCreatePress }: { onCreatePress?: () => void }) => {
-    mockOnCreatePress = onCreatePress;
-    return null;
+    const { Pressable, Text } = require('react-native');
+    return onCreatePress ? (
+      <Pressable accessibilityRole="button" accessibilityLabel="Create invoice" onPress={onCreatePress}>
+        <Text>Create invoice</Text>
+      </Pressable>
+    ) : null;
   },
 }));
 jest.mock('@/components/ErrorBoundary', () => ({ ErrorStateView: () => null }));
@@ -65,17 +68,16 @@ const empty = { success: true, message: '', data: { invoices: [], pagination: { 
 beforeEach(() => {
   jest.clearAllMocks();
   resetScreenFocus();
-  mockOnCreatePress = undefined;
   jest.mocked(getInvoicesList).mockReset().mockResolvedValue(empty as never);
   jest.mocked(getAssignedCustomerInvoices).mockReset().mockResolvedValue(empty as never);
 });
 
 it('opens one new invoice on a double tap, and opens another once the list is back in front', async () => {
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<InvoiceFlashList />); });
-  expect(mockOnCreatePress).toBeDefined();
+  await render(<InvoiceFlashList />);
+  const create = await screen.findByRole('button', { name: 'Create invoice' });
 
-  await act(async () => { mockOnCreatePress!(); mockOnCreatePress!(); });
+  // A double tap: both presses land before anything is drawn again.
+  await act(async () => { void fireEvent.press(create); void fireEvent.press(create); });
   expect(router.push).toHaveBeenCalledTimes(1);
   expect(router.push).toHaveBeenCalledWith('/invoice-form/step1');
   expect(mockDispatch).toHaveBeenCalledTimes(1);
@@ -83,8 +85,6 @@ it('opens one new invoice on a double tap, and opens another once the list is ba
   // The form opened (the list is hidden), then the user came back to the list.
   await act(async () => { setScreenFocused(false); });
   await act(async () => { setScreenFocused(true); });
-  await act(async () => { mockOnCreatePress!(); });
+  await fireEvent.press(screen.getByRole('button', { name: 'Create invoice' }));
   expect(router.push).toHaveBeenCalledTimes(2);
-
-  await act(async () => { renderer.unmount(); });
 });

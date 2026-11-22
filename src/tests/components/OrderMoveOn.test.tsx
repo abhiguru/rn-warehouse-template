@@ -7,7 +7,7 @@
  * well as in the editor mounted on its own with a new customerId.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import CustomerOrderScreen from '../../../app/orders/[customerId]';
 import OrderManagement from '@/components/OrderManagement';
 import { OrderService } from '@/services/order-service';
@@ -89,7 +89,6 @@ const orderOf = (orderId: string, customerId: string): Order => ({
   items: [line(orderId, 'lot-1', 5)],
 });
 const service = jest.mocked(OrderService);
-let renderer: ReactTestRenderer | undefined;
 let logged: jest.SpyInstance;
 
 beforeEach(() => {
@@ -107,14 +106,12 @@ beforeEach(() => {
   service.removeItemFromOrder.mockReset().mockResolvedValue({ success: true, message: '' } as never);
   logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
-afterEach(async () => {
-  await act(async () => { renderer?.unmount(); });
-  renderer = undefined;
+afterEach(() => {
   logged.mockRestore();
 });
 
-const press = (label: string) =>
-  renderer!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0].props.onPress();
+const user = userEvent.setup({ delay: 0 });
+const press = (label: string) => user.press(screen.getByRole('button', { name: label }));
 const settle = () => act(async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); });
 function waiting<T>() {
   let answer!: (value: T) => void;
@@ -124,26 +121,26 @@ function waiting<T>() {
 
 describe('through the route (the editor unmounts)', () => {
   it('saves a quantity still waiting to the old order, and nothing to the new one', async () => {
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    await render(<CustomerOrderScreen />);
     await settle();
-    await act(async () => { press('Increase Fictional Onions by 1'); });
+    await press('Increase Fictional Onions by 1');
     expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
 
     mockParams.customerId = 'customer-b';
-    await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+    await screen.rerender(<CustomerOrderScreen />);
     await settle();
 
     expect(service.updateOrderItemQuantity.mock.calls).toEqual([['line-order-a', 'order-a', 6]]);
   });
 
   it('stops an Add items save once the screen has moved on', async () => {
-    await act(async () => { renderer = create(<CustomerOrderScreen />); });
+    await render(<CustomerOrderScreen />);
     await settle();
     const first = waiting<never>();
     service.addItemToOrder.mockReturnValueOnce(first.promise as never);
     let results: PickerResult[] | undefined;
     // Open the picker so its props are known.
-    await act(async () => { press('Add items to order'); });
+    await press('Add items to order');
     expect(mockPicker.props).toBeDefined();
     const save = mockPicker.props!.onAddItems;
     await act(async () => {
@@ -153,7 +150,7 @@ describe('through the route (the editor unmounts)', () => {
     expect(service.addItemToOrder.mock.calls).toEqual([['order-a', 'lot-x', 1]]);
 
     mockParams.customerId = 'customer-b';
-    await act(async () => { renderer!.update(<CustomerOrderScreen />); });
+    await screen.rerender(<CustomerOrderScreen />);
     await act(async () => { first.answer({ success: true, message: '' } as never); });
     await settle();
 
@@ -165,12 +162,12 @@ describe('through the route (the editor unmounts)', () => {
 
 describe('in the editor mounted on its own (a new customerId)', () => {
   it('saves a quantity still waiting to the old order, and nothing to the new one', async () => {
-    await act(async () => { renderer = create(<OrderManagement customerId="customer-a" />); });
+    await render(<OrderManagement customerId="customer-a" />);
     await settle();
-    await act(async () => { press('Increase Fictional Onions by 1'); });
+    await press('Increase Fictional Onions by 1');
     expect(service.updateOrderItemQuantity).not.toHaveBeenCalled();
 
-    await act(async () => { renderer!.update(<OrderManagement customerId="customer-b" />); });
+    await screen.rerender(<OrderManagement customerId="customer-b" />);
     await settle();
 
     expect(service.updateOrderItemQuantity.mock.calls).toEqual([['line-order-a', 'order-a', 6]]);

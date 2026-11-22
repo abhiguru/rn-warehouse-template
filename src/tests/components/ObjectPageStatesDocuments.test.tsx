@@ -7,8 +7,7 @@
  * A missing GRN or dispatch (the service answers notFound) shows "not found", not the load error.
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import GRNDetailScreen from '../../../app/grn-details/[id]';
 import DispatchDetailScreen from '../../../app/dispatch-details/[id]';
@@ -99,18 +98,14 @@ jest.mock('@/components/dispatch-details', () => ({
 const GRN_OK = { success: true, data: { grn: { id: 'doc-1', gr_no: 'A0010', date: '2026-10-01', items: [], statistics: {}, processed_header_images: [], invoices_summary: {} } } };
 const DISPATCH_OK = { success: true, data: { dispatch: { id: 'doc-1', disp_no: 'D0010', items: [], processed_images: [] } } };
 
-let tree: ReactTestRenderer | undefined;
-const mount = async (screen: 'grn' | 'dispatch') => {
-  await act(async () => { tree = create(screen === 'grn' ? <GRNDetailScreen /> : <DispatchDetailScreen />); });
-  return tree as ReactTestRenderer;
-};
-const shownText = () => tree!.root.findAllByType(Text).map(node => [node.props.children].flat(3).join(''));
-const press = async (label: string) => {
-  const control = tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-  if (!control) throw new Error(`No control labelled "${label}"`);
-  await act(async () => { control.props.onPress(); });
-};
-const editButtons = () => tree!.root.findAll(node => node.props.accessibilityLabel === 'Edit' && typeof node.props.onPress === 'function');
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+const mount = async (kind: 'grn' | 'dispatch') => { await render(kind === 'grn' ? <GRNDetailScreen /> : <DispatchDetailScreen />); };
+const has = (text: string) => expect(screen.getByText(text)).toBeOnTheScreen();
+const lacks = (text: string) => expect(screen.queryByText(text, hidden)).not.toBeOnTheScreen();
+const press = async (label: string) => { await user.press(await screen.findByRole('button', { name: label })); };
+const editButtons = (all = false) => screen.queryAllByRole('button', { name: 'Edit', ...(all ? hidden : {}) });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -118,9 +113,7 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
   setLanguage('en');
   jest.restoreAllMocks();
 });
@@ -128,12 +121,13 @@ afterEach(async () => {
 describe.each([
   ['grn', mockGetGRNDetails, "Couldn't load the GRN", 'આવક પાવતી લોડ કરી શકાઈ નથી'],
   ['dispatch', mockGetDispatchDetails, "Couldn't load the dispatch", 'જાવક લોડ કરી શકાઈ નથી'],
-] as const)('%s page that cannot be read', (screen, service, titleEn, titleGu) => {
+] as const)('%s page that cannot be read', (kind, service, titleEn, titleGu) => {
   it('shows the title with the check-connection text under it, Try again and Go back (English)', async () => {
     service.mockResolvedValue({ success: false, message: 'Failed to fetch' });
-    await mount(screen);
-    expect(shownText()).toEqual(expect.arrayContaining([titleEn, 'Check your connection and try again.']));
-    expect(shownText()).not.toContain('Failed to fetch');
+    await mount(kind);
+    has(titleEn);
+    has('Check your connection and try again.');
+    lacks('Failed to fetch');
     await press('Go back');
     expect(router.back).toHaveBeenCalledTimes(1);
   });
@@ -141,36 +135,38 @@ describe.each([
   it('says the same in Gujarati', async () => {
     setLanguage('gu');
     service.mockResolvedValue({ success: false, message: 'Failed to fetch' });
-    await mount(screen);
-    expect(shownText()).toEqual(expect.arrayContaining([titleGu, 'તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.']));
+    await mount(kind);
+    has(titleGu);
+    has('તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.');
     await press('પાછા જાઓ');
     expect(router.back).toHaveBeenCalledTimes(1);
   });
 
   it('Try again reads the page again and shows it', async () => {
     service.mockResolvedValueOnce({ success: false, message: 'x' });
-    service.mockResolvedValue(screen === 'grn' ? GRN_OK : DISPATCH_OK);
-    await mount(screen);
+    service.mockResolvedValue(kind === 'grn' ? GRN_OK : DISPATCH_OK);
+    await mount(kind);
     expect(service).toHaveBeenCalledTimes(1);
-    await press(screen === 'dispatch' ? 'Try loading the dispatch again' : 'Try again');
+    await press(kind === 'dispatch' ? 'Try loading the dispatch again' : 'Try again');
     expect(service).toHaveBeenCalledTimes(2);
-    expect(shownText()).not.toContain(titleEn);
+    lacks(titleEn);
   });
 });
 
 describe.each([
   ['grn', mockGetGRNDetails, 'GRN not found', 'It may have been deleted, or you may not have access to it.', "Couldn't load the GRN", 'આવક પાવતી મળી નથી', 'તે ડિલીટ થઈ ગઈ હશે, અથવા તમને તે જોવાની પરવાનગી નહીં હોય.'],
   ['dispatch', mockGetDispatchDetails, 'Dispatch not found', 'It may have been deleted. Go back to the dispatch list.', "Couldn't load the dispatch", 'જાવક મળી નથી', 'કદાચ તે ડિલીટ થઈ ગઈ છે. જાવકની યાદી પર પાછા જાઓ.'],
-] as const)('%s page that does not exist (WH-216)', (screen, service, titleEn, messageEn, loadErrorEn, titleGu, messageGu) => {
+] as const)('%s page that does not exist (WH-216)', (kind, service, titleEn, messageEn, loadErrorEn, titleGu, messageGu) => {
   const NOT_FOUND = { success: false, message: 'none found', error: 'not found or denied', notFound: true };
 
   it('says "not found" with its message and Go back, not the load error (English)', async () => {
     service.mockResolvedValue(NOT_FOUND);
-    await mount(screen);
-    expect(shownText()).toEqual(expect.arrayContaining([titleEn, messageEn]));
-    expect(shownText()).not.toContain(loadErrorEn);
-    expect(shownText()).not.toContain('Check your connection and try again.');
-    expect(editButtons()).toHaveLength(0);
+    await mount(kind);
+    has(titleEn);
+    has(messageEn);
+    lacks(loadErrorEn);
+    lacks('Check your connection and try again.');
+    expect(editButtons(true)).toHaveLength(0);
     await press('Go back');
     expect(router.back).toHaveBeenCalledTimes(1);
   });
@@ -178,58 +174,59 @@ describe.each([
   it('says it in Gujarati', async () => {
     setLanguage('gu');
     service.mockResolvedValue(NOT_FOUND);
-    await mount(screen);
-    expect(shownText()).toEqual(expect.arrayContaining([titleGu, messageGu]));
+    await mount(kind);
+    has(titleGu);
+    has(messageGu);
     await press('પાછા જાઓ');
     expect(router.back).toHaveBeenCalledTimes(1);
   });
 
   it('a failed read without notFound stays the load error', async () => {
     service.mockResolvedValue({ success: false, message: 'Failed to fetch' });
-    await mount(screen);
-    expect(shownText()).toContain(loadErrorEn);
-    expect(shownText()).not.toContain(titleEn);
+    await mount(kind);
+    has(loadErrorEn);
+    lacks(titleEn);
   });
 
   it('while loading shows no empty heading and neither the not-found nor the load-error text', async () => {
     service.mockReturnValue(new Promise(() => undefined));
-    await mount(screen);
-    const headings = tree!.root.findAll(node => node.props.accessibilityRole === 'header' && typeof node.type === 'string');
+    await mount(kind);
+    const headings = screen.queryAllByRole('header', hidden);
     expect(headings.filter(node => [node.props.children].flat(3).join('') === '')).toHaveLength(0);
-    expect(shownText()).not.toContain(titleEn);
-    expect(shownText()).not.toContain(loadErrorEn);
+    lacks(titleEn);
+    lacks(loadErrorEn);
   });
 });
 
 describe.each([
   ['grn', mockGetGRNDetails, GRN_OK],
   ['dispatch', mockGetDispatchDetails, DISPATCH_OK],
-] as const)('Edit in the header of the %s page', (screen, service, ok) => {
+] as const)('Edit in the header of the %s page', (kind, service, ok) => {
   it('is in the stack header for a role that may update, and opens the edit form', async () => {
     service.mockResolvedValue(ok);
-    await mount(screen);
+    await mount(kind);
     expect(editButtons().length).toBeGreaterThan(0);
-    await act(async () => { editButtons()[0].props.onPress(); });
+    await user.press(editButtons()[0]);
     expect(router.push).toHaveBeenCalledTimes(1);
   });
 
   it('is not shown to a role that may not update', async () => {
     mockCanUpdate = false;
     service.mockResolvedValue(ok);
-    await mount(screen);
-    expect(editButtons()).toHaveLength(0);
+    await mount(kind);
+    expect(editButtons(true)).toHaveLength(0);
   });
 
   it('is not shown for an imported document, which is read only', async () => {
-    const key = screen === 'grn' ? 'grn' : 'dispatch';
+    const key = kind === 'grn' ? 'grn' : 'dispatch';
     service.mockResolvedValue({ success: true, data: { [key]: { ...(ok.data as any)[key], imported: true } } });
-    await mount(screen);
-    expect(editButtons()).toHaveLength(0);
+    await mount(kind);
+    expect(editButtons(true)).toHaveLength(0);
   });
 
   it('is not shown while the page is loading or when it cannot be read', async () => {
     service.mockResolvedValue({ success: false, message: 'x' });
-    await mount(screen);
-    expect(editButtons()).toHaveLength(0);
+    await mount(kind);
+    expect(editButtons(true)).toHaveLength(0);
   });
 });

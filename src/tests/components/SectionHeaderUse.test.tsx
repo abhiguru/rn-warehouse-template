@@ -3,11 +3,10 @@
  * shared SectionHeader, not with a local copy of its style.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import SettingsScreen from '../../../app/settings';
 import ProfileScreen from '../../../app/profile';
 import HelpScreen from '../../../app/help';
-import { SectionHeader } from '@/components/ui/SectionHeader';
 import { setLanguage } from '@/i18n';
 
 let mockState: Record<string, unknown>;
@@ -35,7 +34,6 @@ jest.mock('@/store/slices/authSlice', () => ({
 }));
 jest.mock('@/services/admin-user-service', () => ({ adminUserService: { getUsersList: jest.fn() } }));
 
-let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   setLanguage('en');
   mockState = {
@@ -46,16 +44,14 @@ beforeEach(() => {
     },
   };
 });
-afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
-});
-
-async function titlesOf(screen: React.ReactElement): Promise<string[]> {
-  await act(async () => {
-    tree = create(screen);
-  });
-  return tree!.root.findAllByType(SectionHeader).map(node => node.props.title);
+// SectionHeader draws its title as an element with the header role, named by its title.
+async function titlesOf(ui: React.ReactElement): Promise<string[]> {
+  await render(ui);
+  // The screen's own title is a header too, with no label: only the section headers carry one.
+  return screen
+    .getAllByRole('header')
+    .map(node => node.props.accessibilityLabel as string | undefined)
+    .filter((label): label is string => label !== undefined);
 }
 
 it('Settings', async () => {

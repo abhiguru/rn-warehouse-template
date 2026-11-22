@@ -12,7 +12,7 @@
  */
 import React from 'react';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { grnListElement } from '../helpers/grnListElement';
 import { nb } from '@/components/common/DetailTable';
@@ -22,7 +22,11 @@ import { StyleSheet } from 'react-native';
 import { BRANDS, getTokens } from '@/theme/tokens';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useFocusEffect: jest.fn() }));
-jest.mock('@shopify/flash-list', () => require('@/tests/helpers/windowedFlashListMock'));
+// The shared stand-in hands its props to the host element, ref included; Testing Library then gives the list's ref the host instance, which has no scrollToOffset. Drop the ref, as the old renderer's null did.
+jest.mock('@shopify/flash-list', () => {
+  const mock = require('@/tests/helpers/windowedFlashListMock');
+  return { ...mock, FlashList: ({ ref: _ref, ...props }: { ref?: unknown }) => mock.FlashList(props) };
+});
 jest.mock('react-native-reanimated', () => ({ __esModule: true, ...jest.requireActual('react-native-reanimated'), useReducedMotion: () => true }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
@@ -100,14 +104,8 @@ const answer = (items: Line[], more = false, unit: 'line' | 'receipt' = 'receipt
 });
 const failure = { success: false, message: 'Network unavailable', data: null };
 
-const mounted: ReactTestRenderer[] = [];
 async function renderList() {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(grnListElement());
-  });
-  mounted.push(tree);
-  return tree;
+  await render(grnListElement());
 }
 
 beforeEach(() => {
@@ -123,131 +121,147 @@ beforeEach(() => {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
+afterEach(() => {
   jest.restoreAllMocks();
-  await act(async () => {
-    mounted.splice(0).forEach((tree) => tree.unmount());
-  });
 });
 
-const host = (tree: ReactTestRenderer, testID: string) =>
-  tree.root.findAll((node) => typeof node.type === 'string' && node.props.testID === testID)[0];
-const card = (tree: ReactTestRenderer, n: number) => host(tree, `grn-card-g${n}`);
-/** The pressable (not its drawn view) with this testID. */
-const pressable = (tree: ReactTestRenderer, testID: string) =>
-  tree.root.findAll((node) => node.props.testID === testID && typeof node.props.onPress === 'function')[0];
-const toggle = (tree: ReactTestRenderer, n: number) => pressable(tree, `grn-card-toggle-g${n}`);
-const isOpen = (tree: ReactTestRenderer, n: number) => Boolean(toggle(tree, n)?.props.accessibilityState?.expanded);
-const press = (node: ReactTestInstance) => act(async () => { await node.props.onPress(); });
-const list = (tree: ReactTestRenderer) => tree.root.findByType('FlashList' as never);
-const header = (tree: ReactTestRenderer) => tree.root.findByType('FilteredListHeader' as never);
-const texts = (tree: ReactTestRenderer) =>
-  tree.root
-    .findAll((node) => (node.type as unknown) === 'Text')
-    .map((node) => [node.props.children].flat(Infinity).filter((child) => typeof child === 'string' || typeof child === 'number').join(''));
+type Host = ReturnType<typeof screen.getByTestId>;
+// A negative check must also see an element that is mounted but hidden.
+const anywhere = { includeHiddenElements: true } as const;
+const present = (testID: string) => expect(screen.getByTestId(testID)).toBeOnTheScreen();
+const absent = (testID: string) => expect(screen.queryByTestId(testID, anywhere)).not.toBeOnTheScreen();
+const host = (testID: string) => screen.getByTestId(testID);
+const card = (n: number) => screen.queryByTestId(`grn-card-g${n}`);
+const toggle = (n: number) => screen.queryByTestId(`grn-card-toggle-g${n}`);
+const isOpen = (n: number) => Boolean(toggle(n)?.props.accessibilityState?.expanded);
+const user = () => userEvent.setup({ delay: 0 });
+const press = (node: Host | null) => user().press(node as Host);
+/** Every host element below one, in order (the stand-in hosts "FlashList" and "FilteredListHeader" have no role, label or text). */
+const below = (node: Host): Host[] => node.children.flatMap((child) => (!child || typeof child === 'string' ? [] : [child as Host, ...below(child as Host)]));
+const allHosts = () => [screen.root as Host, ...below(screen.root as Host)];
+const byType = (type: string) => {
+  const found = allHosts().filter((node) => (node.type as unknown) === type);
+  if (found.length !== 1) throw new Error(`expected one ${type}, found ${found.length}`);
+  return found[0];
+};
+const list = () => byType('FlashList');
+const header = () => byType('FilteredListHeader');
+const textOf = (node: Host) =>
+  [node.props.children].flat(Infinity).filter((child) => typeof child === 'string' || typeof child === 'number').join('');
+// What is drawn on screen, and (for a negative or a count) everything mounted, hidden or not.
+const texts = () => screen.queryAllByText(/^/).map(textOf);
+const allTexts = () => screen.queryAllByText(/^/, anywhere).map(textOf);
+const endReached = () => fireEvent(list(), 'endReached');
+const refresh = () => act(async () => { await list().props.refreshControl.props.onRefresh(); });
+/** The Swipeable around a card, or null when the card is not in one (read from the fiber; Testing Library shows host views only). */
+const swipeableOf = (n: number) => {
+  let fiber = host(`grn-card-g${n}`).unstable_fiber;
+  while (fiber && fiber.type !== Swipeable) fiber = fiber.return;
+  return fiber;
+};
 
 describe('actions by role', () => {
   it('a customer account gets a plain card: no swipe, no actions, no "Edit" anywhere', async () => {
     mockPermissions = { canCreate: false, canUpdate: false, role: 'customer' };
     mockState = { ...mockState, auth: { userProfile: { ...mockState.auth.userProfile, role: 'customer' } } };
     jest.mocked(getAssignedCustomerGRNItems).mockResolvedValue(answer(receipt(1)) as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(tree.root.findAllByType(Swipeable)).toHaveLength(0);
-    expect(card(tree, 1).props.accessibilityActions).toBeUndefined();
-    expect(card(tree, 1).props.accessibilityHint).toBe('Opens the GRN.');
-    expect(texts(tree)).not.toContain('Edit');
+    expect(swipeableOf(1)).toBeNull();
+    expect(card(1)?.props.accessibilityActions).toBeUndefined();
+    expect(card(1)).toHaveProp('accessibilityHint', 'Opens the GRN.');
+    expect(allTexts()).not.toContain('Edit');
   });
 
   it('staff get Print and Edit in the swipe and as screen-reader actions that do the same', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValue(answer(receipt(1)) as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(tree.root.findAllByType(Swipeable)).toHaveLength(1);
-    expect(card(tree, 1).props.accessibilityActions).toEqual([
+    expect(swipeableOf(1)).not.toBeNull();
+    expect(card(1)?.props.accessibilityActions).toEqual([
       { name: 'print', label: 'Print' },
       { name: 'edit', label: 'Edit' },
     ]);
-    expect(card(tree, 1).props.accessibilityHint).toBe('Opens the GRN. Print and Edit are in the actions menu.');
+    expect(card(1)).toHaveProp('accessibilityHint', 'Opens the GRN. Print and Edit are in the actions menu.');
 
-    act(() => card(tree, 1).props.onAccessibilityAction({ nativeEvent: { actionName: 'edit' } }));
+    await fireEvent(card(1) as Host, 'accessibilityAction', { nativeEvent: { actionName: 'edit' } });
     expect(router.push).toHaveBeenCalledWith('/grn-edit/g1/step1');
 
-    expect(tree.root.findByType('PrintRangeDialog' as never).props.visible).toBe(false);
-    act(() => card(tree, 1).props.onAccessibilityAction({ nativeEvent: { actionName: 'print' } }));
-    expect(tree.root.findByType('PrintRangeDialog' as never).props.visible).toBe(true);
+    expect(byType('PrintRangeDialog').props.visible).toBe(false);
+    await fireEvent(card(1) as Host, 'accessibilityAction', { nativeEvent: { actionName: 'print' } });
+    expect(byType('PrintRangeDialog').props.visible).toBe(true);
   });
 });
 
 describe('load errors (style guide 14.9)', () => {
   it('a failed refresh keeps the rows under a strip, and Try again loads them again', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(1)) as never).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.refreshControl.props.onRefresh(); });
+    await renderList();
+    await refresh();
 
-    expect(host(tree, 'grn-stale-strip')).toBeDefined();
-    expect(card(tree, 1)).toBeDefined();
+    present('grn-stale-strip');
+    expect(card(1)).toBeOnTheScreen();
 
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(1)) as never);
-    await press(pressable(tree, 'grn-stale-strip-retry'));
-    expect(host(tree, 'grn-stale-strip')).toBeUndefined();
+    await press(screen.getByTestId('grn-stale-strip-retry'));
+    await waitFor(() => absent('grn-stale-strip'));
   });
 
   it('shows the skeleton, never the empty state, while a new first page is pending', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([]) as never);
-    const tree = await renderList();
-    expect(texts(tree)).toContain('No GRNs yet');
+    await renderList();
+    expect(texts()).toContain('No GRNs yet');
 
     let release!: (value: unknown) => void;
     jest.mocked(getAllGRNItems).mockReturnValueOnce(new Promise((resolve) => { release = resolve; }) as never);
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { stock_status: 'low_stock' } } };
-    await act(async () => { tree.update(grnListElement()); });
+    await screen.rerender(grnListElement());
 
-    const busy = tree.root.findAll((node) => node.props.accessibilityState?.busy === true && node.props.accessibilityLabel);
+    const busy = allHosts().filter((node) => node.props.accessibilityState?.busy === true && node.props.accessibilityLabel);
     expect(busy.length).toBeGreaterThan(0);
-    expect(texts(tree)).not.toContain('No GRNs yet');
+    expect(allTexts()).not.toContain('No GRNs yet');
     await act(async () => { release(answer([]) as never); });
   });
 
   it('a failed first page is the error state with Try again', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(texts(tree)).toContain("Couldn't load GRNs");
-    expect(card(tree, 1)).toBeUndefined();
+    expect(texts()).toContain("Couldn't load GRNs");
+    absent('grn-card-g1');
   });
 
   it('a failed new filter does not pass the old rows off as its answer', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(1)) as never).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
+    await renderList();
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { stock_status: 'low_stock' } } };
-    await act(async () => { tree.update(grnListElement()); });
+    await screen.rerender(grnListElement());
 
-    expect(card(tree, 1)).toBeUndefined();
-    expect(host(tree, 'grn-stale-strip')).toBeUndefined();
-    expect(texts(tree)).toContain("Couldn't load GRNs");
+    absent('grn-card-g1');
+    absent('grn-stale-strip');
+    expect(texts()).toContain("Couldn't load GRNs");
   });
 
   it('a failed next page is the last row with Try again, which asks for the same page', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(1), true) as never).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await renderList();
+    await endReached();
 
-    expect(host(tree, 'grn-load-more-error')).toBeDefined();
+    present('grn-load-more-error');
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(2)) as never);
-    await press(tree.root.findAll((node) => node.props.accessibilityLabel === 'Try loading more GRNs again' && typeof node.props.onPress === 'function')[0]);
+    await press(screen.getByLabelText('Try loading more GRNs again'));
 
     const offsets = jest.mocked(getAllGRNItems).mock.calls.map(([params]) => params?.p_offset);
     expect(offsets).toEqual([0, 1, 1]);
-    expect(card(tree, 2)).toBeDefined();
+    expect(card(2)).toBeOnTheScreen();
   });
 
   it('offline, the top of the list says when the GRNs were loaded', async () => {
     mockOffline = true;
     jest.mocked(getAllGRNItems).mockResolvedValue(answer(receipt(1)) as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(host(tree, 'grn-last-updated')).toBeDefined();
+    present('grn-last-updated');
   });
 });
 
@@ -255,8 +269,8 @@ describe('pages of whole receipts', () => {
   it('asks for receipts, and starts the next page after the receipts received', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([...receipt(1, 3), ...receipt(2, 2), ...receipt(3, 2)], true) as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(4)) as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await renderList();
+    await endReached();
 
     const calls = jest.mocked(getAllGRNItems).mock.calls.map(([params]) => params);
     expect(calls[0]).toMatchObject({ p_offset: 0, p_limit: 20, p_filters: { page_by: 'receipt' } });
@@ -266,8 +280,8 @@ describe('pages of whole receipts', () => {
   it('pages lines, as before, when the facility has no migration 98', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([...receipt(1, 3), ...receipt(2, 2), ...receipt(3, 2)], true, 'line') as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(4), false, 'line') as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await renderList();
+    await endReached();
 
     expect(jest.mocked(getAllGRNItems).mock.calls[1][0]).toMatchObject({ p_offset: 7, p_limit: 80 });
   });
@@ -278,16 +292,16 @@ describe('repeated lines on a next page (code review 2026-10-18, R1-01)', () => 
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([...receipt(1), ...receipt(2), ...receipt(3, 2)], true) as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([...receipt(3, 2), ...receipt(4)], true) as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(5)) as never);
-    const tree = await renderList();
-    expect(host(tree, 'grn-card-stock-g3')).toBeDefined();
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await renderList();
+    present('grn-card-stock-g3');
+    await endReached();
 
-    const stockOf = (n: number) => [host(tree, `grn-card-stock-g${n}`).findAllByType('Text' as never)[1].props.children].flat().join('');
+    const stockOf = (n: number) => [within(host(`grn-card-stock-g${n}`)).queryAllByText(/^/)[1].props.children].flat().join('');
     // The number left in stock (the card no longer prints "of N bags"): 20 once, not 40 if the repeat were added again.
     expect(stockOf(3)).toBe('20');
-    expect(texts(tree).filter((text) => text === '2 items')).toHaveLength(1);
+    expect(allTexts().filter((text) => text === '2 items')).toHaveLength(1);
 
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await endReached();
     // Page 1 held 3 receipts, page 2 answered 2 (one a repeat): the server has counted 5.
     expect(jest.mocked(getAllGRNItems).mock.calls.map(([params]) => params?.p_offset)).toEqual([0, 3, 5]);
   });
@@ -295,10 +309,10 @@ describe('repeated lines on a next page (code review 2026-10-18, R1-01)', () => 
   it('a line mode page that repeats a line does not show it twice', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([...receipt(1), ...receipt(2, 2)], true, 'line') as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([...receipt(2, 2).slice(1), ...receipt(3)], false, 'line') as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await renderList();
+    await endReached();
 
-    expect(texts(tree).filter((text) => text === '2 items')).toHaveLength(1);
+    expect(allTexts().filter((text) => text === '2 items')).toHaveLength(1);
     expect(jest.mocked(getAllGRNItems).mock.calls.length).toBe(2);
   });
 });
@@ -309,16 +323,16 @@ describe('the unit changes while the list is open (R1-03)', () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(4), true, 'receipt') as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([...receipt(1), ...receipt(2)], true, 'receipt') as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(3)) as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await renderList();
+    await endReached();
 
     const calls = jest.mocked(getAllGRNItems).mock.calls.map(([params]) => [params?.p_offset, params?.p_limit]);
     expect(calls).toEqual([[0, 20], [7, 80], [0, 20]]);
     // The rows are those of the reload, not a mixture.
-    expect(card(tree, 4)).toBeUndefined();
-    expect([1, 2].map((n) => card(tree, n) !== undefined)).toEqual([true, true]);
+    absent('grn-card-g4');
+    expect([1, 2].map((n) => card(n) !== null)).toEqual([true, true]);
     // And the next page continues in receipts.
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await endReached();
     expect(jest.mocked(getAllGRNItems).mock.calls[3][0]).toMatchObject({ p_offset: 2, p_limit: 20 });
   });
 });
@@ -336,15 +350,15 @@ describe('a next page that is no longer wanted (R1-08)', () => {
     jest.mocked(getAllGRNItems).mockImplementationOnce(() => later.promise as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([...receipt(7), ...receipt(8)], true) as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(9)) as never);
-    const tree = await renderList();
-    await act(async () => { list(tree).props.onEndReached(); });
+    await renderList();
+    await endReached();
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { stock_status: 'in_stock' } } };
-    await act(async () => { tree.update(grnListElement()); });
+    await screen.rerender(grnListElement());
     await act(async () => { later.finish(answer(receipt(2))); });
 
-    expect(card(tree, 2)).toBeUndefined();
-    expect(card(tree, 7)).toBeDefined();
-    await act(async () => { await list(tree).props.onEndReached(); });
+    absent('grn-card-g2');
+    expect(card(7)).toBeOnTheScreen();
+    await endReached();
     expect(jest.mocked(getAllGRNItems).mock.calls.map(([params]) => params?.p_offset)).toEqual([0, 1, 0, 2]);
   });
 
@@ -354,13 +368,13 @@ describe('a next page that is no longer wanted (R1-08)', () => {
     jest.mocked(getAllGRNItems).mockImplementationOnce(() => later.promise as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(1), true) as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(3)) as never);
-    const tree = await renderList();
-    await act(async () => { list(tree).props.onEndReached(); });
-    await act(async () => { await list(tree).props.refreshControl.props.onRefresh(); });
+    await renderList();
+    await endReached();
+    await refresh();
     await act(async () => { later.finish(answer(receipt(2))); });
 
-    expect(card(tree, 2)).toBeUndefined();
-    await act(async () => { await list(tree).props.onEndReached(); });
+    absent('grn-card-g2');
+    await endReached();
     expect(jest.mocked(getAllGRNItems).mock.calls.map(([params]) => params?.p_offset)).toEqual([0, 1, 0, 1]);
   });
 });
@@ -368,13 +382,13 @@ describe('a next page that is no longer wanted (R1-08)', () => {
 describe('the end of the list after a failed next page (R1-04)', () => {
   it('does not ask again by itself; only Try again does', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(1), true) as never).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
-    await act(async () => { await list(tree).props.onEndReached(); });
-    expect(host(tree, 'grn-load-more-error')).toBeDefined();
+    await renderList();
+    await endReached();
+    present('grn-load-more-error');
 
-    await act(async () => { await list(tree).props.onEndReached(); });
+    await endReached();
     expect(jest.mocked(getAllGRNItems)).toHaveBeenCalledTimes(2);
-    expect(host(tree, 'grn-load-more-error')).toBeDefined();
+    present('grn-load-more-error');
   });
 });
 
@@ -384,118 +398,117 @@ describe('a reload that fails on a list with no rows (R1-05)', () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([]) as never);
     jest.mocked(getAllGRNItems).mockImplementationOnce(() => new Promise(() => {}) as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
-    expect(texts(tree)).toContain('No GRNs yet');
+    await renderList();
+    expect(texts()).toContain('No GRNs yet');
 
     // The filter is changed and changed back before the answer: the same request is asked again, and fails.
     mockFilters = { ...mockFilters, request: { ...requestA, p_filters: { stock_status: 'in_stock' } } };
-    await act(async () => { tree.update(grnListElement()); });
+    await screen.rerender(grnListElement());
     mockFilters = { ...mockFilters, request: { ...requestA } };
-    await act(async () => { tree.update(grnListElement()); });
+    await screen.rerender(grnListElement());
 
-    expect(texts(tree)).toContain("Couldn't load GRNs");
-    expect(texts(tree)).not.toContain('No GRNs yet');
+    expect(texts()).toContain("Couldn't load GRNs");
+    expect(allTexts()).not.toContain('No GRNs yet');
   });
 });
 
 describe('swipe state belongs to the GRN (R1-06)', () => {
   it('each swipeable is keyed by its GRN, so a recycled cell cannot keep another GRN\'s open swipe', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValue(answer([...receipt(1), ...receipt(2)]) as never);
-    const tree = await renderList();
+    await renderList();
 
-    const keys = tree.root.findAllByType(Swipeable).map((node) => (node as unknown as { _fiber: { key: string | null } })._fiber.key);
-    expect(keys).toEqual(['g1', 'g2']);
+    // Fiber read: the key of the Swipeable above each card (it is no host view, so no query reaches it).
+    expect([swipeableOf(1)?.key, swipeableOf(2)?.key]).toEqual(['g1', 'g2']);
   });
 });
 
 describe('a filter on lines (code review 2026-10-18, R1-02)', () => {
   it('without one, the card counts its items and says nothing more', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValue(answer(receipt(1, 3)) as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(texts(tree)).toContain('3 items');
-    expect(host(tree, 'grn-card-filtered-note-g1')).toBeUndefined();
-    expect(card(tree, 1).props.accessibilityLabel).not.toContain('Only the items that match');
+    expect(texts()).toContain('3 items');
+    absent('grn-card-filtered-note-g1');
+    expect(card(1)?.props.accessibilityLabel).not.toContain('Only the items that match');
   });
 
   it('with one, the card says "matching items" and that only those are shown, also to a screen reader', async () => {
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { item_ids: ['item-fictional-1'] } } };
     jest.mocked(getAllGRNItems).mockResolvedValue(answer([...receipt(1, 3), ...receipt(2)]) as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(texts(tree)).toEqual(expect.arrayContaining(['3 matching items', '1 matching item']));
-    expect(texts(tree)).not.toContain('3 items');
-    expect(texts(tree).filter((text) => text === 'Only the items that match the filters are shown.')).toHaveLength(2);
-    expect(card(tree, 1).props.accessibilityLabel).toContain('3 matching items');
-    expect(card(tree, 1).props.accessibilityLabel).toContain('Only the items that match the filters are shown.');
+    expect(texts()).toEqual(expect.arrayContaining(['3 matching items', '1 matching item']));
+    expect(allTexts()).not.toContain('3 items');
+    expect(allTexts().filter((text) => text === 'Only the items that match the filters are shown.')).toHaveLength(2);
+    expect(card(1)?.props.accessibilityLabel).toContain('3 matching items');
+    expect(card(1)?.props.accessibilityLabel).toContain('Only the items that match the filters are shown.');
   });
 
   it('a customer, date or GRN number filter keeps whole GRNs and adds no note', async () => {
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { customer_ids: ['customer-fictional-1'], gr_no_from: 'RV1' } } };
     jest.mocked(getAllGRNItems).mockResolvedValue(answer(receipt(1, 3)) as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(texts(tree)).toContain('3 items');
-    expect(host(tree, 'grn-card-filtered-note-g1')).toBeUndefined();
+    expect(texts()).toContain('3 items');
+    absent('grn-card-filtered-note-g1');
   });
 });
 
 describe('open cards', () => {
   it('a card keeps its state when it leaves the screen and comes back, and no other card takes it', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValue(answer([...receipt(1), ...receipt(2)]) as never);
-    const tree = await renderList();
-    await press(toggle(tree, 1));
-    expect([isOpen(tree, 1), isOpen(tree, 2)]).toEqual([true, false]);
+    await renderList();
+    await press(toggle(1));
+    expect([isOpen(1), isOpen(2)]).toEqual([true, false]);
 
     // GRN 1 scrolls off the screen, then back.
-    act(() => setFlashListWindow(1));
-    expect(card(tree, 1)).toBeUndefined();
-    expect(isOpen(tree, 2)).toBe(false);
-    act(() => setFlashListWindow());
+    await act(async () => setFlashListWindow(1));
+    absent('grn-card-g1');
+    expect(isOpen(2)).toBe(false);
+    await act(async () => setFlashListWindow());
 
-    expect([isOpen(tree, 1), isOpen(tree, 2)]).toEqual([true, false]);
+    expect([isOpen(1), isOpen(2)]).toEqual([true, false]);
   });
 
   it('Expand all opens every card, also those loaded later; one can then be closed on its own', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer([...receipt(1), ...receipt(2)], true) as never);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(3)) as never);
-    const tree = await renderList();
+    await renderList();
 
-    act(() => header(tree).props.expand.onToggle());
-    expect(header(tree).props.expand.expanded).toBe(true);
-    await act(async () => { await list(tree).props.onEndReached(); });
-    expect([1, 2, 3].map((n) => isOpen(tree, n))).toEqual([true, true, true]);
+    await act(async () => header().props.expand.onToggle());
+    expect(header().props.expand.expanded).toBe(true);
+    await endReached();
+    expect([1, 2, 3].map((n) => isOpen(n))).toEqual([true, true, true]);
 
-    await press(toggle(tree, 2));
-    expect([1, 2, 3].map((n) => isOpen(tree, n))).toEqual([true, false, true]);
+    await press(toggle(2));
+    expect([1, 2, 3].map((n) => isOpen(n))).toEqual([true, false, true]);
   });
 });
 
 describe('the header', () => {
   it('shows its busy line while new results load over the rows on screen', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(1)) as never);
-    const tree = await renderList();
-    expect(header(tree).props.busy).toBe(false);
+    await renderList();
+    expect(header().props.busy).toBe(false);
 
     let finish!: (value: unknown) => void;
     jest.mocked(getAllGRNItems).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }) as never);
     mockFilters = { ...mockFilters, request: { ...mockFilters.request, p_filters: { stock_status: 'in_stock' } } };
-    await act(async () => { tree.update(grnListElement()); });
-    expect(header(tree).props.busy).toBe(true);
+    await screen.rerender(grnListElement());
+    expect(header().props.busy).toBe(true);
 
     await act(async () => { finish(answer(receipt(1))); });
-    expect(header(tree).props.busy).toBe(false);
+    expect(header().props.busy).toBe(false);
   });
 
   it('date headings count GRNs, as a lower bound while more pages remain', async () => {
     mockFilters = { ...mockFilters, request: { p_sort_by: 'date', p_sort_order: 'desc' }, sort: { field: 'date', order: 'desc' } };
     jest.mocked(getAllGRNItems).mockResolvedValue(answer([...receipt(1), ...receipt(2)], true) as never);
-    const tree = await renderList();
+    await renderList();
 
-    expect(texts(tree)).toContain('2+');
-    expect(
-      tree.root.findAll((node) => typeof node.type === 'string' && /, more than 2 GRNs$/.test(String(node.props.accessibilityLabel ?? '')))
-    ).toHaveLength(1);
+    // The figure is hidden from screen readers (the heading's label says it), so it is mounted but not on the accessibility tree.
+    expect(allTexts()).toContain('2+');
+    expect(screen.getAllByLabelText(/, more than 2 GRNs$/, anywhere)).toHaveLength(1);
   });
 });
 
@@ -504,12 +517,11 @@ describe.each(BRANDS.flatMap((brand) => (['light', 'dark'] as const).map((mode) 
     mockState = { ...mockState, theme: { preference: mode, brand } };
     const t = getTokens(brand, mode);
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(answer(receipt(1, 2)) as never).mockResolvedValueOnce(failure as never);
-    const tree = await renderList();
-    await press(toggle(tree, 1));
-    await act(async () => { await list(tree).props.refreshControl.props.onRefresh(); });
+    await renderList();
+    await press(toggle(1));
+    await refresh();
 
-    const backgrounds = tree.root
-      .findAll((node) => typeof node.type === 'string')
+    const backgrounds = allHosts()
       .map((node) => StyleSheet.flatten(node.props.style)?.backgroundColor)
       .filter(Boolean);
     expect(backgrounds).toEqual(expect.arrayContaining([t.background.base, t.surface.card, t.table.headerFill, t.status.critical.background]));
@@ -519,33 +531,33 @@ describe.each(BRANDS.flatMap((brand) => (['light', 'dark'] as const).map((mode) 
 describe('a page served from the phone\'s saved copy while the phone is online (WH-124)', () => {
   const OLD = new Date('2026-09-20T18:26:00').getTime();
   const saved = (items: Line[]) => ({ ...answer(items), fromCache: true, cachedAt: OLD }) as never;
-  const updated = (tree: ReactTestRenderer) => texts(tree).filter((text) => /Last updated/.test(text)).join('|');
+  const updated = () => texts().filter((text) => /Last updated/.test(text)).join('|');
 
   it('says when the page was loaded, with its date, though the phone has a connection', async () => {
     mockOffline = false;
     jest.mocked(getAllGRNItems).mockResolvedValue(saved(receipt(1)));
-    const tree = await renderList();
+    await renderList();
 
-    expect(card(tree, 1)).toBeDefined();
-    expect(host(tree, 'grn-last-updated')).toBeDefined();
-    expect(updated(tree)).toMatch(/20\/09\/26/);
-    expect(updated(tree)).toMatch(/6:26/);
+    expect(card(1)).toBeOnTheScreen();
+    present('grn-last-updated');
+    expect(updated()).toMatch(/20\/09\/26/);
+    expect(updated()).toMatch(/6:26/);
   });
 
   it('the line goes when a later load succeeds', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValueOnce(saved(receipt(1))).mockResolvedValueOnce(answer(receipt(2)) as never);
-    const tree = await renderList();
-    expect(host(tree, 'grn-last-updated')).toBeDefined();
+    await renderList();
+    present('grn-last-updated');
     mockFilters = { ...mockFilters, request: { p_sort_by: 'date', p_sort_order: 'asc' }, sort: { field: 'date', order: 'asc' } };
-    await act(async () => { tree.update(grnListElement()); });
+    await screen.rerender(grnListElement());
 
-    expect(card(tree, 2)).toBeDefined();
-    expect(host(tree, 'grn-last-updated')).toBeUndefined();
+    expect(card(2)).toBeOnTheScreen();
+    absent('grn-last-updated');
   });
 
   it('a page loaded from the server, online, shows no line', async () => {
     jest.mocked(getAllGRNItems).mockResolvedValue(answer(receipt(1)) as never);
-    const tree = await renderList();
-    expect(host(tree, 'grn-last-updated')).toBeUndefined();
+    await renderList();
+    absent('grn-last-updated');
   });
 });

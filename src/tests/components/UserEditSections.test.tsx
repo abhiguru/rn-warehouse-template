@@ -1,12 +1,8 @@
 /** G-60: Edit user's section titles are SectionHeader. G-34: a connection shows no role, status or customer controls. */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import UserEditScreen from '../../../app/user-edit/[id]';
 import { adminUserService } from '@/services/admin-user-service';
-import { showAlert } from '@/utils/alert';
-import { showToast } from '@/utils/toast';
-import { SectionHeader } from '@/components/ui/SectionHeader';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'admin', name: 'Dev Administrator' } } };
 jest.mock('@/store/hooks', () => ({
@@ -37,23 +33,10 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
-const lastAlert = () => {
-  const calls = jest.mocked(showAlert).mock.calls;
-  const [title, message, buttons] = calls[calls.length - 1];
-  return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
-};
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const sectionTitles = () =>
+  screen.queryAllByRole('header', everything).map(node => node.props.accessibilityLabel as string | undefined).filter((label): label is string => label !== undefined);
 
 jest.mock('@/services/admin-user-service', () => ({
   adminUserService: {
@@ -79,7 +62,7 @@ const STAFF = {
 };
 const loadUser = async (details: Record<string, unknown> = STAFF) => {
   jest.mocked(adminUserService.getUserDetails).mockResolvedValue({ success: true, data: details } as never);
-  await act(async () => { tree = create(<UserEditScreen />); });
+  await render(<UserEditScreen />);
 };
 beforeEach(() => {
   jest.clearAllMocks();
@@ -95,33 +78,33 @@ describe('Edit user sections', () => {
   it('draws Role, Status and Customer assignments through SectionHeader', async () => {
     // Assignments are for the Customer role only; for staff the section says so and has no Add button.
     await loadUser({ ...STAFF, role: 'customer' });
-    const headers = tree!.root.findAllByType(SectionHeader);
-    expect(headers.map(header => header.props.title)).toEqual(['Role', 'Status', 'Customer assignments']);
-    expect(shownText()).toContain('ROLE');
+    // SectionHeader draws a header named by its title.
+    expect(sectionTitles()).toEqual(['Role', 'Status', 'Customer assignments']);
+    expect(screen.getAllByText('ROLE')[0]).toBeOnTheScreen();
     // The Add button of Customer assignments keeps its spoken name.
-    expect(byLabel('Assign customer')).toBeTruthy();
+    expect(screen.getAllByLabelText('Assign customer')[0]).toBeOnTheScreen();
   });
 
   it('says assignments are for the Customer role only, with no Add button, for a staff user', async () => {
     await loadUser();
-    expect(byLabel('Assign customer')).toBeUndefined();
-    expect(shownText()).toContain("Staff see every active customer. Customer assignments apply only to the Customer role.");
+    expect(screen.queryAllByLabelText('Assign customer', everything)).toHaveLength(0);
+    expect(screen.getAllByText(/Staff see every active customer\. Customer assignments apply only to the Customer role\./)[0]).toBeOnTheScreen();
   });
 });
 
 describe('Edit user for a connection', () => {
   it('says it is managed by the FAS sync setup and offers no controls', async () => {
     await loadUser({ ...STAFF, id: 'u9', name: 'FAS sync', role: 'admin', mobile: '0000000000', is_service_account: true, assigned_customers: [] });
-    expect(shownText()).toContain('Managed by the FAS sync setup.');
-    expect(tree!.root.findAllByType(SectionHeader)).toHaveLength(0);
-    expect(tree!.root.findAll(node => node.props.accessibilityLabel === 'Account active')).toHaveLength(0);
-    expect(shownText()).not.toContain('Customer assignments');
+    expect(screen.getAllByText(/Managed by the FAS sync setup\./)[0]).toBeOnTheScreen();
+    expect(sectionTitles()).toHaveLength(0);
+    expect(screen.queryAllByLabelText('Account active', everything)).toHaveLength(0);
+    expect(screen.queryAllByText(/Customer assignments/, everything)).toHaveLength(0);
   });
 
   it('CR-47: shows no placeholder number, in the text or the card label', async () => {
     await loadUser({ ...STAFF, id: 'u9', name: 'FAS sync', role: 'admin', mobile: '0000000000', is_service_account: true, assigned_customers: [] });
-    expect(shownText()).not.toContain('+91 00000 00000');
-    const labels = tree!.root.findAll(node => typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string);
+    expect(screen.queryAllByText(/\+91 00000 00000/, everything)).toHaveLength(0);
+    const labels = screen.queryAllByLabelText(/./, everything).map(node => node.props.accessibilityLabel as string);
     expect(labels.some(label => label.includes('00000'))).toBe(false);
     expect(labels).toContain('FAS sync');
   });
@@ -129,7 +112,7 @@ describe('Edit user for a connection', () => {
 
 describe('Edit user: signed-in devices', () => {
   const { listUserSessions } = jest.requireMock('@/services/session-devices-service');
-  const showsDevices = () => tree!.root.findAll(node => node.props.testID === 'signed-in-devices').length > 0;
+  const showsDevices = () => screen.queryAllByTestId('signed-in-devices', everything).length > 0;
 
   it('is shown to an administrator for a staff user when the backend lists them', async () => {
     listUserSessions.mockResolvedValueOnce({ success: true, sessions: [] });

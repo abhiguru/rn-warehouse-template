@@ -1,7 +1,6 @@
 /** G-26: saving an item ends in a toast and a screen change, not an alert that needs OK; Save with no change just goes back. */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import ItemFormScreen from '../../../app/item-form';
 import ItemEditScreen from '../../../app/item-edit/[id]';
 import { itemService } from '@/services/item-service';
@@ -40,23 +39,8 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
-const lastAlert = () => {
-  const calls = jest.mocked(showAlert).mock.calls;
-  const [title, message, buttons] = calls[calls.length - 1];
-  return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
-};
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
+const user = userEvent.setup({ delay: 0 });
+const press = async (label: string) => { await user.press(screen.getByRole('button', { name: label })); };
 
 const GARLIC = { id: 'i2', name: 'Garlic', packaging: 'Bag', description: '', active: true };
 beforeEach(() => {
@@ -66,11 +50,12 @@ beforeEach(() => {
   jest.mocked(itemService.updateItem).mockResolvedValue({ success: true, message: 'ok' } as never);
   jest.mocked(itemService.createItem).mockResolvedValue({ success: true, message: 'ok' } as never);
 });
-const renderEdit = async () => { await act(async () => { tree = create(<ItemEditScreen />); }); };
-const renderAdd = async () => { await act(async () => { tree = create(<ItemFormScreen />); }); };
+const renderEdit = async () => { await render(<ItemEditScreen />); await screen.findByDisplayValue('Garlic'); };
+const renderAdd = async () => { await render(<ItemFormScreen />); };
 const typeInto = async (label: string, text: string) => {
-  const field = tree!.root.find(node => node.props.accessibilityLabel === label && typeof node.props.onChangeText === 'function');
-  await act(async () => { field.props.onChangeText(text); });
+  const field = screen.getByLabelText(label);
+  await user.clear(field);
+  await user.type(field, text);
 };
 
 describe('Edit item save', () => {
@@ -84,11 +69,12 @@ describe('Edit item save', () => {
     expect(showAlert).not.toHaveBeenCalled();
   });
 
-  const saveButton = () => tree!.root.find(node => node.props.accessibilityLabel === 'Save item' && node.props.accessibilityState !== undefined);
+  const saveButton = () => screen.getByRole('button', { name: 'Save item' });
 
   it('with nothing changed has Save switched off (WH-218): nothing is saved, no message, no dialog, no leaving', async () => {
     await renderEdit();
     expect(saveButton().props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
+    expect(saveButton()).toBeDisabled();
     expect(itemService.updateItem).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
     expect(showAlert).not.toHaveBeenCalled();

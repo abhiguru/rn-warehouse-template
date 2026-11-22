@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { AppState } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import OrderFlashList from '@/components/lists/OrderFlashList';
 import SupervisorOrderQueueList from '@/components/lists/SupervisorOrderQueueList';
 import { OrderService } from '@/services/order-service';
@@ -77,6 +77,13 @@ const orders = (from: number, to: number, mark = 'old'): Order[] =>
 /** The order rows of the list, whatever its row wrapper (headers and groups are left out). */
 const rowsOf = (data: unknown[]): (Order & { mark: string })[] =>
   data.map(row => ((row as { data?: unknown }).data ?? row) as Order & { mark: string }).filter(row => typeof row.id === 'string' && row.id.startsWith('order-'));
+// The list stand-in is a plain host element that keeps the list's props: the rows it was given have no role or text,
+// so they are read from it.
+const flash = () => {
+  const found = (screen.root ? [screen.root, ...screen.root.queryAll(() => true)] : []).filter(node => (node.type as unknown) === 'FlashList');
+  if (found.length !== 1) throw new Error(`Expected one list, found ${found.length}`);
+  return found[0];
+};
 const settle = () => act(async () => { await jest.advanceTimersByTimeAsync(200); });
 const interval = () => act(async () => { await jest.advanceTimersByTimeAsync(15_000); });
 
@@ -103,11 +110,10 @@ describe.each([
     service.getOrdersList
       .mockResolvedValueOnce({ success: true, data: orders(1, 200), metadata: { has_more: true, total_count: 300 } } as never)
       .mockResolvedValueOnce({ success: true, data: orders(201, 300), metadata: { has_more: false, total_count: 300 } } as never);
-    let renderer!: ReturnType<typeof create>;
-    await act(async () => { renderer = create(element()); });
+    await render(element());
     await settle();
-    const list = () => renderer.root.findByType('FlashList' as never);
-    await act(async () => { list().props.onEndReached(); });
+    const list = flash;
+    await fireEvent(list(), 'endReached');
     await settle();
     expect(rowsOf(list().props.data)).toHaveLength(300);
 
@@ -125,17 +131,14 @@ describe.each([
     await interval();
     expect((service.getOrdersList.mock.calls.at(-1)![0] as { limit: number }).limit).toBe(200);
     expect(rowsOf(list().props.data)).toHaveLength(300);
-    await act(async () => { renderer.unmount(); });
   });
 
   it('asks for exactly the rows shown while that is 200 or fewer', async () => {
     service.getOrdersList.mockResolvedValue({ success: true, data: orders(1, 60), metadata: { has_more: false, total_count: 60 } } as never);
-    let renderer!: ReturnType<typeof create>;
-    await act(async () => { renderer = create(element()); });
+    await render(element());
     await settle();
     await interval();
     expect((service.getOrdersList.mock.calls.at(-1)![0] as { limit: number }).limit).toBe(60);
-    expect(rowsOf(renderer.root.findByType('FlashList' as never).props.data)).toHaveLength(60);
-    await act(async () => { renderer.unmount(); });
+    expect(rowsOf(flash().props.data)).toHaveLength(60);
   });
 });

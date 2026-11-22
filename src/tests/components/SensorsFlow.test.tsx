@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import { AppState } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { getSessionIdentity } from '@/config/supabaseConfig';
@@ -114,9 +114,9 @@ function held() {
 }
 
 jest.setTimeout(30_000);
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 let originalAppState: typeof AppState.currentState;
+let user: ReturnType<typeof userEvent.setup>;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
 });
@@ -124,6 +124,7 @@ afterAll(() => restoreQueries());
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate', 'clearImmediate'] });
+  user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   forgetQueries();
   jest.clearAllMocks();
   originalAppState = AppState.currentState;
@@ -132,7 +133,6 @@ beforeEach(async () => {
   jest.mocked(getSessionIdentity).mockResolvedValue(null);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   AppState.currentState = originalAppState;
   jest.useRealTimers();
 });
@@ -144,55 +144,48 @@ const flush = (ms = 0) =>
   });
 
 async function open() {
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<SensorsScreen />);
-  });
-  mounted.push(tree);
+  await render(<SensorsScreen />);
   await flush();
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-  const labels = () =>
-    tree.root.findAll(node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string);
-  const list = () => tree.root.findByType('FlashList' as never);
-  return {
-    tree,
-    texts,
-    // The figures as they are read out: "Online: 2".
-    kpis: () => labels().filter(label => /^(Sensors|Online|Offline or no recent data|Battery low): /.test(label)),
-    // The status tag of each sensor row, in order.
-    rowTags: () =>
-      tree.root
-        .findAll(node => typeof node.type === 'string' && node.props.accessibilityHint === 'Opens sensor history')
-        .map(row => (row.props.accessibilityLabel as string).split(', ')[2]),
-    alerts: () => labels().filter(label => /offline$|no recent data$|battery( critical)?$/.test(label)),
-    status: () => texts().find(text => text.includes('Last updated')),
-    refreshing: () => Boolean(list().props.refreshControl.props.refreshing),
-    pull: () => list().props.refreshControl.props.onRefresh() as Promise<unknown>,
-  };
 }
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const shows = (...texts: string[]) => texts.forEach(text => expect(screen.getAllByText(text)[0]).toBeOnTheScreen());
+const notShown = (text: string) => expect(screen.queryAllByText(text, everything)).toHaveLength(0);
+const labels = () => screen.queryAllByLabelText(/./, everything).map(node => node.props.accessibilityLabel as string);
+// The figures as they are read out: "Online: 2".
+const kpis = () => labels().filter(label => /^(Sensors|Online|Offline or no recent data|Battery low): /.test(label));
+// The status tag of each sensor row, in order.
+const rowTags = () => screen.queryAllByHintText('Opens sensor history', everything).map(row => (row.props.accessibilityLabel as string).split(', ')[2]);
+const alerts = () => labels().filter(label => /offline$|no recent data$|battery( critical)?$/.test(label));
+const status = () => screen.getAllByText(/Last updated/)[0];
+// The list is the stand-in of FlashList; it has no role or text, and its refresh control is on its props
+// (the same way as OrderManagementRenders.test.tsx reaches it).
+const list = () => screen.root!.queryAll(node => 'refreshControl' in node.props)[0];
+const refreshing = () => Boolean(list().props.refreshControl.props.refreshing);
+const pull = () => list().props.refreshControl.props.onRefresh() as Promise<unknown>;
 
 describe('the sensors list', () => {
   it('shows every sensor with its values, the figures and when they were read, from one request', async () => {
-    const screen = await open();
+    await open();
     expect(snapshot).toHaveBeenCalledTimes(1);
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Temperature and humidity', 'North chamber probe', 'South chamber probe', 'Dock probe', '−18.0°C', '4.0°C', '80%']));
-    expect(screen.kpis()).toEqual(['Sensors: 3', 'Online: 3', 'Offline or no recent data: 0', 'Battery low: 1']);
-    expect(screen.rowTags()).toEqual(['Sensor OK', 'Sensor OK', 'Battery low']);
-    expect(screen.status()).toBe('Last updated 10:00 am');
-    expect(screen.texts()).toContain('Updated 5 min ago');
+    shows('Temperature and humidity', 'North chamber probe', 'South chamber probe', 'Dock probe', '−18.0°C', '4.0°C', '80%');
+    expect(kpis()).toEqual(['Sensors: 3', 'Online: 3', 'Offline or no recent data: 0', 'Battery low: 1']);
+    expect(rowTags()).toEqual(['Sensor OK', 'Sensor OK', 'Battery low']);
+    expect(status()).toHaveTextContent('Last updated 10:00 am', { exact: true });
+    shows('Updated 5 min ago');
   });
 
   it('with no sensors says so, under the figures', async () => {
     snapshot.mockResolvedValue(answer([]) as never);
-    const screen = await open();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['No sensors yet', 'Sensors set up for this facility appear here.']));
-    expect(screen.kpis()).toEqual(['Sensors: 0', 'Online: 0', 'Offline or no recent data: 0', 'Battery low: 0']);
+    await open();
+    shows('No sensors yet', 'Sensors set up for this facility appear here.');
+    expect(kpis()).toEqual(['Sensors: 0', 'Online: 0', 'Offline or no recent data: 0', 'Battery low: 0']);
   });
 });
 
 describe('kept current by the minute timer', () => {
   it('a minute on, the screen asks again behind the rows, with no spinner, and shows the new value', async () => {
-    const screen = await open();
+    await open();
     expect(snapshot).toHaveBeenCalledTimes(1);
     const next = held();
     snapshot.mockImplementationOnce(() => next.promise as never);
@@ -203,16 +196,16 @@ describe('kept current by the minute timer', () => {
     await flush(1_000);
     expect(snapshot).toHaveBeenCalledTimes(2);
     // Asked behind the rows: no pull spinner, no busy header button, no skeleton.
-    expect(screen.refreshing()).toBe(false);
-    expect(screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Refresh sensor data' && node.props.accessibilityState?.busy)).toEqual([]);
-    expect(screen.texts()).toContain('North chamber probe');
+    expect(refreshing()).toBe(false);
+    expect(screen.queryAllByLabelText('Refresh sensor data', everything).filter(node => node.props.accessibilityState?.busy)).toEqual([]);
+    shows('North chamber probe');
 
     await act(async () => {
       next.release(answer([{ ...NORTH, latest_temperature: -12.5, measured_at: minutesAgo(0) }, SOUTH, DOCK]));
     });
     await flush();
-    expect(screen.texts()).toContain('−12.5°C');
-    expect(screen.texts()).not.toContain('−18.0°C');
+    shows('−12.5°C');
+    notShown('−18.0°C');
   });
 
   it('asks once a minute while shown and nothing in between: 11 requests in ten minutes', async () => {
@@ -222,24 +215,24 @@ describe('kept current by the minute timer', () => {
   });
 
   it('a sensor turns "No recent data" from the time alone, whatever the minute timer reads', async () => {
-    const screen = await open();
-    expect(screen.rowTags()).toEqual(['Sensor OK', 'Sensor OK', 'Battery low']);
-    expect(screen.texts()).not.toContain('1 with no recent data');
+    await open();
+    expect(rowTags()).toEqual(['Sensor OK', 'Sensor OK', 'Battery low']);
+    notShown('1 with no recent data');
 
     // South was read 29 minutes ago against 30: two minutes on, it has had nothing for 31.
     // The server's answer is unchanged (is_stale false): only the time has moved.
     await flush(2 * 60_000);
-    expect(screen.rowTags()).toEqual(['Sensor OK', 'No recent data', 'Battery low']);
-    expect(screen.alerts()).toEqual(['1 with no recent data', '1 low battery']);
-    expect(screen.kpis()).toEqual(['Sensors: 3', 'Online: 2', 'Offline or no recent data: 1', 'Battery low: 1']);
-    expect(screen.texts()).toContain('Updated 7 min ago');
+    expect(rowTags()).toEqual(['Sensor OK', 'No recent data', 'Battery low']);
+    expect(alerts()).toEqual(['1 with no recent data', '1 low battery']);
+    expect(kpis()).toEqual(['Sensors: 3', 'Online: 2', 'Offline or no recent data: 1', 'Battery low: 1']);
+    shows('Updated 7 min ago');
     // The minute timer asked twice more (60 s and 120 s); its answers did not change.
     expect(snapshot).toHaveBeenCalledTimes(3);
   });
 
   it('stops asking once the screen is gone', async () => {
-    const screen = await open();
-    act(() => screen.tree.unmount());
+    await open();
+    await screen.unmount();
     await flush(5 * 60_000);
     expect(snapshot).toHaveBeenCalledTimes(1);
   });
@@ -248,31 +241,28 @@ describe('kept current by the minute timer', () => {
 describe('needs attention', () => {
   it('names each kind under one heading, with its count read as one element and each sensor a button to its detail', async () => {
     snapshot.mockResolvedValue(answer([NORTH, GATE, DOCK]) as never);
-    const screen = await open();
-    const header = screen.tree.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityRole === 'header' && node.props.accessibilityLabel === 'Needs attention');
-    expect(header).toHaveLength(1);
-    expect(screen.texts()).toContain('NEEDS ATTENTION');
-    expect(screen.alerts()).toEqual(['1 offline', '1 low battery']);
+    await open();
+    expect(screen.queryAllByRole('header', { name: 'Needs attention', ...everything })).toHaveLength(1);
+    shows('NEEDS ATTENTION');
+    expect(alerts()).toEqual(['1 offline', '1 low battery']);
 
-    const links = screen.tree.root.findAll(
-      node => typeof node.type !== 'string' && node.props.accessibilityHint === 'Opens this sensor' && typeof node.props.onPress === 'function'
-    );
+    const links = screen.queryAllByHintText('Opens this sensor', everything);
     expect(links.map(link => [link.props.accessibilityLabel, link.props.accessibilityRole])).toEqual([
       ['Gate probe', 'button'],
       ['Dock probe', 'button'],
     ]);
-    await act(async () => links[0].props.onPress());
+    await user.press(links[0]);
     expect(push).toHaveBeenCalledWith('/sensor-detail/s4');
     // The offline sensor's row says why it shows no values.
-    expect(screen.rowTags()).toEqual(['Sensor OK', 'Offline', 'Battery low']);
-    expect(screen.texts()).toContain('Last seen 1 h ago');
+    expect(rowTags()).toEqual(['Sensor OK', 'Offline', 'Battery low']);
+    shows('Last seen 1 h ago');
   });
 
   it('is not drawn when all is well', async () => {
     snapshot.mockResolvedValue(answer([NORTH]) as never);
-    const screen = await open();
-    expect(screen.texts()).not.toContain('NEEDS ATTENTION');
-    expect(screen.alerts()).toEqual([]);
+    await open();
+    notShown('NEEDS ATTENTION');
+    expect(alerts()).toEqual([]);
   });
 });
 
@@ -284,33 +274,30 @@ describe('failures', () => {
     jest.mocked(getSessionIdentity).mockResolvedValue(account as never);
     await keep();
     snapshot.mockResolvedValue({ success: false, message: 'Network request failed', error: 'Network request failed' } as never);
-    const screen = await open();
-    expect(screen.texts()).toEqual(
-      expect.arrayContaining([
-        "Couldn't update. These figures were loaded earlier.",
-        "Couldn't load sensor data. Check your connection and try again.",
-        'North chamber probe',
-        'Dock probe',
-      ])
+    await open();
+    shows(
+      "Couldn't update. These figures were loaded earlier.",
+      "Couldn't load sensor data. Check your connection and try again.",
+      'North chamber probe',
+      'Dock probe',
     );
-    expect(screen.status()).toBe('Last updated 8:00 am');
-    expect(screen.texts()).not.toContain('Network request failed');
+    expect(status()).toHaveTextContent('Last updated 8:00 am', { exact: true });
+    notShown('Network request failed');
   });
 
   it('a refusal shows the reason alone: no kept copy, and "Try again" asks once more', async () => {
     jest.mocked(getSessionIdentity).mockResolvedValue(account as never);
     await keep();
     snapshot.mockResolvedValue({ success: false, message: 'Access denied. Staff access required.', error: '42501' } as never);
-    const screen = await open();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Something went wrong', 'Access denied. Staff access required.']));
-    expect(screen.texts()).not.toContain('North chamber probe');
+    await open();
+    shows('Something went wrong', 'Access denied. Staff access required.');
+    notShown('North chamber probe');
 
     snapshot.mockResolvedValue(answer([NORTH]) as never);
-    const retry = screen.tree.root.findAll(node => node.props.accessibilityLabel === 'Try again' && typeof node.props.onPress === 'function')[0];
-    await act(async () => retry.props.onPress());
+    await user.press(screen.getAllByLabelText('Try again')[0]);
     await flush();
     expect(snapshot).toHaveBeenCalledTimes(2);
-    expect(screen.texts()).toContain('North chamber probe');
+    shows('North chamber probe');
   });
 
   it('a list that could not be read is not asked again by the minute timer', async () => {
@@ -322,20 +309,20 @@ describe('failures', () => {
   });
 
   it('pull to refresh asks again and shows the spinner until the answer', async () => {
-    const screen = await open();
+    await open();
     const next = held();
     snapshot.mockImplementationOnce(() => next.promise as never);
     let pulled!: Promise<unknown>;
     await act(async () => {
-      pulled = screen.pull();
+      pulled = pull();
     });
     expect(snapshot).toHaveBeenCalledTimes(2);
-    expect(screen.refreshing()).toBe(true);
+    expect(refreshing()).toBe(true);
     await act(async () => {
       next.release(answer([NORTH]));
       await pulled;
     });
-    expect(screen.refreshing()).toBe(false);
-    expect(screen.texts()).not.toContain('Dock probe');
+    expect(refreshing()).toBe(false);
+    notShown('Dock probe');
   });
 });

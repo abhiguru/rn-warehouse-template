@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { GRNDispatchesTab } from '@/components/grn-details/GRNDispatchesTab';
 import { GRNItemsTab, type GRNItem } from '@/components/grn-details/GRNItemsTab';
 
@@ -27,33 +27,23 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 const item = (weight: number | null | undefined) =>
   ({ id: 'line-1', item_name: 'Example Potatoes', qty: 10, stock: 10, weight, package_mark: 'M1', rack: '', packaging: 'Bag' }) as unknown as GRNItem;
 
-function render(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  mounted.push(tree);
-  return tree;
-}
+type Host = ReturnType<typeof screen.getByText>;
+/** Every host element below one, in order (nothing else in Testing Library lists a View's bare children). */
+const below = (node: Host): Host[] => node.children.flatMap((child) => (!child || typeof child === 'string' ? [] : [child as Host, ...below(child as Host)]));
 
 /** Children of host Views that are bare text or numbers: what React Native throws on. */
-function looseText(tree: ReactTestRenderer) {
-  return tree.root
-    .findAll(node => (node.type as unknown) === 'View')
+function looseText() {
+  return [screen.root as Host, ...below(screen.root as Host)]
+    .filter(node => (node.type as unknown) === 'View')
     .flatMap(node => React.Children.toArray(node.props.children))
     .filter(child => typeof child === 'string' || typeof child === 'number');
 }
 
-const texts = (tree: ReactTestRenderer) =>
-  tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [].concat(node.props.children).join('').replace(/\u00A0/g, ' '));
+// Hidden Texts count too when a check says that something is NOT drawn.
+const texts = (hidden = false) =>
+  screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map(node => [].concat(node.props.children).join('').replace(/\u00A0/g, ' '));
 /** What a screen reader says for the card or header (the sort headings above the rows say their own). */
-const spoken = (tree: ReactTestRenderer) =>
-  tree.root.findAll(
-    node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string' && !/^Sort by /.test(node.props.accessibilityLabel)
-  )[0].props.accessibilityLabel as string;
-
-const mounted: ReactTestRenderer[] = [];
-afterEach(() => act(() => mounted.splice(0).forEach(tree => tree.unmount())));
+const spoken = () => screen.getAllByLabelText(/^(?!Sort by ).+/)[0].props.accessibilityLabel as string;
 
 const dispatch = { id: 'r1', dispatch_id: 'd1', disp_no: '42', disp_date: '2026-10-09', disp_quantity: 3, customer_name: '', registration: '', supervisor_name: '' };
 
@@ -63,40 +53,40 @@ describe.each([
 ])('GRN %s, the line under the item', (_name, show) => {
   // Review 2026-10-14, finding 7: at font scale 2.0 on a 360 dp phone a long mark and
   // "1,250 kg each" must wrap, never be cut.
-  it('writes the mark and the weight in full, with no line limit, at font scale 2', () => {
+  it('writes the mark and the weight in full, with no line limit, at font scale 2', async () => {
     mockFontScale = 2;
-    const tree = show(1250);
-    const line = tree.root.find(node => (node.type as unknown) === 'Text' && String(node.props.children).replace(/\u00A0/g, ' ') === 'M1 · 1,250 kg each');
+    await show(1250);
+    const line = screen.getByText('M1 · 1,250 kg each');
     expect(line.props.numberOfLines).toBeUndefined();
-    let column = line.parent!;
-    while (typeof column.type !== 'string') column = column.parent!;
+    const column = line.parent!;
+    expect(typeof column.type).toBe('string');
     expect(StyleSheet.flatten(column.props.style)).toMatchObject({ flex: 1, minWidth: 0 });
   });
 
-  it.each([[0], [null], [undefined]])('renders nothing for a weight of %p, not a bare 0', (weight) => {
-    const tree = show(weight);
-    expect(looseText(tree)).toEqual([]);
-    expect(texts(tree).some(text => /kg/.test(text))).toBe(false);
+  it.each([[0], [null], [undefined]])('renders nothing for a weight of %p, not a bare 0', async (weight) => {
+    await show(weight);
+    expect(looseText()).toEqual([]);
+    expect(texts(true).some(text => /kg/.test(text))).toBe(false);
     // The mark is still there: only the weight is left out.
-    expect(texts(tree)).toContain('M1');
+    expect(texts()).toContain('M1');
   });
 
-  it('shows a weight that is there as the weight of one package', () => {
-    const tree = show(50);
-    expect(looseText(tree)).toEqual([]);
-    expect(texts(tree)).toContain('M1 · 50 kg each');
-    expect(texts(tree).some(text => /\b50 kg$/.test(text))).toBe(false);
+  it('shows a weight that is there as the weight of one package', async () => {
+    await show(50);
+    expect(looseText()).toEqual([]);
+    expect(texts()).toContain('M1 · 50 kg each');
+    expect(texts(true).some(text => /\b50 kg$/.test(text))).toBe(false);
   });
 });
 
 describe('GRN Items table, what a screen reader says', () => {
-  it.each([[0], [null], [undefined]])('says no weight for a line with weight %p', (weight) => {
-    const tree = render(<GRNItemsTab items={[item(weight)]} />);
-    expect(spoken(tree)).toBe('Example Potatoes, M1, 10 received, 10 in stock');
+  it.each([[0], [null], [undefined]])('says no weight for a line with weight %p', async (weight) => {
+    await render(<GRNItemsTab items={[item(weight)]} />);
+    expect(spoken()).toBe('Example Potatoes, M1, 10 received, 10 in stock');
   });
 
-  it('says the weight of one package', () => {
-    const tree = render(<GRNItemsTab items={[item(50)]} />);
-    expect(spoken(tree)).toBe('Example Potatoes, M1 · 50 kg each, 10 received, 10 in stock');
+  it('says the weight of one package', async () => {
+    await render(<GRNItemsTab items={[item(50)]} />);
+    expect(spoken()).toBe('Example Potatoes, M1 · 50 kg each, 10 received, 10 in stock');
   });
 });

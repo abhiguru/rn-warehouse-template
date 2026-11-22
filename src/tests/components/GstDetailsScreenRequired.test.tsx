@@ -4,7 +4,7 @@
  * Fictional data only.
  */
 import React from 'react';
-import { act, create, type ReactTestInstance } from 'react-test-renderer';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { makeInvoiceStore, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { t } from '@/i18n';
 import GstDetailsScreen from '../../../app/gst-details';
@@ -31,17 +31,17 @@ jest.mock('@/config/supabaseConfig', () => ({
 }));
 jest.mock('@/config/operatorServer', () => ({ getActiveOperatorServer: () => ({ origin: 'https://one.example.test', instanceId: 'instance-0001' }) }));
 
-const texts = (root: ReactTestInstance) => root.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join(''));
+// A negative check must also see a Text that is mounted but hidden.
+const texts = (hidden = false) => screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map((n) => [n.props.children].flat().join(''));
 
 async function open(details: Record<string, unknown>) {
   mockStore = makeInvoiceStore({ role: 'admin' });
   mockRpc.mockImplementation(async (name: string) =>
     name === 'get_gst_details' ? { data: { success: true, ...details }, error: null } : { data: { success: true, saved: true }, error: null }
   );
-  let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(<GstDetailsScreen />); });
-  await act(async () => {});
-  return tree;
+  await render(<GstDetailsScreen />);
+  // The saved details are in once the GSTIN box is drawn (the screen shows a loading state first).
+  await screen.findByTestId('gst-details-gstin');
 }
 
 beforeEach(() => {
@@ -56,38 +56,35 @@ describe.each([
   ['saved as not registered', { saved: true, registered: false, gstin: '', address: '1 Example Road', bills_allowed: false }],
 ])('the GST details screen, %s', (_name, details) => {
   it('has no Registered for GST choice, and always shows the GSTIN field', async () => {
-    const tree = await open(details);
-    expect(texts(tree.root)).not.toContain('Registered for GST');
-    expect(tree.root.findAll((n) => n.props.accessibilityRole === 'switch')).toHaveLength(0);
-    expect(tree.root.findAllByProps({ testID: 'gst-details-gstin' }).length).toBeGreaterThan(0);
-    expect(tree.root.findAllByProps({ testID: 'gst-details-not-saved' }).length).toBeGreaterThan(0);
-    expect(tree.root.findAllByProps({ testID: 'gst-details-sac-storage' }).length).toBeGreaterThan(0);
+    await open(details);
+    expect(texts(true)).not.toContain('Registered for GST');
+    expect(screen.queryAllByRole('switch', { includeHiddenElements: true })).toHaveLength(0);
+    expect(screen.getByTestId('gst-details-gstin')).toBeOnTheScreen();
+    expect(screen.getByTestId('gst-details-not-saved')).toBeOnTheScreen();
+    expect(screen.getByTestId('gst-details-sac-storage')).toBeOnTheScreen();
   });
 
   it('refuses a save with an empty GSTIN with the required-field text, and sends nothing', async () => {
-    const tree = await open(details);
-    const address = tree.root.findAllByProps({ testID: 'gst-details-address' }).find((n) => typeof n.props.onChangeText === 'function')!;
-    await act(async () => { address.props.onChangeText('1 Example Road'); });
-    const save = tree.root.findAllByProps({ testID: 'gst-details-save' }).find((n) => typeof n.props.onPress === 'function')!;
-    await act(async () => { save.props.onPress(); });
+    await open(details);
+    const user = userEvent.setup({ delay: 0 });
+    await user.type(screen.getByTestId('gst-details-address'), '1 Example Road');
+    await user.press(screen.getByTestId('gst-details-save'));
 
-    expect(texts(tree.root)).toContain('Enter the GSTIN.');
-    expect(texts(tree.root)).toContain(t('gst.settings.gstinRequired'));
+    expect(texts()).toContain('Enter the GSTIN.');
+    expect(texts()).toContain(t('gst.settings.gstinRequired'));
     expect(mockRpc.mock.calls.filter(([name]) => name === 'set_gst_details')).toHaveLength(0);
   });
 });
 
 describe('saving the GST details', () => {
   it('sends registered: true with the GSTIN (there is no choice to send anything else)', async () => {
-    const tree = await open({ saved: false, registered: false, gstin: '', address: '', bills_allowed: false });
-    const set = (id: string, value: string) =>
-      act(async () => { tree.root.findAllByProps({ testID: id }).find((n) => typeof n.props.onChangeText === 'function')!.props.onChangeText(value); });
-    await set('gst-details-gstin', '24AAAAA0000A1Z5');
-    await set('gst-details-address', '1 Example Road');
-    const save = tree.root.findAllByProps({ testID: 'gst-details-save' }).find((n) => typeof n.props.onPress === 'function')!;
-    await act(async () => { save.props.onPress(); });
-    const dialog = tree.root.findAll((n) => typeof n.type !== 'string' && n.props.visible === true && typeof n.props.onConfirm === 'function')[0];
-    await act(async () => { dialog.props.onConfirm(); });
+    await open({ saved: false, registered: false, gstin: '', address: '', bills_allowed: false });
+    const user = userEvent.setup({ delay: 0 });
+    await user.type(screen.getByTestId('gst-details-gstin'), '24AAAAA0000A1Z5');
+    await user.type(screen.getByTestId('gst-details-address'), '1 Example Road');
+    await user.press(screen.getByTestId('gst-details-save'));
+    await user.press(await screen.findByRole('button', { name: t('gst.settings.confirm') }));
+    await waitFor(() => expect(mockRpc.mock.calls.filter(([name]) => name === 'set_gst_details')).toHaveLength(1));
 
     const sent = mockRpc.mock.calls.filter(([name]) => name === 'set_gst_details');
     expect(sent).toHaveLength(1);

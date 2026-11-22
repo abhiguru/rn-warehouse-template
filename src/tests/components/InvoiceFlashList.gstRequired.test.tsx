@@ -5,7 +5,7 @@
  * run; only the facility's `rpc` answers. Fictional data only.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import InvoiceFlashList from '@/components/lists/InvoiceFlashList';
 import { getAssignedCustomerInvoices, getInvoicesList } from '@/services/invoice-service';
@@ -37,12 +37,15 @@ jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null
 jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
 jest.mock('@/components/list-items', () => ({ MemoizedInvoiceItem: () => null }));
-// The empty list's "Create invoice" button, kept so the test can tap it.
-let mockOnCreatePress: (() => void | Promise<void>) | undefined;
+// The empty list's "Create invoice" button: a stand-in that draws it and calls the list's real onCreatePress.
 jest.mock('@/components/list/ListEmptyState', () => ({
   ListEmptyState: ({ onCreatePress }: { onCreatePress?: () => void }) => {
-    mockOnCreatePress = onCreatePress;
-    return null;
+    const { Pressable, Text } = require('react-native');
+    return onCreatePress ? (
+      <Pressable accessibilityRole="button" accessibilityLabel="Create invoice" onPress={onCreatePress}>
+        <Text>Create invoice</Text>
+      </Pressable>
+    ) : null;
   },
 }));
 jest.mock('@/components/ErrorBoundary', () => ({ ErrorStateView: () => null }));
@@ -78,28 +81,24 @@ const ADMIN_ALERT = "Save your GST details first. Bills can't be made until then
 const STAFF_ALERT = "Ask an administrator to save the GST details. Bills can't be made until then.";
 const empty = { success: true, message: '', data: { invoices: [], pagination: { has_more: false } } };
 
-let renderer: ReturnType<typeof create> | undefined;
 const mount = async (role: string) => {
   mockRole = role;
-  await act(async () => { renderer = create(<InvoiceFlashList />); });
-  expect(mockOnCreatePress).toBeDefined();
+  await render(<InvoiceFlashList />);
+  expect(await screen.findByRole('button', { name: 'Create invoice' })).toBeOnTheScreen();
 };
-const tapCreate = async () => { await act(async () => { await mockOnCreatePress!(); }); };
+const tapCreate = async () => {
+  await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Create invoice' }));
+};
 const lastAlert = () => jest.mocked(showAlert).mock.calls.at(-1)!;
 const buttonTexts = () => (lastAlert()[2] ?? []).map((button) => button.text);
 
 beforeEach(() => {
   jest.clearAllMocks();
   resetScreenFocus();
-  mockOnCreatePress = undefined;
   mockAllowed = false;
   jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc: mockRpc } as never);
   jest.mocked(getInvoicesList).mockReset().mockResolvedValue(empty as never);
   jest.mocked(getAssignedCustomerInvoices).mockReset().mockResolvedValue(empty as never);
-});
-afterEach(async () => {
-  if (renderer) await act(async () => { renderer!.unmount(); });
-  renderer = undefined;
 });
 
 describe('the empty Invoices list, Create invoice, with no GST details', () => {

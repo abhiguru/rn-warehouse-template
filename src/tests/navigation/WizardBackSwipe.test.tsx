@@ -10,7 +10,7 @@
  * src/tests/components/GrnEditLayout.test.tsx checks its stack options too.)
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render } from '@testing-library/react-native';
 import GRNFormLayout from '../../../app/grn-form/_layout';
 import DispatchFormLayout from '../../../app/dispatch-form/_layout';
 
@@ -35,15 +35,13 @@ jest.mock('@/store/hooks', () => ({
   useAppStore: () => ({ getState: () => ({ dispatchForm: { header: { disp_no: '' } } }) }),
 }));
 
-let tree: ReactTestRenderer;
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   // The new-GRN stack draws its steps one frame after it has reset the form.
   jest.spyOn(global, 'requestAnimationFrame').mockImplementation((run: FrameRequestCallback) => { run(0); return 0; });
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
@@ -54,7 +52,7 @@ describe.each([
   // (src/tests/components/DispatchEditLayout.test.tsx).
 ])('the stack of %s', (_name, Layout) => {
   it('turns the edge swipe off for all its steps, and no step turns it on again', async () => {
-    await act(async () => { tree = create(<Layout />); });
+    await render(<Layout />);
 
     expect(mockStack).toHaveBeenCalled();
     const { screenOptions, children } = mockStack.mock.calls.at(-1)![0];

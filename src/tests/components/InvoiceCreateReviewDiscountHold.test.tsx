@@ -7,7 +7,7 @@
  * test green.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import InvoiceFormStep3 from '../../../app/invoice-form/step3';
 
 jest.mock('@/store/hooks', () => ({
@@ -38,46 +38,69 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// Stand-ins: an open dialog is an alert with its message and its confirm button (the real props are called), and the
+// summary draws two buttons that report the discount field's state to the step, as the real field does.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; message?: string; confirmText?: string; onConfirm: () => unknown }) => {
+    const { Pressable, Text, View } = require('react-native');
+    return props.visible ? (
+      <View accessible accessibilityRole="alert">
+        <Text>{props.message}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={props.confirmText} onPress={props.onConfirm}>
+          <Text>{props.confirmText}</Text>
+        </Pressable>
+      </View>
+    ) : null;
+  },
+}));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
-jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({ InvoiceCalculationSummary: 'InvoiceCalculationSummary' }));
+jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({
+  InvoiceCalculationSummary: (props: { onDiscountErrorChange: (error: string | null) => void }) => {
+    const { Pressable, Text, View } = require('react-native');
+    return (
+      <View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Type a discount that is too high" onPress={() => props.onDiscountErrorChange('Discount cannot be more than the invoice amount')}>
+          <Text>Type a discount that is too high</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Type an accepted discount" onPress={() => props.onDiscountErrorChange(null)}>
+          <Text>Type an accepted discount</Text>
+        </Pressable>
+      </View>
+    );
+  },
+}));
 jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: () => null }));
 jest.mock('@/services/print-service', () => ({ printInvoiceRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateInvoicePDF: jest.fn() }));
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 
-const summary = (tree: ReactTestRenderer) => tree.root.findByType('InvoiceCalculationSummary' as unknown as React.ElementType);
-const dialogs = (tree: ReactTestRenderer) => tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType);
-const shown = (tree: ReactTestRenderer) => dialogs(tree).filter((dialog) => dialog.props.visible);
-const pressSave = async (tree: ReactTestRenderer) => {
-  const save = tree.root.findAll((node) => typeof node.type !== 'string' && node.props.accessibilityLabel === 'Create invoice' && typeof node.props.onPress === 'function')[0];
-  await act(async () => { await save.props.onPress(); });
-};
+const user = () => userEvent.setup({ delay: 0 });
+const shown = () => screen.queryAllByRole('alert');
+// The page's own Save is the first button of that name (a dialog's confirm of the same name is drawn after it).
+const pressSave = async () => { await user().press(screen.getAllByRole('button', { name: 'Create invoice' })[0]); };
 
 beforeEach(() => jest.clearAllMocks());
 
 it('holds Save while the discount field shows text that was not accepted, and names the discount that would be saved', async () => {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(<InvoiceFormStep3 />); });
+  await render(<InvoiceFormStep3 />);
 
-  await act(async () => { summary(tree).props.onDiscountErrorChange('Discount cannot be more than the invoice amount'); });
-  await pressSave(tree);
+  await user().press(screen.getByRole('button', { name: 'Type a discount that is too high' }));
+  await pressSave();
 
-  expect(shown(tree)).toHaveLength(1);
-  expect(shown(tree)[0].props.message).toContain('Discount cannot be more than the invoice amount');
-  expect(shown(tree)[0].props.message).toContain('100');
-  expect(shown(tree)[0].props.confirmText).toBe('Close');
+  expect(shown()).toHaveLength(1);
+  expect(within(shown()[0]).getByText(/Discount cannot be more than the invoice amount/)).toBeOnTheScreen();
+  expect(within(shown()[0]).getByText(/100/)).toBeOnTheScreen();
+  expect(within(shown()[0]).getByRole('button', { name: 'Close' })).toBeOnTheScreen();
   expect(mockSubmitForm).not.toHaveBeenCalled();
 
   // Once the field holds an accepted amount again, Save asks its question and saves.
-  await act(async () => { shown(tree)[0].props.onConfirm(); });
-  await act(async () => { summary(tree).props.onDiscountErrorChange(null); });
-  await pressSave(tree);
-  expect(shown(tree)).toHaveLength(1);
-  expect(shown(tree)[0].props.confirmText).toBe('Create invoice');
+  await user().press(within(shown()[0]).getByRole('button', { name: 'Close' }));
+  await user().press(screen.getByRole('button', { name: 'Type an accepted discount' }));
+  await pressSave();
+  expect(shown()).toHaveLength(1);
+  const confirmSave = within(shown()[0]).getByRole('button', { name: 'Create invoice' });
   mockSubmitForm.mockResolvedValue({ success: false });
-  await act(async () => { await shown(tree)[0].props.onConfirm(); });
+  await user().press(confirmSave);
   expect(mockSubmitForm).toHaveBeenCalledTimes(1);
-  await act(async () => { tree.unmount(); });
 });

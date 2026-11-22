@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import OrderManagement from '@/components/OrderManagement';
 import OrderFlashList from '@/components/lists/OrderFlashList';
 import SupervisorOrderQueueList from '@/components/lists/SupervisorOrderQueueList';
@@ -117,8 +117,7 @@ describe.each([
   ['order queue', () => <SupervisorOrderQueueList />, () => service.getOrdersList],
 ])('%s', (_name, element, loads) => {
   it('costs one load per return and one per interval while shown', async () => {
-    let renderer!: ReturnType<typeof create>;
-    await act(async () => { renderer = create(element()); });
+    await render(element());
     await settle();
     expect(loads()).toHaveBeenCalledTimes(1);
     // Shown: the timer reads again after 15 s.
@@ -126,25 +125,26 @@ describe.each([
     expect(loads()).toHaveBeenCalledTimes(2);
 
     // Another screen covers this one: nothing is read, however long it stays covered.
-    await act(async () => { setScreenFocused(false); renderer.update(element()); });
+    await act(async () => { setScreenFocused(false); });
+    await screen.rerender(element());
     await interval();
     await interval();
     expect(loads()).toHaveBeenCalledTimes(2);
 
     // Back: exactly one load for the return, then the timer goes on.
-    await act(async () => { setScreenFocused(true); renderer.update(element()); });
+    await act(async () => { setScreenFocused(true); });
+    await screen.rerender(element());
     await settle();
     expect(loads()).toHaveBeenCalledTimes(3);
     await interval();
     expect(loads()).toHaveBeenCalledTimes(4);
-    await act(async () => { renderer.unmount(); });
+    await screen.unmount();
     await interval();
     expect(loads()).toHaveBeenCalledTimes(4);
   });
 
   it('costs one load for a trip to the background while shown', async () => {
-    let renderer!: ReturnType<typeof create>;
-    await act(async () => { renderer = create(element()); });
+    await render(element());
     await settle();
     expect(loads()).toHaveBeenCalledTimes(1);
 
@@ -160,6 +160,5 @@ describe.each([
     expect(loads()).toHaveBeenCalledTimes(2);
     await interval();
     expect(loads()).toHaveBeenCalledTimes(3);
-    await act(async () => { renderer.unmount(); });
   });
 });

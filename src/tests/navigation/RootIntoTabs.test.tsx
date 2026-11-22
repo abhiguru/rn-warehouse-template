@@ -14,7 +14,7 @@
  * keep the tabs on a spinner, so a test can see it.
  */
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import { configureStore, type Middleware } from '@reduxjs/toolkit';
 import authReducer, { setUserProfile } from '@/store/slices/authSlice';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
@@ -116,13 +116,15 @@ const mockReplace = jest.fn();
 jest.mock('expo-router', () => {
   const React = require('react');
   const TabsLayout = require('../../../app/(tabs)/_layout').default;
-  const Stack = ({ children }: { children: React.ReactNode }) => React.createElement('AppStack', null, children);
+  const { Text, View } = require('react-native');
+  // The stack, the screens and the tabs draw views and texts with a test id: what the test reads is on the screen.
+  const Stack = ({ children }: { children: React.ReactNode }) => React.createElement(View, { testID: 'app-stack' }, children);
   Stack.Screen = ({ name }: { name: string }) => {
     if (name !== mockRoute) return null;
-    return name === '(tabs)' ? React.createElement(TabsLayout) : React.createElement('DeepLinkedScreen', { name });
+    return name === '(tabs)' ? React.createElement(TabsLayout) : React.createElement(Text, { testID: 'deep-linked-screen' }, name);
   };
-  const Tabs = ({ children }: { children: React.ReactNode }) => React.createElement('ProtectedTabs', null, children);
-  Tabs.Screen = ({ name }: { name: string }) => React.createElement('TabScreen', { name });
+  const Tabs = ({ children }: { children: React.ReactNode }) => React.createElement(View, { testID: 'protected-tabs' }, children);
+  Tabs.Screen = ({ name }: { name: string }) => React.createElement(Text, { testID: 'tab-screen' }, name);
   return {
     Stack,
     Tabs,
@@ -206,14 +208,15 @@ jest.mock('@/config/nativeHandoff', () => ({ isNativeHandoffActive: jest.fn(() =
 jest.mock('@/utils/shareDocument', () => ({ sweepSharedDocuments: jest.fn(async () => {}) }));
 
 // ---------------------------------------------------------------------------
-let tree: ReactTestRenderer | undefined;
 const turn = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 async function start() {
-  await act(async () => { tree = create(<RootLayout />); });
+  await render(<RootLayout />);
   for (let i = 0; i < 5; i++) await turn();
 }
-const count = (type: string) => tree!.root.findAll(node => (node.type as unknown) === type).length;
-const spinnerShown = () => tree!.root.findAll(node => node.props.accessibilityLabel === t('nav.loading')).length > 0;
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const count = (testID: string) => screen.queryAllByTestId(testID, { includeHiddenElements: true }).length;
+const spinnerShown = () => screen.queryAllByLabelText(t('nav.loading')).length > 0;
+const spinnerMounted = () => screen.queryAllByLabelText(t('nav.loading'), { includeHiddenElements: true }).length > 0;
 /**
  * A server change re-runs the bootstrap (app/_layout.tsx): the splash, then a
  * new root content once the facility is verified again. The verification is
@@ -227,7 +230,7 @@ async function switchFacility() {
   );
   await act(async () => { onServerChange(); });
   await turn();
-  expect(count('AppStack')).toBe(0);
+  expect(count('app-stack')).toBe(0);
   await act(async () => { verified(); });
   await turn();
 }
@@ -239,7 +242,8 @@ const releaseHeldReads = () => act(async () => {
   for (const release of mockHeld.splice(0)) release();
   await new Promise(resolve => setTimeout(resolve, 0));
 });
-const tabsShown = () => count('ProtectedTabs') > 0;
+const tabsShown = () => screen.queryAllByTestId('protected-tabs').length > 0;
+const tabsMounted = () => count('protected-tabs') > 0;
 const signedIn = () => {
   mockStored = { isValid: true, type: 'jwt', authToken: 'stored-access', refreshToken: 'stored-refresh', expiresAt: Date.now() + 3600 * 1000 };
   mockProfile = profileA;
@@ -264,8 +268,6 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(async () => {
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
   jest.restoreAllMocks();
 });
 
@@ -275,14 +277,14 @@ it('signed in: a cold start reaches the tabs with one restore and no second spin
   expect(mockRestores).toHaveLength(1);
   expect(mockStore.getState().auth.userProfile).toEqual(profileA);
   expect(tabsShown()).toBe(true);
-  expect(spinnerShown()).toBe(false);
+  expect(spinnerMounted()).toBe(false);
   expect(mockReplace).not.toHaveBeenCalled();
 });
 
 it('signed out: one restore, and the tabs send the person to sign-in at once', async () => {
   await start();
   expect(mockRestores).toHaveLength(1);
-  expect(tabsShown()).toBe(false);
+  expect(tabsMounted()).toBe(false);
   expect(mockReplace).toHaveBeenCalledWith('/login');
 });
 
@@ -291,7 +293,7 @@ it('a cold start deep link: the link waits for the one restore, and the tabs ope
   mockRoute = 'grn-details/[id]';
   await start();
   expect(mockRestores).toHaveLength(1);
-  expect(count('DeepLinkedScreen')).toBe(1);
+  expect(count('deep-linked-screen')).toBe(1);
   // The deep link is handled only once the root restore has settled.
   const settledArgs = jest.mocked(useColdStartDeepLink).mock.calls.map(([settled]) => settled);
   expect(settledArgs[0]).toBe(false);
@@ -299,11 +301,11 @@ it('a cold start deep link: the link waits for the one restore, and the tabs ope
 
   // Back to the home tabs.
   mockRoute = '(tabs)';
-  await act(async () => { tree!.update(<RootLayout />); });
+  await screen.rerender(<RootLayout />);
   await turn();
   expect(mockRestores).toHaveLength(1);
   expect(tabsShown()).toBe(true);
-  expect(spinnerShown()).toBe(false);
+  expect(spinnerMounted()).toBe(false);
 });
 
 it('a facility switch rebuilds the tree: the root restores again, the tabs do not', async () => {
@@ -319,7 +321,7 @@ it('a facility switch rebuilds the tree: the root restores again, the tabs do no
   expect(mockRestores).toHaveLength(2);
   expect(mockStore.getState().auth.userProfile).toEqual(profileB);
   expect(tabsShown()).toBe(true);
-  expect(spinnerShown()).toBe(false);
+  expect(spinnerMounted()).toBe(false);
 });
 
 it('a facility sign-in during the rebuild began a new session: the tabs restore it once', async () => {
@@ -342,14 +344,14 @@ it('a facility sign-in during the rebuild began a new session: the tabs restore 
   await releaseHeldReads();
   for (let i = 0; i < 3; i++) await turn();
   expect(mockRestores).toHaveLength(3);
-  expect(tabsShown()).toBe(false);
+  expect(tabsMounted()).toBe(false);
   expect(spinnerShown()).toBe(true);
   await releaseHeldReads();
   for (let i = 0; i < 3; i++) await turn();
   expect(mockRestores).toHaveLength(3);
   expect(mockStore.getState().auth.userProfile).toEqual(profileB);
   expect(tabsShown()).toBe(true);
-  expect(spinnerShown()).toBe(false);
+  expect(spinnerMounted()).toBe(false);
 });
 
 it('every bootstrap points the reachability probe at the selected facility, after its server was read', async () => {

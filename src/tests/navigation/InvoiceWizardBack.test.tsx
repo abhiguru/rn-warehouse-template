@@ -16,7 +16,7 @@
  */
 import React from 'react';
 import { Pressable, Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
 import { ExpoRoot } from 'expo-router/build/ExpoRoot';
@@ -72,10 +72,39 @@ jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrol
 jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({ GRNAutocomplete: () => null }));
 jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: () => null }));
 jest.mock('@/features/invoice/components/InvoiceCalculationSummary', () => ({ InvoiceCalculationSummary: () => null }));
-jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: 'InvoiceSuccessDialog' }));
+// Stand-in of the invoice dialog: it draws what the test reads (open or not, create or edit) and its two buttons.
+jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => {
+  const { Pressable: Press, Text: Label, View: Box } = jest.requireActual('react-native');
+  return {
+    InvoiceSuccessDialog: (props: { isVisible: boolean; isEditMode?: boolean; onCreateAnother: () => void; onViewList: () => void }) =>
+      props.isVisible ? (
+        <Box testID="invoice-success">
+          <Label>{props.isEditMode ? 'Invoice updated' : 'Invoice created'}</Label>
+          <Press accessibilityRole="button" onPress={props.onCreateAnother}><Label>Create another invoice</Label></Press>
+          <Press accessibilityRole="button" onPress={props.onViewList}><Label>View invoices</Label></Press>
+        </Box>
+      ) : null,
+  };
+});
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
-// Stand-ins that keep their props, so the test can read what they show and answer them.
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// Stand-in of the question dialog: it draws the question and its confirm button while it is open. A dialog tells the
+// screen it has finished closing with `onDismissed` (an iOS event, the native Modal's); the control "closed" stands for it.
+jest.mock('@/components/ConfirmDialog', () => {
+  const { Pressable: Press, Text: Label, View: Box } = jest.requireActual('react-native');
+  return {
+    ConfirmDialog: (props: { visible: boolean; title: string; confirmText?: string; onConfirm: () => void; onDismissed?: () => void }) => (
+      <>
+        {props.visible ? (
+          <Box testID="confirm-dialog">
+            <Label>{props.title}</Label>
+            <Press accessibilityRole="button" onPress={props.onConfirm}><Label>{props.confirmText ?? 'Confirm'}</Label></Press>
+          </Box>
+        ) : null}
+        <Press testID="confirm-dialog-closed" onPress={props.onDismissed} />
+      </>
+    ),
+  };
+});
 // The real header and its Back-key wiring (WH-264: an edit asks only after a change), with a "Discard" control beside it
 // that is the X's question answered with "Discard" (it runs the step's cancel handler).
 jest.mock('@/components/InvoiceStepIndicator', () => {
@@ -92,8 +121,7 @@ jest.mock('@/components/InvoiceStepIndicator', () => {
   };
 });
 
-const as = (name: string) => name as unknown as React.ElementType;
-let tree: ReactTestRenderer;
+let user: ReturnType<typeof userEvent.setup>;
 let backKey: ReturnType<typeof installHardwareBack>;
 let numbers: number;
 
@@ -103,6 +131,7 @@ const DetailsPage = () =>
 
 beforeEach(async () => {
   jest.useFakeTimers();
+  user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -142,13 +171,10 @@ beforeEach(async () => {
     'invoice-edit/[id]/step2': InvoiceEditStep2,
     'invoice-edit/[id]/step3': InvoiceEditStep3,
   });
-  await act(async () => {
-    tree = create(<ExpoRoot context={context} location="/invoices" />);
-  });
+  await render(<ExpoRoot context={context} location="/invoices" />);
 });
 
 afterEach(async () => {
-  await act(async () => { tree.unmount(); });
   backKey.restore();
   jest.useRealTimers();
   jest.restoreAllMocks();
@@ -158,16 +184,16 @@ const settle = async () => {
   await act(async () => { await jest.runAllTimersAsync(); });
 };
 
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
 /** The control with this testID or label on the screen that is in front (the last one drawn). */
 const control = (testID: string) => {
-  const found = tree.root.findAll((node) =>
-    (node.props.testID === testID || node.props.accessibilityLabel === testID) && typeof node.props.onPress === 'function');
+  const found = [...screen.queryAllByTestId(testID, everything), ...screen.queryAllByLabelText(testID, everything)];
   if (found.length === 0) throw new Error(`No control ${testID}`);
   return found[found.length - 1];
 };
 const tap = async (testID: string) => {
-  const pressable = control(testID);
-  await act(async () => { pressable.props.onPress(); });
+  await user.press(control(testID));
   await settle();
 };
 const go = async (href: string) => {
@@ -188,10 +214,18 @@ const pressBackKey = async () => {
 };
 const pathname = () => routerStore.getRouteInfo().pathname;
 const form = () => mockStore.getState().invoiceForm;
-/** The question of a ConfirmDialog that is open. */
-const openDialog = () =>
-  tree.root.findAllByType(as('ConfirmDialog')).filter((dialog) => dialog.props.visible)[0];
-const successDialog = () => tree.root.findAllByType(as('InvoiceSuccessDialog')).filter((dialog) => dialog.props.isVisible)[0];
+/** The question of a ConfirmDialog that is open: it is on the screen with its title. */
+const expectQuestion = (title: string) => expect(within(screen.getByTestId('confirm-dialog')).getByText(title)).toBeOnTheScreen();
+/** Confirm it, and let what the confirmation starts finish. */
+const confirmQuestion = async () => {
+  await user.press(within(screen.getByTestId('confirm-dialog')).getByRole('button'));
+  await act(async () => { await Promise.resolve(); });
+};
+/** Every question dialog tells the screen it has finished closing. */
+const questionsClosed = async () => {
+  for (const closed of screen.queryAllByTestId('confirm-dialog-closed', everything)) await user.press(closed);
+};
+const expectSuccess = (text: string) => expect(within(screen.getByTestId('invoice-success')).getByText(text)).toBeOnTheScreen();
 
 /** A new invoice with a GRN and one line, so that Next goes on. */
 const openNewInvoice = async () => {
@@ -266,14 +300,14 @@ describe('"Create another invoice"', () => {
     expect(pathname()).toBe('/invoice-form/step3');
     expect(stack()).toEqual(['(tabs)', ['step1', 'step2', 'step3']]);
     await tap('Create invoice');
-    expect(openDialog().props.title).toBe('Create invoice 55?');
-    await act(async () => { await openDialog().props.onConfirm(); });
+    expectQuestion('Create invoice 55?');
+    await confirmQuestion();
     // The invoice dialog opens once the question has finished closing.
-    await act(async () => { tree.root.findAllByType(as('ConfirmDialog')).forEach((dialog) => dialog.props.onDismissed?.()); });
+    await questionsClosed();
     expect(createInvoice).toHaveBeenCalledTimes(1);
-    expect(successDialog().props.isVisible).toBe(true);
+    expectSuccess('Invoice created');
 
-    await act(async () => { successDialog().props.onCreateAnother(); });
+    await user.press(within(screen.getByTestId('invoice-success')).getByRole('button', { name: 'Create another invoice' }));
     await settle();
 
     // Was [step1, step2, step3, step1]: a new step 1 pushed on top of the old ones.
@@ -311,11 +345,11 @@ describe('leaving a new invoice asks the server for no number (R2-03)', () => {
     await tap('Next');
     await tap('Review');
     await tap('Create invoice');
-    await act(async () => { await openDialog().props.onConfirm(); });
-    await act(async () => { tree.root.findAllByType(as('ConfirmDialog')).forEach((dialog) => dialog.props.onDismissed?.()); });
+    await confirmQuestion();
+    await questionsClosed();
     jest.mocked(getNextInvoiceNumber).mockRejectedValue(new Error('offline'));
 
-    await act(async () => { successDialog().props.onViewList(); });
+    await user.press(within(screen.getByTestId('invoice-success')).getByRole('button', { name: 'View invoices' }));
     await settle();
 
     expect(pathname()).toBe('/invoices');
@@ -403,14 +437,14 @@ describe('leaving an edit', () => {
     await tap('Review');
     expect(pathname()).toBe('/invoice-edit/inv-42/step3');
     await tap('Save invoice');
-    expect(openDialog().props.title).toBe('Save changes to invoice 42?');
-    await act(async () => { await openDialog().props.onConfirm(); });
+    expectQuestion('Save changes to invoice 42?');
+    await confirmQuestion();
     // The invoice dialog opens once the question has finished closing.
-    await act(async () => { tree.root.findAllByType(as('ConfirmDialog')).forEach((dialog) => dialog.props.onDismissed?.()); });
+    await questionsClosed();
     expect(updateInvoice).toHaveBeenCalledTimes(1);
-    expect(successDialog().props.isEditMode).toBe(true);
+    expectSuccess('Invoice updated');
 
-    await act(async () => { successDialog().props.onViewList(); });
+    await user.press(within(screen.getByTestId('invoice-success')).getByRole('button', { name: 'View invoices' }));
     await settle();
 
     expect(pathname()).toBe('/invoice-details/inv-42');

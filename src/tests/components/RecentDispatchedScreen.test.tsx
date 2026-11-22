@@ -4,8 +4,8 @@
  * dispatch. For administrators, supervisors and staff only.
  */
 import React from 'react';
-import { FlatList, Text } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import RecentDispatchedScreen from '../../../app/recent-dispatched';
 import { getRecentDispatchedOrders } from '@/services/dispatch-service';
@@ -25,6 +25,24 @@ jest.mock('@/components/list-items/RecentDispatchedOrderCard', () => ({ RecentDi
 jest.mock('@/components/list/ListSkeletonCard', () => ({ ListSkeletonCard: 'ListSkeletonCard' }));
 jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: 'ListEmptyState' }));
 jest.mock('@/components/ui/HeaderBackButton', () => ({ HeaderBackButton: 'HeaderBackButton' }));
+// A FlatList draws only its first rows in a test: this stand-in draws the header, every row, the empty state and the
+// footer, and keeps the list's props on a host element (its refresh control and its end are reached through them).
+jest.mock('react-native/Libraries/Lists/FlatList', () => {
+  const ReactActual = jest.requireActual('react');
+  const draw = (Part: any) => (!Part ? null : ReactActual.isValidElement(Part) ? Part : ReactActual.createElement(Part));
+  function FlatList(props: Record<string, any>) {
+    const data = props.data ?? [];
+    return ReactActual.createElement(
+      'FlatList',
+      props,
+      draw(props.ListHeaderComponent),
+      data.length === 0 ? draw(props.ListEmptyComponent) : data.map((item: unknown, index: number) =>
+        ReactActual.createElement(ReactActual.Fragment, { key: props.keyExtractor ? props.keyExtractor(item, index) : index }, props.renderItem({ item, index }))),
+      draw(props.ListFooterComponent)
+    );
+  }
+  return { __esModule: true, default: FlatList };
+});
 
 const read = jest.mocked(getRecentDispatchedOrders);
 const rowOf = (n: number): RecentDispatchedOrder => ({
@@ -51,16 +69,23 @@ const page = (offset: number, size: number, total: number) => {
 };
 const serve = (total: number) => read.mockImplementation(async (limit = 10, offset = 0) => page(offset, limit, total) as never);
 
-let tree: ReactTestRenderer;
-const open = async () => { await act(async () => { tree = create(<RecentDispatchedScreen />); }); };
-const list = () => tree.root.findByType(FlatList);
-const cards = () => tree.root.findAllByType('RecentDispatchedOrderCard' as never);
-// A FlatList draws only its first rows in a test: the rows it holds are its data.
-const rows = () => list().props.data as RecentDispatchedOrder[];
-const numbers = () => rows().map((row) => row.disp_no);
-const texts = () => tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join(''));
-const press = (id: string) => tree.root.find((node) => node.props?.testID === id && typeof node.props?.onPress === 'function');
-const endReached = async () => { await act(async () => { list().props.onEndReached(); }); };
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+const hosts = (type: string) => screen.container.queryAll(node => (node.type as unknown) === type);
+// The read is a promise: the screen is looked at once it has been answered.
+const open = async () => {
+  await render(<RecentDispatchedScreen />);
+  await act(async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); });
+};
+// The list stand-in (above) is a host element that keeps the list's props: its refresh control has no role or text.
+const list = () => hosts('FlatList')[0];
+// The cards are a plain host stand-in (RecentDispatchedOrderCard) that holds the dispatch it was given.
+const cards = (all = false) => (all ? screen.container.queryAll(node => (node.type as unknown) === 'RecentDispatchedOrderCard') : hosts('RecentDispatchedOrderCard'));
+const numbers = () => cards().map((card) => (card.props.dispatch as RecentDispatchedOrder).disp_no);
+const has = (text: string) => expect(screen.getByText(text)).toBeOnTheScreen();
+const endReached = async () => { await fireEvent(list(), 'endReached'); };
+const refreshList = async () => { await act(async () => { list().props.refreshControl.props.onRefresh(); }); };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -68,8 +93,7 @@ beforeEach(() => {
   mockRole = 'supervisor';
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
@@ -86,7 +110,8 @@ describe('who may open it', () => {
     serve(3);
     await open();
     expect(read).not.toHaveBeenCalled();
-    expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
+    expect(hosts('FlatList')).toHaveLength(0);
+    expect(cards(true)).toHaveLength(0);
   });
 });
 
@@ -97,15 +122,17 @@ describe('the list', () => {
 
     expect(read).toHaveBeenCalledTimes(1);
     expect(numbers().slice(0, 3)).toEqual(['D0037', 'D0036', 'D0035']);
-    expect(texts()).toContain('Recently dispatched');
-    expect(tree.root.findByProps({ testID: 'recent-dispatched-count' }).props.children).toBe('37 dispatches');
+    has('Recently dispatched');
+    expect(screen.getByTestId('recent-dispatched-count')).toHaveTextContent('37 dispatches');
   });
 
   it('a tap on a card opens that dispatch', async () => {
     serve(3);
     await open();
 
-    act(() => cards()[1].props.onPress(cards()[1].props.dispatch));
+    // The card is a plain host stand-in: its own press is its prop, called with the dispatch as the card calls it.
+    const card = cards()[1];
+    await act(async () => { card.props.onPress(card.props.dispatch); });
 
     expect(router.push).toHaveBeenCalledWith('/dispatch-details/dispatch-2');
   });
@@ -113,7 +140,7 @@ describe('the list', () => {
   it('says so when there are none', async () => {
     serve(0);
     await open();
-    expect(tree.root.findAllByType('ListEmptyState' as never)).toHaveLength(1);
+    expect(hosts('ListEmptyState')).toHaveLength(1);
   });
 });
 
@@ -121,7 +148,7 @@ describe('load more', () => {
   it('asks for the next 20 at the end of the list, and adds them under the first, newest first', async () => {
     serve(37);
     await open();
-    expect(rows()).toHaveLength(20);
+    expect(cards()).toHaveLength(20);
 
     await endReached();
 
@@ -135,7 +162,7 @@ describe('load more', () => {
     serve(25);
     await open();
     await endReached();
-    expect(rows()).toHaveLength(25);
+    expect(cards()).toHaveLength(25);
 
     await endReached();
     await endReached();
@@ -155,6 +182,7 @@ describe('load more', () => {
     await endReached();
 
     const all = numbers();
+    expect(all.length).toBeGreaterThan(20);
     expect(new Set(all).size).toBe(all.length);
   });
 
@@ -164,17 +192,17 @@ describe('load more', () => {
 
     await endReached();
 
-    expect(rows()).toHaveLength(20);
-    expect(texts()).toContain("Couldn't load more recent dispatches. Check your connection and try again.");
+    expect(cards()).toHaveLength(20);
+    has("Couldn't load more recent dispatches. Check your connection and try again.");
     // Scrolling does not ask again by itself: the button does.
     await endReached();
     expect(read).toHaveBeenCalledTimes(2);
 
     read.mockResolvedValueOnce(page(20, 20, 37) as never);
-    await act(async () => { press('recent-dispatched-load-more').props.onPress(); });
+    await user.press(screen.getByTestId('recent-dispatched-load-more'));
 
     expect(read).toHaveBeenLastCalledWith(20, 20);
-    expect(rows()).toHaveLength(37);
+    expect(cards()).toHaveLength(37);
   });
 });
 
@@ -183,13 +211,13 @@ describe('a first page that fails', () => {
     read.mockResolvedValueOnce({ success: false, error: 'No connection' });
     await open();
 
-    expect(cards()).toHaveLength(0);
-    expect(tree.root.findAllByType('ListEmptyState' as never)).toHaveLength(0);
-    expect(texts()).toContain('No connection');
+    expect(cards(true)).toHaveLength(0);
+    expect(hosts('ListEmptyState')).toHaveLength(0);
+    has('No connection');
 
     serve(5);
-    await act(async () => { press('recent-dispatched-retry').props.onPress(); });
-    expect(rows()).toHaveLength(5);
+    await user.press(screen.getByTestId('recent-dispatched-retry'));
+    expect(cards()).toHaveLength(5);
   });
 });
 
@@ -199,11 +227,11 @@ describe('pull to refresh', () => {
     await open();
     serve(31);
 
-    await act(async () => { list().props.refreshControl.props.onRefresh(); });
+    await refreshList();
 
     expect(read).toHaveBeenLastCalledWith(20, 0);
     expect(numbers()[0]).toBe('D0031');
-    expect(rows()).toHaveLength(20);
+    expect(cards()).toHaveLength(20);
   });
 
   it('a refresh that fails keeps the rows on screen and says so in a line', async () => {
@@ -211,10 +239,10 @@ describe('pull to refresh', () => {
     await open();
     read.mockResolvedValueOnce({ success: false, error: 'offline' });
 
-    await act(async () => { list().props.refreshControl.props.onRefresh(); });
+    await refreshList();
 
-    expect(rows()).toHaveLength(20);
-    expect(tree.root.findAllByProps({ testID: 'recent-dispatched-refresh-error' }).length).toBeGreaterThan(0);
+    expect(cards()).toHaveLength(20);
+    expect(screen.queryAllByTestId('recent-dispatched-refresh-error').length).toBeGreaterThan(0);
   });
 
   it('the answer of an older read never replaces the rows of a newer one', async () => {
@@ -223,14 +251,14 @@ describe('pull to refresh', () => {
     // A first pull is slow; a second one (the list changed: 40 now) answers before it.
     let finishSlow!: (value: unknown) => void;
     read.mockReturnValueOnce(new Promise((resolve) => { finishSlow = resolve; }) as never);
-    await act(async () => { list().props.refreshControl.props.onRefresh(); });
+    await refreshList();
     read.mockResolvedValueOnce(page(0, 20, 40) as never);
-    await act(async () => { list().props.refreshControl.props.onRefresh(); });
+    await refreshList();
     expect(numbers()[0]).toBe('D0040');
 
     await act(async () => { finishSlow(page(0, 20, 5)); });
 
-    expect(rows()).toHaveLength(20);
+    expect(cards()).toHaveLength(20);
     expect(numbers()[0]).toBe('D0040');
   });
 });
@@ -239,12 +267,15 @@ describe('screen-reader Refresh (WH-220)', () => {
   it('the title offers a Refresh action that reads the first page again', async () => {
     serve(3);
     await open();
-    const target = tree.root.find((node) => typeof node.type === 'string'
+    // No query finds an element by its actions, so the host elements that carry some are collected.
+    const targets = screen.container.queryAll(node => typeof node.type === 'string'
       && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+    expect(targets).toHaveLength(1);
+    const target = targets[0];
     expect(target.type).toBe('Text');
     expect(target.props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
     const before = read.mock.calls.length;
-    await act(async () => { target.props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
+    await fireEvent(target, 'accessibilityAction', { nativeEvent: { actionName: 'refresh' } });
     expect(read.mock.calls.length).toBe(before + 1);
     expect(read).toHaveBeenLastCalledWith(20, 0);
   });

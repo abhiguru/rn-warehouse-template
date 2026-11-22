@@ -5,7 +5,7 @@
  * load in flight. The orders list has no sort.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import OrderFlashList from '@/components/lists/OrderFlashList';
 import { OrderService } from '@/services/order-service';
 import type { Order, OrderServiceResponse } from '@/types/order.types';
@@ -62,17 +62,16 @@ beforeEach(() => {
 });
 
 it('loads once on mount, once per search or filter change, and once on a real return', async () => {
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<OrderFlashList />); });
+  await render(<OrderFlashList />);
   expect(requests()).toEqual([{ search: undefined, has_items: undefined }]);
 
   mockFilters.request = { search: 'onion' };
-  await act(async () => { renderer.update(<OrderFlashList />); });
+  await screen.rerender(<OrderFlashList />);
   expect(requests()).toHaveLength(2);
   expect(requests()[1]).toEqual({ search: 'onion', has_items: undefined });
 
   mockFilters.request = { search: 'onion', has_items: true };
-  await act(async () => { renderer.update(<OrderFlashList />); });
+  await screen.rerender(<OrderFlashList />);
   expect(requests()).toHaveLength(3);
   expect(requests()[2]).toEqual({ search: 'onion', has_items: true });
 
@@ -84,12 +83,10 @@ it('loads once on mount, once per search or filter change, and once on a real re
 
   // The list owns the return; the live updates hook must not refresh on focus as well.
   expect(mockLive.args?.[2]).toEqual({ refreshOnFocus: false });
-  await act(async () => { renderer.unmount(); });
 });
 
 it('coalesces live updates that arrive while a load is in flight into one rerun', async () => {
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<OrderFlashList />); });
+  await render(<OrderFlashList />);
   expect(getOrdersList).toHaveBeenCalledTimes(1);
 
   let finish!: (value: OrderServiceResponse<Order[]>) => void;
@@ -100,15 +97,13 @@ it('coalesces live updates that arrive while a load is in flight into one rerun'
   expect(getOrdersList).toHaveBeenCalledTimes(2);
   await act(async () => { finish(answer); });
   expect(getOrdersList).toHaveBeenCalledTimes(3);
-  await act(async () => { renderer.unmount(); });
 });
 
 it('loads a change made while hidden once on the return as a new first page, and a plain revisit silently', async () => {
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<OrderFlashList />); });
+  await render(<OrderFlashList />);
   await act(async () => { setScreenFocused(false); });
   mockFilters.request = { search: 'garlic', has_items: true };
-  await act(async () => { renderer.update(<OrderFlashList />); });
+  await screen.rerender(<OrderFlashList />);
   expect(getOrdersList).toHaveBeenCalledTimes(1);
 
   // Back with a changed request: one load, shown as loading like an inline filter change.
@@ -129,23 +124,21 @@ it('loads a change made while hidden once on the return as a new first page, and
   expect(mockHeader.loading).toBe(false);
   await act(async () => { finish(answer); });
   expect(getOrdersList).toHaveBeenCalledTimes(3);
-  await act(async () => { renderer.unmount(); });
 });
 
 it('shows the skeleton while a new search with no rows on screen is pending', async () => {
   const empty = { success: true, message: '', data: [], metadata: { has_more: false } } as OrderServiceResponse<Order[]>;
   getOrdersList.mockResolvedValue(empty);
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<OrderFlashList />); });
-  const skeletons = () => renderer.root.findAllByType('ListSkeleton' as unknown as React.ElementType).length;
+  await render(<OrderFlashList />);
+  // The skeleton is a plain host element with no role or text: it is counted by its type.
+  const skeletons = () => (screen.root ? [screen.root, ...screen.root.queryAll(() => true)] : []).filter(node => (node.type as unknown) === 'ListSkeleton').length;
   expect(skeletons()).toBe(0);
 
   let finish!: (value: OrderServiceResponse<Order[]>) => void;
   getOrdersList.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
   mockFilters.request = { search: 'onion' };
-  await act(async () => { renderer.update(<OrderFlashList />); });
+  await screen.rerender(<OrderFlashList />);
   expect(skeletons()).toBe(1);
   await act(async () => { finish(empty); });
   expect(skeletons()).toBe(0);
-  await act(async () => { renderer.unmount(); });
 });

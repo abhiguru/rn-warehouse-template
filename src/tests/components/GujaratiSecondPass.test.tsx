@@ -9,8 +9,7 @@
  *    puts the name on its own line in Gujarati instead of ending in a cut separator.
  */
 import React from 'react';
-import { Text, TextInput } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { identifierInput, numericInput, setLanguage, t } from '@/i18n';
 import { Input, NumberInput } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -30,16 +29,11 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-function render(element: React.ReactElement): ReactTestRenderer {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  return tree;
-}
-
-const texts = (tree: ReactTestRenderer): string[] =>
-  tree.root.findAllByType(Text).map(node => [node.props.children].flat(Infinity).filter(child => typeof child === 'string' || typeof child === 'number').join(''));
+// A negative check must also see a Text that is mounted but hidden.
+const texts = (hidden = false): string[] =>
+  screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map(node => [node.props.children].flat(Infinity).filter(child => typeof child === 'string' || typeof child === 'number').join(''));
+/** The text boxes drawn, in order (an empty pattern matches every display value). */
+const fields = () => screen.getAllByDisplayValue(/^/);
 
 afterEach(() => setLanguage('en'));
 
@@ -73,94 +67,98 @@ describe('number inputs', () => {
     expect(identifierInput(53, stored).value).toBe('53');
   });
 
-  it('Input with `numeric` displays ૧૮ for a stored 18 and stores 20 when ૨૦ is typed', () => {
+  it('Input with `numeric` displays ૧૮ for a stored 18 and stores 20 when ૨૦ is typed', async () => {
     setLanguage('gu');
     const stored = jest.fn();
-    const tree = render(<Input numeric value="18" onChangeText={stored} keyboardType="decimal-pad" />);
-    const field = tree.root.findByType(TextInput);
-    expect(field.props.value).toBe('૧૮');
-    expect(field.props.keyboardType).toBe('decimal-pad');
-    act(() => field.props.onChangeText('૨૦'));
+    await render(<Input numeric value="18" onChangeText={stored} keyboardType="decimal-pad" />);
+    const field = screen.getByDisplayValue('૧૮');
+    expect(field).toHaveDisplayValue('૧૮');
+    expect(field).toHaveProp('keyboardType', 'decimal-pad');
+    await fireEvent.changeText(field, '૨૦');
     expect(stored).toHaveBeenCalledWith('20');
   });
 
-  it('NumberInput is numeric; an uncontrolled numeric Input shows what was typed in Gujarati digits', () => {
+  it('NumberInput is numeric; an uncontrolled numeric Input shows what was typed in Gujarati digits', async () => {
     setLanguage('gu');
-    const tree = render(<NumberInput />);
-    const field = () => tree.root.findByType(TextInput);
-    act(() => field().props.onChangeText('45'));
-    expect(field().props.value).toBe('૪૫');
-    expect(field().props.keyboardType).toBe('numeric');
+    await render(<NumberInput />);
+    await fireEvent.changeText(fields()[0], '45');
+    expect(fields()[0]).toHaveDisplayValue('૪૫');
+    expect(fields()[0]).toHaveProp('keyboardType', 'numeric');
   });
 
-  it('Input with `identifier` displays DV0198 unchanged and stores typed ૦-૯ as 0-9', () => {
+  it('Input with `identifier` displays DV0198 unchanged and stores typed ૦-૯ as 0-9', async () => {
     setLanguage('gu');
     const stored = jest.fn();
-    const tree = render(<Input identifier value="DV0198" onChangeText={stored} />);
-    const field = tree.root.findByType(TextInput);
-    expect(field.props.value).toBe('DV0198');
-    act(() => field.props.onChangeText('DV૦૧૯૮'));
+    await render(<Input identifier value="DV0198" onChangeText={stored} />);
+    const field = screen.getByDisplayValue('DV0198');
+    expect(field).toHaveDisplayValue('DV0198');
+    await fireEvent.changeText(field, 'DV૦૧૯૮');
     expect(stored).toHaveBeenCalledWith('DV0198');
   });
 
-  it('a plain Input changes nothing in either direction', () => {
+  it('a plain Input changes nothing in either direction', async () => {
     setLanguage('gu');
     const stored = jest.fn();
-    const tree = render(<Input value="Gate 18" onChangeText={stored} />);
-    const field = tree.root.findByType(TextInput);
-    expect(field.props.value).toBe('Gate 18');
-    act(() => field.props.onChangeText('ગેટ ૧૮'));
+    await render(<Input value="Gate 18" onChangeText={stored} />);
+    const field = screen.getByDisplayValue('Gate 18');
+    expect(field).toHaveDisplayValue('Gate 18');
+    await fireEvent.changeText(field, 'ગેટ ૧૮');
     expect(stored).toHaveBeenCalledWith('ગેટ ૧૮');
   });
 
-  it('English shows 18 in a numeric Input', () => {
-    const tree = render(<Input numeric value="18" onChangeText={jest.fn()} />);
-    expect(tree.root.findByType(TextInput).props.value).toBe('18');
+  it('English shows 18 in a numeric Input', async () => {
+    await render(<Input numeric value="18" onChangeText={jest.fn()} />);
+    expect(fields()[0]).toHaveDisplayValue('18');
   });
 
-  it('the filter number range shows its values in Gujarati digits and reports numbers', () => {
+  it('the filter number range shows its values in Gujarati digits and reports numbers', async () => {
     setLanguage('gu');
     const changed = jest.fn();
-    const tree = render(<NumberRangeEditor label="વજન" value={{ min: 10, max: 25 }} onChange={changed} />);
-    const [min, max] = tree.root.findAllByType(TextInput);
-    expect(min.props.value).toBe('૧૦');
-    expect(max.props.value).toBe('૨૫');
-    act(() => max.props.onChangeText('૩૦'));
+    await render(<NumberRangeEditor label="વજન" value={{ min: 10, max: 25 }} onChange={changed} />);
+    const [min, max] = fields();
+    expect(min).toHaveDisplayValue('૧૦');
+    expect(max).toHaveDisplayValue('૨૫');
+    await fireEvent.changeText(max, '૩૦');
     expect(changed).toHaveBeenLastCalledWith({ min: 10, max: 30 });
-    expect(tree.root.findAllByType(TextInput)[1].props.value).toBe('૩૦');
+    expect(fields()[1]).toHaveDisplayValue('૩૦');
   });
 
-  it('the stepper shows the value being edited in Gujarati digits', () => {
+  it('the stepper shows the value being edited in Gujarati digits', async () => {
     setLanguage('gu');
     const changed = jest.fn();
-    const tree = render(<StepperInput value={12} onValueChange={changed} />);
-    const value = tree.root.findAll(node => node.props.accessibilityHint === t('components.stepper.valueHint') && typeof node.props.onPress === 'function')[0];
-    act(() => value.props.onPress());
-    const field = tree.root.findByType(TextInput);
+    await render(<StepperInput value={12} onValueChange={changed} />);
+    await userEvent.setup({ delay: 0 }).press(screen.getByHintText(t('components.stepper.valueHint')));
+    const field = screen.getByDisplayValue(/^૧૨/);
     expect(field.props.value).toMatch(/^૧૨/);
     expect(field.props.value).not.toMatch(/[0-9]/);
-    act(() => field.props.onChangeText('૧૫'));
-    expect(tree.root.findByType(TextInput).props.value).toBe('૧૫');
+    await fireEvent.changeText(field, '૧૫');
+    expect(fields()[0]).toHaveDisplayValue('૧૫');
   });
 });
 
 describe('labels inside bordered controls', () => {
-  it('a Gujarati button label is one line that may shrink; the English label is as before', () => {
-    const english = render(<Button>Go back</Button>).root.findByType(Text).props;
+  it('a Gujarati button label is one line that may shrink; the English label is as before', async () => {
+    await render(<Button>Go back</Button>);
+    const english = screen.getByText('Go back').props;
     expect(english.numberOfLines).toBe(2);
     expect(english.adjustsFontSizeToFit).toBeUndefined();
+    await screen.unmount();
 
     setLanguage('gu');
-    const gujarati = render(<Button>{t('common.goBack')}</Button>).root.findByType(Text).props;
+    await render(<Button>{t('common.goBack')}</Button>);
+    const gujarati = screen.getByText(t('common.goBack')).props;
     expect(gujarati.numberOfLines).toBe(1);
     expect(gujarati.adjustsFontSizeToFit).toBe(true);
     expect(gujarati.minimumFontScale).toBe(0.8);
   });
 
-  it('the header back button holds its Gujarati label to one line', () => {
-    expect(render(<HeaderBackButton />).root.findByType(Text).props.numberOfLines).toBeUndefined();
+  it('the header back button holds its Gujarati label to one line', async () => {
+    await render(<HeaderBackButton />);
+    expect(screen.getByText(/^/).props.numberOfLines).toBeUndefined();
+    await screen.unmount();
     setLanguage('gu');
-    expect(render(<HeaderBackButton />).root.findByType(Text).props.numberOfLines).toBe(1);
+    await render(<HeaderBackButton />);
+    expect(screen.getByText(/^/).props.numberOfLines).toBe(1);
   });
 });
 
@@ -178,18 +176,19 @@ describe('order screen', () => {
     expect(t('orders.screen.title', { name: '24 Seven Foods' }, 'gu')).toBe('ઑર્ડર: 24 Seven Foods');
   });
 
-  it('English keeps "Saved … · name" on one line', () => {
-    const lines = texts(render(<CustomerOrderSummary order={order} />));
+  it('English keeps "Saved … · name" on one line', async () => {
+    await render(<CustomerOrderSummary order={order} />);
+    const lines = texts(true);
     expect(lines.filter(line => line.includes('·'))).toHaveLength(1);
     expect(lines.find(line => line.includes('·'))).toMatch(/^Saved .* · Ramesh Patel$/);
   });
 
-  it('Gujarati puts the time and the name on separate lines, with no separator to cut', () => {
+  it('Gujarati puts the time and the name on separate lines, with no separator to cut', async () => {
     setLanguage('gu');
-    const lines = texts(render(<CustomerOrderSummary order={order} />));
-    expect(lines.some(line => line.includes('·'))).toBe(false);
-    expect(lines).toContain('Ramesh Patel');
-    expect(lines.some(line => line.endsWith('સચવાયું'))).toBe(true);
+    await render(<CustomerOrderSummary order={order} />);
+    expect(texts(true).some(line => line.includes('·'))).toBe(false);
+    expect(texts()).toContain('Ramesh Patel');
+    expect(texts().some(line => line.endsWith('સચવાયું'))).toBe(true);
   });
 
   it('the catalog search placeholder is short enough for one line', () => {
@@ -197,5 +196,3 @@ describe('order screen', () => {
     expect(t('orders.catalog.searchPlaceholderHint', undefined, 'gu')).toBe('નામ, માર્કો કે વજનથી શોધો');
   });
 });
-
-

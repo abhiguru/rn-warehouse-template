@@ -5,7 +5,7 @@
  * still coalesce behind a load in flight. The queue has no sort.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import SupervisorOrderQueueList from '@/components/lists/SupervisorOrderQueueList';
 import { OrderService } from '@/services/order-service';
 import type { Order, OrderServiceResponse } from '@/types/order.types';
@@ -43,8 +43,9 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@/components/skeletons', () => ({ ListSkeleton: 'ListSkeleton' }));
-jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: 'ListEmptyState' }));
+// Stand-ins that draw a text, so a test sees whether the skeleton or the empty state is on the screen.
+jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => require('react').createElement(require('react-native').Text, null, 'skeleton shown') }));
+jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: () => require('react').createElement(require('react-native').Text, null, 'empty state shown') }));
 jest.mock('@/components/list-items/CustomerOrderGroupCard', () => ({ CustomerOrderGroupCard: 'CustomerOrderGroupCard' }));
 jest.mock('@/components/RecentDispatchedOrdersSection', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/services/order-service', () => ({ OrderService: { getOrdersList: jest.fn() } }));
@@ -53,7 +54,14 @@ const orders = [{ id: 'order-fictional-1', customer_id: 'customer-fictional-1', 
 const answer = { success: true, message: '', data: orders, metadata: { has_more: false } } as OrderServiceResponse<Order[]>;
 const getOrdersList = jest.mocked(OrderService.getOrdersList);
 const searches = () => getOrdersList.mock.calls.map(([filters]) => filters?.search);
-const list = (renderer: ReturnType<typeof create>) => renderer.root.findByType('FlashList' as unknown as React.ElementType);
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+// The list is the stand-in host named FlashList: no role or text, and the test reads and calls its props
+// (renderItem, extraData, refreshControl, the header element), so it is found by its type.
+const list = () => {
+  const root = screen.root!;
+  return root.type === 'FlashList' ? root : root.queryAll(node => (node.type as unknown) === 'FlashList')[0];
+};
 
 beforeEach(() => {
   resetScreenFocus();
@@ -62,36 +70,33 @@ beforeEach(() => {
 });
 
 it('loads once on mount, once per search or customer filter change, and once on a real return', async () => {
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<SupervisorOrderQueueList />); });
+  await render(<SupervisorOrderQueueList />);
   expect(searches()).toEqual([undefined]);
 
   mockFilters.request = { search: 'onion' };
-  await act(async () => { renderer.update(<SupervisorOrderQueueList />); });
+  await screen.rerender(<SupervisorOrderQueueList />);
   expect(searches()).toEqual([undefined, 'onion']);
 
   mockFilters.request = {};
-  await act(async () => { renderer.update(<SupervisorOrderQueueList customerFilter="Fictional Farms" />); });
+  await screen.rerender(<SupervisorOrderQueueList customerFilter="Fictional Farms" />);
   expect(searches()).toEqual([undefined, 'onion', 'Fictional Farms']);
 
   // An open card stays open through filter changes and folds on a return to the screen.
-  await act(async () => { list(renderer).props.renderItem({ item: orders[0] }).props.onToggleExpand('order-fictional-1'); });
-  expect(list(renderer).props.extraData.has('order-fictional-1')).toBe(true);
+  await act(async () => { list().props.renderItem({ item: orders[0] }).props.onToggleExpand('order-fictional-1'); });
+  expect(list().props.extraData.has('order-fictional-1')).toBe(true);
 
   await act(async () => { setScreenFocused(false); });
   expect(getOrdersList).toHaveBeenCalledTimes(3);
   await act(async () => { setScreenFocused(true); });
   expect(searches()).toEqual([undefined, 'onion', 'Fictional Farms', 'Fictional Farms']);
-  expect(list(renderer).props.extraData.size).toBe(0);
+  expect(list().props.extraData.size).toBe(0);
 
   // The list owns the return; the live updates hook must not refresh on focus as well.
   expect(mockLive.args?.[2]).toEqual({ refreshOnFocus: false });
-  await act(async () => { renderer.unmount(); });
 });
 
 it('coalesces live updates that arrive while a load is in flight into one rerun', async () => {
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<SupervisorOrderQueueList />); });
+  await render(<SupervisorOrderQueueList />);
   expect(getOrdersList).toHaveBeenCalledTimes(1);
 
   let finish!: (value: OrderServiceResponse<Order[]>) => void;
@@ -102,15 +107,13 @@ it('coalesces live updates that arrive while a load is in flight into one rerun'
   expect(getOrdersList).toHaveBeenCalledTimes(2);
   await act(async () => { finish(answer); });
   expect(getOrdersList).toHaveBeenCalledTimes(3);
-  await act(async () => { renderer.unmount(); });
 });
 
 it('loads a change made while hidden once on the return as a new first page, and a plain revisit silently', async () => {
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<SupervisorOrderQueueList />); });
+  await render(<SupervisorOrderQueueList />);
   await act(async () => { setScreenFocused(false); });
   mockFilters.request = { search: 'garlic' };
-  await act(async () => { renderer.update(<SupervisorOrderQueueList />); });
+  await screen.rerender(<SupervisorOrderQueueList />);
   expect(getOrdersList).toHaveBeenCalledTimes(1);
 
   // Back with a changed request: one load, shown as loading like an inline filter change.
@@ -131,14 +134,12 @@ it('loads a change made while hidden once on the return as a new first page, and
   expect(mockHeader.loading).toBe(false);
   await act(async () => { finish(answer); });
   expect(getOrdersList).toHaveBeenCalledTimes(3);
-  await act(async () => { renderer.unmount(); });
 });
 
 it('reads "Recently dispatched" again, quietly, on a real return to the queue and on a pull to refresh', async () => {
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<SupervisorOrderQueueList />); });
+  await render(<SupervisorOrderQueueList />);
   // The list header holds the line "last updated" (offline only) and the section: its props are the triggers.
-  const recent = () => (list(renderer).props.ListHeaderComponent.props.children[1].props as { refreshTrigger: number; quietRefreshTrigger: number });
+  const recent = () => (list().props.ListHeaderComponent.props.children[1].props as { refreshTrigger: number; quietRefreshTrigger: number });
   expect(recent()).toMatchObject({ refreshTrigger: 0, quietRefreshTrigger: 0 });
 
   // Away (a dispatch is made from an order) and back: the section is told to read again, without a loading state.
@@ -152,33 +153,27 @@ it('reads "Recently dispatched" again, quietly, on a real return to the queue an
   expect(recent().quietRefreshTrigger).toBe(2);
 
   // A pull to refresh uses its own trigger.
-  await act(async () => { list(renderer).props.refreshControl.props.onRefresh(); });
+  await act(async () => { list().props.refreshControl.props.onRefresh(); });
   expect(recent()).toMatchObject({ refreshTrigger: 1, quietRefreshTrigger: 2 });
-  await act(async () => { renderer.unmount(); });
 });
 
 it('counts the whole queue in the header, not only the cards loaded', async () => {
   getOrdersList.mockResolvedValue({ ...answer, metadata: { has_more: true, total_count: 21 } } as OrderServiceResponse<Order[]>);
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<SupervisorOrderQueueList />); });
-  const badge = renderer.root.findAll(n => n.props.accessibilityLabel !== undefined && /21/.test(String(n.props.accessibilityLabel)));
-  expect(badge.length).toBeGreaterThan(0);
-  await act(async () => { renderer.unmount(); });
+  await render(<SupervisorOrderQueueList />);
+  expect(screen.queryAllByLabelText(/21/, everything).length).toBeGreaterThan(0);
 });
 
 it('shows the skeleton, not the empty state, while a new search with no rows on screen is pending', async () => {
   getOrdersList.mockResolvedValue({ success: true, message: '', data: [], metadata: { has_more: false, total_count: 0 } } as OrderServiceResponse<Order[]>);
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<SupervisorOrderQueueList />); });
-  expect(renderer.root.findAllByType('ListEmptyState' as unknown as React.ElementType)).toHaveLength(1);
+  await render(<SupervisorOrderQueueList />);
+  expect(screen.queryAllByText('empty state shown', everything)).toHaveLength(1);
 
   let finish!: (value: OrderServiceResponse<Order[]>) => void;
   getOrdersList.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
   mockFilters.request = { search: 'onion' };
-  await act(async () => { renderer.update(<SupervisorOrderQueueList />); });
-  expect(renderer.root.findAllByType('ListSkeleton' as unknown as React.ElementType)).toHaveLength(1);
-  expect(renderer.root.findAllByType('ListEmptyState' as unknown as React.ElementType)).toHaveLength(0);
+  await screen.rerender(<SupervisorOrderQueueList />);
+  expect(screen.queryAllByText('skeleton shown', everything)).toHaveLength(1);
+  expect(screen.queryAllByText('empty state shown', everything)).toHaveLength(0);
   await act(async () => { finish({ success: true, message: '', data: [], metadata: { has_more: false, total_count: 0 } } as OrderServiceResponse<Order[]>); });
-  expect(renderer.root.findAllByType('ListEmptyState' as unknown as React.ElementType)).toHaveLength(1);
-  await act(async () => { renderer.unmount(); });
+  expect(screen.queryAllByText('empty state shown', everything)).toHaveLength(1);
 });

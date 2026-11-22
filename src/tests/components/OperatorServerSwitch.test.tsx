@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
@@ -21,6 +21,9 @@ import { commitStagedOperatorServer, discoverOperator, getActiveOperatorServer, 
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: {} } }));
 jest.mock('react-native', () => {
   const React = require('react');
+  function flatten(style: unknown): unknown {
+    return Array.isArray(style) ? Object.assign({}, ...style.map(entry => flatten(entry) as object)) : style ?? {};
+  }
   const element = (name: string) => ({ children, ...props }: Record<string, unknown>) =>
     React.createElement(name, props, children);
   return {
@@ -29,7 +32,8 @@ jest.mock('react-native', () => {
     ScrollView: element('ScrollView'), KeyboardAvoidingView: element('KeyboardAvoidingView'),
     Keyboard: { dismiss: jest.fn() },
     Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options.ios ?? options.default },
-    Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles },
+    // flatten is for Testing Library, which reads styles to find what is hidden.
+    Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles, flatten },
   };
 });
 // The "Update the app" screen has its own tests; it is not rendered here.
@@ -48,7 +52,11 @@ jest.mock('@/hooks/useTheme', () => {
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), replace: jest.fn() } }));
 jest.mock('@/components/ui/Button', () => {
   const React = require('react');
-  return { Button: ({ children, ...props }: Record<string, unknown>) => React.createElement('Button', props, children) };
+  // The stand-in draws what a person finds: a pressable with the button role and its label as text.
+  return {
+    Button: ({ children, ...props }: Record<string, unknown>) =>
+      React.createElement('View', { ...props, accessible: true, accessibilityRole: 'button' }, React.createElement('Text', null, children)),
+  };
 });
 jest.mock('@/store/hooks', () => ({ useAppDispatch: jest.fn() }));
 // The language switch has its own controls and store access; it is not under test here.
@@ -81,7 +89,6 @@ const makeStore = () => configureStore({ reducer: {
 } });
 let store: ReturnType<typeof makeStore>;
 let emptyState: ReturnType<typeof store.getState>;
-let renderer: ReturnType<typeof create> | undefined;
 let events: string[];
 
 // A reset form is dated "now" (the default dispatch date), so the clock is held
@@ -133,22 +140,14 @@ beforeEach(() => {
   });
 });
 
-afterEach(async () => {
-  if (renderer) await act(async () => { renderer!.unmount(); });
-  renderer = undefined;
-});
-
-// The mocked react-native components are plain strings in the tree, so the tag names are cast
-// to the element type findByType expects (the same cast the other component tests use).
-const tag = (name: string) => name as unknown as React.ElementType;
-const BUTTON = tag('Button');
-const TEXT_INPUT = tag('TextInput');
-const button = (label: string) => renderer!.root.findAllByType(BUTTON).find(node => node.props.children === label)!;
+const user = userEvent.setup({ delay: 0 });
+// react-native is replaced wholesale: the server field is a plain host TextInput.
+const input = () => screen.getByLabelText('Server address');
 async function choose(initial = false) {
-  await act(async () => { renderer = create(<OperatorServerSelection initial={initial} />); });
-  await act(async () => { renderer!.root.findByType(TEXT_INPUT).props.onChangeText(next.origin); });
-  await act(async () => { button('Check server').props.onPress(); });
-  await act(async () => { button('Use this server').props.onPress(); });
+  await render(<OperatorServerSelection initial={initial} />);
+  await fireEvent.changeText(input(), next.origin);
+  await user.press(screen.getByRole('button', { name: 'Check server' }));
+  await user.press(await screen.findByRole('button', { name: 'Use this server' }));
 }
 function confirmation() {
   const call = jest.mocked(Alert.alert).mock.calls.find(([title]) => title === 'Change warehouse server?');
@@ -230,7 +229,7 @@ it('ignores an old confirmation after the server input changes', async () => {
   const drafts = store.getState();
   await choose();
   const change = confirmation().find(action => action.text === 'Change server')!;
-  await act(async () => { renderer!.root.findByType(TEXT_INPUT).props.onChangeText('https://third.example.test'); });
+  await fireEvent.changeText(input(), 'https://third.example.test');
   await act(async () => { change.onPress!(); });
   expect(store.getState()).toEqual(drafts);
   expect(beginOperatorSwitch).not.toHaveBeenCalled();
@@ -240,8 +239,7 @@ it('ignores an old confirmation after the server input changes', async () => {
 it('does not activate an old confirmation after the selection screen unmounts', async () => {
   await choose();
   const change = confirmation().find(action => action.text === 'Change server')!;
-  await act(async () => { renderer!.unmount(); });
-  renderer = undefined;
+  await screen.unmount();
   await act(async () => { change.onPress!(); });
   expect(beginOperatorSwitch).not.toHaveBeenCalled();
   expect(logout).not.toHaveBeenCalled();

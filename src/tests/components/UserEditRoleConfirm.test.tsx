@@ -1,12 +1,10 @@
 /** G-25 and G-26: a role changes only after a question that names the new role; the changes of Edit user end in a toast. */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import UserEditScreen from '../../../app/user-edit/[id]';
 import { adminUserService } from '@/services/admin-user-service';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
-import { SectionHeader } from '@/components/ui/SectionHeader';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: 'admin', name: 'Dev Administrator' } } };
 jest.mock('@/store/hooks', () => ({
@@ -37,23 +35,15 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
+let user: ReturnType<typeof userEvent.setup>;
+/** The first element with this accessibility label. */
+const byLabel = (label: string) => screen.getAllByLabelText(label)[0];
+const press = async (label: string) => { await user.press(byLabel(label)); };
 const lastAlert = () => {
   const calls = jest.mocked(showAlert).mock.calls;
   const [title, message, buttons] = calls[calls.length - 1];
   return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
 };
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
 
 jest.mock('@/services/admin-user-service', () => ({
   adminUserService: {
@@ -74,10 +64,11 @@ const STAFF = {
 };
 const loadUser = async (details: Record<string, unknown> = STAFF) => {
   jest.mocked(adminUserService.getUserDetails).mockResolvedValue({ success: true, data: details } as never);
-  await act(async () => { tree = create(<UserEditScreen />); });
+  await render(<UserEditScreen />);
 };
 beforeEach(() => {
   jest.clearAllMocks();
+  user = userEvent.setup({ delay: 0 });
   mockPicker = undefined;
   mockSearch = undefined;
   jest.mocked(adminUserService.updateUserRole).mockResolvedValue({ success: true } as never);
@@ -111,7 +102,7 @@ describe('changing the role', () => {
     await act(async () => { mockPicker!.onSelect('admin'); });
     expect(lastAlert().title).toBe('Make Dev Staff an admin?');
     expect(adminUserService.updateUserRole).not.toHaveBeenCalled();
-    expect(shownText()).toContain('Staff');
+    expect(screen.getAllByText('Staff')[0]).toBeOnTheScreen();
     expect(showToast).not.toHaveBeenCalled();
   });
 
@@ -137,13 +128,11 @@ describe('changing the role', () => {
 describe('the other changes of Edit user', () => {
   it('deactivating (after the question) and activating end in a toast', async () => {
     await loadUser();
-    const toggle = tree!.root.find(node => node.props.accessibilityLabel === 'Account active' && typeof node.props.onValueChange === 'function');
-    await act(async () => { toggle.props.onValueChange(false); });
+    await fireEvent(screen.getByLabelText('Account active'), 'valueChange', false);
     expect(lastAlert().title).toBe('Deactivate Dev Staff?');
     await act(async () => { lastAlert().buttons.find(b => b.text === 'Deactivate user')!.onPress!(); });
     expect(showToast).toHaveBeenLastCalledWith("Dev Staff can't use the app now.");
-    const again = tree!.root.find(node => node.props.accessibilityLabel === 'Account active' && typeof node.props.onValueChange === 'function');
-    await act(async () => { again.props.onValueChange(true); });
+    await fireEvent(screen.getByLabelText('Account active'), 'valueChange', true);
     expect(showToast).toHaveBeenLastCalledWith('Dev Staff can use the app again.');
     expect(jest.mocked(showAlert).mock.calls.length).toBe(1);
   });

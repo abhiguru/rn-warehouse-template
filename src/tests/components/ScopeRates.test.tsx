@@ -3,8 +3,8 @@
  * buttons under it, the add flows, what the Save bar must show (`onBar`), one box edited at a time, and the save.
  */
 import React from 'react';
-import { Dimensions, Text, TextInput } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { Dimensions } from 'react-native';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { ScopeRates, type RateSaveBarState, type ScopeRatesProps } from '@/features/item-pricing/components/ScopeRates';
 import { ScopeSaveBar } from '@/features/item-pricing/components/ScopeSaveBar';
@@ -65,49 +65,57 @@ const baseProps = (rows: ItemStoragePrice[], itemId = 'cumin', own = true): Scop
 });
 
 const WINDOW = Dimensions.get('window');
-let tree: ReactTestRenderer | undefined;
-async function mount(props: ScopeRatesProps) {
-  await act(async () => { tree = create(<ScopeRates {...props} />); });
-  return tree!;
-}
-const rerender = async (props: ScopeRatesProps) => { await act(async () => { tree!.update(<ScopeRates {...props} />); }); };
+let user: ReturnType<typeof userEvent.setup>;
+const mount = async (props: ScopeRatesProps) => { await render(<ScopeRates {...props} />); };
+const rerender = async (props: ScopeRatesProps) => { await screen.rerender(<ScopeRates {...props} />); };
 beforeEach(() => {
   jest.clearAllMocks();
+  user = userEvent.setup({ delay: 0 });
   Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale: 1 } });
 });
 afterEach(() => {
-  act(() => tree?.unmount());
-  tree = undefined;
   Dimensions.set({ window: WINDOW });
 });
 
-const texts = () => tree!.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-const shown = () => texts().join(' | ');
-const host = (id: string) => tree!.root.findAll(n => n.props.testID === id && typeof n.type === 'string');
-const pressable = (id: string) => tree!.root.findAll(n => n.props.testID === id && typeof n.props.onPress === 'function')[0];
-const press = async (id: string) => { await act(async () => { pressable(id).props.onPress(); }); };
-const cell = (id: string, scope?: string) =>
-  tree!.root.findAllByType(TextInput).filter(n => n.props.testID === id)[scope === 'last' ? 1 : 0];
-const type = async (id: string, text: string) => { await act(async () => { cell(id).props.onChangeText(text); }); };
-const dialog = () => {
-  const all = tree!.root.findAll(n => n.props.testID === 'discard-rate-dialog' && typeof n.props.onConfirm === 'function');
-  return all.find(n => n.props.visible) ?? all[0];
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const here = (id: string) => expect(screen.getAllByTestId(id)[0]).toBeOnTheScreen();
+const gone = (id: string) => expect(screen.queryAllByTestId(id, everything)).toHaveLength(0);
+const textHere = (text: string | RegExp) => expect(screen.getAllByText(text)[0]).toBeOnTheScreen();
+const text = (part: string) => new RegExp(part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+const press = async (id: string) => { await user.press(screen.getAllByTestId(id)[0]); };
+const cell = (id: string, scope?: string) => screen.getAllByTestId(id)[scope === 'last' ? 1 : 0];
+const type = async (id: string, value: string, scope?: string) => {
+  await user.clear(cell(id, scope));
+  await user.type(cell(id, scope), value);
+};
+// The dialogs are real ConfirmDialogs: an alert named by its title, with its two buttons.
+// The card has no role a query can reach (a View with a role is not an accessible element), so it is found by its
+// test id and its title must be the one on it.
+const dialogOf = (id: string, title: string) => {
+  const card = screen.getByTestId(id);
+  expect(within(card).getByText(title)).toBeOnTheScreen();
+  return card;
+};
+const dialogGone = (id: string) => expect(screen.queryByTestId(id, everything)).not.toBeOnTheScreen();
+const answer = async (id: string, title: string, button: string) => {
+  await user.press(within(dialogOf(id, title)).getByRole('button', { name: button }));
 };
 const monthlyIds = (rows: ItemStoragePrice[]) => rows.filter(r => r.price_type === 'monthly').map(r => r.id);
 
 describe('today, a manager', () => {
   it('draws a box with the rate in force, the unit, and the buttons Correct and Stop; no Change rate', async () => {
     await mount(baseProps(CUMIN));
-    expect(host('rate-box-monthly').length).toBeGreaterThan(0);
-    expect(cell('band-0-rent').props.value).toBe('11.00');
-    expect(cell('band-0-upTo').props.value).toBe('100');
-    expect(cell('labour').props.value).toBe('3.00');
-    expect(cell('tax').props.value).toBe('5');
-    expect(texts()).toContain('per bag, per month');
-    expect(pressable('rate-correct')).toBeDefined();
-    expect(pressable('rate-stop')).toBeDefined();
-    expect(host('rate-change')).toHaveLength(0);
-    expect(host('rate-card-monthly')).toHaveLength(0);
+    here('rate-box-monthly');
+    expect(cell('band-0-rent')).toHaveDisplayValue('11.00');
+    expect(cell('band-0-upTo')).toHaveDisplayValue('100');
+    expect(cell('labour')).toHaveDisplayValue('3.00');
+    expect(cell('tax')).toHaveDisplayValue('5');
+    textHere('per bag, per month');
+    here('rate-correct');
+    here('rate-stop');
+    gone('rate-change');
+    gone('rate-card-monthly');
     // Nothing is changed yet: no Save bar, not dirty.
     expect(lastBar()).toBeNull();
     expect(lastDirty()).toBe(false);
@@ -115,17 +123,17 @@ describe('today, a manager', () => {
 
   it('shows the later rate as a strip with Edit new rate and Cancel new rate, never as the box figure', async () => {
     await mount(baseProps(CUMIN));
-    expect(shown()).toContain('From 01/01/27: ₹12.00 per bag, per month');
-    expect(pressable('edit-upcoming')).toBeDefined();
-    expect(pressable('cancel-upcoming')).toBeDefined();
-    expect(cell('band-0-rent').props.value).toBe('11.00');
+    textHere(text('From 01/01/27: ₹12.00 per bag, per month'));
+    here('edit-upcoming');
+    here('cancel-upcoming');
+    expect(cell('band-0-rent')).toHaveDisplayValue('11.00');
   });
 
   it('Edit new rate turns the box into that rate: its figures, its start day, a way back', async () => {
     await mount(baseProps(CUMIN));
     await press('edit-upcoming');
-    expect(host('upcoming-mode').length).toBeGreaterThan(0);
-    expect(cell('band-0-rent').props.value).toBe('12.00');
+    here('upcoming-mode');
+    expect(cell('band-0-rent')).toHaveDisplayValue('12.00');
     await type('band-0-rent', '12.50');
     const bar = lastBar()!;
     expect(bar.startsOn).toMatchObject({ choice: 'other', day: '2027-01-01', fixed: false });
@@ -133,16 +141,15 @@ describe('today, a manager', () => {
     // The way back puts the rate in force into the box again and the bar goes.
     // Figures were typed, so the way back asks first ("Keep editing" leaves everything as it is).
     await press('upcoming-discard');
-    expect(dialog().props.visible).toBe(true);
-    expect(dialog().props.title).toBe('Discard changes?');
-    await act(async () => { dialog().props.onCancel(); });
-    expect(dialog().props.visible).toBe(false);
-    expect(host('upcoming-mode').length).toBeGreaterThan(0);
-    expect(cell('band-0-rent').props.value).toBe('12.50');
+    expect(dialogOf('discard-rate-dialog', 'Discard changes?')).toBeOnTheScreen();
+    await answer('discard-rate-dialog', 'Discard changes?', 'Keep editing');
+    dialogGone('discard-rate-dialog');
+    here('upcoming-mode');
+    expect(cell('band-0-rent')).toHaveDisplayValue('12.50');
     await press('upcoming-discard');
-    await act(async () => { dialog().props.onConfirm(); });
-    expect(host('upcoming-mode')).toHaveLength(0);
-    expect(cell('band-0-rent').props.value).toBe('11.00');
+    await answer('discard-rate-dialog', 'Discard changes?', 'Discard');
+    gone('upcoming-mode');
+    expect(cell('band-0-rent')).toHaveDisplayValue('11.00');
     expect(lastBar()).toBeNull();
     expect(lastDirty()).toBe(false);
   });
@@ -151,10 +158,9 @@ describe('today, a manager', () => {
     jest.mocked(undoRateChange).mockResolvedValue({ success: true });
     await mount(baseProps(CUMIN));
     await press('cancel-upcoming');
-    const dialog = tree!.root.find(n => n.props.testID === 'cancel-rate-dialog');
-    expect(dialog.props.visible).toBe(true);
-    expect(dialog.props.title).toBe('Cancel the rate from 01/01/27?');
-    await act(async () => { dialog.props.onConfirm(); });
+    expect(dialogOf('cancel-rate-dialog', 'Cancel the rate from 01/01/27?')).toBeOnTheScreen();
+    expect(undoRateChange).not.toHaveBeenCalled();
+    await answer('cancel-rate-dialog', 'Cancel the rate from 01/01/27?', 'Cancel new rate');
     expect(undoRateChange).toHaveBeenCalledWith({ itemId: 'cumin', customerId: CUST.customer_id, priceType: 'monthly', startsOn: '2027-01-01', seenRows: expect.arrayContaining(monthlyIds(CUMIN)) });
     expect(notifyRatesChanged).toHaveBeenCalledWith('cumin');
   });
@@ -162,9 +168,9 @@ describe('today, a manager', () => {
   it('Correct this rate fixes the start day: the box shows the warning, the bar the day of the rate and Save correction', async () => {
     await mount(baseProps(CUMIN));
     await press('rate-correct');
-    expect(host('correct-warning').length).toBeGreaterThan(0);
-    expect(shown()).toContain('This changes the rate since 01/04/26.');
-    expect(host('rate-correct')).toHaveLength(0);
+    here('correct-warning');
+    textHere(text('This changes the rate since 01/04/26.'));
+    gone('rate-correct');
     await type('band-0-rent', '11.50');
     const bar = lastBar()!;
     expect(bar.startsOn).toMatchObject({ choice: 'fixed', day: '2026-04-01', fixed: true });
@@ -185,7 +191,7 @@ describe('today, a manager', () => {
     jest.mocked(undoRateChange).mockResolvedValue({ success: true });
     const stopping = [row({ item_id: 'onion', weight_min: 0, weight_max: 100, unit_price: 3.5, labour_rate: 1.5, effective_from: '2025-01-01', effective_to: '2027-03-31' })];
     await mount(baseProps(stopping, 'onion'));
-    expect(shown()).toContain('This rate stops after 31/03/27.');
+    textHere(text('This rate stops after 31/03/27.'));
     await press('undo-stop');
     expect(undoRateChange).toHaveBeenCalledWith({ itemId: 'onion', customerId: CUST.customer_id, priceType: 'monthly', startsOn: '2027-04-01', seenRows: expect.arrayContaining(monthlyIds(stopping)) });
     expect(showToast).toHaveBeenCalledWith('The rate continues.');
@@ -193,7 +199,8 @@ describe('today, a manager', () => {
 
   it('has no Standard / This item tags: the standard tiers belong to the item\'s default rate, not a customer\'s', async () => {
     await mount(baseProps(CUMIN));
-    expect(tree!.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('band-tag-'))).toHaveLength(0);
+    // The tags would carry a test id that starts with band-tag-.
+    expect(screen.queryAllByTestId(/^band-tag-/, everything)).toHaveLength(0);
   });
 
   it('with an overlap, a critical strip names the rate invoices use', async () => {
@@ -202,22 +209,22 @@ describe('today, a manager', () => {
       row({ item_id: 'potato', weight_min: 0, weight_max: 100, unit_price: 6, effective_from: '2026-03-01' }),
     ];
     await mount(baseProps(overlap, 'potato'));
-    expect(shown()).toContain('Two rates cover 0–100 kg on this day. Invoices use ₹6.00');
+    textHere(text('Two rates cover 0–100 kg on this day. Invoices use ₹6.00'));
   });
 });
 
 describe('another day, or a role that cannot write', () => {
   it.each(['2026-06-01', '2027-02-01'])('on %s the read-only rate card, with no box and no button', async day => {
     await mount({ ...baseProps(CUMIN), day });
-    expect(host('rate-card-monthly').length).toBeGreaterThan(0);
-    expect(tree!.root.findAllByType(TextInput)).toHaveLength(0);
-    for (const id of ['rate-correct', 'rate-stop', 'edit-upcoming', 'cancel-upcoming', 'add-other-type', 'undo-stop']) expect(host(id)).toHaveLength(0);
+    here('rate-card-monthly');
+    expect(screen.queryAllByDisplayValue(/.*/, everything)).toHaveLength(0);
+    for (const id of ['rate-correct', 'rate-stop', 'edit-upcoming', 'cancel-upcoming', 'add-other-type', 'undo-stop']) gone(id);
   });
 
   it('a role without the right gets the card too', async () => {
     await mount({ ...baseProps(CUMIN), rights: rateRights('staff'), role: 'staff' });
-    expect(host('rate-card-monthly').length).toBeGreaterThan(0);
-    expect(host('rate-box-monthly')).toHaveLength(0);
+    here('rate-card-monthly');
+    gone('rate-box-monthly');
   });
 });
 
@@ -244,12 +251,12 @@ describe('the Save bar', () => {
 
     // Discard asks first when figures were typed.
     await act(async () => { next.discard.onPress(); });
-    expect(dialog().props.visible).toBe(true);
+    expect(dialogOf('discard-rate-dialog', 'Discard changes?')).toBeOnTheScreen();
     expect(lastBar()).not.toBeNull();
-    await act(async () => { dialog().props.onConfirm(); });
+    await answer('discard-rate-dialog', 'Discard changes?', 'Discard');
     expect(lastBar()).toBeNull();
     expect(lastDirty()).toBe(false);
-    expect(cell('band-0-rent').props.value).toBe('11.00');
+    expect(cell('band-0-rent')).toHaveDisplayValue('11.00');
   });
 
   it('typing the value back is clean again: no bar', async () => {
@@ -266,7 +273,7 @@ describe('the Save bar', () => {
     await act(async () => { lastBar()!.startsOn.onChange('today', TODAY); });
     expect(lastBar()!.save.disabled).toBe(true);
     expect(lastBar()!.helper).toBe('Connect to change rates.');
-    expect(cell('band-0-rent').props.value).toBe('12');
+    expect(cell('band-0-rent')).toHaveDisplayValue('12');
   });
 
   it('a past day for a manager adds the warning to the bar', async () => {
@@ -281,12 +288,12 @@ describe('the Save bar', () => {
     await type('band-0-rent', '12');
     await act(async () => { lastBar()!.startsOn.onChange('today', TODAY); });
     const bar = lastBar()!;
-    let barTree!: ReactTestRenderer;
-    await act(async () => { barTree = create(<ScopeSaveBar bar={bar} />); });
-    const barTexts = barTree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).join(''));
-    expect(barTexts).toEqual(expect.arrayContaining(['What changes', 'Save new rate', 'Discard']));
-    expect(barTree.root.findAll(n => n.props.testID === 'save-bar-save' && typeof n.props.onPress === 'function')).not.toHaveLength(0);
-    act(() => barTree.unmount());
+    // The bar is drawn on its own: the screen now points at it.
+    await render(<ScopeSaveBar bar={bar} />);
+    textHere('What changes');
+    textHere('Save new rate');
+    textHere('Discard');
+    here('save-bar-save');
   });
 });
 
@@ -318,8 +325,8 @@ describe('saving', () => {
     // The rows come back with the new rate: the box shows it, clean.
     const saved = [...CUMIN, row({ item_id: 'cumin', weight_min: 0, weight_max: 100, unit_price: 12.5, labour_rate: 3, effective_from: '2026-11-01' })];
     await rerender(baseProps(saved));
-    expect(cell('band-0-rent').props.value).toBe('11.00');
-    expect(shown()).toContain('From 01/11/26: ₹12.50 per bag, per month');
+    expect(cell('band-0-rent')).toHaveDisplayValue('11.00');
+    textHere(text('From 01/11/26: ₹12.50 per bag, per month'));
     expect(lastBar()).toBeNull();
   });
 
@@ -329,7 +336,7 @@ describe('saving', () => {
     await type('band-0-rent', '12');
     await act(async () => { lastBar()!.startsOn.onChange('today', TODAY); });
     await act(async () => { lastBar()!.save.onPress(); });
-    expect(host('editor-error')[0].props.accessibilityLabel).toBe('The server is busy.');
+    expect(screen.getAllByTestId('editor-error')[0]).toHaveAccessibleName('The server is busy.');
     expect(lastDirty()).toBe(true);
     expect(lastBar()).not.toBeNull();
     expect(showToast).not.toHaveBeenCalled();
@@ -345,33 +352,33 @@ describe('saving', () => {
     expect(showToast).toHaveBeenCalledWith('Correction saved.');
     const corrected = CUMIN.map(r => (r.unit_price === 11 ? { ...r, unit_price: 11.25 } : r));
     await rerender(baseProps(corrected));
-    expect(host('correct-warning')).toHaveLength(0);
-    expect(cell('band-0-rent').props.value).toBe('11.25');
-    expect(pressable('rate-correct')).toBeDefined();
+    gone('correct-warning');
+    expect(cell('band-0-rent')).toHaveDisplayValue('11.25');
+    here('rate-correct');
   });
 });
 
 describe('one box at a time', () => {
   it('while the monthly box is changed, the one-time box shows its figures, says why, and the buttons that switch are off', async () => {
     await mount(baseProps(CUMIN_BOTH));
-    expect(host('rate-box-monthly').length).toBeGreaterThan(0);
-    expect(host('rate-box-one_time').length).toBeGreaterThan(0);
-    expect(host('rate-box-one_time-locked')).toHaveLength(0);
+    here('rate-box-monthly');
+    here('rate-box-one_time');
+    gone('rate-box-one_time-locked');
 
     await type('band-0-rent', '12');
-    expect(host('rate-box-one_time-locked').length).toBeGreaterThan(0);
-    expect(host('rate-box-monthly-locked')).toHaveLength(0);
-    const oneTimeRent = tree!.root.findAllByType(TextInput).filter(n => n.props.testID === 'band-0-rent')[1];
-    expect(oneTimeRent.props.value).toBe('9.00');
-    expect(oneTimeRent.props.editable).toBe(false);
-    expect(pressable('rate-correct').props.disabled).toBe(true);
-    expect(pressable('edit-upcoming').props.disabled).toBe(true);
+    here('rate-box-one_time-locked');
+    gone('rate-box-monthly-locked');
+    const oneTimeRent = screen.getAllByTestId('band-0-rent')[1];
+    expect(oneTimeRent).toHaveDisplayValue('9.00');
+    expect(oneTimeRent).toHaveProp('editable', false);
+    expect(screen.getAllByTestId('rate-correct')[0]).toBeDisabled();
+    expect(screen.getAllByTestId('edit-upcoming')[0]).toBeDisabled();
 
     // Discarded: both open again.
     await act(async () => { lastBar()!.discard.onPress(); });
-    await act(async () => { dialog().props.onConfirm(); });
-    expect(host('rate-box-one_time-locked')).toHaveLength(0);
-    expect(tree!.root.findAllByType(TextInput).filter(n => n.props.testID === 'band-0-rent')[1].props.editable).toBe(true);
+    await answer('discard-rate-dialog', 'Discard changes?', 'Discard');
+    gone('rate-box-one_time-locked');
+    expect(screen.getAllByTestId('band-0-rent')[1]).toHaveProp('editable', true);
   });
 
   it('registers the cells under the box they belong to and reports the Next-key order across boxes', async () => {
@@ -389,15 +396,15 @@ describe('one box at a time', () => {
     await mount(baseProps(CUMIN));
     await type('band-0-rent', '12');
     await rerender(baseProps(CUMIN.map(r => ({ ...r }))));
-    expect(cell('band-0-rent').props.value).toBe('12');
+    expect(cell('band-0-rent')).toHaveDisplayValue('12');
     expect(lastBar()).not.toBeNull();
     await rerender(baseProps(CUMIN.map(r => (r.unit_price === 11 ? { ...r, unit_price: 11.75 } : r))));
     // Typed figures are kept when the rows change under them (the server refuses a stale save).
-    expect(cell('band-0-rent').props.value).toBe('12');
+    expect(cell('band-0-rent')).toHaveDisplayValue('12');
     expect(lastBar()).not.toBeNull();
     // Typing the saved figure back lets the new rows in.
     await type('band-0-rent', '11.00');
-    expect(cell('band-0-rent').props.value).toBe('11.75');
+    expect(cell('band-0-rent')).toHaveDisplayValue('11.75');
     expect(lastBar()).toBeNull();
   });
 });
@@ -405,63 +412,62 @@ describe('one box at a time', () => {
 describe('adding', () => {
   it('one price type present: Add one-time rate reveals a box of the other type, below the first', async () => {
     await mount(baseProps(CUMIN));
-    expect(shown()).toContain('Add one-time rate');
+    textHere(text('Add one-time rate'));
     await press('add-other-type');
-    expect(host('rate-box-add').length).toBeGreaterThan(0);
-    expect(texts()).toContain('per bag, once');
-    expect(host('add-other-type')).toHaveLength(0);
+    here('rate-box-add');
+    textHere('per bag, once');
+    gone('add-other-type');
     // Both types: no offer.
-    act(() => tree!.unmount());
+    await screen.unmount();
     await mount(baseProps(CUMIN_BOTH));
-    expect(host('add-other-type')).toHaveLength(0);
+    gone('add-other-type');
   });
 
   it('closing a new box with typed figures asks "Discard this rate?" first', async () => {
     await mount(baseProps(CUMIN));
     await press('add-other-type');
-    await act(async () => { cell('band-0-rent', 'last').props.onChangeText('4'); });
+    await type('band-0-rent', '4', 'last');
     await press('box-close');
-    expect(dialog().props.visible).toBe(true);
-    expect(dialog().props.title).toBe('Discard this rate?');
-    await act(async () => { dialog().props.onCancel(); });
-    expect(host('rate-box-add').length).toBeGreaterThan(0);
+    expect(dialogOf('discard-rate-dialog', 'Discard this rate?')).toBeOnTheScreen();
+    await answer('discard-rate-dialog', 'Discard this rate?', 'Keep editing');
+    here('rate-box-add');
     await press('box-close');
-    await act(async () => { dialog().props.onConfirm(); });
-    expect(host('rate-box-add')).toHaveLength(0);
+    await answer('discard-rate-dialog', 'Discard this rate?', 'Discard');
+    gone('rate-box-add');
   });
 
   it('a customer with no own rate: the strip, and Add customer rate opens the full-screen Add customer rate form', async () => {
     await mount({ ...baseProps(itemRows('onion'), 'onion', false), customerId: 'orchard-c', customerName: 'Review Orchard C' });
-    expect(shown()).toContain('Review Orchard C has no rate of their own for this item now. Invoices use the default rate.');
+    textHere(text('Review Orchard C has no rate of their own for this item now. Invoices use the default rate.'));
     await press('add-customer-rate');
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/item-rates/[itemId]/customer-add/[customerId]',
       params: { itemId: 'onion', customerId: 'orchard-c', customer_name: 'Review Orchard C', deactivated: '0' },
     });
     // No box opens on this page; the form saves the rate (its own tests).
-    expect(cell('band-0-rent')).toBeUndefined();
+    gone('band-0-rent');
   });
 
   it('a customer who has an own rate gets its box, and the default for comparison', async () => {
     await mount({ ...baseProps(itemRows('onion'), 'onion', false), customerId: ORCHARD_B.customer_id, customerName: ORCHARD_B.customer_name });
-    expect(cell('band-0-rent').props.value).toBe('3.00');
-    expect(cell('first-from').props.value).toBe('0');
-    expect(texts()).toContain('Default rate: ₹3.50 per bag, per month');
+    expect(cell('band-0-rent')).toHaveDisplayValue('3.00');
+    expect(cell('first-from')).toHaveDisplayValue('0');
+    textHere('Default rate: ₹3.50 per bag, per month');
     // Only the customer's own rows are in the box: the default rate has none.
-    expect(host('rate-box-monthly')).toHaveLength(1);
+    expect(screen.queryAllByTestId('rate-box-monthly', everything)).toHaveLength(1);
   });
 
   it('says the unit once: the "Default rate" line has it, so the box does not repeat it on a line of its own', async () => {
     await mount({ ...baseProps(itemRows('onion'), 'onion', false), customerId: ORCHARD_B.customer_id, customerName: ORCHARD_B.customer_name });
-    expect(texts()).toContain('Default rate: ₹3.50 per bag, per month');
-    expect(texts().filter(text => text === 'per bag, per month')).toHaveLength(0);
+    textHere('Default rate: ₹3.50 per bag, per month');
+    expect(screen.queryAllByText('per bag, per month', everything)).toHaveLength(0);
     // The box itself is there, with its start line.
-    expect(host('rate-box-monthly')).toHaveLength(1);
+    expect(screen.queryAllByTestId('rate-box-monthly', everything)).toHaveLength(1);
   });
 
   it('a customer without a default rate for the item keeps the unit line over the box', async () => {
     await mount(baseProps(CUMIN));
-    expect(texts().filter(text => text.startsWith('Default rate:'))).toHaveLength(0);
-    expect(texts().filter(text => text === 'per bag, per month')).toHaveLength(1);
+    expect(screen.queryAllByText(/^Default rate:/, everything)).toHaveLength(0);
+    expect(screen.queryAllByText('per bag, per month', everything)).toHaveLength(1);
   });
 });

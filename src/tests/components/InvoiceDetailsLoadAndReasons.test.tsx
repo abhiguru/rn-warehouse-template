@@ -3,8 +3,7 @@
  * overview shows why a discount or a zero charge was given and who set it (staff and up).
  */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import InvoiceDetailScreen from '../../../app/invoice-details/[id]';
 import { getInvoiceDetails, getInvoiceItemsDetailed, getInvoiceReasons } from '@/services/invoice-service';
@@ -47,17 +46,25 @@ jest.mock('@/services/invoice-service', () => ({
 }));
 jest.mock('@/components/invoice-details', () => ({
   InvoiceHeroHeader: () => null,
-  InvoiceTabNavigator: 'InvoiceTabNavigator',
+  // A stand-in that draws one button for the Overview tab and calls the page's real on_tab_change.
+  InvoiceTabNavigator: (props: { on_tab_change: (tab: string) => void }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="overview tab" onPress={() => props.on_tab_change('overview')}>
+        <Text>overview</Text>
+      </Pressable>
+    );
+  },
   InvoiceOverviewTab: jest.requireActual('@/components/invoice-details/InvoiceOverviewTab').InvoiceOverviewTab,
   InvoiceLineItemsTab: () => null,
   InvoiceBreakdownTab: () => null,
 }));
 
-let renderer: ReturnType<typeof create>;
-const texts = () => renderer.root.findAllByType(Text).map(n => [n.props.children].flat().join(''));
+// What is drawn on screen; a check that something is NOT there passes `hidden` to see mounted-but-hidden ones too.
+const texts = (hidden = false) => screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map(n => [n.props.children].flat().join(''));
+const user = () => userEvent.setup({ delay: 0 });
 const pressByLabel = async (label: string) => {
-  const node = renderer.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === label)[0];
-  await act(async () => { node.props.onPress(); });
+  await user().press(screen.getAllByLabelText(label)[0]);
 };
 
 const loaded = {
@@ -69,12 +76,10 @@ const loaded = {
 } as unknown as InvoiceDetailsResponse;
 
 async function open() {
-  await act(async () => { renderer = create(<InvoiceDetailScreen />); });
+  await render(<InvoiceDetailScreen />);
 }
 const showOverview = async () => {
-  await act(async () => {
-    renderer.root.findByType('InvoiceTabNavigator' as unknown as React.ElementType).props.on_tab_change('overview');
-  });
+  await user().press(await screen.findByRole('button', { name: 'overview tab' }));
 };
 
 beforeEach(() => {
@@ -84,14 +89,13 @@ beforeEach(() => {
   jest.mocked(getInvoiceItemsDetailed).mockResolvedValue({ success: false } as InvoiceItemsDetailedResponse);
   jest.mocked(getInvoiceReasons).mockResolvedValue(null);
 });
-afterEach(async () => { await act(async () => { renderer?.unmount(); }); });
 
 describe('a failed first load', () => {
   it('shows "Couldn\'t load the invoice" with Try again and Go back, no alert and not "Invoice not found"', async () => {
     jest.mocked(getInvoiceDetails).mockResolvedValue({ success: false, message: 'x', error: 'Bad gateway' });
     await open();
     expect(texts()).toEqual(expect.arrayContaining(["Couldn't load the invoice", 'Check your connection and try again.', 'Try again', 'Go back']));
-    expect(texts()).not.toContain('Invoice not found');
+    expect(texts(true)).not.toContain('Invoice not found');
     expect(showAlert).not.toHaveBeenCalled();
   });
 
@@ -107,8 +111,8 @@ describe('a failed first load', () => {
     await open();
     await pressByLabel('Try again');
     expect(getInvoiceDetails).toHaveBeenCalledTimes(2);
-    expect(texts()).not.toContain("Couldn't load the invoice");
-    expect(renderer.root.findAllByType('InvoiceTabNavigator' as unknown as React.ElementType)).toHaveLength(1);
+    expect(texts(true)).not.toContain("Couldn't load the invoice");
+    expect(await screen.findAllByRole('button', { name: 'overview tab' })).toHaveLength(1);
   });
 
   it('Go back leaves the page', async () => {
@@ -122,7 +126,7 @@ describe('a failed first load', () => {
     jest.mocked(getInvoiceDetails).mockResolvedValue({ success: false, message: 'x', error: 'Invoice not found', notFound: true });
     await open();
     expect(texts()).toContain('Invoice not found');
-    expect(texts()).not.toContain('Try again');
+    expect(texts(true)).not.toContain('Try again');
     expect(showAlert).not.toHaveBeenCalled();
   });
 });
@@ -140,7 +144,7 @@ describe('the reasons of a discount and a zero charge', () => {
     await showOverview();
     expect(texts()).toEqual(expect.arrayContaining(['Discount reason', 'Damaged bags', 'Set by Asha Patel, 02/10/26', 'Reason for zero charge', 'Sample lot', 'Set by Ravi Shah, 03/10/26']));
     // A screen reader is given the date in words.
-    const labels = renderer.root.findAll(n => typeof n.props.accessibilityLabel === 'string').map(n => n.props.accessibilityLabel as string);
+    const labels = screen.queryAllByLabelText(/^/).map(n => n.props.accessibilityLabel as string);
     expect(labels).toEqual(expect.arrayContaining(['Discount reason, Damaged bags, Set by Asha Patel, 2 Oct 2026', 'Reason for zero charge, Sample lot, Set by Ravi Shah, 3 Oct 2026']));
   });
 
@@ -150,7 +154,7 @@ describe('the reasons of a discount and a zero charge', () => {
     await open();
     await showOverview();
     expect(texts()).toContain('Damaged bags');
-    expect(texts()).not.toContain('Reason for zero charge');
+    expect(texts(true)).not.toContain('Reason for zero charge');
   });
 
   it('are not asked for, and not shown, to a customer', async () => {
@@ -160,7 +164,7 @@ describe('the reasons of a discount and a zero charge', () => {
     await open();
     await showOverview();
     expect(getInvoiceReasons).not.toHaveBeenCalled();
-    expect(texts()).not.toContain('Damaged bags');
+    expect(texts(true)).not.toContain('Damaged bags');
   });
 
   it('a failed read of the reasons shows nothing and no alert', async () => {
@@ -169,14 +173,14 @@ describe('the reasons of a discount and a zero charge', () => {
     await open();
     await showOverview();
     expect(showAlert).not.toHaveBeenCalled();
-    expect(texts()).not.toContain('Discount reason');
+    expect(texts(true)).not.toContain('Discount reason');
   });
 });
 
 describe('WH-216: in Gujarati, and Edit in the stack header', () => {
   const { setLanguage } = require('@/i18n');
   afterEach(() => setLanguage('en'));
-  const editButtons = () => renderer.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'Edit');
+  const editButtons = (hidden = false) => screen.queryAllByLabelText('Edit', { includeHiddenElements: hidden });
 
   it('says an invoice that cannot be read in Gujarati, with Go back', async () => {
     setLanguage('gu');
@@ -202,15 +206,15 @@ describe('WH-216: in Gujarati, and Edit in the stack header', () => {
     jest.mocked(getInvoiceDetails).mockResolvedValue(loaded);
     await open();
     expect(editButtons().length).toBeGreaterThan(0);
-    await act(async () => { renderer.unmount(); });
+    await screen.unmount();
     mockCanUpdate = false;
     await open();
-    expect(editButtons()).toHaveLength(0);
+    expect(editButtons(true)).toHaveLength(0);
   });
 
   it('has no Edit while the invoice cannot be read', async () => {
     jest.mocked(getInvoiceDetails).mockResolvedValue({ success: false, message: 'x', error: 'Bad gateway' });
     await open();
-    expect(editButtons()).toHaveLength(0);
+    expect(editButtons(true)).toHaveLength(0);
   });
 });

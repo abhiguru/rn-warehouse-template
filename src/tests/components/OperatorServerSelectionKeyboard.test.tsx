@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { Keyboard, Platform } from 'react-native';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { discoverOperator, getActiveOperatorServer } from '@/config/operatorServer';
@@ -11,6 +11,9 @@ import { discoverOperator, getActiveOperatorServer } from '@/config/operatorServ
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: {} } }));
 jest.mock('react-native', () => {
   const React = require('react');
+  function flatten(style: unknown): unknown {
+    return Array.isArray(style) ? Object.assign({}, ...style.map(entry => flatten(entry) as object)) : style ?? {};
+  }
   const element = (name: string) => ({ children, ...props }: Record<string, unknown>) =>
     React.createElement(name, props, children);
   return {
@@ -19,7 +22,8 @@ jest.mock('react-native', () => {
     ScrollView: element('ScrollView'), KeyboardAvoidingView: element('KeyboardAvoidingView'),
     Keyboard: { dismiss: jest.fn() },
     Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options.ios ?? options.default },
-    Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles },
+    // flatten is for Testing Library, which reads styles to find what is hidden.
+    Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles, flatten },
   };
 });
 // The "Update the app" screen has its own tests; it is not rendered here.
@@ -38,7 +42,11 @@ jest.mock('@/hooks/useTheme', () => {
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), replace: jest.fn() } }));
 jest.mock('@/components/ui/Button', () => {
   const React = require('react');
-  return { Button: ({ children, ...props }: Record<string, unknown>) => React.createElement('Button', props, children) };
+  // The stand-in draws what a person finds: a pressable with the button role and its label as text.
+  return {
+    Button: ({ children, ...props }: Record<string, unknown>) =>
+      React.createElement('View', { ...props, accessible: true, accessibilityRole: 'button' }, React.createElement('Text', null, children)),
+  };
 });
 jest.mock('@/store/hooks', () => ({ useAppDispatch: () => jest.fn() }));
 // The language switch has its own controls and store access; it is not under test here.
@@ -74,21 +82,22 @@ const found: Discovery = {
   server: { origin: 'https://found.example.test', instanceId: 'instance-found', displayName: 'Fictional Found', companyName: 'Fictional Company' },
   config: {} as never,
 };
-// The mocked react-native components are plain strings in the tree, so the tag names are cast
-// to the element type findByType expects (the same cast the other component tests use).
-const tag = (name: string) => name as unknown as React.ElementType;
-const TEXT_INPUT = tag('TextInput');
-const BUTTON = tag('Button');
-const TEXT = tag('Text');
-const SCROLL_VIEW = tag('ScrollView');
-const KEYBOARD_AVOIDING_VIEW = tag('KeyboardAvoidingView');
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+// react-native is replaced wholesale: the scroll view and the keyboard-avoiding view are plain host elements with
+// no role or text, so they are found by their type.
+const hostsOf = (name: string) => {
+  const root = screen.root;
+  return root ? [root, ...root.queryAll(() => true)].filter(node => (node.type as unknown) === name) : [];
+};
 
-let renderer: ReturnType<typeof create> | undefined;
-const input = () => renderer!.root.findByType(TEXT_INPUT);
-const button = (label: string) => renderer!.root.findAllByType(BUTTON).find(node => node.props.children === label);
-const texts = () => renderer!.root.findAllByType(TEXT).map(node => node.props.children);
-const render = async (props: React.ComponentProps<typeof OperatorServerSelection> = { initial: true }) => {
-  await act(async () => { renderer = create(<OperatorServerSelection {...props} />); });
+const input = () => screen.getByLabelText('Server address');
+const typeAddress = async (text: string) => { await fireEvent.changeText(input(), text); };
+const checkServer = () => user.press(screen.getByRole('button', { name: 'Check server' }));
+const hasUseThisServer = () => screen.queryByRole('button', { name: 'Use this server', ...hidden }) !== null;
+const draw = async (props: React.ComponentProps<typeof OperatorServerSelection> = { initial: true }) => {
+  await render(<OperatorServerSelection {...props} />);
 };
 
 beforeEach(() => {
@@ -96,52 +105,48 @@ beforeEach(() => {
   (Platform as { OS: string }).OS = 'ios';
   jest.mocked(getActiveOperatorServer).mockReturnValue(null);
 });
-afterEach(async () => {
-  if (renderer) await act(async () => { renderer!.unmount(); });
-  renderer = undefined;
-});
 
 describe('closing the keyboard when a check starts', () => {
   it('closes it when "Check server" is pressed, before the result arrives, and shows the card afterwards', async () => {
     const pending = deferred<Discovery>();
     jest.mocked(discoverOperator).mockReturnValueOnce(pending.promise);
-    await render();
-    await act(async () => { input().props.onChangeText('https://found.example.test'); });
+    await draw();
+    await typeAddress('https://found.example.test');
     expect(Keyboard.dismiss).not.toHaveBeenCalled();
 
-    await act(async () => { button('Check server')!.props.onPress(); });
+    await checkServer();
 
     expect(discoverOperator).toHaveBeenCalledWith('https://found.example.test');
     expect(Keyboard.dismiss).toHaveBeenCalledTimes(1);
-    expect(texts()).not.toContain('Fictional Found');
+    expect(screen.queryByText('Fictional Found', hidden)).not.toBeOnTheScreen();
 
     await act(async () => { pending.resolve(found); await pending.promise; });
-    expect(texts()).toContain('Fictional Found');
-    expect(button('Use this server')).toBeDefined();
+    expect(screen.getByText('Fictional Found')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Use this server' })).toBeOnTheScreen();
     expect(Keyboard.dismiss).toHaveBeenCalledTimes(1);
   });
 
   it('closes it and runs the same check when the keyboard\'s submit key is used in the field', async () => {
     jest.mocked(discoverOperator).mockResolvedValueOnce(found);
-    await render();
-    await act(async () => { input().props.onChangeText('https://found.example.test'); });
+    await draw();
+    await typeAddress('https://found.example.test');
     expect(Keyboard.dismiss).not.toHaveBeenCalled();
 
-    await act(async () => { input().props.onSubmitEditing(); });
+    await fireEvent(input(), 'submitEditing');
 
     expect(discoverOperator).toHaveBeenCalledTimes(1);
     expect(discoverOperator).toHaveBeenCalledWith('https://found.example.test');
     expect(Keyboard.dismiss).toHaveBeenCalledTimes(1);
-    expect(texts()).toContain('Fictional Found');
+    expect(await screen.findByText('Fictional Found')).toBeOnTheScreen();
   });
 
   it('closes it when the check fails too, so the error alert is not behind it', async () => {
     jest.mocked(discoverOperator).mockRejectedValueOnce(new Error('Fictional unreachable server'));
-    await render();
-    await act(async () => { input().props.onChangeText('https://down.example.test'); });
-    await act(async () => { button('Check server')!.props.onPress(); });
+    await draw();
+    await typeAddress('https://down.example.test');
+    await checkServer();
     expect(Keyboard.dismiss).toHaveBeenCalledTimes(1);
-    expect(button('Use this server')).toBeUndefined();
+    expect(hasUseThisServer()).toBe(false);
   });
 
   it.each([
@@ -150,20 +155,20 @@ describe('closing the keyboard when a check starts', () => {
     ['central "Enter address"', { onCancel: jest.fn(), onChoose: jest.fn() }],
   ])('closes it in the %s', async (_name, props) => {
     jest.mocked(discoverOperator).mockResolvedValueOnce(found);
-    await render(props);
-    await act(async () => { input().props.onChangeText('https://found.example.test'); });
-    await act(async () => { button('Check server')!.props.onPress(); });
+    await draw(props);
+    await typeAddress('https://found.example.test');
+    await checkServer();
     expect(Keyboard.dismiss).toHaveBeenCalledTimes(1);
-    expect(button('Use this server')).toBeDefined();
+    expect(await screen.findByRole('button', { name: 'Use this server' })).toBeOnTheScreen();
   });
 
   it('closes it once for a submit that starts a check, and not again for a submit while that check runs', async () => {
     const pending = deferred<Discovery>();
     jest.mocked(discoverOperator).mockReturnValueOnce(pending.promise);
-    await render();
-    await act(async () => { input().props.onChangeText('https://found.example.test'); });
-    await act(async () => { input().props.onSubmitEditing(); });
-    await act(async () => { input().props.onSubmitEditing(); });
+    await draw();
+    await typeAddress('https://found.example.test');
+    await fireEvent(input(), 'submitEditing');
+    await fireEvent(input(), 'submitEditing');
     expect(discoverOperator).toHaveBeenCalledTimes(1);
     expect(Keyboard.dismiss).toHaveBeenCalledTimes(1);
     await act(async () => { pending.resolve(found); await pending.promise; });
@@ -173,24 +178,27 @@ describe('closing the keyboard when a check starts', () => {
 describe('scrolling with the keyboard open', () => {
   it('keeps taps on "Use this server" working with the keyboard open (one tap, no first tap to close it)', async () => {
     jest.mocked(discoverOperator).mockResolvedValueOnce(found);
-    await render({ onCancel: jest.fn(), onChoose: jest.fn() });
-    await act(async () => { input().props.onChangeText('https://found.example.test'); });
-    await act(async () => { button('Check server')!.props.onPress(); });
-    expect(renderer!.root.findByType(SCROLL_VIEW).props.keyboardShouldPersistTaps).toBe('handled');
+    await draw({ onCancel: jest.fn(), onChoose: jest.fn() });
+    await typeAddress('https://found.example.test');
+    await checkServer();
+    expect(hostsOf('ScrollView')).toHaveLength(1);
+    expect(hostsOf('ScrollView')[0].props.keyboardShouldPersistTaps).toBe('handled');
   });
 
   it('moves the content above the keyboard with padding on iOS', async () => {
-    await render();
-    const avoiding = renderer!.root.findByType(KEYBOARD_AVOIDING_VIEW);
-    expect(avoiding.props.behavior).toBe('padding');
-    expect(avoiding.findAllByType(SCROLL_VIEW)).toHaveLength(1);
+    await draw();
+    const avoiding = hostsOf('KeyboardAvoidingView');
+    expect(avoiding).toHaveLength(1);
+    expect(avoiding[0].props.behavior).toBe('padding');
+    expect(avoiding[0].queryAll(node => (node.type as unknown) === 'ScrollView')).toHaveLength(1);
   });
 
   it('shrinks the content above the keyboard on Android, as the sign-in screens do', async () => {
     (Platform as { OS: string }).OS = 'android';
-    await render();
-    const avoiding = renderer!.root.findByType(KEYBOARD_AVOIDING_VIEW);
-    expect(avoiding.props.behavior).toBe('height');
-    expect(avoiding.findAllByType(SCROLL_VIEW)).toHaveLength(1);
+    await draw();
+    const avoiding = hostsOf('KeyboardAvoidingView');
+    expect(avoiding).toHaveLength(1);
+    expect(avoiding[0].props.behavior).toBe('height');
+    expect(avoiding[0].queryAll(node => (node.type as unknown) === 'ScrollView')).toHaveLength(1);
   });
 });

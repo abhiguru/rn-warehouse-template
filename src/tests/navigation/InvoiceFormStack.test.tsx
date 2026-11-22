@@ -23,7 +23,7 @@
  */
 import React from 'react';
 import { Pressable, Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import 'expo-router/build/testing-library/mocks';
 import { getMockContext } from 'expo-router/build/testing-library/mock-config';
@@ -107,11 +107,12 @@ const opener = (testID: string, href: '/grn-form/step1' | '/dispatch-form/step1'
 const firstStep = (testID: string, href: '/grn-form/step2' | '/dispatch-form/step2') => () =>
   <Pressable testID={testID} onPress={() => router.push(href)}><Text>Next</Text></Pressable>;
 
-let tree: ReactTestRenderer;
+let user: ReturnType<typeof userEvent.setup>;
 let backKey: ReturnType<typeof installHardwareBack>;
 
 beforeEach(async () => {
   jest.useFakeTimers();
+  user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   mockStore = makeStore();
@@ -145,13 +146,10 @@ beforeEach(async () => {
     'dispatch-form/step1': firstStep('dispatch-next', '/dispatch-form/step2'),
     'dispatch-form/step2': DispatchFormStep2,
   });
-  await act(async () => {
-    tree = create(<ExpoRoot context={context} location="/invoices" />);
-  });
+  await render(<ExpoRoot context={context} location="/invoices" />);
 });
 
 afterEach(async () => {
-  await act(async () => { tree.unmount(); });
   backKey.restore();
   jest.useRealTimers();
   jest.restoreAllMocks();
@@ -161,18 +159,25 @@ const settle = async () => {
   await act(async () => { await jest.runAllTimersAsync(); });
 };
 
+const everything = { includeHiddenElements: true } as const;
 /** The control with this testID or label on the screen that is in front (the last one drawn). */
 const control = (testID: string) => {
-  const found = tree.root.findAll((node) =>
-    (node.props.testID === testID || node.props.accessibilityLabel === testID) && typeof node.props.onPress === 'function');
+  // The tap that lands late reaches the control of a screen that is already behind another one (hidden, still mounted).
+  const found = [...screen.queryAllByTestId(testID, everything), ...screen.queryAllByLabelText(testID, everything)];
   if (found.length === 0) throw new Error(`No control ${testID}`);
   return found[found.length - 1];
 };
 const tap = async (testID: string, times = 1) => {
   const pressable = control(testID);
-  await act(async () => {
-    for (let i = 0; i < times; i += 1) pressable.props.onPress();
-  });
+  if (times === 1) await user.press(pressable);
+  else {
+    // A double tap: both taps reach the control before React has drawn the result of the first, as a Pressable
+    // answers its host's click with its onPress. userEvent waits for a draw between presses, so it cannot do this.
+    const click = pressable.props.onClick as (event: unknown) => void;
+    await act(async () => {
+      for (let i = 0; i < times; i += 1) click({});
+    });
+  }
   await settle();
 };
 

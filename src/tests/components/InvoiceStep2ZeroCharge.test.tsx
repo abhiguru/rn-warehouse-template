@@ -5,7 +5,7 @@
  * items step is in InvoiceEditItemsStep.test.tsx.
  */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import InvoiceFormStep2 from '../../../app/invoice-form/step2';
 
@@ -71,25 +71,28 @@ jest.mock('react-native-keyboard-aware-scroll-view', () => ({
   // The items table (a stand-in here) is a keyboard-aware FlashList.
   listenToKeyboardEvents: () => (component: unknown) => component,
 }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// A stand-in: an open dialog is an alert with its title and message.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: (props: { visible: boolean; title: string; message?: string }) => {
+    const { Text, View } = require('react-native');
+    return props.visible ? (
+      <View accessible accessibilityRole="alert">
+        <Text>{props.title}</Text>
+        <Text>{props.message}</Text>
+      </View>
+    ) : null;
+  },
+}));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
-jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: 'InvoiceItemsEditor' }));
+jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: () => null }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn() }));
 
-async function render(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = create(element); });
-  return tree;
-}
-const pressNext = async (tree: ReactTestRenderer) => {
-  const next = tree.root.find(
-    (node) => typeof node.type !== 'string' && node.props.accessibilityLabel === 'Review' && typeof node.props.onPress === 'function'
-  );
-  await act(async () => { await next.props.onPress(); });
+const pressNext = async () => {
+  await userEvent.setup({ delay: 0 }).press(screen.getByLabelText('Review'));
 };
-const shown = (tree: ReactTestRenderer) =>
-  tree.root.findAllByType('ConfirmDialog' as unknown as React.ElementType).filter((dialog) => dialog.props.visible);
+// A check that no dialog is open must also see one that is mounted but hidden.
+const shown = (hidden = false) => screen.queryAllByRole('alert', { includeHiddenElements: hidden });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -100,23 +103,21 @@ afterEach(() => jest.restoreAllMocks());
 describe('new invoice, items step', () => {
   it('goes on to the review with a line whose charge is 0', async () => {
     mockItems = [line('aaaaaaaa', { charge: 0, amount: 0 }), line('bbbbbbbb')];
-    const tree = await render(<InvoiceFormStep2 />);
+    await render(<InvoiceFormStep2 />);
 
-    await pressNext(tree);
+    await pressNext();
 
-    expect(shown(tree)).toHaveLength(0);
+    expect(shown(true)).toHaveLength(0);
     expect(mockNavigateToStep).toHaveBeenCalledWith(3);
-    await act(async () => { tree.unmount(); });
   });
 
   it('goes on when every line has a charge of 0', async () => {
     mockItems = [line('aaaaaaaa', { charge: 0, amount: 0 }), line('bbbbbbbb', { charge: 0, amount: 0 })];
-    const tree = await render(<InvoiceFormStep2 />);
+    await render(<InvoiceFormStep2 />);
 
-    await pressNext(tree);
+    await pressNext();
 
     expect(mockNavigateToStep).toHaveBeenCalledWith(3);
-    await act(async () => { tree.unmount(); });
   });
 
   it.each([
@@ -124,15 +125,14 @@ describe('new invoice, items step', () => {
     [2, '2 items have a duration of 0. The duration must be greater than 0.'],
   ])('stops for %d line(s) with a duration of 0 and speaks of the duration only', async (count, message) => {
     mockItems = [line('aaaaaaaa', { duration: 0 }), line('bbbbbbbb', count === 2 ? { duration: 0 } : {}), line('cccccccc', { charge: 0 })];
-    const tree = await render(<InvoiceFormStep2 />);
+    await render(<InvoiceFormStep2 />);
 
-    await pressNext(tree);
+    await pressNext();
 
-    expect(shown(tree)).toHaveLength(1);
-    expect(shown(tree)[0].props.title).toBe('Check the item prices');
-    expect(shown(tree)[0].props.message).toBe(message);
-    expect(shown(tree)[0].props.message).not.toMatch(/charge/i);
+    expect(shown()).toHaveLength(1);
+    expect(within(shown()[0]).getByText('Check the item prices')).toBeOnTheScreen();
+    expect(within(shown()[0]).getByText(message)).toBeOnTheScreen();
+    expect(within(shown()[0]).queryByText(/charge/i, { includeHiddenElements: true })).not.toBeOnTheScreen();
     expect(mockNavigateToStep).not.toHaveBeenCalled();
-    await act(async () => { tree.unmount(); });
   });
 });

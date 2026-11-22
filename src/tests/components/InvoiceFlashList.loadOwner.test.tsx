@@ -5,7 +5,7 @@
  * server again (fresh=true).
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import InvoiceFlashList from '@/components/lists/InvoiceFlashList';
 import { getAssignedCustomerInvoices, getInvoicesList } from '@/services/invoice-service';
 import { resetScreenFocus, setScreenFocused } from './focusHarness';
@@ -14,15 +14,35 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
   useFocusEffect: require('./focusHarness').useFocusEffect,
 }));
-jest.mock('@shopify/flash-list', () => ({ FlashList: 'FlashList' }));
+// A stand-in that draws one button: the list's pull to refresh, calling the list's real onRefresh.
+jest.mock('@shopify/flash-list', () => ({
+  FlashList: (props: { refreshControl: { props: { onRefresh: () => void } } }) => {
+    const { Pressable, Text } = require('react-native');
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="Pull to refresh" onPress={() => props.refreshControl.props.onRefresh()}>
+        <Text>Pull to refresh</Text>
+      </Pressable>
+    );
+  },
+}));
 jest.mock('react-native-paper', () => ({ ActivityIndicator: 'ActivityIndicator' }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
-jest.mock('@/components/skeletons', () => ({ ListSkeleton: 'ListSkeleton' }));
+jest.mock('@/components/skeletons', () => ({
+  ListSkeleton: () => {
+    const { Text } = require('react-native');
+    return <Text>Skeleton</Text>;
+  },
+}));
 jest.mock('@/components/list-items', () => ({ MemoizedInvoiceItem: () => null }));
-jest.mock('@/components/list/ListEmptyState', () => ({ ListEmptyState: 'ListEmptyState' }));
+jest.mock('@/components/list/ListEmptyState', () => ({
+  ListEmptyState: () => {
+    const { Text } = require('react-native');
+    return <Text>Empty state</Text>;
+  },
+}));
 jest.mock('@/components/ErrorBoundary', () => ({ ErrorStateView: () => null }));
 jest.mock('@/features/filters/configs', () => ({ INVOICE_FILTERS: { listKey: 'invoice-list' } }));
 jest.mock('@/features/filters/filterModel', () => ({ readSearch: () => ({ text: '' }) }));
@@ -79,22 +99,21 @@ describe.each([
   beforeEach(() => { mockAccess.canManageOrders = warehouse; });
 
   it('loads once per mount, search, filter and sort change, and once fresh on a real return', async () => {
-    let renderer!: ReturnType<typeof create>;
-    await act(async () => { renderer = create(<InvoiceFlashList />); });
+    await render(<InvoiceFlashList />);
     expect(calls()).toEqual([{ search: undefined, sort: 'inv_date', ...fresh(false) }]);
 
     mockFilters.request = { ...mockFilters.request, p_search: 'onion' };
-    await act(async () => { renderer.update(<InvoiceFlashList />); });
+    await screen.rerender(<InvoiceFlashList />);
     expect(calls()).toHaveLength(2);
     expect(calls()[1]).toEqual({ search: 'onion', sort: 'inv_date', ...fresh(false) });
 
     mockFilters.request = { ...mockFilters.request, p_financial_year: 2026 };
-    await act(async () => { renderer.update(<InvoiceFlashList />); });
+    await screen.rerender(<InvoiceFlashList />);
     expect(calls()).toHaveLength(3);
     expect(calls()[2]).toEqual({ search: 'onion', sort: 'inv_date', ...fresh(false) });
 
     mockFilters.request = { ...mockFilters.request, p_sort_field: 'inv_no' };
-    await act(async () => { renderer.update(<InvoiceFlashList />); });
+    await screen.rerender(<InvoiceFlashList />);
     expect(calls()).toHaveLength(4);
     expect(calls()[3]).toEqual({ search: 'onion', sort: 'inv_no', ...fresh(false) });
 
@@ -105,20 +124,17 @@ describe.each([
     expect(calls()[4]).toEqual({ search: 'onion', sort: 'inv_no', ...fresh(true) });
 
     // Pull to refresh still reads the server.
-    await act(async () => {
-      renderer.root.findByType('FlashList' as unknown as React.ElementType).props.refreshControl.props.onRefresh();
-    });
+    await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'Pull to refresh' }));
+    await waitFor(() => expect(calls()).toHaveLength(6));
     expect(calls()).toHaveLength(6);
     expect(calls()[5]).toEqual({ search: 'onion', sort: 'inv_no', ...fresh(true) });
-    await act(async () => { renderer.unmount(); });
   });
 
   it('loads a change made while hidden once on the return from the kept history, and a plain revisit fresh', async () => {
-    let renderer!: ReturnType<typeof create>;
-    await act(async () => { renderer = create(<InvoiceFlashList />); });
+    await render(<InvoiceFlashList />);
     await act(async () => { setScreenFocused(false); });
     mockFilters.request = { ...mockFilters.request, p_search: 'garlic' };
-    await act(async () => { renderer.update(<InvoiceFlashList />); });
+    await screen.rerender(<InvoiceFlashList />);
     expect(calls()).toHaveLength(1);
     await act(async () => { setScreenFocused(true); });
     expect(calls()).toEqual([
@@ -131,7 +147,6 @@ describe.each([
     await act(async () => { setScreenFocused(true); });
     expect(calls()).toHaveLength(3);
     expect(calls()[2]).toEqual({ search: 'garlic', sort: 'inv_date', ...fresh(true) });
-    await act(async () => { renderer.unmount(); });
   });
 });
 
@@ -139,18 +154,17 @@ it('shows the skeleton, not the empty state, while a new search with no rows on 
   mockAccess.canManageOrders = false;
   const empty = { success: true, message: '', data: { invoices: [], pagination: { has_more: false } } };
   jest.mocked(getAssignedCustomerInvoices).mockResolvedValue(empty as never);
-  let renderer!: ReturnType<typeof create>;
-  await act(async () => { renderer = create(<InvoiceFlashList />); });
-  const count = (name: string) => renderer.root.findAllByType(name as unknown as React.ElementType).length;
-  expect(count('ListEmptyState')).toBe(1);
+  await render(<InvoiceFlashList />);
+  // The number drawn; a check for none must also see a mounted-but-hidden one.
+  const count = (text: string) => screen.queryAllByText(text, { includeHiddenElements: true }).length;
+  expect(count('Empty state')).toBe(1);
 
   let finish!: (value: never) => void;
   jest.mocked(getAssignedCustomerInvoices).mockImplementationOnce(() => new Promise(resolve => { finish = resolve as (value: never) => void; }));
   mockFilters.request = { ...mockFilters.request, p_search: 'onion' };
-  await act(async () => { renderer.update(<InvoiceFlashList />); });
-  expect(count('ListSkeleton')).toBe(1);
-  expect(count('ListEmptyState')).toBe(0);
+  await screen.rerender(<InvoiceFlashList />);
+  expect(count('Skeleton')).toBe(1);
+  expect(count('Empty state')).toBe(0);
   await act(async () => { finish(empty as never); });
-  expect(count('ListEmptyState')).toBe(1);
-  await act(async () => { renderer.unmount(); });
+  expect(count('Empty state')).toBe(1);
 });

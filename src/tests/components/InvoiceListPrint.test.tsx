@@ -7,7 +7,7 @@
  *  - A failure stays in the dialog with its own text; an unconfirmed job closes the dialog and shows an alert.
  */
 import React from 'react';
-import { act, create, ReactTestInstance, ReactTestRenderer } from 'react-test-renderer';
+import { fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import InvoiceFlashList from '@/components/lists/InvoiceFlashList';
 import { getInvoicesList } from '@/services/invoice-service';
@@ -91,15 +91,11 @@ const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status 
 const SENT = { success: true, message: 'Invoice range print job submitted', range: { start: '2556', end: '2556', count: 1 }, print_job: { print_job_id: 'j1', cups_job_id: 7, job_uri: 'x', printer: 'P', content_size: 1 } };
 const UNCONFIRMED = { success: false, error: 'The printer did not confirm the job', code: 'PRINT_UNCONFIRMED', unconfirmed: true, print_job_id: 'j1' };
 
-const mounted: ReactTestRenderer[] = [];
+type Host = ReturnType<typeof screen.getByText>;
 async function renderList() {
   jest.mocked(getInvoicesList).mockResolvedValue(answer([invoiceOf(1), invoiceOf(2)]) as never);
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<GestureHandlerRootView><InvoiceFlashList /></GestureHandlerRootView>);
-  });
-  mounted.push(tree);
-  return tree;
+  await render(<GestureHandlerRootView><InvoiceFlashList /></GestureHandlerRootView>);
+  await screen.findByText('Invoices');
 }
 
 beforeEach(() => {
@@ -112,71 +108,68 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation(() => {});
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
-afterEach(async () => {
+afterEach(() => {
   jest.restoreAllMocks();
-  await act(async () => {
-    mounted.splice(0).forEach((tree) => tree.unmount());
-  });
 });
 
-const card = (tree: ReactTestRenderer, n: number) =>
-  tree.root.findAll((node) => typeof node.type === 'string' && node.props.accessibilityLabel === `Print Invoice ${2554 + n}`)[0];
-const printAction = (tree: ReactTestRenderer, n: number) =>
-  tree.root.findAll((node) => node.props.accessibilityLabel === `Print Invoice ${2554 + n}` && typeof node.props.onPress === 'function');
-const textOf = (node: ReactTestInstance) => [node.props.children].flat(Infinity).filter((c) => typeof c === 'string' || typeof c === 'number').join('');
-const texts = (tree: ReactTestRenderer) => tree.root.findAll((node) => (node.type as unknown) === 'Text').map(textOf);
-const dialog = (tree: ReactTestRenderer) => tree.root.findAll((node) => node.props.accessibilityViewIsModal === true);
-const dialogPrint = (tree: ReactTestRenderer) =>
-  tree.root.find((node) => node.props.accessibilityRole === 'button' && node.props.accessibilityLabel === 'Print' && typeof node.props.onPress === 'function');
-const openPrint = async (tree: ReactTestRenderer, n: number) => {
+const user = () => userEvent.setup({ delay: 0 });
+// A check that something is NOT offered must also see a mounted-but-hidden one.
+const anywhere = { includeHiddenElements: true } as const;
+const printAction = (n: number, hidden = false) => screen.queryAllByLabelText(`Print Invoice ${2554 + n}`, { includeHiddenElements: hidden });
+/** Every host element below one, in order (the print dialog and the Print actions have no role or text that tells them apart). */
+const below = (node: Host): Host[] => node.children.flatMap((child) => (!child || typeof child === 'string' ? [] : [child as Host, ...below(child as Host)]));
+const allHosts = () => [screen.root as Host, ...below(screen.root as Host)];
+const textOf = (node: Host) => [node.props.children].flat(Infinity).filter((c) => typeof c === 'string' || typeof c === 'number').join('');
+const texts = (hidden = false) => screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map(textOf);
+const dialog = () => allHosts().filter((node) => node.props.accessibilityViewIsModal === true);
+const openPrint = async (n: number) => {
   // Opening the swipe's action renders it; its Pressable is the Print action of that card.
-  const action = printAction(tree, n)![0];
-  await act(async () => { action.props.onPress(); });
+  // The action sits in the swipe's gesture view, so a press does not reach it; its Pressable answers the screen reader's click.
+  await fireEvent(printAction(n)[0], 'click', { stopPropagation: jest.fn(), preventDefault: jest.fn() });
 };
-const pressDialogPrint = (tree: ReactTestRenderer) => act(async () => { await dialogPrint(tree).props.onPress(); });
+const pressDialogPrint = async () => { await user().press(screen.getByRole('button', { name: 'Print' })); };
 const sentBody = () => JSON.parse(mockFetch.mock.calls[0][1].body);
 
 describe('who sees Print', () => {
   it.each(['admin', 'supervisor', 'staff'])('%s: the card offers Print as a swipe action and a screen-reader action', async (role) => {
     mockRole = role;
-    const tree = await renderList();
-    expect(printAction(tree, 1)!.length).toBeGreaterThan(0);
-    const pressable = tree.root.findAll((node) => node.props.accessibilityActions && node.props.testID === undefined && node.props.accessibilityHint)[0];
+    await renderList();
+    expect(printAction(1).length).toBeGreaterThan(0);
+    const pressable = screen.getAllByHintText('Opens the invoice. Print is in the actions menu.')[0];
     expect(pressable.props.accessibilityActions).toEqual([{ name: 'print', label: 'Print' }]);
-    expect(pressable.props.accessibilityHint).toBe('Opens the invoice. Print is in the actions menu.');
   });
 
   it('a customer gets no Print', async () => {
     mockRole = 'customer';
-    const tree = await renderList();
-    expect(printAction(tree, 1)).toHaveLength(0);
+    await renderList();
+    expect(printAction(1, true)).toHaveLength(0);
     // The list itself still offers its screen-reader Refresh (WH-220); a customer gets no Print action anywhere.
-    expect(tree.root.findAll((node) => node.props.accessibilityActions?.some((action: { name: string }) => action.name === 'print'))).toHaveLength(0);
-    expect(texts(tree)).not.toContain('Print');
+    expect(allHosts().filter((node) => node.props.accessibilityActions?.some((action: { name: string }) => action.name === 'print'))).toHaveLength(0);
+    expect(texts(true)).not.toContain('Print');
   });
 
   it('nobody gets Print where the facility has printing off', async () => {
     mockPrinting = false;
-    const tree = await renderList();
-    expect(printAction(tree, 1)).toHaveLength(0);
+    await renderList();
+    expect(printAction(1, true)).toHaveLength(0);
   });
 });
 
 describe('pressing Print', () => {
   it('opens the print dialog for that row and sends that invoice number with a request_id', async () => {
     mockFetch.mockResolvedValue(reply(200, SENT));
-    const tree = await renderList();
-    expect(dialog(tree)).toHaveLength(0);
+    await renderList();
+    expect(dialog()).toHaveLength(0);
 
-    await openPrint(tree, 2);
-    expect(dialog(tree).length).toBeGreaterThan(0);
-    await pressDialogPrint(tree);
+    await openPrint(2);
+    expect(dialog().length).toBeGreaterThan(0);
+    await pressDialogPrint();
 
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Sent to the printer (job 7).'));
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(mockFetch.mock.calls[0][0]).toBe('https://example.invalid/functions/v1/print-invoice-preprinted');
     expect(sentBody()).toEqual({ start_inv_no_str: '2556', end_inv_no_str: '2556', inv_fin_year: 2025, request_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
-    expect(showToast).toHaveBeenCalledWith('Sent to the printer (job 7).');
-    expect(dialog(tree)).toHaveLength(0);
+    expect(dialog()).toHaveLength(0);
   });
 
   // Each text from the server answer that really produces it (backend: main/index.ts, auth-helpers.ts, print-transport.ts)
@@ -186,34 +179,34 @@ describe('pressing Print', () => {
     ['printer failed (502 PRINTER_FAILED)', 502, { success: false, error: 'connect ECONNREFUSED', code: 'PRINTER_FAILED' }, "The printer couldn't print the job. Check the printer and try again."],
   ])('%s stays in the dialog with its own text', async (_name, status, body, text) => {
     mockFetch.mockResolvedValue(reply(status, body));
-    const tree = await renderList();
-    await openPrint(tree, 1);
-    await pressDialogPrint(tree);
+    await renderList();
+    await openPrint(1);
+    await pressDialogPrint();
 
-    expect(texts(tree)).toContain(text);
-    expect(dialog(tree).length).toBeGreaterThan(0);
+    expect(await screen.findByText(text)).toBeOnTheScreen();
+    expect(dialog().length).toBeGreaterThan(0);
     expect(showAlert).not.toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
   });
 
   it('a lost connection stays in the dialog and says to check the connection', async () => {
     mockFetch.mockRejectedValue(new Error('Network request failed'));
-    const tree = await renderList();
-    await openPrint(tree, 1);
-    await pressDialogPrint(tree);
+    await renderList();
+    await openPrint(1);
+    await pressDialogPrint();
 
-    expect(texts(tree)).toContain("Couldn't reach the print server. Check your connection and try again.");
-    expect(dialog(tree).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Couldn't reach the print server. Check your connection and try again.")).toBeOnTheScreen();
+    expect(dialog().length).toBeGreaterThan(0);
   });
 
   it('an unconfirmed job closes the dialog and shows the "Print not confirmed" alert (Product, 2026-11-07)', async () => {
     mockFetch.mockResolvedValue(reply(502, UNCONFIRMED));
-    const tree = await renderList();
-    await openPrint(tree, 1);
-    await pressDialogPrint(tree);
+    await renderList();
+    await openPrint(1);
+    await pressDialogPrint();
 
-    expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.');
-    expect(dialog(tree)).toHaveLength(0);
+    await waitFor(() => expect(showAlert).toHaveBeenCalledWith('Print not confirmed', 'The printer did not confirm the job. Check the printer before printing again.'));
+    expect(dialog()).toHaveLength(0);
     expect(showToast).not.toHaveBeenCalled();
   });
 });
@@ -221,21 +214,20 @@ describe('pressing Print', () => {
 describe('invoices that need care', () => {
   it('a cancelled invoice is not offered Print, a live one is', async () => {
     jest.mocked(getInvoicesList).mockResolvedValue(answer([invoiceOf(1, { cancelled_at: '2026-10-02T10:00:00Z' }), invoiceOf(2)]) as never);
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(<GestureHandlerRootView><InvoiceFlashList /></GestureHandlerRootView>); });
-    mounted.push(tree);
-    expect(printAction(tree, 1)).toHaveLength(0);
-    expect(printAction(tree, 2)!.length).toBeGreaterThan(0);
+    await render(<GestureHandlerRootView><InvoiceFlashList /></GestureHandlerRootView>);
+    await screen.findByText('Invoices');
+    expect(printAction(1, true)).toHaveLength(0);
+    expect(printAction(2).length).toBeGreaterThan(0);
   });
 
   it('an invoice whose year is not a number is printed without a year, never with NaN or null', async () => {
     mockFetch.mockResolvedValue(reply(200, SENT));
     jest.mocked(getInvoicesList).mockResolvedValue(answer([invoiceOf(1, { financial_year: 'not a year' })]) as never);
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(<GestureHandlerRootView><InvoiceFlashList /></GestureHandlerRootView>); });
-    mounted.push(tree);
-    await openPrint(tree, 1);
-    await pressDialogPrint(tree);
+    await render(<GestureHandlerRootView><InvoiceFlashList /></GestureHandlerRootView>);
+    await screen.findByText('Invoices');
+    await openPrint(1);
+    await pressDialogPrint();
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
     expect(sentBody()).toEqual({ start_inv_no_str: '2555', end_inv_no_str: '2555', request_id: expect.any(String) });
   });
 });
@@ -244,15 +236,15 @@ describe('screen-reader Refresh (WH-220)', () => {
   // The Refresh action sits on the list's title ("Invoices"), which every sort shows: by date (with date headings) and by number (without).
   it.each([['date', 'inv_date'], ['number', 'inv_no']])('the title offers a Refresh action that reads the invoices again, sorted by %s', async (_name, field) => {
     mockFilters.sort = { field, order: 'desc' };
-    const tree = await renderList();
-    const title = tree.root.findAll((node) => typeof node.type === 'string' && node.props.accessibilityRole === 'header'
-      && Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
+    await renderList();
+    const title = screen.getAllByRole('header').filter((node) => Array.isArray(node.props.accessibilityActions)
+      && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'refresh'));
     expect(title).toHaveLength(1);
     expect(title[0].props.children).toBe('Invoices');
     expect(title[0].props.accessibilityActions).toContainEqual({ name: 'refresh', label: 'Refresh' });
     const before = jest.mocked(getInvoicesList).mock.calls.length;
-    await act(async () => { title[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'refresh' } }); });
-    expect(jest.mocked(getInvoicesList).mock.calls.length).toBe(before + 1);
+    await fireEvent(title[0], 'accessibilityAction', { nativeEvent: { actionName: 'refresh' } });
+    await waitFor(() => expect(jest.mocked(getInvoicesList).mock.calls.length).toBe(before + 1));
     mockFilters.sort = { field: 'inv_no', order: 'desc' };
   });
 });

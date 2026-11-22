@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { Dimensions } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { setLanguage } from '@/i18n';
 import { MemoizedInvoiceItem } from '@/components/list-items/MemoizedInvoiceItem';
 import { MemoizedDispatchItem } from '@/components/list-items/MemoizedDispatchItem';
@@ -21,7 +21,6 @@ import { InvoiceTabNavigator } from '@/components/invoice-details/InvoiceTabNavi
 import { CustomerTabNavigator } from '@/components/customer-details/CustomerTabNavigator';
 import { TAB_ICONS } from '@/components/common/GenericDetailTabNavigator';
 import { ReportCustomerCard } from '@/components/reports/ReportCustomerCard';
-import { KPICard } from '@/components/reports/KPICard';
 import { KPIGrid } from '@/components/reports/KPIGrid';
 import { singleLineText, trackedText } from '@/theme/tokens';
 import { formatFinancialYear } from '@/utils/formatters';
@@ -48,32 +47,27 @@ jest.mock('react-native-reanimated', () => {
 
 const GUJARATI_DIGIT = /[૦-૯]/;
 
-// Every tree is unmounted after its test: a card reads useWindowDimensions, so a tree left
-// mounted is drawn again by a later Dimensions.set, after this file's environment is gone.
-const mounted: ReactTestRenderer[] = [];
-function render(element: React.ReactElement): ReactTestRenderer {
-  let tree!: ReactTestRenderer;
-  act(() => {
-    tree = create(element);
-  });
-  mounted.push(tree);
-  return tree;
-}
+type Host = ReturnType<typeof screen.getByText>;
+/** Every host element below one, in order (the "Icon" stand-in has no role, label or text to query by). */
+const below = (node: Host): Host[] => node.children.flatMap(child => (!child || typeof child === 'string' ? [] : [child as Host, ...below(child as Host)]));
 
 const flatten = (children: unknown): string =>
   React.Children.toArray(children as React.ReactNode)
     .map(child => (typeof child === 'string' || typeof child === 'number' ? String(child) : React.isValidElement(child) ? flatten((child.props as { children?: unknown }).children) : ''))
     .join('');
 
-/** The text of every host Text, nested highlights included. */
-const texts = (tree: ReactTestRenderer): string[] =>
-  tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => flatten(node.props.children));
+// The text of every host Text, nested highlights included. A check that something is NOT drawn
+// must also see a Text that is mounted but hidden.
+const texts = (hidden = false): string[] =>
+  screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map(node => flatten(node.props.children));
 
-const labels = (tree: ReactTestRenderer): string[] =>
-  tree.root.findAll(node => typeof node.type === 'string' && typeof node.props.accessibilityLabel === 'string').map(node => node.props.accessibilityLabel as string);
+const labels = (hidden = false): string[] =>
+  screen.queryAllByLabelText(/^/, { includeHiddenElements: hidden })
+    .map(node => node.props.accessibilityLabel)
+    .filter((label): label is string => typeof label === 'string');
 
-const iconNames = (tree: ReactTestRenderer): string[] =>
-  tree.root.findAll(node => (node.type as unknown) === 'Icon').map(node => node.props.name as string);
+const iconNames = (): string[] =>
+  [screen.root as Host, ...below(screen.root as Host)].filter(node => (node.type as unknown) === 'Icon').map(node => node.props.name as string);
 
 // The data holds the numbers as numbers, as the backend sends the invoice number.
 const invoice = {
@@ -118,29 +112,28 @@ const recent = {
 } as unknown as RecentDispatchedOrder;
 
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   setLanguage('en');
 });
 
 describe('document numbers on the list cards in Gujarati', () => {
   beforeEach(() => setLanguage('gu'));
 
-  it('the invoice card shows the invoice number in 0-9 in its title and its spoken label', () => {
-    const tree = render(<MemoizedInvoiceItem invoice={invoice} onPress={jest.fn()} />);
+  it('the invoice card shows the invoice number in 0-9 in its title and its spoken label', async () => {
+    await render(<MemoizedInvoiceItem invoice={invoice} onPress={jest.fn()} />);
     // The title is the number alone (the card says what it is by its place in the list); the spoken label names the document.
-    expect(texts(tree)).toContain('53');
-    expect(texts(tree)).not.toContain('૫૩');
-    const label = labels(tree).find(text => text.includes('Lakeview Spices'));
+    expect(texts()).toContain('53');
+    expect(texts(true)).not.toContain('૫૩');
+    const label = labels().find(text => text.includes('Lakeview Spices'));
     expect(label).toContain('ઇન્વૉઇસ 53,');
     expect(label).toContain('આવક પાવતી 12');
     // Amounts and the date stay in Gujarati digits.
     expect(label).toContain('₹૨૦૦.૦૦');
-    expect(texts(tree)).toContain('૧૦ ઑક્ટો ૨૬');
+    expect(texts()).toContain('૧૦ ઑક્ટો ૨૬');
   });
 
-  it('the invoice card shows the financial year in Gujarati digits', () => {
-    const tree = render(<MemoizedInvoiceItem invoice={invoice} onPress={jest.fn()} />);
-    expect(texts(tree)).toContain('નાણાકીય વર્ષ ૨૦૨૭-૨૦૨૮');
+  it('the invoice card shows the financial year in Gujarati digits', async () => {
+    await render(<MemoizedInvoiceItem invoice={invoice} onPress={jest.fn()} />);
+    expect(texts()).toContain('નાણાકીય વર્ષ ૨૦૨૭-૨૦૨૮');
   });
 
   // The guard: whatever a card adds later, the line that names the document has no Gujarati digit.
@@ -148,18 +141,18 @@ describe('document numbers on the list cards in Gujarati', () => {
     ['invoice', () => <MemoizedInvoiceItem invoice={invoice} onPress={jest.fn()} />, '53', 'ઇન્વૉઇસ 53'],
     ['dispatch', () => <MemoizedDispatchItem dispatch={dispatch} onPress={jest.fn()} />, 'જાવક 207', 'જાવક 207'],
     ['recent dispatch', () => <RecentDispatchedOrderCard dispatch={recent} onPress={jest.fn()} />, 'જાવક 43', 'જાવક 43'],
-  ])('the %s card names its document in 0-9', (_name, element, title, spokenStart) => {
-    const tree = render(element());
-    expect(texts(tree)).toContain(title);
-    const spoken = labels(tree).find(text => text.startsWith(spokenStart));
+  ])('the %s card names its document in 0-9', async (_name, element, title, spokenStart) => {
+    await render(element());
+    expect(texts()).toContain(title);
+    const spoken = labels().find(text => text.startsWith(spokenStart));
     expect(spoken).toBeDefined();
     expect(GUJARATI_DIGIT.test(title)).toBe(false);
     expect(GUJARATI_DIGIT.test(spokenStart)).toBe(false);
   });
 
-  it('the dispatch card keeps the vehicle number as stored and the counts in Gujarati digits', () => {
-    const tree = render(<MemoizedDispatchItem dispatch={dispatch} onPress={jest.fn()} />);
-    const label = labels(tree).find(text => text.startsWith('જાવક 207'));
+  it('the dispatch card keeps the vehicle number as stored and the counts in Gujarati digits', async () => {
+    await render(<MemoizedDispatchItem dispatch={dispatch} onPress={jest.fn()} />);
+    const label = labels().find(text => text.startsWith('જાવક 207'));
     expect(label).toContain('GJ01AB1234');
     expect(label).toContain('૧ આઇટમ');
   });
@@ -194,12 +187,16 @@ describe('tab icons on the details pages', () => {
     }
   });
 
-  it.each(navigators)('the %s page gives every tab the same known icon in English and Gujarati', (_name, element, tabs) => {
+  it.each(navigators)('the %s page gives every tab the same known icon in English and Gujarati', async (_name, element, tabs) => {
     for (const active of tabs) {
       setLanguage('en');
-      const english = iconNames(render(element(active)));
+      await render(element(active));
+      const english = iconNames();
+      await screen.unmount();
       setLanguage('gu');
-      const gujarati = iconNames(render(element(active)));
+      await render(element(active));
+      const gujarati = iconNames();
+      await screen.unmount();
       expect(gujarati).toHaveLength(tabs.length);
       expect(gujarati).toEqual(english);
       for (const name of gujarati) expect({ name, known: name in GLYPHS }).toEqual({ name, known: true });
@@ -212,31 +209,31 @@ describe('report rows', () => {
     <ReportCustomerCard title="Green Valley Traders" subtitle={['Average age 351 days', '2 over 1 year']} value={120} valueLabel="units" onPress={jest.fn()} />
   );
 
-  it('English keeps the facts on one line', () => {
-    const tree = render(card());
-    expect(texts(tree)).toContain('Average age 351 days · 2 over 1 year');
+  it('English keeps the facts on one line', async () => {
+    await render(card());
+    expect(texts()).toContain('Average age 351 days · 2 over 1 year');
   });
 
-  it('Gujarati gives each fact its own line, so no fact loses its last word', () => {
+  it('Gujarati gives each fact its own line, so no fact loses its last word', async () => {
     setLanguage('gu');
-    const tree = render(card());
-    expect(texts(tree)).toEqual(expect.arrayContaining(['Average age 351 days', '2 over 1 year']));
-    expect(texts(tree)).not.toContain('Average age 351 days · 2 over 1 year');
+    await render(card());
+    expect(texts()).toEqual(expect.arrayContaining(['Average age 351 days', '2 over 1 year']));
+    expect(texts(true)).not.toContain('Average age 351 days · 2 over 1 year');
     // The spoken label still reads them as one sentence.
-    expect(labels(tree)[0]).toContain('Average age 351 days · 2 over 1 year');
+    expect(labels()[0]).toContain('Average age 351 days · 2 over 1 year');
   });
 
-  it('four compact KPI tiles make two rows of two', () => {
+  it('four compact KPI tiles make two rows of two', async () => {
     // A 1080 px wide phone is about 392 dp wide.
     const before = Dimensions.get('window');
     Dimensions.set({ window: { width: 392, height: 850, scale: 2.75, fontScale: 1 } });
     const items = ['a', 'b', 'c', 'd'].map(label => ({ icon: 'warehouse' as const, value: 1, label }));
-    const tree = render(<KPIGrid items={items} compact />);
-    const perRow = new Map<unknown, number>();
-    for (const tile of tree.root.findAllByType(KPICard)) perRow.set(tile.parent, (perRow.get(tile.parent) ?? 0) + 1);
-    act(() => tree.unmount());
+    await render(<KPIGrid items={items} compact />);
+    // Each tile is one accessible card; the row it sits in is its parent, and holds as many tiles as the row is wide.
+    const tilesInRow = ['a', 'b', 'c', 'd'].map(label => screen.getByLabelText(new RegExp(`^${label}\\b`)).parent!.children.length);
+    await screen.unmount();
     Dimensions.set({ window: before });
-    expect([...perRow.values()]).toEqual([2, 2]);
+    expect(tilesInRow).toEqual([2, 2, 2, 2]);
   });
 });
 

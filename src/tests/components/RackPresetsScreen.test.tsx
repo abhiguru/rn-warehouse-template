@@ -1,6 +1,6 @@
 /** Settings > Rack buttons: an administrator or supervisor edits the Floor and Chamber buttons; staff are told it is not theirs. */
 import React from 'react';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import RackPresetsScreen from '../../../app/rack-presets';
 import { getRackPresets, setRackPresets } from '@/services/rackPresetsService';
 import { setLanguage } from '@/i18n/language';
@@ -24,10 +24,13 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/services/rackPresetsService', () => ({ getRackPresets: jest.fn(), setRackPresets: jest.fn() }));
 
 const loaded = { floor: ['BASE', 'F1'], chamber: ['C4'], version: 2, maxLabelLength: 12, maxPerList: 20 };
-let tree: ReactTestRenderer | undefined;
-const byId = (id: string) => tree!.root.find((n) => n.props.testID === id && typeof n.type === 'string' || (n.props.testID === id && typeof n.props.onPress === 'function'));
+const user = userEvent.setup({ delay: 0 });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+const byId = (id: string) => screen.getByTestId(id);
 const mount = async () => {
-  await act(async () => { tree = create(<RackPresetsScreen />); });
+  await render(<RackPresetsScreen />);
+  await screen.findByTestId('rack-presets-floor-0');
 };
 
 beforeEach(() => {
@@ -35,25 +38,25 @@ beforeEach(() => {
   mockRole = 'admin';
   (getRackPresets as jest.Mock).mockResolvedValue(loaded);
 });
-afterEach(async () => {
+afterEach(() => {
   setLanguage('en');
-  if (tree) await act(async () => { tree!.unmount(); });
-  tree = undefined;
 });
 
 it('shows the two lists, and saves an edit with the version that was read', async () => {
   await mount();
-  expect(byId('rack-presets-floor-0').props.value).toBe('BASE');
-  expect(byId('rack-presets-chamber-0').props.value).toBe('C4');
-  const save = () => tree!.root.find((n) => n.props.testID === 'rack-presets-save' && typeof n.props.onPress === 'function');
-  expect(save().props.disabled).toBe(true);
+  expect(byId('rack-presets-floor-0')).toHaveDisplayValue('BASE');
+  expect(byId('rack-presets-chamber-0')).toHaveDisplayValue('C4');
+  const save = () => byId('rack-presets-save');
+  expect(save()).toBeDisabled();
+  expect(save().props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
 
-  await act(async () => { byId('rack-presets-floor-1').props.onChangeText('F9'); });
-  await act(async () => { tree!.root.find((n) => n.props.testID === 'rack-presets-chamber-add' && typeof n.props.onPress === 'function').props.onPress(); });
-  await act(async () => { byId('rack-presets-chamber-1').props.onChangeText(' C7 '); });
+  await fireEvent.changeText(byId('rack-presets-floor-1'), 'F9');
+  await user.press(byId('rack-presets-chamber-add'));
+  await fireEvent.changeText(byId('rack-presets-chamber-1'), ' C7 ');
   (setRackPresets as jest.Mock).mockResolvedValue({ ok: true, changed: true, answer: { ...loaded, floor: ['BASE', 'F9'], chamber: ['C4', 'C7'], version: 3 } });
-  expect(save().props.disabled).toBe(false);
-  await act(async () => { await save().props.onPress(); });
+  expect(save()).toBeEnabled();
+  expect(save().props.accessibilityState).toEqual(expect.objectContaining({ disabled: false }));
+  await user.press(save());
 
   expect(setRackPresets).toHaveBeenCalledWith({ floor: ['BASE', 'F9'], chamber: ['C4', 'C7'] }, 2);
 });
@@ -61,13 +64,12 @@ it('shows the two lists, and saves an edit with the version that was read', asyn
 it('keeps the edit when the save is unconfirmed, and Try again sends the same lists again', async () => {
   const { showAlert } = jest.requireMock('@/utils/alert');
   await mount();
-  const save = () => tree!.root.find((n) => n.props.testID === 'rack-presets-save' && typeof n.props.onPress === 'function');
-  await act(async () => { byId('rack-presets-floor-1').props.onChangeText('F9'); });
+  await fireEvent.changeText(byId('rack-presets-floor-1'), 'F9');
   (setRackPresets as jest.Mock).mockResolvedValueOnce({ ok: false, message: 'Not confirmed', changedByOthers: false, unconfirmed: true });
-  await act(async () => { await save().props.onPress(); });
+  await user.press(byId('rack-presets-save'));
   const buttons = showAlert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
   expect(buttons.map((b) => b.text)).toEqual(['Cancel', 'Try again']);
-  expect(byId('rack-presets-floor-1').props.value).toBe('F9');
+  expect(byId('rack-presets-floor-1')).toHaveDisplayValue('F9');
   (setRackPresets as jest.Mock).mockResolvedValueOnce({ ok: true, changed: false, answer: { ...loaded, floor: ['BASE', 'F9'], version: 3 } });
   await act(async () => { buttons[1].onPress?.(); });
   expect(setRackPresets).toHaveBeenCalledTimes(2);
@@ -76,24 +78,24 @@ it('keeps the edit when the save is unconfirmed, and Try again sends the same li
 
 it('removes a button', async () => {
   await mount();
-  await act(async () => { byId('rack-presets-floor-0-remove').props.onPress(); });
-  expect(byId('rack-presets-floor-0').props.value).toBe('F1');
+  await user.press(byId('rack-presets-floor-0-remove'));
+  expect(byId('rack-presets-floor-0')).toHaveDisplayValue('F1');
 });
 
 it('tells staff it is for administrators and supervisors, and reads nothing', async () => {
   mockRole = 'staff';
-  await mount();
+  await render(<RackPresetsScreen />);
   expect(getRackPresets).not.toHaveBeenCalled();
-  expect(tree!.root.findAll((n) => n.props.testID === 'rack-presets-floor')).toHaveLength(0);
+  expect(screen.queryAllByTestId('rack-presets-floor', hidden)).toHaveLength(0);
 });
 
 it('a button with no text is called by its position, in Gujarati digits in Gujarati and 0-9 in English', async () => {
   await mount();
-  await act(async () => { tree!.root.find((n) => n.props.testID === 'rack-presets-chamber-add' && typeof n.props.onPress === 'function').props.onPress(); });
-  const remove = () => tree!.root.find((n) => n.props.testID === 'rack-presets-chamber-1-remove' && typeof n.props.onPress === 'function');
+  await user.press(byId('rack-presets-chamber-add'));
+  const remove = () => byId('rack-presets-chamber-1-remove');
   expect(remove().props.accessibilityLabel).toContain('2');
   await act(async () => { setLanguage('gu'); });
-  await act(async () => { tree!.update(<RackPresetsScreen />); });
+  await screen.rerender(<RackPresetsScreen />);
   expect(remove().props.accessibilityLabel).toContain('૨');
   expect(remove().props.accessibilityLabel).not.toMatch(/[0-9]/);
 });

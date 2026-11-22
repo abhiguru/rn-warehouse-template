@@ -6,8 +6,7 @@
  * says so, and Next waits.
  */
 import React from 'react';
-import { ActivityIndicator, TextInput } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import InvoiceFormStep1 from '../../../app/invoice-form/step1';
 
 const mockLoadGRNData = jest.fn(async () => ({ success: true, itemCount: 1 }));
@@ -75,17 +74,26 @@ beforeEach(() => {
   mockItems = [];
 });
 
+type Host = ReturnType<typeof screen.getByText>;
+/** Every host element below one, in order (nothing else in Testing Library lists the spinners). */
+const below = (node: Host): Host[] => node.children.flatMap((child) => (!child || typeof child === 'string' ? [] : [child as Host, ...below(child as Host)]));
+const spinners = () => [screen.root as Host, ...below(screen.root as Host)].filter((node) => (node.type as unknown) === 'ActivityIndicator');
+// The words on the screen; a check that something is NOT there uses the hidden ones too.
+const words = (hidden: boolean) =>
+  screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map((node) => [node.props.children].flat(Infinity).join('')).join('\n');
+
 async function hints(invNo: number | '', failed: boolean, typed = false) {
   mockInvNo = invNo;
   mockNextNumberFailed = failed;
   mockInvNoTyped = typed;
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<InvoiceFormStep1 />);
-  });
-  const text = JSON.stringify(tree.toJSON());
-  await act(async () => { tree.unmount(); });
-  return { filled: text.includes(FILLED), unavailable: text.includes(UNAVAILABLE), typed: text.includes(TYPED) };
+  await render(<InvoiceFormStep1 />);
+  const flags = (text: string) => ({ filled: text.includes(FILLED), unavailable: text.includes(UNAVAILABLE), typed: text.includes(TYPED) });
+  const shown = flags(words(false));
+  const everything = flags(words(true));
+  await screen.unmount();
+  // What is drawn is what is mounted: no hint hides behind another.
+  expect(everything).toEqual(shown);
+  return shown;
 }
 
 describe('the hint under the invoice number', () => {
@@ -111,80 +119,72 @@ describe('the hint under the invoice number', () => {
 });
 
 describe('while the next invoice number is being asked for', () => {
-  async function render() {
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(<InvoiceFormStep1 />); });
-    return tree;
+  async function open() {
+    await render(<InvoiceFormStep1 />);
   }
-  const numberField = (tree: ReactTestRenderer) =>
-    tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Invoice number')!;
-  const next = (tree: ReactTestRenderer) =>
-    tree.root.find((node) => typeof node.type !== 'string' && ['Next', 'Generating…'].includes(node.props.accessibilityLabel) && 'onPress' in node.props);
+  const numberField = () => screen.getByLabelText('Invoice number');
+  const next = () => screen.getByRole('button', { name: /^(Next|Generating…)$/ });
 
   it('the hint says so, the field is empty with a spinner, and can still be typed in', async () => {
     mockInvNo = 0;
     mockNextNumberFailed = false;
     mockGettingNextNumber = true;
-    const tree = await render();
-    const text = JSON.stringify(tree.toJSON());
+    await open();
 
-    expect(text).toContain(GETTING);
-    expect(text).not.toContain(FILLED);
-    expect(text).not.toContain(UNAVAILABLE);
-    expect(numberField(tree).props.value).toBe('');
-    expect(numberField(tree).props.placeholder).toBe('Generating…');
+    expect(words(false)).toContain(GETTING);
+    expect(words(true)).not.toContain(FILLED);
+    expect(words(true)).not.toContain(UNAVAILABLE);
+    expect(numberField()).toHaveDisplayValue('');
+    expect(numberField()).toHaveProp('placeholder', 'Generating…');
     // The user can always type a number of their own instead of waiting.
-    expect(numberField(tree).props.editable).toBe(true);
+    expect(numberField()).toHaveProp('editable', true);
     // One spinner in the field and one on Next.
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(2);
-    await act(async () => { tree.unmount(); });
+    expect(spinners()).toHaveLength(2);
   });
 
   it('Next waits: it is shown as busy and does not go on', async () => {
     mockInvNo = 0;
     mockGettingNextNumber = true;
     mockItems = [{ temp_id: 't1' }];
-    const tree = await render();
+    await open();
 
     // Busy again (a spoken "busy" and a spinner), and it does not go on while the number is asked for.
-    expect(next(tree).props.accessibilityState).toEqual({ disabled: true, busy: true });
-    expect(next(tree).props.accessibilityLabel).toBe('Generating…');
-    expect(next(tree).props.disabled).toBe(true);
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(2);
-    await act(async () => { tree.unmount(); });
+    expect(next().props.accessibilityState).toEqual({ disabled: true, busy: true });
+    expect(next()).toHaveAccessibleName('Generating…');
+    expect(next()).toBeDisabled();
+    expect(spinners()).toHaveLength(2);
+    await userEvent.setup({ delay: 0 }).press(next());
+    expect(mockNavigateToStep).not.toHaveBeenCalled();
   });
 
   it('Next works as usual once the number is there', async () => {
     mockInvNo = 55;
     mockItems = [{ temp_id: 't1' }];
-    const tree = await render();
+    await open();
 
-    expect(next(tree).props.accessibilityState).toEqual({ disabled: false, busy: false });
-    expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0);
-    await act(async () => { await next(tree).props.onPress(); });
+    expect(next().props.accessibilityState).toEqual({ disabled: false, busy: false });
+    expect(spinners()).toHaveLength(0);
+    await userEvent.setup({ delay: 0 }).press(next());
     expect(mockNavigateToStep).toHaveBeenCalledWith(2);
-    await act(async () => { tree.unmount(); });
   });
 
   it('leaving the number field asks the form to suggest a number if the field is empty', async () => {
     mockInvNo = 0;
-    const tree = await render();
+    await open();
     expect(mockSuggestNumberIfEmpty).not.toHaveBeenCalled();
 
-    await act(async () => { numberField(tree).props.onBlur(); });
+    await fireEvent(numberField(), 'blur');
 
     expect(mockSuggestNumberIfEmpty).toHaveBeenCalledTimes(1);
-    await act(async () => { tree.unmount(); });
   });
 
   it('leaving a number field that the form did not refill checks the field instead', async () => {
     mockInvNo = 7301;
-    const tree = await render();
+    await open();
 
-    await act(async () => { numberField(tree).props.onBlur(); });
+    await fireEvent(numberField(), 'blur');
 
     expect(mockSuggestNumberIfEmpty).toHaveBeenCalledTimes(1);
     expect(mockValidateField).toHaveBeenCalledWith('inv_no');
-    await act(async () => { tree.unmount(); });
   });
 });

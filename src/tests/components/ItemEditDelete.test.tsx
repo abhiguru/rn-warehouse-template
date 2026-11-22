@@ -1,8 +1,7 @@
 /** G-57: Edit item has a Delete item button that asks through the same flow as the Items swipe. */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import ItemFormScreen from '../../../app/item-form';
 import ItemEditScreen from '../../../app/item-edit/[id]';
 import { itemService } from '@/services/item-service';
@@ -43,23 +42,21 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
 
 const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
+// A check that something is NOT on the screen must also see a mounted-but-hidden Text.
+const shownText = (hidden = false) => screen.queryAllByText(/^/, { includeHiddenElements: hidden }).map(node => flat(node.props.children)).join(" | ");
 const lastAlert = () => {
   const calls = jest.mocked(showAlert).mock.calls;
   const [title, message, buttons] = calls[calls.length - 1];
   return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
 };
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
+const rowFor = (name: string) => {
+  const rows = screen.queryAllByLabelText(new RegExp(`^${name}`)).filter(node => node.props.accessibilityActions);
+  if (rows.length !== 1) throw new Error(`expected one row for ${name}, found ${rows.length}`);
+  return rows[0];
+};
+const askDeleteOf = (name: string) => fireEvent(rowFor(name), "accessibilityAction", { nativeEvent: { actionName: "delete" } });
 
 jest.mock('@/features/items/deleteItemFlow', () => {
   const actual = jest.requireActual('@/features/items/deleteItemFlow');
@@ -74,11 +71,11 @@ beforeEach(() => {
   jest.mocked(itemService.updateItem).mockResolvedValue({ success: true, message: 'ok' } as never);
   jest.mocked(itemService.createItem).mockResolvedValue({ success: true, message: 'ok' } as never);
 });
-const renderEdit = async () => { await act(async () => { tree = create(<ItemEditScreen />); }); };
-const renderAdd = async () => { await act(async () => { tree = create(<ItemFormScreen />); }); };
+const renderEdit = async () => { await render(<ItemEditScreen />); };
+const renderAdd = async () => { await render(<ItemFormScreen />); };
 const typeInto = async (label: string, text: string) => {
-  const field = tree!.root.find(node => node.props.accessibilityLabel === label && typeof node.props.onChangeText === 'function');
-  await act(async () => { field.props.onChangeText(text); });
+  const field = screen.getByLabelText(label);
+  await fireEvent.changeText(field, text);
 };
 
 beforeEach(() => {
@@ -89,14 +86,14 @@ beforeEach(() => {
 describe('Delete item', () => {
   it('is not on Edit item any more: deleting is on the item page and in the Items list', async () => {
     await renderEdit();
-    expect(byLabel('Delete item')).toBeUndefined();
+    expect(screen.queryByLabelText('Delete item', { includeHiddenElements: true })).not.toBeOnTheScreen();
     expect(deleteItemFlow).not.toHaveBeenCalled();
   });
 
   it('is the same flow the Items swipe uses', async () => {
     jest.mocked(itemService.getItemList).mockResolvedValue({ success: true, message: '', data: [{ ...GARLIC, id: 'i2', name: 'Review Item 03' }], pagination: { total_count: 1 } } as never);
-    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
-    await act(async () => { rowFor('Review Item 03').props.onAccessibilityAction({ nativeEvent: { actionName: 'delete' } }); });
+    await render(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>);
+    await askDeleteOf('Review Item 03');
     expect(deleteItemFlow).toHaveBeenCalledWith(expect.objectContaining({ id: 'i2', name: 'Review Item 03' }), expect.any(Object));
   });
 });

@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDevice } from '@/services/sensor-service';
 import { getSensorHistory } from '@/services/sensor-history-service';
@@ -49,7 +49,6 @@ jest.mock('@/utils/logger', () => {
 });
 
 const NOW = new Date(2026, 9, 12, 10, 0).getTime();
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -83,39 +82,29 @@ beforeEach(async () => {
   } as never);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
 });
 
 async function open(fontScale: number) {
   mockFontScale = fontScale;
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<SensorDetailScreen />);
-  });
-  mounted.push(tree);
+  await render(<SensorDetailScreen />);
   await act(async () => {
     await jest.advanceTimersByTimeAsync(0);
   });
-  const direction = (testID: string) => {
-    const node = tree.root.findAll(n => n.props.testID === testID && typeof n.type === 'string')[0];
-    return StyleSheet.flatten(node.props.style).flexDirection;
-  };
-  const summaryRows = () =>
-    tree.root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('sensor-summary-row') && typeof n.type === 'string');
-  return { direction, summaryDirections: () => summaryRows().map(n => StyleSheet.flatten(n.props.style).flexDirection) };
 }
+const direction = (testID: string) => StyleSheet.flatten(screen.getByTestId(testID).props.style).flexDirection;
+const summaryDirections = () => screen.getAllByTestId(/^sensor-summary-row/).map(node => StyleSheet.flatten(node.props.style).flexDirection);
 
 describe('the sensor detail at large text', () => {
   it('stacks the two readings and the summary stats at font scale 2', async () => {
-    const screen = await open(2);
-    expect(screen.direction('sensor-readings')).toBe('column');
-    expect(screen.summaryDirections()).toEqual(['column', 'column']);
+    await open(2);
+    expect(direction('sensor-readings')).toBe('column');
+    expect(summaryDirections()).toEqual(['column', 'column']);
   });
 
   it('keeps them side by side at font scale 1', async () => {
-    const screen = await open(1);
-    expect(screen.direction('sensor-readings')).toBe('row');
-    expect(screen.summaryDirections()).toEqual(['row', 'row']);
+    await open(1);
+    expect(direction('sensor-readings')).toBe('row');
+    expect(summaryDirections()).toEqual(['row', 'row']);
   });
 });

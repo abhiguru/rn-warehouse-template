@@ -8,9 +8,9 @@
  */
 import React from 'react';
 import { AppState } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
+import { getTokens } from '@/theme/tokens';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SensorHistoryChart } from '@/components/sensors/SensorHistoryChart';
 import { getDevice } from '@/services/sensor-service';
 import { getSensorHistory } from '@/services/sensor-history-service';
 import type { SensorDeviceDetail } from '@/types/sensor.types';
@@ -114,9 +114,9 @@ function held() {
 }
 
 jest.setTimeout(30_000);
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 let originalAppState: typeof AppState.currentState;
+let user: ReturnType<typeof userEvent.setup>;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
 });
@@ -124,6 +124,7 @@ afterAll(() => restoreQueries());
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate', 'clearImmediate'] });
+  user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   forgetQueries();
   jest.clearAllMocks();
   originalAppState = AppState.currentState;
@@ -132,7 +133,6 @@ beforeEach(async () => {
   history.mockImplementation(async (_id, days = 7) => historyOf(days) as never);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   AppState.currentState = originalAppState;
   jest.useRealTimers();
 });
@@ -143,33 +143,46 @@ const flush = (ms = 0) =>
   });
 
 async function open() {
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<SensorDetailScreen />);
-  });
-  mounted.push(tree);
+  await render(<SensorDetailScreen />);
   await flush();
-  const texts = () => tree.root.findAll(node => (node.type as unknown) === 'Text').map(node => [node.props.children].flat().join(''));
-  const press = async (label: string) => {
-    const control = tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-    if (!control) throw new Error(`No control labelled "${label}"`);
-    await act(async () => control.props.onPress());
-    await flush();
-  };
-  // The fact rows of the hero, as they are read out: "Connection, Online" (KeyValueCell, WH-216).
-  const facts = () =>
-    tree.root
-      .findAll(node => typeof node.type === 'string' && node.props.accessible && /^(Connection|Battery|Last reading), /.test(node.props.accessibilityLabel ?? ''))
-      .map(node => node.props.accessibilityLabel as string);
-  // The period chips, as they are read out, and whether each is selected.
-  const chips = () =>
-    tree.root
-      .findAll(node => node.props.accessibilityRole === 'radio' && typeof node.props.onPress === 'function')
-      .map(node => ({ label: node.props.accessibilityLabel as string, selected: Boolean(node.props.accessibilityState?.selected) }));
-  // WH-216: loading is the detail skeleton (labelled Loading details), not a spinner with its own text.
-  const skeletons = () => tree.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityLabel === 'Loading details');
-  return { tree, texts, press, facts, chips, skeletons, chart: () => tree.root.findAllByType(SensorHistoryChart) };
 }
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const shows = (...texts: string[]) => texts.forEach(text => expect(screen.getAllByText(text)[0]).toBeOnTheScreen());
+const notShown = (text: string) => expect(screen.queryAllByText(text, everything)).toHaveLength(0);
+const press = async (label: string) => {
+  await user.press(screen.getAllByLabelText(label)[0]);
+  await flush();
+};
+// The fact rows of the hero, as they are read out: "Connection, Online" (KeyValueCell, WH-216).
+const facts = () => screen.queryAllByLabelText(/^(Connection|Battery|Last reading), /).map(node => node.props.accessibilityLabel as string);
+// The period chips, as they are read out, and whether each is selected.
+const chips = () =>
+  screen.queryAllByRole('radio', everything).map(node => ({ label: node.props.accessibilityLabel as string, selected: Boolean(node.props.accessibilityState?.selected) }));
+// WH-216: loading is the detail skeleton (labelled Loading details), not a spinner with its own text.
+const skeletons = () => screen.queryAllByLabelText('Loading details');
+// The chart is drawn by gifted-charts' LineChart, which the test replaces with a host of the same name; the chart sits
+// inside a part hidden from the screen reader and has no role or text a query can reach, so its host props are read
+// by walking the rendered tree (the same way as SensorHistoryChart.test.tsx).
+type Json = NonNullable<ReturnType<typeof screen.toJSON>>;
+function lineCharts(): Record<string, any>[] {
+  const found: Record<string, any>[] = [];
+  const walk = (node: Json | string | null): void => {
+    if (!node || typeof node === 'string') return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if ((node.type as string) === 'LineChart') found.push(node.props);
+    node.children?.forEach(walk);
+  };
+  walk(screen.toJSON());
+  return found;
+}
+// The limit lines of the chart: value, label and the colour of the level.
+const limits = () => {
+  const chart = lineCharts()[0];
+  return [1, 2]
+    .filter(n => chart[`showReferenceLine${n}`])
+    .map(n => ({ value: chart[`referenceLine${n}Position`], label: chart[`referenceLine${n}Config`].labelText, colour: chart[`referenceLine${n}Config`].color }));
+};
 
 const NO_HISTORY = 'No history yet. Readings appear here once the sensor reports them.';
 
@@ -190,77 +203,77 @@ describe('the sensor and its history', () => {
     const days = held();
     device.mockImplementationOnce(() => sensor.promise as never);
     history.mockImplementationOnce(() => days.promise as never);
-    const screen = await open();
+    await open();
     // Both requests are out before either answers.
     expect(device.mock.calls).toEqual([['s7']]);
     expect(history.mock.calls).toEqual([['s7', 7]]);
-    expect(screen.skeletons()).not.toHaveLength(0);
-    expect(screen.texts()).not.toContain('Loading sensor');
+    expect(skeletons()).not.toHaveLength(0);
+    notShown('Loading sensor');
 
     await act(async () => {
       sensor.release(found());
       days.release(historyOf(7));
     });
     await flush();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Ripening room probe', 'Chamber 7', 'Sensor OK', 'All readings, last 7 days', 'Based on 7 readings']));
-    expect(screen.facts()).toEqual(['Connection, Online', 'Battery, Good', 'Last reading, 12 Oct 2026, 9:55 am']);
+    shows('Ripening room probe', 'Chamber 7', 'Sensor OK', 'All readings, last 7 days', 'Based on 7 readings');
+    expect(facts()).toEqual(['Connection, Online', 'Battery, Good', 'Last reading, 12 Oct 2026, 9:55 am']);
   });
 
   it('a period chip asks for that period\'s history only, and keeps the sensor on screen', async () => {
-    const screen = await open();
-    await screen.press('Last 14 days');
+    await open();
+    await press('Last 14 days');
     expect(history.mock.calls).toEqual([['s7', 7], ['s7', 14]]);
     expect(device).toHaveBeenCalledTimes(1);
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Ripening room probe', 'All readings, last 14 days', 'Based on 14 readings']));
+    shows('Ripening room probe', 'All readings, last 14 days', 'Based on 14 readings');
   });
 
   it('a late answer for a period left behind is not shown under the period chosen', async () => {
-    const screen = await open();
+    await open();
     const fourteen = held();
     const thirty = held();
     history.mockImplementationOnce(() => fourteen.promise as never).mockImplementationOnce(() => thirty.promise as never);
-    await screen.press('Last 14 days');
-    await screen.press('Last 30 days');
-    expect(screen.texts()).toContain('Loading 30 days of history');
+    await press('Last 14 days');
+    await press('Last 30 days');
+    shows('Loading 30 days of history');
 
     await act(async () => thirty.release(historyOf(30)));
     await flush();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['All readings, last 30 days', 'Based on 30 readings']));
+    shows('All readings, last 30 days', 'Based on 30 readings');
     // The 14-day answer arrives last: a broken screen would now say 14.
     await act(async () => fourteen.release(historyOf(14)));
     await flush();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['All readings, last 30 days', 'Based on 30 readings']));
-    expect(screen.texts()).not.toContain('Based on 14 readings');
+    shows('All readings, last 30 days', 'Based on 30 readings');
+    notShown('Based on 14 readings');
   });
 
   it('a sensor the facility does not have says so, with no history', async () => {
     device.mockResolvedValue({ success: true, data: { device: null } } as never);
-    const screen = await open();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Sensor not found', 'This sensor was not found. It may have been removed.']));
-    expect(screen.chart()).toEqual([]);
+    await open();
+    shows('Sensor not found', 'This sensor was not found. It may have been removed.');
+    expect(lineCharts()).toEqual([]);
   });
 
   it('a sensor that could not be read says so and tries both again', async () => {
     device.mockResolvedValueOnce({ success: false, message: 'Failed to fetch sensor data' } as never);
-    const screen = await open();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['Something went wrong', "Couldn't load this sensor. Check your connection and try again."]));
-    await screen.press('Try again');
+    await open();
+    shows('Something went wrong', "Couldn't load this sensor. Check your connection and try again.");
+    await press('Try again');
     expect(device).toHaveBeenCalledTimes(2);
-    expect(screen.texts()).toContain('Ripening room probe');
+    shows('Ripening room probe');
   });
 });
 
 describe('live', () => {
   it('a minute on, the sensor is asked for again, not its history, and shows the new value', async () => {
-    const screen = await open();
-    expect(screen.texts()).toContain('2.0°C');
+    await open();
+    shows('2.0°C');
     device.mockResolvedValueOnce(found({ latest_temperature: 3.5, measured_at: minutesAgo(0) }) as never);
     await flush(59_000);
     expect(device).toHaveBeenCalledTimes(1);
     await flush(1_000);
     expect(device).toHaveBeenCalledTimes(2);
     expect(history).toHaveBeenCalledTimes(1);
-    expect(screen.texts()).toContain('3.5°C');
+    shows('3.5°C');
   });
 
   it('a sensor that could not be read is not asked again by the minute timer', async () => {
@@ -273,10 +286,10 @@ describe('live', () => {
 
   it('the connection turns "No recent data" as the time moves on', async () => {
     device.mockResolvedValue(found({ measured_at: minutesAgo(29), last_seen_at: minutesAgo(29) }) as never);
-    const screen = await open();
-    expect(screen.facts()[0]).toBe('Connection, Online');
+    await open();
+    expect(facts()[0]).toBe('Connection, Online');
     await flush(2 * 60_000);
-    expect(screen.facts()[0]).toBe('Connection, No recent data');
+    expect(facts()[0]).toBe('Connection, No recent data');
     // Two minutes: the minute timer asked for the sensor twice more (the answer is unchanged); history never.
     expect(device).toHaveBeenCalledTimes(3);
     expect(history).toHaveBeenCalledTimes(1);
@@ -286,16 +299,18 @@ describe('live', () => {
 describe('the chart', () => {
   it("draws the sensor's temperature limits from its alert settings, and none without them", async () => {
     device.mockResolvedValue(found({ alert_config: { temperature_max: 8, temperature_min: 0 } }) as never);
-    const screen = await open();
-    expect(screen.chart()[0].props.thresholds).toEqual([
-      { value: 8, level: 'negative', label: 'Max 8.0°C' },
-      { value: 0, level: 'negative', label: 'Min 0.0°C' },
+    await open();
+    const negative = getTokens('orange', 'light').status.negative.element;
+    expect(limits()).toEqual([
+      { value: 8, label: 'Max 8.0°C', colour: negative },
+      { value: 0, label: 'Min 0.0°C', colour: negative },
     ]);
   });
 
   it('draws no limits for a sensor with none', async () => {
-    const screen = await open();
-    expect(screen.chart()[0].props.thresholds).toEqual([]);
+    await open();
+    expect(lineCharts()).not.toHaveLength(0);
+    expect(limits()).toEqual([]);
   });
 });
 
@@ -304,32 +319,31 @@ describe('a sensor with less than a day of data', () => {
 
   it('names the 7-day period in the section title and offers no chip', async () => {
     device.mockResolvedValue(found(NEW_SENSOR) as never);
-    const screen = await open();
-    expect(screen.chips()).toEqual([]);
-    expect(screen.texts()).toContain('History, last 7 days');
+    await open();
+    expect(chips()).toEqual([]);
+    shows('History, last 7 days');
     expect(history.mock.calls).toEqual([['s7', 7]]);
   });
 
   it('a history answer with readings shows the chart and its summary, not the empty text', async () => {
     device.mockResolvedValue(found(NEW_SENSOR) as never);
     history.mockResolvedValue(historyWith([{ timestamp: minutesAgo(3), temperature: 4, humidity: 80 }]) as never);
-    const screen = await open();
-    expect(screen.chart().length).toBe(1);
-    expect(screen.chart()[0].props.readings.length).toBe(1);
-    expect(screen.texts()).toEqual(expect.arrayContaining(['All readings, last 7 days', 'Based on 1 reading']));
-    expect(screen.texts()).not.toContain(NO_HISTORY);
+    await open();
+    expect(lineCharts().length).toBe(1);
+    expect(lineCharts()[0].data.length).toBe(1);
+    shows('All readings, last 7 days', 'Based on 1 reading');
+    notShown(NO_HISTORY);
   });
 
   it('a history answer with no readings shows the empty text, not the chart or a summary', async () => {
     device.mockResolvedValue(found(NEW_SENSOR) as never);
     history.mockResolvedValue(historyWith([]) as never);
-    const screen = await open();
-    expect(screen.texts()).toContain(NO_HISTORY);
-    // A count, not the instances: a failing match would print the whole rendered tree.
-    expect(screen.chart().length).toBe(0);
-    expect(screen.texts()).not.toContain('All readings, last 7 days');
+    await open();
+    shows(NO_HISTORY);
+    expect(lineCharts().length).toBe(0);
+    notShown('All readings, last 7 days');
     // Only the 7-day period exists yet: named in the section title, no chip.
-    expect(screen.chips()).toEqual([]);
+    expect(chips()).toEqual([]);
   });
 });
 
@@ -339,37 +353,37 @@ describe('WH-216: the sensor page in the stack header, and when it cannot be sho
     setLanguage('en');
     mockState.auth.userProfile.role = 'staff';
   });
-  const controls = (screen: Awaited<ReturnType<typeof open>>, label: string) =>
-    screen.tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
+  const controls = (label: string) => screen.queryAllByLabelText(label, everything);
 
   it('has Refresh for staff and no Edit; an administrator has Edit as well, and Edit opens the sensor form', async () => {
-    const staff = await open();
-    expect(controls(staff, 'Refresh sensor data').length).toBeGreaterThan(0);
-    expect(controls(staff, 'Edit')).toHaveLength(0);
+    await open();
+    expect(controls('Refresh sensor data').length).toBeGreaterThan(0);
+    expect(controls('Edit')).toHaveLength(0);
+    await screen.unmount();
     mockState.auth.userProfile.role = 'admin';
-    const admin = await open();
-    expect(controls(admin, 'Edit').length).toBeGreaterThan(0);
+    await open();
+    expect(controls('Edit').length).toBeGreaterThan(0);
   });
 
   it('has neither Refresh nor Edit while the sensor is not read', async () => {
     mockState.auth.userProfile.role = 'admin';
     device.mockResolvedValue({ success: true, data: { device: null } } as never);
-    const screen = await open();
-    expect(controls(screen, 'Refresh sensor data')).toHaveLength(0);
-    expect(controls(screen, 'Edit')).toHaveLength(0);
+    await open();
+    expect(controls('Refresh sensor data')).toHaveLength(0);
+    expect(controls('Edit')).toHaveLength(0);
   });
 
   it('says a sensor the facility does not have in Gujarati', async () => {
     setLanguage('gu');
     device.mockResolvedValue({ success: true, data: { device: null } } as never);
-    const screen = await open();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['સેન્સર મળ્યું નથી', 'આ સેન્સર મળ્યું નથી. કદાચ તે કાઢી નાખવામાં આવ્યું છે.']));
+    await open();
+    shows('સેન્સર મળ્યું નથી', 'આ સેન્સર મળ્યું નથી. કદાચ તે કાઢી નાખવામાં આવ્યું છે.');
   });
 
   it('says a sensor that could not be read in Gujarati', async () => {
     setLanguage('gu');
     device.mockResolvedValueOnce({ success: false, message: 'Failed to fetch sensor data' } as never);
-    const screen = await open();
-    expect(screen.texts()).toEqual(expect.arrayContaining(['કંઈક ખોટું થયું', 'આ સેન્સર લોડ કરી શકાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.']));
+    await open();
+    shows('કંઈક ખોટું થયું', 'આ સેન્સર લોડ કરી શકાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.');
   });
 });

@@ -15,7 +15,7 @@
  */
 import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import OrderManagement from '@/components/OrderManagement';
 import { OrderService } from '@/services/order-service';
 import type { Order, OrderItem } from '@/types/order.types';
@@ -110,13 +110,14 @@ const appState = (state: AppStateStatus) => act(async () => {
   appStateListeners.forEach(listener => listener(state));
 });
 
-let renderer: ReactTestRenderer | undefined;
-const node = (testID: string): ReactTestInstance => renderer!.root.findAll(candidate => candidate.props.testID === testID)[0];
-const textOf = (instance: ReactTestInstance): string =>
-  instance.children.map(child => (typeof child === 'string' ? child : textOf(child))).join('');
-const addButtonText = () => textOf(node('catalog-add'));
-const isSelected = (name: string) =>
-  renderer!.root.findAll(candidate => candidate.props.accessibilityLabel === `1 bag of ${name} · Bag selected`).length > 0;
+const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+const node = (testID: string) => screen.getByTestId(testID);
+const selectedCount = (name: string, all = false) =>
+  screen.queryAllByLabelText(`1 bag of ${name} · Bag selected`, all ? hidden : undefined).length;
+const isSelected = (name: string) => selectedCount(name) > 0;
+const addLot = () => user.press(screen.getByRole('button', { name: 'Add 1 bag of Fictional potatoes · Bag' }));
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -142,30 +143,22 @@ beforeEach(() => {
   originalState = AppState.currentState;
   AppState.currentState = 'active';
 });
-afterEach(async () => {
-  // A tree left mounted logs after the test is over.
-  await act(async () => { renderer?.unmount(); });
-  renderer = undefined;
+afterEach(() => {
   AppState.currentState = originalState;
   jest.restoreAllMocks();
   jest.useRealTimers();
 });
 
 it('still reads "Add (1)" after the app went to the background and came back, and after later order reads', async () => {
-  await act(async () => {
-    renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={jest.fn()} />);
-  });
+  await render(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={jest.fn()} />);
   await settle();
   // The editor loaded the order once; the timer has not read it again yet.
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(1);
 
   // Start state: the picker is open on an order with no lines, nothing chosen.
-  expect(addButtonText()).toBe('Add');
-  await act(async () => {
-    renderer!.root.findAll(candidate =>
-      candidate.props.accessibilityLabel === 'Add 1 bag of Fictional potatoes · Bag' && typeof candidate.props.onPress === 'function')[0].props.onPress();
-  });
-  expect(addButtonText()).toBe('Add (1)');
+  expect(node('catalog-add')).toHaveTextContent(/^Add$/);
+  await addLot();
+  expect(node('catalog-add')).toHaveTextContent(/^Add \(1\)$/);
   expect(isSelected('Fictional potatoes')).toBe(true);
 
   // Home and back: the editor reads the order a second time.
@@ -174,13 +167,13 @@ it('still reads "Add (1)" after the app went to the background and came back, an
   await appState('active');
   await settle();
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(2);
-  expect(addButtonText()).toBe('Add (1)');
+  expect(node('catalog-add')).toHaveTextContent(/^Add \(1\)$/);
   expect(isSelected('Fictional potatoes')).toBe(true);
 
   // The 15 s timer reads the order again: one more read.
   await interval();
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(3);
-  expect(addButtonText()).toBe('Add (1)');
+  expect(node('catalog-add')).toHaveTextContent(/^Add \(1\)$/);
 
   // Another user saves a lot on this order: one more read. The picker marks that
   // lot "In order" and leaves the user's own choice alone.
@@ -190,25 +183,20 @@ it('still reads "Add (1)" after the app went to the background and came back, an
   } as OrderItem];
   await interval();
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(4);
-  expect(textOf(node('catalog-item-lot-b'))).toContain('In order');
-  expect(addButtonText()).toBe('Add (1)');
+  expect(node('catalog-item-lot-b')).toHaveTextContent(/In order/);
+  expect(node('catalog-add')).toHaveTextContent(/^Add \(1\)$/);
   expect(isSelected('Fictional potatoes')).toBe(true);
-  expect(isSelected('Fictional onions')).toBe(false);
+  expect(selectedCount('Fictional onions', true)).toBe(0);
 });
 
 it('closes when the save that timed out is found applied: the lot is locked and checked first, and nothing is sent again', async () => {
   const onClose = jest.fn();
-  await act(async () => {
-    renderer = create(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={onClose} />);
-  });
+  await render(<OrderManagement customerId="customer-fictional-1" itemCatalogOpen onCloseItemCatalog={onClose} />);
   await settle();
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(1);
 
-  await act(async () => {
-    renderer!.root.findAll(candidate =>
-      candidate.props.accessibilityLabel === 'Add 1 bag of Fictional potatoes · Bag' && typeof candidate.props.onPress === 'function')[0].props.onPress();
-  });
-  expect(addButtonText()).toBe('Add (1)');
+  await addLot();
+  expect(node('catalog-add')).toHaveTextContent(/^Add \(1\)$/);
 
   // The server stores the line; its answer never arrives and the write times out.
   service.addItemToOrder.mockImplementationOnce(async (orderId, lotId, quantity) => {
@@ -220,7 +208,7 @@ it('closes when the save that timed out is found applied: the lot is locked and 
   });
   // The failure is logged for the developer; it is not a test failure.
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
-  await act(async () => { node('catalog-add').props.onPress(); });
+  await user.press(node('catalog-add'));
   await settle();
 
   // The request went out and no answer came: the picker stays open and locked, the lot says it is being checked,
@@ -228,9 +216,9 @@ it('closes when the save that timed out is found applied: the lot is locked and 
   const CHECKING = 'No answer from the server. Checking whether it was saved…';
   expect(onClose).not.toHaveBeenCalled();
   expect(service.addItemToOrder.mock.calls).toEqual([['order-fictional-1', 'lot-a', 1]]);
-  expect(textOf(node('catalog-checking-lot-a'))).toBe(CHECKING);
-  expect(textOf(node('catalog-checking-summary'))).toBe(CHECKING);
-  expect(addButtonText()).toBe('Saving 1 of 1…');
+  expect(node('catalog-checking-lot-a')).toHaveTextContent(CHECKING);
+  expect(node('catalog-checking-summary')).toHaveTextContent(CHECKING);
+  expect(node('catalog-add')).toHaveTextContent('Saving 1 of 1…');
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(1);
 
   // Ten seconds after the request the order is read: the lot is there with that quantity, so it counts as saved,
@@ -243,5 +231,5 @@ it('closes when the save that timed out is found applied: the lot is locked and 
   expect(onClose).toHaveBeenCalledTimes(1);
   // The check read the order once, and the save read it once more at its end.
   expect(service.getOrderWithItems).toHaveBeenCalledTimes(3);
-  expect(textOf(node('catalog-item-lot-a'))).toContain('In order');
+  expect(node('catalog-item-lot-a')).toHaveTextContent(/In order/);
 });

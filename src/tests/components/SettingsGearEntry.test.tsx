@@ -6,7 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { FilteredListHeader } from '@/features/filters/components/FilteredListHeader';
 import type { FilterListDefinition } from '@/features/filters/types';
@@ -25,19 +25,16 @@ const config = { listKey: 'test-list', title: 'Test', fields: [], fastFilters: [
 const filters = { search: '', setSearch: jest.fn(), hasAny: false } as unknown as ReturnType<typeof useListFilters>;
 
 describe('the Settings entry in the list header', () => {
-  let tree: ReactTestRenderer;
-  afterEach(() => act(() => tree.unmount()));
-
   it('is a cog icon, not an avatar, spoken "Tools and settings", and opens Settings', async () => {
-    await act(async () => {
-      tree = create(<FilteredListHeader title="GRNs" config={config} filters={filters} />);
-    });
-    const button = tree.root.find(node => node.props.accessibilityLabel === 'Tools and settings' && typeof node.props.onPress === 'function');
-    const icons = button.findAll(node => (node.type as unknown) === 'Icon').map(node => node.props.name);
+    const user = userEvent.setup({ delay: 0 });
+    await render(<FilteredListHeader title="GRNs" config={config} filters={filters} />);
+    const button = screen.getByRole('button', { name: 'Tools and settings' });
+    // The icon is a host named Icon (the vector-icons stand-in) with no role or text: found by its type under the button.
+    const icons = button.queryAll(node => (node.type as unknown) === 'Icon').map(node => node.props.name);
     expect(icons).toEqual(['cog-outline']);
     // No initials are drawn in the button.
-    expect(button.findAll(node => typeof node.props.children === 'string' && /^[A-Z]{1,2}$/.test(node.props.children))).toHaveLength(0);
-    act(() => button.props.onPress());
+    expect(within(button).queryAllByText(/^[A-Z]{1,2}$/, { includeHiddenElements: true })).toHaveLength(0);
+    await user.press(button);
     expect(router.push).toHaveBeenCalledWith('/settings');
   });
 });

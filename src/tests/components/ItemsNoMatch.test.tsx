@@ -1,8 +1,8 @@
 /** Items search that matches nothing: the message and Clear search show (not a blank list). */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet, Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import ItemsScreen from '../../../app/items';
 import { itemService } from '@/services/item-service';
 import { getItemStoragePrices } from '@/services/item-pricing-service';
@@ -35,23 +35,9 @@ jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
-const lastAlert = () => {
-  const calls = jest.mocked(showAlert).mock.calls;
-  const [title, message, buttons] = calls[calls.length - 1];
-  return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
-};
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
+const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
 
 const ITEMS = [
   { id: 'i1', name: 'Dry Red Chillies', packaging: 'Bag', description: '', active: true },
@@ -59,8 +45,9 @@ const ITEMS = [
 ];
 const listOf = (data: unknown[], total = data.length) => ({ success: true, message: '', data, pagination: { total_count: total } });
 const type = async (text: string) => {
-  const field = tree!.root.find(node => node.props.accessibilityLabel === 'Search by name, packaging or description' && typeof node.props.onChangeText === 'function');
-  await act(async () => { field.props.onChangeText(text); });
+  const field = screen.getByLabelText('Search by name, packaging or description');
+  await user.clear(field);
+  await user.type(field, text);
   await act(async () => { await jest.advanceTimersByTimeAsync(300); });
 };
 beforeEach(() => {
@@ -74,17 +61,18 @@ describe('Items search with no match', () => {
   it('says nothing matches and offers Clear search', async () => {
     jest.mocked(itemService.getItemList).mockImplementation((async (filters: { search?: string }) =>
       filters.search === 'zzzz' ? listOf([]) : listOf(ITEMS)) as never);
-    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
-    expect(shownText()).toContain('Garlic');
+    await render(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>);
+    expect(await screen.findByText(/Garlic/)).toBeOnTheScreen();
     await type('zzzz');
-    expect(shownText()).toContain('No items match "zzzz"');
-    expect(shownText()).toContain('Try fewer letters or another spelling.');
-    expect(shownText()).not.toContain('Garlic');
-    expect(shownText()).not.toContain('No items yet');
-    expect(byLabel('Clear search')).toBeDefined();
+    expect(screen.getByText('No items match "zzzz"')).toBeOnTheScreen();
+    expect(screen.getByText('Try fewer letters or another spelling.')).toBeOnTheScreen();
+    expect(screen.queryByText(/Garlic/, hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/No items yet/, hidden)).not.toBeOnTheScreen();
+    expect(screen.getAllByRole('button', { name: 'Clear search' }).length).toBeGreaterThan(0);
     // A list directly under the header must fill the space itself (as Customers' list does), or the
-    // centred empty state has no height to draw in and the screen is blank.
-    const list = tree!.root.find(node => typeof node.props.ListEmptyComponent === 'function' && node.props.data !== undefined && node.props.renderItem !== undefined && node.props.numColumns === undefined || (typeof node.props.ListEmptyComponent === 'function' && node.props.contentContainerStyle));
+    // centred empty state has no height to draw in and the screen is blank. The scroll view the list draws
+    // has no role or text a query can reach, so its host props are read.
+    const list = screen.root!.queryAll(node => (node.type as unknown) === 'RCTScrollView')[0];
     expect(StyleSheet.flatten(list.props.style)).toEqual(expect.objectContaining({ flex: 1 }));
     expect(StyleSheet.flatten(list.props.contentContainerStyle)).toEqual(expect.objectContaining({ flexGrow: 1 }));
   });

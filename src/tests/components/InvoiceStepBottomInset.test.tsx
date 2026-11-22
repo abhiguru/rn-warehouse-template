@@ -5,7 +5,7 @@
 import React from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { space } from '@/theme/tokens';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import invoiceFormReducer, { loadInvoiceEditData, resetForm } from '@/store/slices/invoiceFormSlice';
@@ -83,9 +83,9 @@ jest.mock('react-native-keyboard-aware-scroll-view', () => ({
   // The items table (a stand-in here) is a keyboard-aware FlashList.
   listenToKeyboardEvents: () => (component: unknown) => component,
 }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
-jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: 'InvoiceItemsEditor' }));
+jest.mock('@/features/invoice/components/items/InvoiceItemsEditor', () => ({ InvoiceItemsEditor: () => null }));
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn() }));
 jest.mock('@/services/item-pricing-service', () => ({ getItemStoragePrices: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
@@ -95,8 +95,8 @@ const realOS = Platform.OS;
 afterEach(() => { Platform.OS = realOS; });
 beforeEach(() => { jest.spyOn(console, 'error').mockImplementation(() => {}); });
 
-const barPadding = (tree: ReactTestRenderer) => {
-  const next = tree.root.find((n) => n.props.accessibilityLabel === 'Review' && typeof n.props.onPress === 'function');
+const barPadding = () => {
+  const next = screen.getByLabelText('Review');
   let node = next.parent;
   while (node) {
     const style = StyleSheet.flatten(node.props.style);
@@ -110,11 +110,9 @@ describe.each([['new invoice', InvoiceFormStep2], ['invoice edit', InvoiceEditSt
   it.each([['android', 0], ['ios', 24]] as const)('on %s with a 24 dp inset adds %d dp of inset', async (os, inset) => {
     Platform.OS = os;
     mockItems = [line('aaaaaaaa')];
-    let tree!: ReactTestRenderer;
-    await act(async () => { tree = create(<Step />); });
-    const own = barPadding(tree) - inset;
+    await render(<Step />);
+    const own = barPadding() - inset;
     // Android: only the step's own spacing (space.md), not 24 + 16.
     expect(own).toBe(space.md);
-    await act(async () => { tree.unmount(); });
   });
 });

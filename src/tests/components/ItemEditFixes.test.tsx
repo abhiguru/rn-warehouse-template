@@ -2,7 +2,7 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import ItemFormScreen from '../../../app/item-form';
 import ItemEditScreen from '../../../app/item-edit/[id]';
 import ItemsScreen from '../../../app/items';
@@ -40,11 +40,6 @@ jest.mock('@/hooks/useLeaveGuard', () => ({
   },
 }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
 const lastAlert = () => {
   const calls = jest.mocked(showAlert).mock.calls;
   const [title, message, buttons] = calls[calls.length - 1];
@@ -63,7 +58,7 @@ describe('CR-27: an item stored with outer spaces is not "changed" by opening it
     jest.mocked(itemService.getItemById).mockResolvedValue({
       success: true, message: '', data: { id: 'i2', name: 'Garlic ', packaging: 'Bag ', description: ' Peeled', active: true },
     } as never);
-    await act(async () => { tree = create(<ItemEditScreen />); });
+    await render(<ItemEditScreen />);
     expect(mockGuard?.hasChanges).toBe(false);
   });
 });
@@ -79,9 +74,9 @@ describe('CR-31: deactivating from the refused delete says so', () => {
       data: { item_id: 'i2', name: 'Garlic', active: true, in_use: true, grn_lines: 2, order_lines: 0, grn_rates: 0, price_rows: 0, rate_count: 0 },
     } as never);
     jest.mocked(itemService.toggleItemActive).mockResolvedValue({ success: true, message: '' } as never);
-    await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
-    const row = tree!.root.find(n => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Garlic') && n.props.accessibilityActions);
-    await act(async () => { row.props.onAccessibilityAction({ nativeEvent: { actionName: 'delete' } }); });
+    await render(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>);
+    const row = await screen.findByLabelText(/^Garlic/);
+    await fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: 'delete' } });
     await act(async () => { lastAlert().buttons.find(b => b.text === 'Deactivate item')!.onPress!(); });
     expect(itemService.toggleItemActive).toHaveBeenCalledWith('i2', false);
     expect(showToast).toHaveBeenCalledWith('Garlic deactivated.');
@@ -90,7 +85,8 @@ describe('CR-31: deactivating from the refused delete says so', () => {
 
 describe('CR-64: the header is symmetric', () => {
   const sides = () => {
-    const header = tree!.root.findAll(node => node.props.testID === 'item-header' && typeof node.type === 'string')[0];
+    // The two sides and the title have no role or text a query can reach: they are read as the header's children.
+    const header = screen.getByTestId('item-header');
     const kids = header.children.filter(child => typeof child !== 'string') as { props: { style?: unknown } }[];
     return kids.map(kid => (StyleSheet.flatten(kid.props.style as never) ?? {}) as Record<string, unknown>);
   };
@@ -101,7 +97,8 @@ describe('CR-64: the header is symmetric', () => {
     jest.mocked(itemService.getItemById).mockResolvedValue({
       success: true, message: '', data: { id: 'i2', name: 'Garlic', packaging: '', description: '', active: true },
     } as never);
-    await act(async () => { tree = create(element()); });
+    await render(element());
+    await screen.findByTestId('item-header');
     const [left, title, right] = sides();
     expect(left).toMatchObject({ flex: 1 });
     expect(right).toMatchObject({ flex: 1 });
@@ -117,14 +114,13 @@ describe('an item save that got no usable answer', () => {
       success: true, message: '', data: { id: 'i2', name: 'Garlic', packaging: 'Bag', description: '', active: true },
     } as never);
     jest.mocked(itemService.updateItem).mockResolvedValue({ success: false, lostAnswer: true, message: 'x' } as never);
-    await act(async () => { tree = create(<ItemEditScreen />); });
-    const field = tree!.root.findAll((n) => typeof n.props.onChangeText === 'function' && n.props.value === 'Garlic')[0];
-    await act(async () => { field.props.onChangeText('Garlic Peeled'); });
-    const save = tree!.root.findAll((n) => typeof n.props.onPress === 'function' && /^Save/i.test(String(n.props.accessibilityLabel ?? '')))[0];
-    await act(async () => { await save.props.onPress(); });
+    await render(<ItemEditScreen />);
+    const user = userEvent.setup({ delay: 0 });
+    await user.type(await screen.findByDisplayValue('Garlic'), ' Peeled');
+    await user.press(screen.getByRole('button', { name: /^Save/i }));
 
     expect(lastAlert().message).toBe("We couldn't confirm the save. Your changes are still here: check them and tap Save again.");
     expect(itemService.getItemById).toHaveBeenCalledTimes(1);
-    expect(tree!.root.findAll((n) => typeof n.props.onChangeText === 'function' && n.props.value === 'Garlic Peeled').length).toBeGreaterThan(0);
+    expect(screen.getByDisplayValue('Garlic Peeled')).toBeOnTheScreen();
   });
 });

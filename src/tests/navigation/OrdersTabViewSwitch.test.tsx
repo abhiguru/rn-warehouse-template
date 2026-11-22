@@ -1,5 +1,5 @@
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 
 let mockCanManageOrders = true;
 let mockListThrows = false;
@@ -32,44 +32,36 @@ jest.mock('@/components/lists', () => {
 
 import OrdersTab from '../../../app/(tabs)/index';
 
-const has = (root: TestRenderer.ReactTestInstance, testID: string) =>
-  root.findAll((node) => node.props.testID === testID).length > 0;
-const segment = (root: TestRenderer.ReactTestInstance, label: string) =>
-  root.findAll((node) => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const here = (testID: string) => expect(screen.getByTestId(testID)).toBeOnTheScreen();
+const gone = (testID: string) => expect(screen.queryAllByTestId(testID, everything)).toHaveLength(0);
+const segment = (label: string) => screen.getByLabelText(label);
 
 describe('Orders tab view switch', () => {
   afterEach(() => {
     mockCanManageOrders = true;
   });
 
-  it('lets warehouse roles switch between Orders and Queue, keeping the switch in both', () => {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(<OrdersTab />);
-    });
-    const root = renderer.root;
-    expect(has(root, 'orders-list')).toBe(true);
-    expect(has(root, 'queue-list')).toBe(false);
+  it('lets warehouse roles switch between Orders and Queue, keeping the switch in both', async () => {
+    const user = userEvent.setup({ delay: 0 });
+    await render(<OrdersTab />);
+    here('orders-list');
+    gone('queue-list');
 
-    act(() => segment(root, 'Queue').props.onPress());
-    expect(has(root, 'queue-list')).toBe(true);
-    expect(has(root, 'orders-list')).toBe(false);
+    await user.press(segment('Queue'));
+    here('queue-list');
+    gone('orders-list');
 
-    act(() => segment(root, 'Orders').props.onPress());
-    expect(has(root, 'orders-list')).toBe(true);
-    act(() => renderer.unmount());
+    await user.press(segment('Orders'));
+    here('orders-list');
   });
 
-  it('shows customers the orders list with no switch', () => {
+  it('shows customers the orders list with no switch', async () => {
     mockCanManageOrders = false;
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(<OrdersTab />);
-    });
-    const root = renderer.root;
-    expect(has(root, 'orders-list')).toBe(true);
-    expect(segment(root, 'Queue')).toBeUndefined();
-    act(() => renderer.unmount());
+    await render(<OrdersTab />);
+    here('orders-list');
+    expect(screen.queryAllByLabelText('Queue', everything)).toHaveLength(0);
   });
 });
 
@@ -81,26 +73,21 @@ describe('Orders tab crash guard', () => {
     jest.restoreAllMocks();
   });
 
-  it('shows "Couldn\'t show the orders" under a working switch, and switching back draws the list again', () => {
+  it('shows "Couldn\'t show the orders" under a working switch, and switching back draws the list again', async () => {
+    const user = userEvent.setup({ delay: 0 });
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     mockListThrows = true;
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(<OrdersTab />);
-    });
-    const root = renderer.root;
-    const texts = () => root.findAll((node) => typeof node.props.children === 'string').map((node) => node.props.children);
-    expect(has(root, 'orders-list')).toBe(false);
-    expect(texts()).toContain("Couldn't show the orders. Try again.");
-    expect(root.findAll((node) => node.props.accessibilityLabel === 'Try loading the orders again').length).toBeGreaterThan(0);
+    await render(<OrdersTab />);
+    gone('orders-list');
+    expect(screen.getAllByText("Couldn't show the orders. Try again.")[0]).toBeOnTheScreen();
+    expect(screen.getAllByLabelText('Try loading the orders again')[0]).toBeOnTheScreen();
 
-    act(() => segment(root, 'Queue').props.onPress());
-    expect(has(root, 'queue-list')).toBe(true);
-    expect(texts()).not.toContain("Couldn't show the orders. Try again.");
+    await user.press(segment('Queue'));
+    here('queue-list');
+    expect(screen.queryAllByText("Couldn't show the orders. Try again.", everything)).toHaveLength(0);
 
     mockListThrows = false;
-    act(() => segment(root, 'Orders').props.onPress());
-    expect(has(root, 'orders-list')).toBe(true);
-    act(() => renderer.unmount());
+    await user.press(segment('Orders'));
+    here('orders-list');
   });
 });

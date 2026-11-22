@@ -3,7 +3,7 @@
  * sensor's name is in the header only. Two or more periods keep the radio chips.
  */
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, screen } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDevice } from '@/services/sensor-service';
 import { getSensorHistory } from '@/services/sensor-history-service';
@@ -44,7 +44,6 @@ jest.mock('@/utils/logger', () => {
 
 const NOW = new Date(2026, 9, 12, 10, 0).getTime();
 const daysAgo = (d: number) => new Date(NOW - d * 86_400_000).toISOString();
-const mounted: TestRenderer.ReactTestRenderer[] = [];
 let restoreQueries: () => void;
 beforeAll(() => {
   restoreQueries = makeQueryUpdatesImmediate();
@@ -80,44 +79,37 @@ beforeEach(async () => {
   } as never);
 });
 afterEach(() => {
-  act(() => mounted.splice(0).forEach(tree => tree.unmount()));
   jest.useRealTimers();
 });
 
 async function open(firstReadingAt: string) {
   jest.mocked(getDevice).mockResolvedValue(sensor(firstReadingAt) as never);
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<SensorDetailScreen />);
-  });
-  mounted.push(tree);
+  await render(<SensorDetailScreen />);
   await act(async () => {
     await jest.advanceTimersByTimeAsync(0);
   });
-  return {
-    texts: () => tree.root.findAll(n => (n.type as unknown) === 'Text').map(n => [n.props.children].flat().join('')),
-    radios: () =>
-      tree.root.findAll(n => n.props.accessibilityRole === 'radio' && typeof n.props.onPress === 'function').map(n => n.props.accessibilityLabel as string),
-  };
 }
+// A check that something is NOT drawn must also see a node that is mounted but hidden.
+const everything = { includeHiddenElements: true } as const;
+const radios = () => screen.queryAllByRole('radio', everything).map(n => n.props.accessibilityLabel as string);
 
 describe('the history period of a sensor', () => {
   it('with one period offers no chip and names the period in the section title', async () => {
-    const screen = await open(daysAgo(1));
-    expect(screen.radios()).toEqual([]);
-    expect(screen.texts()).toContain('History, last 7 days');
-    expect(screen.texts()).not.toContain('History');
+    await open(daysAgo(1));
+    expect(radios()).toEqual([]);
+    expect(screen.getAllByText('History, last 7 days')[0]).toBeOnTheScreen();
+    expect(screen.queryAllByText('History', everything)).toHaveLength(0);
   });
 
   it('shows the sensor name once, and no "Sensor" label', async () => {
-    const screen = await open(daysAgo(1));
-    expect(screen.texts().filter(s => s === 'Temperature Humidity Sensor')).toHaveLength(1);
-    expect(screen.texts()).not.toContain('Sensor');
+    await open(daysAgo(1));
+    expect(screen.queryAllByText('Temperature Humidity Sensor', everything)).toHaveLength(1);
+    expect(screen.queryAllByText('Sensor', everything)).toHaveLength(0);
   });
 
   it('with several periods keeps the chips', async () => {
-    const screen = await open(daysAgo(40));
-    expect(screen.radios()).toEqual(['Last 7 days', 'Last 14 days', 'Last 30 days']);
-    expect(screen.texts()).toContain('History');
+    await open(daysAgo(40));
+    expect(radios()).toEqual(['Last 7 days', 'Last 14 days', 'Last 30 days']);
+    expect(screen.getAllByText('History')[0]).toBeOnTheScreen();
   });
 });

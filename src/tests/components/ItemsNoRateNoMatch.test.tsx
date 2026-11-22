@@ -4,8 +4,7 @@
  */
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import ItemsScreen from '../../../app/items';
 import { itemService } from '@/services/item-service';
 import { listActiveItems, listAllRates } from '@/services/item-pricing-service';
@@ -36,15 +35,12 @@ jest.mock('@/services/item-pricing-service', () => ({
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
+afterEach(() => {
   jest.useRealTimers();
 });
 
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
+// A negative check also sees hidden-but-mounted nodes.
+const hidden = { includeHiddenElements: true } as const;
 const ITEMS = [
   { id: 'i1', name: 'Dry Red Chillies', packaging: 'Bag', description: '', active: true },
   { id: 'i2', name: 'Garlic', packaging: 'Box', description: 'Peeled', active: true },
@@ -52,31 +48,30 @@ const ITEMS = [
 
 it('says no item without a rate matches the search, with the main list\'s title and message, and Clear search brings the rows back', async () => {
   jest.useFakeTimers();
+  const user = userEvent.setup({ delay: 0, advanceTimers: jest.advanceTimersByTime });
   clearItemRatesCache();
   jest.mocked(itemService.getItemList).mockResolvedValue({ success: true, message: '', data: ITEMS, pagination: { total_count: 2 } } as never);
   // Two active items and no rate at all: both are "no rate".
   jest.mocked(listActiveItems).mockResolvedValue(ITEMS.map(({ id, name, packaging }) => ({ id, name, packaging })));
   jest.mocked(listAllRates).mockResolvedValue([]);
-  await act(async () => { tree = create(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>); });
+  await render(<GestureHandlerRootView><ItemsScreen /></GestureHandlerRootView>);
   await act(async () => { await jest.advanceTimersByTimeAsync(0); });
 
-  const show = tree!.root.find(node => node.props.testID === 'no-rate-show' && typeof node.props.onPress === 'function');
-  await act(async () => { show.props.onPress(); });
-  expect(shownText()).toContain('Showing only items with no rate.');
-  expect(shownText()).toContain('Garlic');
+  await user.press(screen.getByTestId('no-rate-show'));
+  expect(screen.getByText('Showing only items with no rate.')).toBeOnTheScreen();
+  expect(screen.getByText(/Garlic/)).toBeOnTheScreen();
 
-  const field = tree!.root.find(node => node.props.accessibilityLabel === 'Search by name, packaging or description' && typeof node.props.onChangeText === 'function');
-  await act(async () => { field.props.onChangeText('zzzz'); });
+  const field = screen.getByLabelText('Search by name, packaging or description');
+  await user.type(field, 'zzzz');
   await act(async () => { await jest.advanceTimersByTimeAsync(300); });
-  expect(shownText()).toContain('No items match "zzzz"');
-  expect(shownText()).toContain('Try fewer letters or another spelling.');
-  expect(shownText()).not.toContain('Garlic');
+  expect(screen.getByText('No items match "zzzz"')).toBeOnTheScreen();
+  expect(screen.getByText('Try fewer letters or another spelling.')).toBeOnTheScreen();
+  expect(screen.queryByText(/Garlic/, hidden)).not.toBeOnTheScreen();
   // Not the "every item has a rate" state: the search is what matched nothing.
-  expect(shownText()).not.toContain('Every item has a rate.');
+  expect(screen.queryByText(/Every item has a rate\./, hidden)).not.toBeOnTheScreen();
 
-  const clear = tree!.root.findAll(node => node.props.accessibilityRole === 'button' && node.findAllByType(Text).some(t => flat(t.props.children) === 'Clear search'))[0];
-  await act(async () => { clear.props.onPress(); });
+  await user.press(screen.getByText('Clear search'));
   await act(async () => { await jest.advanceTimersByTimeAsync(300); });
-  expect(shownText()).toContain('Garlic');
-  expect(shownText()).toContain('Dry Red Chillies');
+  expect(screen.getByText(/Garlic/)).toBeOnTheScreen();
+  expect(screen.getByText(/Dry Red Chillies/)).toBeOnTheScreen();
 });

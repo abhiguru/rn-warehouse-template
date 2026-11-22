@@ -1,7 +1,6 @@
 /** G-58: Items and Users do not add the bottom inset twice (the root layout already pads Android screens). */
 import React from 'react';
-import { Text } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import ItemsScreen from '../../../app/items';
 import { itemService } from '@/services/item-service';
 import { getItemStoragePrices } from '@/services/item-pricing-service';
@@ -38,30 +37,13 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('@/hooks/useLeaveGuard', () => ({ useLeaveGuard: () => ({ leaveWithoutAsking: (go: () => void) => go() }) }));
 
-let tree: ReactTestRenderer | undefined;
-afterEach(async () => {
-  await act(async () => { tree?.unmount(); });
-  tree = undefined;
-});
-
-const flat = (children: unknown) => [children].flat().join('');
-const shownText = () => tree!.root.findAllByType(Text).map(node => flat(node.props.children)).join(' | ');
-/** The first element with this accessibility label that can be pressed. */
-const byLabel = (label: string) => tree!.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
-const press = async (label: string) => { await act(async () => { byLabel(label).props.onPress(); }); };
-const lastAlert = () => {
-  const calls = jest.mocked(showAlert).mock.calls;
-  const [title, message, buttons] = calls[calls.length - 1];
-  return { title, message, buttons: (buttons ?? []) as { text?: string; onPress?: () => void }[] };
-};
-const rowFor = (name: string) => tree!.root.find(node => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith(name) && node.props.accessibilityActions);
-
 jest.mock('@/services/admin-user-service', () => ({ adminUserService: { getUsersList: jest.fn() } }));
 jest.mock('@/config/roles', () => ({ ...jest.requireActual('@/config/roles'), canOpenScreen: () => true }));
 import { Platform, StyleSheet } from 'react-native';
 
-const containerStyle = (testID: string) => StyleSheet.flatten(tree!.root.find(node => node.props.testID === testID).props.style);
-const listPadding = () => StyleSheet.flatten(tree!.root.find(node => typeof node.props.data === 'object' && node.props.renderItem).props.contentContainerStyle).paddingBottom;
+const containerStyle = (testID: string) => StyleSheet.flatten(screen.getByTestId(testID).props.style);
+// The list's content padding is a prop of the scroll view the list draws: nothing is drawn for a query to reach.
+const listPadding = () => StyleSheet.flatten(screen.root!.queryAll(node => (node.type as unknown) === 'RCTScrollView')[0].props.contentContainerStyle).paddingBottom;
 const realOS = Platform.OS;
 afterEach(() => { Platform.OS = realOS; });
 beforeEach(() => {
@@ -73,7 +55,7 @@ beforeEach(() => {
 describe.each([['Items', 'items-screen', ItemsScreen], ['Users', 'users-screen', UsersScreen]] as const)('%s on Android with a 24 dp inset', (_name, testID, Screen) => {
   it('adds no bottom padding of its own', async () => {
     Platform.OS = 'android';
-    await act(async () => { tree = create(<Screen />); });
+    await render(<Screen />);
     expect(containerStyle(testID).paddingBottom).toBeUndefined();
     expect(listPadding()).toBeLessThan(24 + 16);
   });
@@ -82,7 +64,7 @@ describe.each([['Items', 'items-screen', ItemsScreen], ['Users', 'users-screen',
 describe.each([['Items', ItemsScreen], ['Users', UsersScreen]] as const)('%s on iOS with a 24 dp inset', (_name, Screen) => {
   it('puts the inset inside the list content', async () => {
     Platform.OS = 'ios';
-    await act(async () => { tree = create(<Screen />); });
+    await render(<Screen />);
     expect(listPadding()).toBeGreaterThanOrEqual(24);
   });
 });
