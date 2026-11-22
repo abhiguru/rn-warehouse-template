@@ -7,7 +7,7 @@
  * - Empty state when no images, with "Add photo" when uploads are allowed
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -68,7 +68,7 @@ const DispatchPhoto: React.FC<{ url: string; style: React.ComponentProps<typeof 
   const network = useNetworkStatus();
   const online = network.isConnected && network.isInternetReachable !== false;
   const onlineRef = useRef(online);
-  useEffect(() => {
+  useLayoutEffect(() => {
     onlineRef.current = online;
   }, [online]);
   const missing = failure === 'missing';

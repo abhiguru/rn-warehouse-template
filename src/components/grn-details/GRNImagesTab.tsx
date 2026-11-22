@@ -6,7 +6,7 @@
  * thumbnail when the grid is editable. Tap a thumbnail to view it full screen.
  */
 
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useLayoutEffect, useState, useMemo, useRef } from 'react';
 import { View, Text, Pressable, FlatList, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
@@ -205,7 +205,7 @@ const ImageTile: React.FC<{
   const network = useNetworkStatus();
   const online = network.isConnected && network.isInternetReachable !== false;
   const onlineRef = useRef(online);
-  useEffect(() => {
+  useLayoutEffect(() => {
     onlineRef.current = online;
   }, [online]);
   const label = imageLabel(item);
