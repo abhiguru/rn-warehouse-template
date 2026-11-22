@@ -5,9 +5,9 @@
  */
 import React from 'react';
 import { AccessibilityInfo } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, groupLines, invoiceLine, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, hasInput, inputOf, textsOf, track, unmountAll } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, hasInput, inputOf, textsOf } from '@/tests/helpers/invoiceItemsHarness';
 import type { InvoiceItemsEditorHandle } from '../InvoiceItemsEditor';
 import type { InvoiceItemData } from '@/types/invoice.types';
 
@@ -22,120 +22,114 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 }));
 const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
 beforeEach(() => announce.mockClear());
-afterEach(() => { act(() => unmountAll()); });
 
 const GROUP = 'i1:::M1';
 const CHARGE_1 = 'cell|edit_0_0|charge';
 const toggleId = (group = GROUP) => `group-toggle-${group}`;
+const hasText = (part: string) => textsOf().some((text) => text.includes(part));
 
-async function render(lines: InvoiceItemData[], ref?: React.Ref<InvoiceItemsEditorHandle>) {
+async function mount(lines: InvoiceItemData[], ref?: React.Ref<InvoiceItemsEditorHandle>) {
   mockStore = makeInvoiceStore();
   fillNewInvoice(mockStore, lines);
-  let tree!: ReactTestRenderer;
-  await act(async () => { tree = track(create(<ConnectedEditor editorRef={ref} />)); });
-  return tree;
+  await render(<ConnectedEditor editorRef={ref} />);
 }
-const toggle = (tree: ReactTestRenderer, group = GROUP) =>
-  tree.root
-    .find((node) => (node.type as unknown) === 'View' && node.props.testID === toggleId(group))
-    .findAll((node) => typeof node.type !== 'string' && typeof node.props.onPress === 'function' && node.props.accessibilityState?.expanded !== undefined)[0];
-const press = async (tree: ReactTestRenderer, group = GROUP) => { await act(async () => { toggle(tree, group).props.onPress(); }); };
-const isOpen = (tree: ReactTestRenderer, group = GROUP) => toggle(tree, group).props.accessibilityState.expanded === true;
-const hasText = (tree: ReactTestRenderer, part: string) => textsOf(tree).some((text) => text.includes(part));
+const toggle = (group = GROUP) => within(screen.getByTestId(toggleId(group))).getByRole('button');
+const press = async (group = GROUP) => { await userEvent.press(toggle(group)); };
+const isOpen = (group = GROUP) => toggle(group).props.accessibilityState.expanded === true;
 
 describe('a card with several dispatch lines', () => {
   it('starts closed: its lines and their cells are not drawn, the toggle says how many lines it hides', async () => {
-    const tree = await render(groupLines(2));
+    await mount(groupLines(2));
 
-    expect(isOpen(tree)).toBe(false);
-    expect(textsOf(tree)).toContain('Show dispatch details (2)');
-    expect(hasInput(tree, CHARGE_1)).toBe(false);
-    expect(tree.root.findAll((node) => node.props.testID === 'line-edit_0_0')).toHaveLength(0);
+    expect(isOpen()).toBe(false);
+    expect(textsOf()).toContain('Show dispatch details (2)');
+    expect(hasInput(CHARGE_1)).toBe(false);
+    expect(screen.queryByTestId('line-edit_0_0')).not.toBeOnTheScreen();
     // The shared fields are there without opening it.
-    expect(hasInput(tree, `group|${GROUP}|charge`)).toBe(true);
+    expect(hasInput(`group|${GROUP}|charge`)).toBe(true);
   });
 
   it('opens and closes with the toggle', async () => {
-    const tree = await render(groupLines(2));
+    await mount(groupLines(2));
 
-    await press(tree);
-    expect(isOpen(tree)).toBe(true);
-    expect(textsOf(tree)).toContain('Hide dispatch details');
-    expect(hasInput(tree, CHARGE_1)).toBe(true);
-    expect(textsOf(tree)).toContain('Swipe the table sideways to see more');
+    await press();
+    expect(isOpen()).toBe(true);
+    expect(textsOf()).toContain('Hide dispatch details');
+    expect(hasInput(CHARGE_1)).toBe(true);
+    expect(textsOf()).toContain('Swipe the table sideways to see more');
 
-    await press(tree);
-    expect(isOpen(tree)).toBe(false);
-    expect(hasInput(tree, CHARGE_1)).toBe(false);
+    await press();
+    expect(isOpen()).toBe(false);
+    expect(hasInput(CHARGE_1)).toBe(false);
   });
 
   it('keeps what was typed in a line while the card is closed, and shows it again when it is opened', async () => {
-    const tree = await render(groupLines(2));
-    await press(tree);
-    await act(async () => { inputOf(tree, CHARGE_1).props.onFocus({}); });
-    await act(async () => { inputOf(tree, CHARGE_1).props.onChangeText('8'); });
-    await act(async () => { inputOf(tree, CHARGE_1).props.onBlur({}); });
+    await mount(groupLines(2));
+    await press();
+    await fireEvent(inputOf(CHARGE_1), 'focus', {});
+    await fireEvent.changeText(inputOf(CHARGE_1), '8');
+    await fireEvent(inputOf(CHARGE_1), 'blur', {});
 
-    await press(tree);
+    await press();
     expect(mockStore.getState().invoiceForm.items[0].charge).toBe(8);
-    await press(tree);
-    expect(inputOf(tree, CHARGE_1).props.value).toBe('8.00');
+    await press();
+    expect(inputOf(CHARGE_1).props.value).toBe('8.00');
   });
 
   it('opens each card on its own', async () => {
-    const tree = await render([...groupLines(2), ...groupLines(2, { item_id: 'i2', item_name: 'Example Onions', package_mark: 'M2' }).map((line, n) => ({ ...line, temp_id: `edit_${n + 2}_0` }))]);
+    await mount([...groupLines(2), ...groupLines(2, { item_id: 'i2', item_name: 'Example Onions', package_mark: 'M2' }).map((line, n) => ({ ...line, temp_id: `edit_${n + 2}_0` }))]);
 
-    await press(tree, 'i2:::M2');
-    expect(isOpen(tree, 'i2:::M2')).toBe(true);
-    expect(isOpen(tree)).toBe(false);
+    await press('i2:::M2');
+    expect(isOpen('i2:::M2')).toBe(true);
+    expect(isOpen()).toBe(false);
   });
 });
 
 describe('a card with one dispatch line', () => {
   it('starts open, since its charge could not be changed otherwise', async () => {
-    const tree = await render([invoiceLine({}, 0)]);
+    await mount([invoiceLine({}, 0)]);
 
-    expect(isOpen(tree)).toBe(true);
-    expect(hasInput(tree, CHARGE_1)).toBe(true);
+    expect(isOpen()).toBe(true);
+    expect(hasInput(CHARGE_1)).toBe(true);
   });
 });
 
 describe('a refused figure in a closed card', () => {
-  const refuse = async (tree: ReactTestRenderer) => {
-    await act(async () => { inputOf(tree, CHARGE_1).props.onFocus({}); });
-    await act(async () => { inputOf(tree, CHARGE_1).props.onChangeText('10000'); });
-    await act(async () => { inputOf(tree, CHARGE_1).props.onBlur({}); });
+  const refuse = async () => {
+    await fireEvent(inputOf(CHARGE_1), 'focus', {});
+    await fireEvent.changeText(inputOf(CHARGE_1), '10000');
+    await fireEvent(inputOf(CHARGE_1), 'blur', {});
   };
 
   it('says "1 figure to fix" under the closed toggle, and not under an open one', async () => {
-    const tree = await render(groupLines(2));
-    await press(tree);
-    await refuse(tree);
-    expect(hasText(tree, 'figure to fix')).toBe(false);
+    await mount(groupLines(2));
+    await press();
+    await refuse();
+    expect(hasText('figure to fix')).toBe(false);
 
-    await press(tree);
-    expect(textsOf(tree)).toContain('1 figure to fix');
-    expect(toggle(tree).props.accessibilityLabel).toContain('1 figure to fix');
+    await press();
+    expect(textsOf()).toContain('1 figure to fix');
+    expect(toggle().props.accessibilityLabel).toContain('1 figure to fix');
 
-    await press(tree);
-    expect(hasText(tree, 'figure to fix')).toBe(false);
+    await press();
+    expect(hasText('figure to fix')).toBe(false);
   });
 
   it('is counted by Next, which opens the card and announces it', async () => {
     const ref = React.createRef<InvoiceItemsEditorHandle>();
-    const tree = await render(groupLines(2), ref);
-    await press(tree);
-    await refuse(tree);
-    await press(tree);
-    expect(isOpen(tree)).toBe(false);
+    await mount(groupLines(2), ref);
+    await press();
+    await refuse();
+    await press();
+    expect(isOpen()).toBe(false);
 
     let count = -1;
     await act(async () => { count = ref.current!.checkAll(); });
 
     expect(count).toBe(1);
     expect(announce).toHaveBeenCalledWith('Fix the highlighted figure, then continue.');
-    expect(isOpen(tree)).toBe(true);
-    expect(inputOf(tree, CHARGE_1).props.value).toBe('10000');
-    expect(inputOf(tree, CHARGE_1).props.accessibilityHint).toBe('Enter a charge from 0 to 9999.99.');
+    expect(isOpen()).toBe(true);
+    expect(inputOf(CHARGE_1).props.value).toBe('10000');
+    expect(inputOf(CHARGE_1).props.accessibilityHint).toBe('Enter a charge from 0 to 9999.99.');
   });
 });

@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { Keyboard, TextInput } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { fillNewInvoice, groupLines, invoiceLine, makeInvoiceStore, openForEdit, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
 import { updateDiscount, updateHeader } from '@/store/slices/invoiceFormSlice';
@@ -32,20 +32,23 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/hooks/useRevealFocusedField', () => require('@/tests/helpers/revealWiring').recordRevealRefs());
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'KeyboardAwareScrollView' }));
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
-jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
+// A stand-in that draws the dialog's title while it is open.
+jest.mock('@/components/ConfirmDialog', () => ({
+  ConfirmDialog: ({ visible, title }: { visible: boolean; title: string }) => (visible ? require('react').createElement(require('react-native').Text, null, title) : null),
+}));
 jest.mock('@/features/invoice/components/InvoiceSuccessDialog', () => ({ InvoiceSuccessDialog: 'InvoiceSuccessDialog' }));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
 
-let tree: ReactTestRenderer;
-const as = (name: string) => name as unknown as React.ElementType;
-const byId = (id: string) => tree.root.find((node) => node.props.testID === id && typeof node.type === 'string' ? true : node.props.testID === id && node.props.onPress !== undefined);
-const has = (id: string) => tree.root.findAll((node) => node.props.testID === id).length > 0;
-const body = (id: string) => tree.root.find((node) => node.props.testID === `invoice-review-body-${id}` && typeof node.type === 'string');
+const user = userEvent.setup({ delay: 0 });
+const has = (id: string) => screen.queryAllByTestId(id).length > 0;
+// The closed sections are hidden (display none), which is what these tests read: they look at hidden elements too.
+const body = (id: string) => screen.getByTestId(`invoice-review-body-${id}`, { includeHiddenElements: true });
 const hidden = (id: string) => [body(id).props.style].flat(Infinity).some((style) => style && (style as { display?: string }).display === 'none');
-const toggle = (id: string) => tree.root.find((node) => node.props.testID === `invoice-review-section-${id}` && typeof node.props.onPress === 'function');
-const pencil = (id: string) => tree.root.find((node) => node.props.testID === `invoice-review-section-${id}-edit` && typeof node.props.onPress === 'function');
-const closedLine = (id: string) => tree.root.findAll((node) => node.props.testID === `invoice-review-section-${id}-line`)[0]?.props.children;
-const press = async (node: ReactTestRenderer['root']) => { await act(async () => { node.props.onPress(); }); };
+const toggle = (id: string) => screen.getByTestId(`invoice-review-section-${id}`);
+const pencil = (id: string) => screen.getByTestId(`invoice-review-section-${id}-edit`);
+// (hidden too: the text of a closed section is in a section that is display none)
+const closedLine = (id: string) => screen.queryAllByTestId(`invoice-review-section-${id}-line`, { includeHiddenElements: true })[0]?.props.children;
+const press = (node: ReturnType<typeof toggle>) => user.press(node);
 
 const MODES = [
   ['create', InvoiceFormStep3, '/invoice-form'],
@@ -60,15 +63,15 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
       fillNewInvoice(mockStore, items);
       mockStore.dispatch(updateHeader({ inv_no: 42, inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no_typed: true, ...header }));
     }
-    await act(async () => { tree = create(<Step />); });
+    await render(<Step />);
   };
   beforeEach(() => { jest.clearAllMocks(); mockRole = 'staff'; });
-  afterEach(async () => { jest.restoreAllMocks(); await act(async () => { tree.unmount(); }); });
+  afterEach(() => { jest.restoreAllMocks(); });
 
   it('notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
     recordedRevealRefs.length = 0;
     await open();
-    const scrolls = tree.root.findAll((n) => (n.type as unknown) === 'KeyboardAwareScrollView' && typeof n.props.onScrollBeginDrag === 'function');
+    const scrolls = screen.root!.queryAll((n) => n.type === 'KeyboardAwareScrollView' && typeof n.props.onScrollBeginDrag === 'function', { includeSelf: true });
     expect(scrolls).toHaveLength(1);
     // WH-243: the scroll view carries the step's own reveal handlers (a dropped spread fails here)
     expect(recordedRevealRefs).toHaveLength(1);
@@ -93,13 +96,14 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
     expect(toggle('items').props.accessibilityLabel).toMatch(/^Items, 1, /);
     expect(toggle('charges').props.accessibilityLabel).toMatch(/^Charges/);
     // No title of its own inside the card (P0-11): the summary has no header role.
-    expect(tree.root.findAll((node) => node.props.accessibilityRole === 'header')).toHaveLength(0);
+    expect(screen.root!.queryAll((node) => node.props.accessibilityRole === 'header', { includeSelf: true })).toHaveLength(0);
   });
 
   it('reads the invoice date in words, while the row shows 05/10/26', async () => {
     await open();
-    expect(tree.root.findAll((node) => node.props.accessibilityLabel === 'Invoice date, 5 Oct 2026').length).toBeGreaterThan(0);
-    expect(tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => [node.props.children].flat().join(''))).toContain('05/10/26');
+    // the date row is in the details section, which is closed (hidden) here
+    expect(screen.getAllByLabelText('Invoice date, 5 Oct 2026', { includeHiddenElements: true }).length).toBeGreaterThan(0);
+    expect(screen.getByText('05/10/26', { includeHiddenElements: true })).toBeOnTheScreen();
   });
 
   it('opens CHARGES first, with the others closed and one line under each closed heading', async () => {
@@ -121,8 +125,7 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
   it('shows "—" for a value that is not set', async () => {
     await open([invoiceLine()], { customer_name: '' });
     await press(toggle('details'));
-    const texts = tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => node.props.children);
-    expect(texts).toContain('—');
+    expect(screen.getByText('—')).toBeOnTheScreen();
   });
 
   it('sends the pencils to step 1 and step 2', async () => {
@@ -140,10 +143,9 @@ describe.each(MODES)('the %s Review step sections', (mode, Step, base) => {
     await press(toggle('items'));
     expect(hidden('charges')).toBe(true);
 
-    const save = tree.root.find((node) => node.props.accessibilityLabel === (mode === 'edit' ? 'Save invoice' : 'Create invoice') && typeof node.props.onPress === 'function');
-    await act(async () => { save.props.onPress(); });
+    await user.press(screen.getByRole('button', { name: mode === 'edit' ? 'Save invoice' : 'Create invoice' }));
 
     expect(hidden('charges')).toBe(false);
-    expect(tree.root.findAllByType(as('ConfirmDialog')).some((d) => d.props.visible && d.props.title === 'Enter a discount reason')).toBe(true);
+    expect(screen.getByText('Enter a discount reason')).toBeOnTheScreen();
   });
 });

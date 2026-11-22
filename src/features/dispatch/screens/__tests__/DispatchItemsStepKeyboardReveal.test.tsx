@@ -4,11 +4,12 @@
  * keyboard, the window and the scroll view (its scroll offset moves the field) are recorded stand-ins.
  */
 import React from 'react';
-import { Keyboard, PixelRatio, StyleSheet, TextInput } from 'react-native';
-import { act, create, ReactTestRenderer, ReactTestInstance } from 'react-test-renderer';
+import { Keyboard, PixelRatio, TextInput } from 'react-native';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import { space, typography } from '@/theme/tokens';
 import { expectRevealWired, recordedRevealRefs } from '@/tests/helpers/revealWiring';
+import { liftOf, placeBar } from '@/tests/helpers/wizardKeyboardLift';
 import { DispatchItemsStep } from '../DispatchItemsStep';
 
 const CUSTOMER = '22222222-3333-4444-8555-666666666666';
@@ -62,7 +63,13 @@ jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' 
 jest.mock('@/components/SwipeableFormStep', () => ({ __esModule: true, default: 'SwipeableFormStep' }));
 jest.mock('@/components/DispatchStepIndicator', () => ({ DispatchStepIndicator: () => null, dispatchSteps: () => [] }));
 jest.mock('@/features/dispatch/components', () => ({
-  GRNAutocompleteBottomSheet: 'GRNAutocompleteBottomSheet',
+  // A stand-in that draws the way to pick the GRN and calls the step's own onSelect.
+  GRNAutocompleteBottomSheet: ({ onSelect }: { onSelect: (grn: { id: string; gr_no: string }) => void }) =>
+    require('react').createElement(require('react-native').Pressable, {
+      accessibilityRole: 'button',
+      accessibilityLabel: 'Pick GRN G0311',
+      onPress: () => onSelect({ id: '11111111-2222-4333-8444-555555555555', gr_no: 'G0311' }),
+    }),
   GRNItemBottomSheet: () => null,
   LotBottomSheet: () => null,
   ItemsSummaryBottomSheet: () => null,
@@ -76,20 +83,10 @@ const FIELD_HEIGHT = 52;
 /** The field starts behind the bar, the way it does on the phone when the keyboard has just covered the lower screen. */
 const FIELD_TOP_AT_REST = 1250;
 
-let tree: ReactTestRenderer;
 let handlers: Array<(event?: unknown) => void> = [];
 
-const hostBar = (): ReactTestInstance => {
-  const next = tree.root.find((n) => n.props.accessibilityLabel === 'Next, review dispatch' && typeof n.props.onPress === 'function');
-  let node: ReactTestInstance | null = next.parent;
-  while (node) {
-    if (typeof node.props.onLayout === 'function' && node.instance != null) return node;
-    node = node.parent;
-  }
-  throw new Error('bar not found');
-};
-const lift = () => Number((StyleSheet.flatten(hostBar().props.style) as { marginBottom?: number }).marginBottom ?? 0);
-const texts = () => tree.root.findAll((n) => (n.type as unknown) === 'Text').map((n) => [n.props.children].flat().join(''));
+const NEXT = 'Next, review dispatch';
+const lift = () => liftOf(NEXT);
 
 beforeEach(async () => {
   mockScrolls.length = 0;
@@ -109,24 +106,20 @@ beforeEach(async () => {
     },
   } as unknown as Awaited<ReturnType<typeof getGRNDetailByNumber>>);
   recordedRevealRefs.length = 0;
-  await act(async () => { tree = create(<DispatchItemsStep mode="create" />); });
-  const picker = tree.root.find((n) => (n.type as unknown) === 'GRNAutocompleteBottomSheet');
-  await act(async () => { await picker.props.onSelect({ id: GRN, gr_no: 'G0311' }); });
+  await render(<DispatchItemsStep mode="create" />);
+  await userEvent.press(screen.getByRole('button', { name: 'Pick GRN G0311' }));
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
 it('Dispatch Items: after the bar lifts, the field and its "Enter 40 bags or fewer" line end above the bar', async () => {
-  const bagsInput = tree.root.findAllByType(TextInput).find((n) => n.props.accessibilityLabel === 'Bags to dispatch')!;
-  await act(async () => { bagsInput.props.onChangeText('100'); });
-  expect(texts().some((text) => text.startsWith('Enter 40 bags or fewer'))).toBe(true);
+  await fireEvent.changeText(screen.getByLabelText('Bags to dispatch'), '100');
+  expect(screen.getByText(/^Enter 40 bags or fewer/)).toBeOnTheScreen();
 
   // The bar is measured un-lifted-bottom 2183 minus its lift; the field sits where the scroll offset puts it.
   let offset = 0;
-  (hostBar().instance as { measureInWindow: unknown }).measureInWindow = (cb: (x: number, y: number, w: number, h: number) => void) =>
-    cb(0, 2183 - lift() - 100, 1080, 100);
+  placeBar(2183, NEXT);
   jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue({
     measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, FIELD_TOP_AT_REST - offset, 900, FIELD_HEIGHT),
   } as never);
@@ -144,10 +137,8 @@ it('Dispatch Items: after the bar lifts, the field and its "Enter 40 bags or few
 });
 
 it('Dispatch Items: a field already above the bar is not scrolled', async () => {
-  const bagsInput = tree.root.findAllByType(TextInput).find((n) => n.props.accessibilityLabel === 'Bags to dispatch')!;
-  await act(async () => { bagsInput.props.onChangeText('100'); });
-  (hostBar().instance as { measureInWindow: unknown }).measureInWindow = (cb: (x: number, y: number, w: number, h: number) => void) =>
-    cb(0, 2183 - lift() - 100, 1080, 100);
+  await fireEvent.changeText(screen.getByLabelText('Bags to dispatch'), '100');
+  placeBar(2183, NEXT);
   jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue({
     measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, 800, 900, FIELD_HEIGHT),
   } as never);
@@ -156,7 +147,7 @@ it('Dispatch Items: a field already above the bar is not scrolled', async () => 
 });
 
 it('Dispatch Items: notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', () => {
-  const scrolls = tree.root.findAll((n) => (n.type as unknown) === 'View' && typeof n.props.onScrollBeginDrag === 'function');
+  const scrolls = screen.root!.queryAll((n) => n.type === 'View' && typeof n.props.onScrollBeginDrag === 'function', { includeSelf: true });
   expect(scrolls).toHaveLength(1);
   // WH-243: the scroll view carries the step's own reveal handlers (a dropped spread fails here)
   expect(recordedRevealRefs).toHaveLength(1);

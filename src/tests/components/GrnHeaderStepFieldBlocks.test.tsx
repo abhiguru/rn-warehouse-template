@@ -4,8 +4,7 @@
  * disappears the reveal falls back to the bare input and these tests fail.
  */
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create } from 'react-test-renderer';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { GrnHeaderStep } from '@/features/grn/screens/GrnHeaderStep';
 import { setLanguage, t as tr } from '@/i18n';
 import { blockOf, inputsIn, wordsIn } from '@/tests/helpers/fieldBlock';
@@ -53,16 +52,13 @@ jest.mock('@/components/GhostTextInput', () => ({
 }));
 jest.mock('@/services/vehicle-suggestion-service', () => ({ getTopVehicleSuggestion: jest.fn() }));
 
-let tree: ReturnType<typeof create> | undefined;
-const mount = async () => { await act(async () => { tree = create(<GrnHeaderStep mode="create" />); }); return tree!; };
-const input = (label: string) => tree!.root.findAllByType(TextInput).find(node => node.props.accessibilityLabel === label)!;
+const mount = async () => { await render(<GrnHeaderStep mode="create" />); };
+const input = (label: string) => screen.getByLabelText(label);
 const showOptional = async () => {
-  const toggle = tree!.root.find(node => node.props.accessibilityLabel === tr('grn.header.showOptional') && typeof node.props.onPress === 'function');
-  await act(async () => { toggle.props.onPress(); });
+  await userEvent.press(screen.getByRole('button', { name: tr('grn.header.showOptional') }));
 };
 
 beforeEach(() => { setLanguage('en'); reset(); });
-afterEach(async () => { if (tree) await act(async () => { tree!.unmount(); }); tree = undefined; });
 
 describe('GRN step 1 field blocks', () => {
   it('GRN number: the block holds the box, its error and the number note, and no other field', async () => {

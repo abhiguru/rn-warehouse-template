@@ -3,7 +3,7 @@
  * (useKeyboardCoverLift). The step and the bar are real; the form state, the keyboard and the window are stand-ins.
  */
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+import { render, screen } from '@testing-library/react-native';
 import { DispatchHeaderStep } from '@/features/dispatch/screens/DispatchHeaderStep';
 import { wizardKeyboardLiftCases } from '@/tests/helpers/wizardKeyboardLift';
 import { expectRevealWired, recordedRevealRefs } from '@/tests/helpers/revealWiring';
@@ -43,21 +43,15 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@/hooks/useRevealFocusedField', () => require('@/tests/helpers/revealWiring').recordRevealRefs());
 
 describe('Dispatch wizard, details step: the bottom bar and the keyboard', () => {
-  wizardKeyboardLiftCases(async () => {
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<DispatchHeaderStep mode="create" />); });
-    return tree;
-  });
+  wizardKeyboardLiftCases(async () => { await render(<DispatchHeaderStep mode="create" />); });
 
   it('notes a drag on its scroll view (useRevealScrollRef), so a moved bar does not scroll back', async () => {
     recordedRevealRefs.length = 0;
-    let tree!: ReturnType<typeof create>;
-    await act(async () => { tree = create(<DispatchHeaderStep mode="create" />); });
-    const scrolls = tree.root.findAll(n => (n.type as unknown) === 'DragScroll' && typeof n.props.onScrollBeginDrag === 'function');
+    await render(<DispatchHeaderStep mode="create" />);
+    const scrolls = screen.root!.queryAll((n) => n.type === 'DragScroll' && typeof n.props.onScrollBeginDrag === 'function', { includeSelf: true });
     expect(scrolls).toHaveLength(1);
     // WH-243: the scroll view carries the step's own reveal handlers (a dropped spread fails here)
     expect(recordedRevealRefs).toHaveLength(1);
     expectRevealWired(scrolls[0], recordedRevealRefs[0]);
-    await act(async () => { tree.unmount(); });
   });
 });

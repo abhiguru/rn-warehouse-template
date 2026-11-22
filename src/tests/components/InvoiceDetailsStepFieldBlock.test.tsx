@@ -3,8 +3,7 @@
  * keeps that block above itself). Harness as in InvoiceDetailsStep.test.tsx.
  */
 import React from 'react';
-import { TextInput } from 'react-native';
-import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { getNextInvoiceNumber } from '@/features/invoice/services/invoiceFormService';
 import { updateHeader } from '@/store/slices/invoiceFormSlice';
 import { fillNewInvoice, invoiceLine, makeInvoiceStore, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
@@ -35,8 +34,7 @@ jest.mock('@/features/invoice/components/GRNAutocomplete', () => ({ GRNAutocompl
 jest.mock('@/components/InvoiceStepIndicator', () => ({ InvoiceStepIndicator: () => null, invoiceSteps: () => [] }));
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: 'ConfirmDialog' }));
 
-let tree: ReactTestRenderer;
-const numberField = () => tree.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Invoice number')!;
+const numberField = () => screen.getByLabelText('Invoice number');
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -45,16 +43,15 @@ beforeEach(async () => {
   jest.mocked(getNextInvoiceNumber).mockResolvedValue({ success: true, data: { next_invoice_number: 55, financial_year: '2026-27' } } as never);
   fillNewInvoice(mockStore, [invoiceLine()]);
   mockStore.dispatch(updateHeader({ inv_date: '2026-10-05', inv_fin_year: '2026-27', inv_no: 42, inv_no_typed: true }));
-  await act(async () => { tree = create(<InvoiceFormStep1 />); });
+  await render(<InvoiceFormStep1 />);
 });
-afterEach(async () => {
-  await act(async () => { tree.unmount(); });
+afterEach(() => {
   jest.restoreAllMocks();
 });
 
 it('Invoice number: the block holds the box and its error line, and no other field', async () => {
   await act(async () => { mockStore.dispatch(updateHeader({ inv_no: 100000000, inv_no_typed: true })); });
-  await act(async () => { await numberField().props.onBlur(); });
+  await fireEvent(numberField(), 'blur');
   const block = blockOf(numberField());
   expect(block).not.toBeNull();
   expect(inputsIn(block!)).toBe(1);

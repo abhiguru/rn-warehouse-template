@@ -3,9 +3,11 @@
  * `nativeID={FIELD_BLOCK_ID}` is the block the wizard bar keeps above itself. A marker test asserts that the block
  * exists, that it holds the group's message, and that it holds no other field.
  */
-import { TextInput } from 'react-native';
-import type { ReactTestInstance } from 'react-test-renderer';
+import type { screen } from '@testing-library/react-native';
 import { FIELD_BLOCK_ID } from '@/hooks/useRevealFocusedField';
+
+/** A rendered host element (Testing Library exports no name for the type). */
+export type Host = ReturnType<typeof screen.getByRole>;
 
 /**
  * The hook's reach: MAX_BLOCK_DEPTH in src/hooks/useRevealFocusedField.ts (not exported), counted in views, the way
@@ -14,13 +16,12 @@ import { FIELD_BLOCK_ID } from '@/hooks/useRevealFocusedField';
 const MAX_BLOCK_DEPTH = 12;
 
 /**
- * The nearest ancestor of `input` marked FIELD_BLOCK_ID within the hook's reach, or null. Only host views count as
- * levels (the test tree also holds component wrappers, which the hook never sees).
+ * The nearest ancestor of `input` marked FIELD_BLOCK_ID within the hook's reach, or null. Testing Library's tree
+ * holds host views only, which are the levels the hook counts.
  */
-export function blockOf(input: ReactTestInstance): ReactTestInstance | null {
+export function blockOf(input: Host): Host | null {
   let depth = 0;
   for (let node = input.parent; node; node = node.parent) {
-    if (typeof node.type !== 'string') continue;
     if (depth >= MAX_BLOCK_DEPTH) return null;
     depth++;
     if (node.props?.nativeID === FIELD_BLOCK_ID) return node;
@@ -29,13 +30,13 @@ export function blockOf(input: ReactTestInstance): ReactTestInstance | null {
 }
 
 /** The words shown in the block, one per Text. */
-export function wordsIn(block: ReactTestInstance): string[] {
+export function wordsIn(block: Host): string[] {
   return block
-    .findAll((node) => (node.type as unknown) === 'Text')
-    .map((node) => [node.props.children].flat(Infinity).filter((part) => typeof part === 'string' || typeof part === 'number').join(''));
+    .queryAll((node) => node.type === 'Text')
+    .map((node) => node.children.filter((part) => typeof part === 'string').join(''));
 }
 
 /** How many text inputs the block holds (a block holds one field, never the next one). */
-export function inputsIn(block: ReactTestInstance): number {
-  return block.findAllByType(TextInput).length;
+export function inputsIn(block: Host): number {
+  return block.queryAll((node) => node.type === 'TextInput').length;
 }
