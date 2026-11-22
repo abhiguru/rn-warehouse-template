@@ -125,7 +125,7 @@ describe('step 3, Review', () => {
     await app.tap('Review');
 
     const body = app.byTestID('invoice-review-items-table');
-    const headings = body.findAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node));
+    const headings = body.queryAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node));
     expect(headings).toEqual(expect.arrayContaining(['Item', 'Qty', 'Amount']));
     const row = textOf(app.byTestID(reviewRow('i1:::M1')));
     expect(row).toContain('200');
@@ -137,7 +137,7 @@ describe('step 3, Review', () => {
     await app.tap('Next');
     await app.tap('Review');
 
-    const headings = app.byTestID('invoice-review-items-table').findAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node));
+    const headings = app.byTestID('invoice-review-items-table').queryAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node));
     expect(headings).toEqual(expect.arrayContaining(['Item', 'Qty', 'Amount']));
   });
 
@@ -146,7 +146,7 @@ describe('step 3, Review', () => {
     await app.tap('Next');
     await app.tap('Review');
 
-    const headings = app.byTestID('invoice-review-items-table').findAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node));
+    const headings = app.byTestID('invoice-review-items-table').queryAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node));
     expect(headings).not.toContain('Qty');
     expect(textOf(app.byTestID(reviewRow('i1:::M1')))).toContain('200 bags');
   });

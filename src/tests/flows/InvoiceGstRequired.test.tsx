@@ -6,7 +6,7 @@
  * the list is stubbed in this harness and GRN details has no screen harness).
  */
 import 'expo-router/build/testing-library/mocks';
-import { act } from 'react-test-renderer';
+import { act } from '@testing-library/react-native';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { showAlert } from '@/utils/alert';
 import { newFlowStore } from '@/tests/helpers/invoiceFlowStore';

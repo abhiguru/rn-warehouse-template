@@ -4,6 +4,7 @@
  * checking step 1 again after Back; and the step circles and the Review pencils, which keep every typed value.
  */
 import 'expo-router/build/testing-library/mocks';
+import { act } from '@testing-library/react-native';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { showAlert } from '@/utils/alert';
 import { newFlowStore } from '@/tests/helpers/invoiceFlowStore';
@@ -66,7 +67,6 @@ const alertButtons = () => jest.mocked(showAlert).mock.calls.at(-1)![2]!;
 const answerAlert = async (text: string) => {
   const button = alertButtons().find((candidate) => candidate.text === text);
   if (!button) throw new Error(`No alert button "${text}"`);
-  const { act } = require('react-test-renderer');
   await act(async () => { button.onPress?.(); });
   await app.settle();
 };

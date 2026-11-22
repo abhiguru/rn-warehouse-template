@@ -7,6 +7,7 @@
  * "No cut figure" is checked on the text (the whole amount is drawn as one string); the layout itself is for the phone.
  */
 import 'expo-router/build/testing-library/mocks';
+import { act } from '@testing-library/react-native';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
 import { updateEditedItem } from '@/store/slices/invoiceFormSlice';
@@ -171,7 +172,7 @@ describe('WMIV0103: a one-time GRN', () => {
     expect(app.texts()).toEqual(expect.arrayContaining(['₹840.00', '₹204.75', '₹1,680.00', '₹409.50']));
 
     await toReview();
-    expect(app.byTestID('invoice-review-body-details').findAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node)))
+    expect(app.byTestID('invoice-review-body-details').queryAll((node) => (node.type as unknown) === 'Text').map((node) => textOf(node)))
       .toEqual(expect.arrayContaining(['One-time charge', 'Yes']));
     expect(footer()).toBe('Total: 2 items, 4 dispatch lines, 100 bags');
     // Storage 1,990.00, labour 0, tax 99.50 rounded up to 100, total rounded up to the rupee.
@@ -254,7 +255,6 @@ describe('a line with a duration of 0', () => {
   // The server never answers a duration of 0 (the service reads `duration || 1`) and no field edits it, so the
   // duration is set in the store, as a stale or damaged form would hold it.
   const setDuration = async (index: number, duration: number) => {
-    const { act } = require('react-test-renderer');
     await act(async () => {
       app.store.dispatch(updateEditedItem({ temp_id: form().items[index].temp_id, values: { duration } }));
     });

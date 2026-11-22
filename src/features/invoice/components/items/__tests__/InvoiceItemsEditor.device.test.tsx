@@ -6,7 +6,8 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { makeInvoiceStore, fillNewInvoice, groupLines, type InvoiceStore } from '@/tests/helpers/invoiceFixtures';
-import { ConnectedEditor, chargeEntryOf, findFiber, flashListOf, inputObjectOf, inputOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { ConnectedEditor, chargeEntryOf, flashListOf, inputObjectOf, inputOf, openAllGroups } from '@/tests/helpers/invoiceItemsHarness';
+import { findFiber } from '@/tests/helpers/fiberTree';
 import { EditableNumberCell } from '@/components/table/EditableNumberCell';
 import { SCROLL_VIEW_POSITION } from '../InvoiceItemsEditor';
 import type { InvoiceItemData } from '@/types/invoice.types';

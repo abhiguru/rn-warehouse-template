@@ -7,6 +7,7 @@ import React from 'react';
 import { TextInput } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { fireEvent, screen } from '@testing-library/react-native';
+import { findFiber } from '@/tests/helpers/fiberTree';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { applySavedRates, bulkUpdateItemGroupPricing, updateEditedItem } from '@/store/slices/invoiceFormSlice';
 import { InvoiceItemsEditor, type InvoiceItemsEditorHandle } from '@/features/invoice/components/items/InvoiceItemsEditor';
@@ -98,35 +99,8 @@ export const emitKeyboard = (calls: ReadonlyArray<readonly unknown[]>, event: st
  * What the editor holds inside, which no screen text shows. Testing Library shows host views only, so these two
  * readers search the component tree (`unstable_fiber`) for the component the test is about.
  */
-export interface FiberLike {
-  type?: unknown;
-  memoizedProps?: Record<string, any>;
-  stateNode?: any;
-  child: FiberLike | null;
-  sibling: FiberLike | null;
-  return: FiberLike | null;
-}
-/** The first component in the tree (in tree order) that `matches`; throws when there is none. */
-export const findFiber = (matches: (fiber: FiberLike) => boolean): FiberLike => {
-  let top = screen.root!.unstable_fiber as FiberLike | null;
-  while (top?.return) top = top.return;
-  // React keeps two copies of the tree; the root's `current` is the one that is on screen.
-  top = top?.stateNode?.current ?? top;
-  const visit = (fiber: FiberLike | null): FiberLike | undefined => {
-    for (let node = fiber; node; node = node.sibling) {
-      if (matches(node)) return node;
-      const found = visit(node.child);
-      if (found) return found;
-    }
-    return undefined;
-  };
-  const found = visit(top);
-  if (!found) throw new Error('the component the test reads is not in the tree');
-  return found;
-};
 const findProps = (matches: (props: Record<string, any>) => boolean): Record<string, any> =>
   findFiber((fiber) => !!fiber.memoizedProps && matches(fiber.memoizedProps)).memoizedProps!;
-
 
 /** The text the editor holds for a line's charge entry (undefined: no entry, the stored figure shows). */
 export const chargeEntryOf = (tempId: string): string | undefined =>
