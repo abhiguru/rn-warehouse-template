@@ -146,7 +146,11 @@ describe('DialogFrame', () => {
   });
 
   describe('the title and the message are one screen-reader stop (WH-292)', () => {
-    const groupOf = (title: string) => screen.getByText(title).parent!;
+    const groupOf = (title: string) => {
+      const parent = screen.getByText(title).parent;
+      if (!parent) throw new Error(`The group View of the title "${title}" is not on the screen`);
+      return parent;
+    };
     const hiddenNodes = () => allNodes().filter(node => node.props.importantForAccessibility === 'no-hide-descendants' || node.props.accessibilityElementsHidden === true);
 
     it('share one accessible View with no role: the title is not a header, both Texts are inside the group', async () => {
@@ -197,7 +201,11 @@ describe('DialogFrame', () => {
     });
     const spyFocus = () => jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => undefined);
     // The title and the message are one accessible View with no role; its layout starts the timer and it gets the event.
-    const group = () => screen.getByText('Delete item?').parent!;
+    const group = () => {
+      const parent = screen.getByText('Delete item?').parent;
+      if (!parent) throw new Error('The group View of the title is not on the screen');
+      return parent;
+    };
     const layoutTitle = async () => fireEvent(group(), 'layout');
     const advance = async (ms: number) => act(async () => { jest.advanceTimersByTime(ms); });
 

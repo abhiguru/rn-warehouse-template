@@ -273,7 +273,9 @@ describe('AlertHost screen-reader focus (WH-219)', () => {
     await queue('Second', 'Two', [{ text: 'Done' }]);
     const layoutTitle = async (title: string) => {
       // The title and the message are one accessible View (WH-292); its layout starts the timer.
-      await fireEvent((await screen.findByText(title)).parent!, 'layout');
+      const parent = (await screen.findByText(title)).parent;
+      if (!parent) throw new Error(`The group View of the title "${title}" is not on the screen`);
+      await fireEvent(parent, 'layout');
     };
     // Each event goes to the group of the alert on the screen: its title and its message.
     const sentTo = (call: number) => {
