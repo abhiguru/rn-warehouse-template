@@ -205,6 +205,8 @@ export interface DialogHeadingProps {
 
 /** Wait after the group's first layout before moving screen-reader focus, so the Modal window has settled. */
 const FOCUS_SETTLE_MS = 400;
+/** The same event once more, for the times TalkBack's own pick came after the first one. */
+const FOCUS_REPEAT_MS = 900;
 
 const TONE_ICON: Record<DialogTone, IconName | undefined> = {
   default: undefined,
@@ -217,26 +219,30 @@ const TONE_ICON: Record<DialogTone, IconName | undefined> = {
  * Status icon in its circle, the title and the message. The title and the message are ONE screen-reader stop (an
  * accessible View with no role of its own): TalkBack reads the title, then the message, in one announcement, and a
  * dialog with no message has the title alone. When the dialog opens, screen-reader focus moves to that stop: once,
- * `FOCUS_SETTLE_MS` after its first layout (a Modal is a new window and TalkBack picks its own first item; WH-292).
- * The buttons are never hidden. The timer is cleared on unmount; where focus events are not available nothing happens.
+ * `FOCUS_SETTLE_MS` after its first layout and again at `FOCUS_REPEAT_MS` (a Modal is a new window and TalkBack picks its own first item; WH-292).
+ * The buttons are never hidden. The timers are cleared on unmount; where focus events are not available nothing happens.
  */
 export function DialogHeading({ title, message, tone = 'default', icon, messageAlign = 'center' }: DialogHeadingProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const groupRef = useRef<ViewRef>(null);
   const scheduled = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach(clearTimeout);
+  }, []);
   const focusGroup = useCallback(() => {
     if (scheduled.current) return;
     scheduled.current = true;
-    timer.current = setTimeout(() => {
+    const send = () => {
       try {
         if (groupRef.current) AccessibilityInfo.sendAccessibilityEvent(groupRef.current, 'focus');
       } catch {
         // Not available on this platform: the dialog still works.
       }
-    }, FOCUS_SETTLE_MS);
+    };
+    timers.current.push(setTimeout(send, FOCUS_SETTLE_MS), setTimeout(send, FOCUS_REPEAT_MS));
   }, []);
   const name = icon ?? TONE_ICON[tone];
   const color =
