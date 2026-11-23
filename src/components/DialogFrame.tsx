@@ -20,7 +20,7 @@
  *   </Modal>
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -208,6 +208,8 @@ const FOCUS_SETTLE_MS = 400;
 const REVEAL_MS = 300;
 /** Latest moment the message joins the accessibility tree, whatever else failed. */
 const REVEAL_FALLBACK_MS = 1500;
+/** A keyboard that hides within this long of the dialog opening gets the title focus sent again. */
+const KEYBOARD_REFOCUS_MS = 3000;
 
 const TONE_ICON: Record<DialogTone, IconName | undefined> = {
   default: undefined,
@@ -232,31 +234,59 @@ export function DialogHeading({ title, message, tone = 'default', icon, messageA
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [messageReadable, setMessageReadable] = useState(false);
+  const readerOn = useRef(false);
+  const openedAt = useRef(0);
+  const sendFocus = useCallback(() => {
+    try {
+      if (!titleRef.current) return false;
+      AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
+      return true;
+    } catch {
+      // Not available on this platform: the dialog still works.
+      return false;
+    }
+  }, []);
   useEffect(() => {
+    let alive = true;
+    openedAt.current = Date.now();
+    // With a screen reader on, a field behind the dialog that keeps its input focus (and its keyboard) pulls
+    // TalkBack to the first button of the new window; it is blurred before the title takes focus (WH-292).
+    // With the reader off nothing changes: the field and the keyboard stay as they were.
+    try {
+      void Promise.resolve(AccessibilityInfo.isScreenReaderEnabled())
+        .then(on => {
+          if (alive) readerOn.current = on === true;
+        })
+        .catch(() => undefined);
+    } catch {
+      // Not available: treated as off.
+    }
+    // The keyboard hiding after the dialog opened moves focus again: send the title focus once more.
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      if (readerOn.current && Date.now() - openedAt.current < KEYBOARD_REFOCUS_MS) sendFocus();
+    });
     // Fallback: whatever happens above (no layout, a failed event), the message is readable by then.
     const fallback = setTimeout(() => setMessageReadable(true), REVEAL_FALLBACK_MS);
     return () => {
+      alive = false;
+      hide.remove();
       clearTimeout(fallback);
       clearTimeout(timer.current);
       clearTimeout(revealTimer.current);
     };
-  }, []);
+  }, [sendFocus]);
   const focusTitle = useCallback(() => {
     if (scheduled.current) return;
     scheduled.current = true;
     timer.current = setTimeout(() => {
-      try {
-        if (titleRef.current) {
-          AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
-          revealTimer.current = setTimeout(() => setMessageReadable(true), REVEAL_MS);
-          return;
-        }
-      } catch {
-        // Not available on this platform: the dialog still works.
+      if (readerOn.current) Keyboard.dismiss();
+      if (sendFocus()) {
+        revealTimer.current = setTimeout(() => setMessageReadable(true), REVEAL_MS);
+        return;
       }
       setMessageReadable(true);
     }, FOCUS_SETTLE_MS);
-  }, []);
+  }, [sendFocus]);
   const name = icon ?? TONE_ICON[tone];
   const color =
     tone === 'danger' ? t.status.negative.text : tone === 'warning' ? t.status.critical.text : tone === 'success' ? t.status.positive.text : t.brand.tint;
