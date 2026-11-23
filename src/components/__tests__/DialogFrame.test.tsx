@@ -3,8 +3,8 @@
  * the order given (cancel first) or stacked (action first), busy and disabled buttons. Real components.
  */
 import React from 'react';
-import { StyleSheet, Text } from 'react-native';
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { AccessibilityInfo, StyleSheet, Text } from 'react-native';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import { getTokens } from '@/theme/tokens';
 import { DialogActions, DialogBody, DialogButton, DialogCard, DialogHeading, DialogOverlay } from '../DialogFrame';
 
@@ -143,5 +143,108 @@ describe('DialogFrame', () => {
       </DialogOverlay>
     );
     expect(screen.getByRole('button', { name: 'Close dialog', includeHiddenElements: true })).toBeOnTheScreen();
+  });
+
+  describe('the title and the message are one screen-reader stop (WH-292)', () => {
+    const groupOf = (title: string) => screen.getByText(title).parent!;
+    const hiddenNodes = () => allNodes().filter(node => node.props.importantForAccessibility === 'no-hide-descendants' || node.props.accessibilityElementsHidden === true);
+
+    it('share one accessible View with no role: the title is not a header, both Texts are inside the group', async () => {
+      await render(<DialogHeading title="Delete item?" message="It cannot be undone." />);
+      const group = groupOf('Delete item?');
+      expect(group).toHaveProp('accessible', true);
+      expect(group.props.accessibilityRole).toBeUndefined();
+      expect(within(group).getByText('Delete item?')).toBeOnTheScreen();
+      expect(within(group).getByText('It cannot be undone.')).toBeOnTheScreen();
+      expect(groupOf('It cannot be undone.')).toBe(group);
+      expect(screen.queryByRole('header', { includeHiddenElements: true })).not.toBeOnTheScreen();
+    });
+
+    it('with no message the stop is the title alone', async () => {
+      await render(<DialogHeading title="Rename" />);
+      const group = groupOf('Rename');
+      expect(group).toHaveProp('accessible', true);
+      expect(within(group).getAllByText(/.+/)).toHaveLength(1);
+      expect(within(group).getByText('Rename')).toBeOnTheScreen();
+    });
+
+    it('the buttons are never hidden from screen readers; only the tone icon is', async () => {
+      await render(
+        <DialogCard>
+          <DialogHeading title="Delete item?" message="It cannot be undone." tone="danger" />
+          <DialogActions>
+            <DialogButton label="Cancel" onPress={jest.fn()} />
+            <DialogButton label="Delete" role="negative" onPress={jest.fn()} />
+          </DialogActions>
+        </DialogCard>
+      );
+      // Found by role at once, with no timer run: nothing waits for a focus event.
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Delete' })).toBeOnTheScreen();
+      // The only node hidden from the screen reader is the tone icon's circle, and it holds the icon.
+      const hidden = hiddenNodes();
+      expect(hidden).toHaveLength(1);
+      expect(hidden[0].children?.some(child => typeof child !== 'string' && child.type === 'Icon')).toBe(true);
+    });
+  });
+
+  describe('screen-reader focus on the title (WH-292)', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => {
+      jest.useRealTimers();
+      jest.clearAllMocks();
+      jest.restoreAllMocks();
+    });
+    const spyFocus = () => jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => undefined);
+    // The title and the message are one accessible View with no role; its layout starts the timer and it gets the event.
+    const group = () => screen.getByText('Delete item?').parent!;
+    const layoutTitle = async () => fireEvent(group(), 'layout');
+    const advance = async (ms: number) => act(async () => { jest.advanceTimersByTime(ms); });
+
+    it('sends the focus event to the title once, 400 ms after its layout, not at layout or before', async () => {
+      const send = spyFocus();
+      await render(<DialogHeading title="Delete item?" message="It cannot be undone." />);
+      await layoutTitle();
+      expect(send).not.toHaveBeenCalled();
+      await advance(399);
+      expect(send).not.toHaveBeenCalled();
+      await advance(1);
+      expect(send).toHaveBeenCalledTimes(1);
+      // The node sent is the group View (not the title Text): the view that holds both texts.
+      const [node, kind] = send.mock.calls[0] as unknown as [{ props: { accessible?: boolean; children: { props: { children: string } }[] } }, string];
+      expect(node.props.accessible).toBe(true);
+      expect(node.props.children.map(child => child.props.children)).toEqual(['Delete item?', 'It cannot be undone.']);
+      expect(kind).toBe('focus');
+      await advance(2000);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('a second layout of the same heading does not send a second event', async () => {
+      const send = spyFocus();
+      await render(<DialogHeading title="Delete item?" />);
+      await layoutTitle();
+      await advance(400);
+      expect(send).toHaveBeenCalledTimes(1);
+      await layoutTitle();
+      await advance(1000);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('unmounting before the 400 ms are over sends no event', async () => {
+      const send = spyFocus();
+      const scheduled = jest.spyOn(global, 'setTimeout');
+      const cancelled = jest.spyOn(global, 'clearTimeout');
+      const view = await render(<DialogHeading title="Delete item?" />);
+      await layoutTitle();
+      await advance(200);
+      const index = scheduled.mock.calls.findIndex(call => call[1] === 400);
+      expect(index).toBeGreaterThanOrEqual(0);
+      const focusTimer = scheduled.mock.results[index].value;
+      await view.unmount();
+      // The pending timer is cancelled, not left to fire on a dead title (the ref guard alone would hide a leak).
+      expect(cancelled).toHaveBeenCalledWith(focusTimer);
+      await advance(1000);
+      expect(send).not.toHaveBeenCalled();
+    });
   });
 });
