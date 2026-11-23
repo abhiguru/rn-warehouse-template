@@ -280,7 +280,7 @@ describe('AlertHost screen-reader focus (WH-219)', () => {
       const node = setFocus.mock.calls[call][0] as unknown as { props: { children: { props: { children: string } }[] } };
       return node.props.children.map(child => child.props.children);
     };
-    // The event goes 400 ms after the layout (FOCUS_SETTLE_MS, WH-292), not at the layout.
+    // The event goes 400 ms and again 900 ms after the layout (WH-292), not at the layout.
     const settle = async (ms: number) => act(async () => { jest.advanceTimersByTime(ms); });
 
     await layoutTitle('First');
@@ -290,16 +290,19 @@ describe('AlertHost screen-reader focus (WH-219)', () => {
     await settle(1);
     expect(setFocus).toHaveBeenCalledTimes(1);
     expect(setFocus).toHaveBeenLastCalledWith(expect.anything(), 'focus');
-    // A layout of the same title again moves nothing.
+    // The same event again at 900 ms after the layout.
+    await settle(500);
+    expect(setFocus).toHaveBeenCalledTimes(2);
+    // A layout of the same title again moves nothing more.
     await layoutTitle('First');
-    await settle(400);
-    expect(setFocus).toHaveBeenCalledTimes(1);
+    await settle(5000);
+    expect(setFocus).toHaveBeenCalledTimes(2);
 
     await press(user, 'OK');
     await layoutTitle('Second');
-    await settle(400);
-    expect(setFocus).toHaveBeenCalledTimes(2);
-    expect(sentTo(0)).toEqual(['First', 'One']);
-    expect(sentTo(1)).toEqual(['Second', 'Two']);
+    await settle(900);
+    expect(setFocus).toHaveBeenCalledTimes(4);
+    expect([sentTo(0), sentTo(1)]).toEqual([['First', 'One'], ['First', 'One']]);
+    expect([sentTo(2), sentTo(3)]).toEqual([['Second', 'Two'], ['Second', 'Two']]);
   });
 });
