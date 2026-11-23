@@ -19,7 +19,7 @@
  *     </DialogOverlay>
  *   </Modal>
  */
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -202,6 +202,9 @@ export interface DialogHeadingProps {
   messageAlign?: 'center' | 'left';
 }
 
+/** Wait after the title's first layout before moving screen-reader focus, so the Modal window has settled. */
+const FOCUS_SETTLE_MS = 400;
+
 const TONE_ICON: Record<DialogTone, IconName | undefined> = {
   default: undefined,
   warning: 'alert-outline',
@@ -211,21 +214,28 @@ const TONE_ICON: Record<DialogTone, IconName | undefined> = {
 
 /**
  * Status icon in its circle, the title and the message. When the dialog opens, screen-reader focus moves to the
- * title (once, after its first layout); where that is not available nothing happens.
+ * title: once, `FOCUS_SETTLE_MS` after its first layout. A Modal is a new window and TalkBack picks its own first
+ * item about when the title is laid out, so an event sent at layout can be overridden (it landed on the message
+ * about half the time, WH-292); sent after the window has settled it wins. The timer is cleared on unmount. Where
+ * focus events are not available nothing happens.
  */
 export function DialogHeading({ title, message, tone = 'default', icon, messageAlign = 'center' }: DialogHeadingProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const titleRef = useRef<TextRef>(null);
-  const focused = useRef(false);
+  const scheduled = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
   const focusTitle = useCallback(() => {
-    if (focused.current) return;
-    focused.current = true;
-    try {
-      if (titleRef.current) AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
-    } catch {
-      // Not available on this platform: the dialog still works.
-    }
+    if (scheduled.current) return;
+    scheduled.current = true;
+    timer.current = setTimeout(() => {
+      try {
+        if (titleRef.current) AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
+      } catch {
+        // Not available on this platform: the dialog still works.
+      }
+    }, FOCUS_SETTLE_MS);
   }, []);
   const name = icon ?? TONE_ICON[tone];
   const color =
