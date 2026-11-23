@@ -279,7 +279,13 @@ export function DialogHeading({ title, message, tone = 'default', icon, messageA
     if (scheduled.current) return;
     scheduled.current = true;
     timer.current = setTimeout(() => {
-      if (readerOn.current) Keyboard.dismiss();
+      if (readerOn.current) {
+        try {
+          Keyboard.dismiss();
+        } catch {
+          // The title still takes focus and the message is still revealed.
+        }
+      }
       if (sendFocus()) {
         revealTimer.current = setTimeout(() => setMessageReadable(true), REVEAL_MS);
         return;
