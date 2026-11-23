@@ -19,7 +19,7 @@
  *     </DialogOverlay>
  *   </Modal>
  */
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -204,6 +204,10 @@ export interface DialogHeadingProps {
 
 /** Wait after the title's first layout before moving screen-reader focus, so the Modal window has settled. */
 const FOCUS_SETTLE_MS = 400;
+/** Wait after the focus event before the message joins the accessibility tree, so TalkBack does not re-pick it. */
+const REVEAL_MS = 300;
+/** Latest moment the message joins the accessibility tree, whatever else failed. */
+const REVEAL_FALLBACK_MS = 1500;
 
 const TONE_ICON: Record<DialogTone, IconName | undefined> = {
   default: undefined,
@@ -215,8 +219,9 @@ const TONE_ICON: Record<DialogTone, IconName | undefined> = {
 /**
  * Status icon in its circle, the title and the message. When the dialog opens, screen-reader focus moves to the
  * title: once, `FOCUS_SETTLE_MS` after its first layout. A Modal is a new window and TalkBack picks its own first
- * item about when the title is laid out, so an event sent at layout can be overridden (it landed on the message
- * about half the time, WH-292); sent after the window has settled it wins. The timer is cleared on unmount. Where
+ * item, and a delayed event alone did not win (WH-292). So the message is kept out of the accessibility tree until
+ * the focus event has been sent, and revealed `REVEAL_MS` later (drawn the same all along; screen-reader users
+ * still read it by swiping). The reveal happens with a screen reader off too. Timers are cleared on unmount. Where
  * focus events are not available nothing happens.
  */
 export function DialogHeading({ title, message, tone = 'default', icon, messageAlign = 'center' }: DialogHeadingProps) {
@@ -225,16 +230,31 @@ export function DialogHeading({ title, message, tone = 'default', icon, messageA
   const titleRef = useRef<TextRef>(null);
   const scheduled = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [messageReadable, setMessageReadable] = useState(false);
+  useEffect(() => {
+    // Fallback: whatever happens above (no layout, a failed event), the message is readable by then.
+    const fallback = setTimeout(() => setMessageReadable(true), REVEAL_FALLBACK_MS);
+    return () => {
+      clearTimeout(fallback);
+      clearTimeout(timer.current);
+      clearTimeout(revealTimer.current);
+    };
+  }, []);
   const focusTitle = useCallback(() => {
     if (scheduled.current) return;
     scheduled.current = true;
     timer.current = setTimeout(() => {
       try {
-        if (titleRef.current) AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
+        if (titleRef.current) {
+          AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
+          revealTimer.current = setTimeout(() => setMessageReadable(true), REVEAL_MS);
+          return;
+        }
       } catch {
         // Not available on this platform: the dialog still works.
       }
+      setMessageReadable(true);
     }, FOCUS_SETTLE_MS);
   }, []);
   const name = icon ?? TONE_ICON[tone];
@@ -251,7 +271,15 @@ export function DialogHeading({ title, message, tone = 'default', icon, messageA
       <Text ref={titleRef} onLayout={focusTitle} style={styles.title} accessibilityRole="header">
         {title}
       </Text>
-      {message ? <Text style={[styles.message, messageAlign === 'left' && styles.messageLeft]}>{message}</Text> : null}
+      {message ? (
+        <Text
+          style={[styles.message, messageAlign === 'left' && styles.messageLeft]}
+          importantForAccessibility={messageReadable ? 'auto' : 'no-hide-descendants'}
+          accessibilityElementsHidden={!messageReadable}
+        >
+          {message}
+        </Text>
+      ) : null}
     </>
   );
 }
