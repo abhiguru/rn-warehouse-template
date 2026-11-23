@@ -19,8 +19,8 @@
  *     </DialogOverlay>
  *   </Modal>
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -154,6 +154,12 @@ export function DialogOverlay(props: DialogOverlayProps) {
   return props.safeArea ? <SafeOverlay {...props} /> : <OverlayView {...props} />;
 }
 
+/**
+ * Whether the card's buttons are in the accessibility tree yet. They join it when the heading has sent the title
+ * focus event, so the title is the only thing TalkBack can pick first (WH-292). Outside a card: always settled.
+ */
+const DialogSettleContext = createContext<{ settled: boolean; markSettled: () => void }>({ settled: true, markSettled: () => undefined });
+
 export interface DialogCardProps {
   children: React.ReactNode;
   testID?: string;
@@ -164,10 +170,20 @@ export interface DialogCardProps {
 /** The card itself. */
 export function DialogCard({ children, testID, accessibilityRole, accessibilityLabel }: DialogCardProps) {
   const styles = useThemedStyles(makeStyles);
+  const [settled, setSettled] = useState(false);
+  const markSettled = useCallback(() => setSettled(true), []);
+  // Fallback: a card whose heading never reports (no heading, no layout) shows its buttons to screen readers by then.
+  useEffect(() => {
+    const fallback = setTimeout(markSettled, REVEAL_FALLBACK_MS);
+    return () => clearTimeout(fallback);
+  }, [markSettled]);
+  const value = React.useMemo(() => ({ settled, markSettled }), [settled, markSettled]);
   return (
-    <View style={styles.card} accessibilityViewIsModal accessibilityRole={accessibilityRole} accessibilityLabel={accessibilityLabel} testID={testID}>
-      {children}
-    </View>
+    <DialogSettleContext.Provider value={value}>
+      <View style={styles.card} accessibilityViewIsModal accessibilityRole={accessibilityRole} accessibilityLabel={accessibilityLabel} testID={testID}>
+        {children}
+      </View>
+    </DialogSettleContext.Provider>
   );
 }
 
@@ -208,8 +224,6 @@ const FOCUS_SETTLE_MS = 400;
 const REVEAL_MS = 300;
 /** Latest moment the message joins the accessibility tree, whatever else failed. */
 const REVEAL_FALLBACK_MS = 1500;
-/** A keyboard that hides within this long of the dialog opening gets the title focus sent again. */
-const KEYBOARD_REFOCUS_MS = 3000;
 
 const TONE_ICON: Record<DialogTone, IconName | undefined> = {
   default: undefined,
@@ -222,8 +236,9 @@ const TONE_ICON: Record<DialogTone, IconName | undefined> = {
  * Status icon in its circle, the title and the message. When the dialog opens, screen-reader focus moves to the
  * title: once, `FOCUS_SETTLE_MS` after its first layout. A Modal is a new window and TalkBack picks its own first
  * item, and a delayed event alone did not win (WH-292). So the message is kept out of the accessibility tree until
- * the focus event has been sent, and revealed `REVEAL_MS` later (drawn the same all along; screen-reader users
- * still read it by swiping). The reveal happens with a screen reader off too. Timers are cleared on unmount. Where
+ * the focus event has been sent, and revealed `REVEAL_MS` later, together with the card's buttons (DialogActions;
+ * a dialog with two buttons still had TalkBack on the first one). All is drawn the same all along; screen-reader
+ * users still reach it by swiping. The reveal happens with a screen reader off too. Timers are cleared on unmount. Where
  * focus events are not available nothing happens.
  */
 export function DialogHeading({ title, message, tone = 'default', icon, messageAlign = 'center' }: DialogHeadingProps) {
@@ -234,65 +249,36 @@ export function DialogHeading({ title, message, tone = 'default', icon, messageA
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [messageReadable, setMessageReadable] = useState(false);
-  const readerOn = useRef(false);
-  const openedAt = useRef(0);
-  const sendFocus = useCallback(() => {
-    try {
-      if (!titleRef.current) return false;
-      AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
-      return true;
-    } catch {
-      // Not available on this platform: the dialog still works.
-      return false;
-    }
-  }, []);
+  const { markSettled } = useContext(DialogSettleContext);
+  const reveal = useCallback(() => {
+    setMessageReadable(true);
+    markSettled();
+  }, [markSettled]);
   useEffect(() => {
-    let alive = true;
-    openedAt.current = Date.now();
-    // With a screen reader on, a field behind the dialog that keeps its input focus (and its keyboard) pulls
-    // TalkBack to the first button of the new window; it is blurred before the title takes focus (WH-292).
-    // With the reader off nothing changes: the field and the keyboard stay as they were.
-    try {
-      void Promise.resolve(AccessibilityInfo.isScreenReaderEnabled())
-        .then(on => {
-          if (alive) readerOn.current = on === true;
-        })
-        .catch(() => undefined);
-    } catch {
-      // Not available: treated as off.
-    }
-    // The keyboard hiding after the dialog opened moves focus again: send the title focus once more.
-    const hide = Keyboard.addListener('keyboardDidHide', () => {
-      if (readerOn.current && Date.now() - openedAt.current < KEYBOARD_REFOCUS_MS) sendFocus();
-    });
-    // Fallback: whatever happens above (no layout, a failed event), the message is readable by then.
-    const fallback = setTimeout(() => setMessageReadable(true), REVEAL_FALLBACK_MS);
+    // Fallback: whatever happens below (no layout, a failed event), the message is readable by then.
+    const fallback = setTimeout(reveal, REVEAL_FALLBACK_MS);
     return () => {
-      alive = false;
-      hide.remove();
       clearTimeout(fallback);
       clearTimeout(timer.current);
       clearTimeout(revealTimer.current);
     };
-  }, [sendFocus]);
+  }, [reveal]);
   const focusTitle = useCallback(() => {
     if (scheduled.current) return;
     scheduled.current = true;
     timer.current = setTimeout(() => {
-      if (readerOn.current) {
-        try {
-          Keyboard.dismiss();
-        } catch {
-          // The title still takes focus and the message is still revealed.
+      try {
+        if (titleRef.current) {
+          AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
+          revealTimer.current = setTimeout(reveal, REVEAL_MS);
+          return;
         }
+      } catch {
+        // Not available on this platform: the dialog still works.
       }
-      if (sendFocus()) {
-        revealTimer.current = setTimeout(() => setMessageReadable(true), REVEAL_MS);
-        return;
-      }
-      setMessageReadable(true);
+      reveal();
     }, FOCUS_SETTLE_MS);
-  }, [sendFocus]);
+  }, [reveal]);
   const name = icon ?? TONE_ICON[tone];
   const color =
     tone === 'danger' ? t.status.negative.text : tone === 'warning' ? t.status.critical.text : tone === 'success' ? t.status.positive.text : t.brand.tint;
@@ -329,7 +315,16 @@ export interface DialogActionsProps {
 /** The buttons: two side by side (cancel first), or stacked. */
 export function DialogActions({ children, stacked = false }: DialogActionsProps) {
   const styles = useThemedStyles(makeStyles);
-  return <View style={stacked ? styles.actionsStack : styles.actionsRow}>{children}</View>;
+  const { settled } = useContext(DialogSettleContext);
+  return (
+    <View
+      style={stacked ? styles.actionsStack : styles.actionsRow}
+      importantForAccessibility={settled ? 'auto' : 'no-hide-descendants'}
+      accessibilityElementsHidden={!settled}
+    >
+      {children}
+    </View>
+  );
 }
 
 export interface DialogButtonProps {
