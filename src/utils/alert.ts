@@ -10,7 +10,7 @@
  * value of the button pressed, or with `dismissed` when the dialog is closed
  * without one (Android back, a tap on the scrim).
  */
-import { Alert, type AlertButton, type AlertOptions } from 'react-native';
+import { Alert, Keyboard, type AlertButton, type AlertOptions } from 'react-native';
 import { t } from '@/i18n';
 
 export interface AlertRequest {
@@ -65,7 +65,7 @@ export function closeAlert(id: number): boolean {
 // is about to open a Modal of its own waits for `whenAlertsClosed` (docs/STYLE_GUIDE.md §14.3: the next dialog opens only
 // after the one before has finished closing). On Android, and with no host, a Modal that is hidden is gone at once.
 let hostClosing = false;
-let closedWaiters: Array<() => void> = [];
+let closedWaiters: (() => void)[] = [];
 
 function wakeClosedWaiters(): void {
   if (queue.length > 0 || hostClosing) return;
@@ -157,6 +157,13 @@ export function showAlert(
   if (queue.some(waiting => sameDialog(waiting, title, message, shownButtons))) {
     if (asked) options?.onDismiss?.();
     return;
+  }
+  // A field behind the dialog that keeps its input focus (and its keyboard) pulls TalkBack to the dialog's first
+  // button instead of its title (WH-292): blur it before the dialog opens.
+  try {
+    Keyboard.dismiss();
+  } catch {
+    // The dialog opens all the same.
   }
   const request: AlertRequest = {
     id: nextId++,
