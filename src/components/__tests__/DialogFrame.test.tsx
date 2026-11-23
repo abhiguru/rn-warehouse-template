@@ -204,7 +204,7 @@ describe('DialogFrame', () => {
     type Sent = [{ props: { accessible?: boolean; children: { props: { children: string } }[] } }, string];
     const sentTexts = (send: jest.SpyInstance, call: number) => (send.mock.calls[call] as unknown as Sent)[0].props.children.map(child => child.props.children);
 
-    it('sends the focus event to the group twice, 400 ms and 900 ms after its layout, not at layout or before', async () => {
+    it('sends the focus event to the group once, 400 ms after its layout, not at layout or before', async () => {
       const send = spyFocus();
       await render(<DialogHeading title="Delete item?" message="It cannot be undone." />);
       await layoutTitle();
@@ -213,22 +213,16 @@ describe('DialogFrame', () => {
       expect(send).not.toHaveBeenCalled();
       await advance(1);
       expect(send).toHaveBeenCalledTimes(1);
-      await advance(499);
-      expect(send).toHaveBeenCalledTimes(1);
-      await advance(1); // 900 ms
-      expect(send).toHaveBeenCalledTimes(2);
-      // Both go to the group View (not the title Text): the view that holds both texts.
-      [0, 1].forEach(call => {
-        const [node, kind] = send.mock.calls[call] as unknown as Sent;
-        expect(node.props.accessible).toBe(true);
-        expect(sentTexts(send, call)).toEqual(['Delete item?', 'It cannot be undone.']);
-        expect(kind).toBe('focus');
-      });
+      // It goes to the group View (not the title Text): the view that holds both texts.
+      const [node, kind] = send.mock.calls[0] as unknown as Sent;
+      expect(node.props.accessible).toBe(true);
+      expect(sentTexts(send, 0)).toEqual(['Delete item?', 'It cannot be undone.']);
+      expect(kind).toBe('focus');
       await advance(5000);
-      expect(send).toHaveBeenCalledTimes(2);
+      expect(send).toHaveBeenCalledTimes(1);
     });
 
-    it('a second layout of the same heading does not send another pair', async () => {
+    it('a second layout of the same heading does not send a second event', async () => {
       const send = spyFocus();
       await render(<DialogHeading title="Delete item?" />);
       await layoutTitle();
@@ -238,61 +232,45 @@ describe('DialogFrame', () => {
       await advance(100);
       await layoutTitle();
       await advance(5000);
-      expect(send).toHaveBeenCalledTimes(2);
+      expect(send).toHaveBeenCalledTimes(1);
     });
 
-    it('a first send that throws does not stop the one at 900 ms', async () => {
-      const send = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementationOnce(() => { throw new Error('not available'); }).mockImplementation(() => undefined);
-      await render(<DialogHeading title="Delete item?" />);
+    it('a send that throws does not break the dialog', async () => {
+      const send = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => { throw new Error('not available'); });
+      await render(<DialogHeading title="Delete item?" message="It cannot be undone." />);
       await layoutTitle();
       await advance(400);
       expect(send).toHaveBeenCalledTimes(1);
-      await advance(500);
-      expect(send).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('It cannot be undone.')).toBeOnTheScreen();
     });
 
-    it('unmounting at 200 ms sends no event, and both timers are cancelled', async () => {
+    it('unmounting before the 400 ms are over sends no event, and the timer is cancelled', async () => {
       const send = spyFocus();
       const scheduled = jest.spyOn(global, 'setTimeout');
       const cancelled = jest.spyOn(global, 'clearTimeout');
       const view = await render(<DialogHeading title="Delete item?" />);
       await layoutTitle();
       await advance(200);
-      const idsOf = (ms: number) => scheduled.mock.calls.flatMap((call, i) => (call[1] === ms ? [scheduled.mock.results[i].value] : []));
-      const [firstTimer] = idsOf(400);
-      const [secondTimer] = idsOf(900);
-      expect(firstTimer).toBeDefined();
-      expect(secondTimer).toBeDefined();
+      const index = scheduled.mock.calls.findIndex(call => call[1] === 400);
+      expect(index).toBeGreaterThanOrEqual(0);
+      const focusTimer = scheduled.mock.results[index].value;
       await view.unmount();
-      // The pending timers are cancelled, not left to fire on a dead title (the ref guard alone would hide a leak).
+      // The pending timer is cancelled, not left to fire on a dead title (the ref guard alone would hide a leak).
       // (Dev's cleanup is `forEach(clearTimeout)`, so clearTimeout also receives the index and array: only the id is compared.)
-      const cancelledIds = cancelled.mock.calls.map(call => call[0]);
-      expect(cancelledIds).toContain(firstTimer);
-      expect(cancelledIds).toContain(secondTimer);
+      expect(cancelled.mock.calls.map(call => call[0])).toContain(focusTimer);
       await advance(2000);
       expect(send).not.toHaveBeenCalled();
     });
 
-    it('unmounting at 600 ms leaves exactly the first event, and none at 900 ms', async () => {
+    it('unmounting after the event sends nothing more', async () => {
       const send = spyFocus();
       const view = await render(<DialogHeading title="Delete item?" />);
       await layoutTitle();
-      await advance(600);
+      await advance(400);
       expect(send).toHaveBeenCalledTimes(1);
-      await view.unmount();
-      await advance(2000);
-      expect(send).toHaveBeenCalledTimes(1);
-    });
-
-    it('unmounting after both events sends no third', async () => {
-      const send = spyFocus();
-      const view = await render(<DialogHeading title="Delete item?" />);
-      await layoutTitle();
-      await advance(900);
-      expect(send).toHaveBeenCalledTimes(2);
       await view.unmount();
       await advance(5000);
-      expect(send).toHaveBeenCalledTimes(2);
+      expect(send).toHaveBeenCalledTimes(1);
     });
   });
 });
