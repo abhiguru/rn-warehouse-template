@@ -187,8 +187,8 @@ export function showAlert(
   options?: AlertOptions,
   asked = false
 ): void {
-  // No host, and nothing waiting for one that is being mounted again: the native dialog.
-  if (!listener && queue.length === 0) {
+  // No host, and nothing waiting for one (queued, or pending the keyboard): the native dialog.
+  if (!listener && queue.length === 0 && pending.length === 0) {
     // Pass only the arguments given, exactly as the original Alert.alert call would.
     const args: Parameters<typeof Alert.alert> = [title, message, buttons, options];
     while (args.length > 1 && args[args.length - 1] === undefined) args.pop();
