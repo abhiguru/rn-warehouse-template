@@ -61,7 +61,11 @@ const roundDown = () => button(t('invoice.summary.roundDownA11y'));
 const roundUp = () => button(t('invoice.summary.roundUpA11y'));
 const finalAmountButton = () => button(t('invoice.summary.calculatorA11y'));
 const totalText = () => (screen.getByLabelText(/^Estimated total, /).props.accessibilityLabel as string).replace('Estimated total, ', '');
-const finalDialogTitle = () => screen.queryByRole('header', { name: t('invoice.summary.calculatorTitle') });
+// A dialog title is no longer a header: it is the first Text of the dialog's one screen-reader stop (an accessible View
+// with no role, WH-292). A button with the same words is found by its role, so it is skipped here.
+const dialogTitle = (name: string) =>
+  screen.queryAllByText(name).find(node => node.parent?.props.accessible === true && node.parent.props.accessibilityRole === undefined) ?? null;
+const finalDialogTitle = () => dialogTitle(t('invoice.summary.calculatorTitle'));
 const finalAmountField = () => screen.getByLabelText(t('invoice.summary.finalAmountA11y'));
 
 beforeEach(() => { changes.length = 0; errors.length = 0; });
@@ -413,11 +417,11 @@ describe('the rest of CHARGES', () => {
   it('keeps the sums off the screen and explains them in the "How the total is calculated" dialog', async () => {
     await show({ discount: 100 });
     expect(screen.queryByText(/\(storage\) \+/)).not.toBeOnTheScreen();
-    expect(screen.queryByRole('header', { name: 'How the total is calculated' })).not.toBeOnTheScreen();
+    expect(dialogTitle('How the total is calculated')).not.toBeOnTheScreen();
 
     await user().press(button('How the total is calculated'));
 
-    expect(screen.getByRole('header', { name: 'How the total is calculated' })).toBeOnTheScreen();
+    expect(dialogTitle('How the total is calculated')).toBeOnTheScreen();
     const how = screen.getByText(/\(storage\) \+/);
     expect(how).toHaveTextContent('₹10,00,000.79 (storage) + ₹60,000.00 (labour) + ₹30,822.00 (tax)', { exact: false });
     expect(how).toHaveTextContent('−₹100.00 (discount)', { exact: false });

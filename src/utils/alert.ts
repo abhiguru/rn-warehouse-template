@@ -10,7 +10,7 @@
  * value of the button pressed, or with `dismissed` when the dialog is closed
  * without one (Android back, a tap on the scrim).
  */
-import { Alert, type AlertButton, type AlertOptions } from 'react-native';
+import { Alert, Keyboard, type AlertButton, type AlertOptions } from 'react-native';
 import { t } from '@/i18n';
 
 export interface AlertRequest {
@@ -65,10 +65,10 @@ export function closeAlert(id: number): boolean {
 // is about to open a Modal of its own waits for `whenAlertsClosed` (docs/STYLE_GUIDE.md §14.3: the next dialog opens only
 // after the one before has finished closing). On Android, and with no host, a Modal that is hidden is gone at once.
 let hostClosing = false;
-let closedWaiters: Array<() => void> = [];
+let closedWaiters: (() => void)[] = [];
 
 function wakeClosedWaiters(): void {
-  if (queue.length > 0 || hostClosing) return;
+  if (queue.length > 0 || pending.length > 0 || hostClosing) return;
   const waiting = closedWaiters;
   closedWaiters = [];
   waiting.forEach(resolve => resolve());
@@ -82,7 +82,7 @@ export function markAlertHostClosing(closing: boolean): void {
 
 /** Resolves when no dialog of the host is on screen, or closing: at once if there is none. Never rejects. */
 export function whenAlertsClosed(): Promise<void> {
-  if (queue.length === 0 && !hostClosing) return Promise.resolve();
+  if (queue.length === 0 && pending.length === 0 && !hostClosing) return Promise.resolve();
   return new Promise<void>(resolve => {
     closedWaiters.push(resolve);
   });
@@ -95,9 +95,11 @@ export function whenAlertsClosed(): Promise<void> {
  * waiting for it carries on as if the person had cancelled.
  */
 export function dropAlertsWithHandlers(): void {
-  const dropped = queue.filter(request => request.buttons.some(b => b.onPress));
+  const withHandlers = (request: AlertRequest) => request.buttons.some(b => b.onPress);
+  const dropped = [...queue.filter(withHandlers), ...pending.filter(withHandlers)];
   if (dropped.length === 0) return;
   queue = queue.filter(request => !dropped.includes(request));
+  pending = pending.filter(request => !dropped.includes(request));
   notifyQueue();
   wakeClosedWaiters();
   dropped.forEach(request => {
@@ -107,6 +109,8 @@ export function dropAlertsWithHandlers(): void {
 
 /** Test-only: forget every waiting dialog and host, so one test does not leak into the next. */
 export function resetAlertQueueForTests(): void {
+  endKeyboardWait();
+  pending = [];
   queue = [];
   listener = null;
   hostClosing = false;
@@ -135,6 +139,47 @@ function sameDialog(request: AlertRequest, title: string, message: string | unde
   );
 }
 
+// Dialogs raised while the keyboard is up wait here (in order) until it has hidden, so the keyboard's own accessibility
+// events do not take TalkBack's focus from the dialog (WH-292). They are not in `queue` yet.
+let pending: AlertRequest[] = [];
+let keyboardWait: { subscription: { remove: () => void }; timer: ReturnType<typeof setTimeout> } | null = null;
+/** Longest the dialogs wait for the keyboard to say it has hidden: a missed event never blocks them. */
+const KEYBOARD_WAIT_MS = 300;
+
+function endKeyboardWait(): void {
+  if (!keyboardWait) return;
+  keyboardWait.subscription.remove();
+  clearTimeout(keyboardWait.timer);
+  keyboardWait = null;
+}
+
+function enqueue(request: AlertRequest): void {
+  queue = [...queue, request];
+  notifyQueue();
+  listener?.(request);
+}
+
+/** The keyboard hid (or the wait ran out, or it failed): open the waiting dialogs, in the order they were raised, once. */
+function flushPending(): void {
+  endKeyboardWait();
+  const waiting = pending;
+  pending = [];
+  waiting.forEach(enqueue);
+}
+
+function startKeyboardWait(): void {
+  if (keyboardWait) return;
+  try {
+    keyboardWait = {
+      subscription: Keyboard.addListener('keyboardDidHide', flushPending),
+      timer: setTimeout(flushPending, KEYBOARD_WAIT_MS),
+    };
+    Keyboard.dismiss();
+  } catch {
+    flushPending();
+  }
+}
+
 export function showAlert(
   title: string,
   message?: string,
@@ -154,7 +199,7 @@ export function showAlert(
   // The same dialog, with the same words on its buttons, is already waiting or on screen (a double tap queues
   // the question twice): the second one is dropped. A dropped question is answered as dismissed, so the
   // caller that waits for it carries on as if the person had said no.
-  if (queue.some(waiting => sameDialog(waiting, title, message, shownButtons))) {
+  if ([...queue, ...pending].some(waiting => sameDialog(waiting, title, message, shownButtons))) {
     if (asked) options?.onDismiss?.();
     return;
   }
@@ -166,9 +211,26 @@ export function showAlert(
     options,
     asked: asked || undefined,
   };
-  queue = [...queue, request];
-  notifyQueue();
-  listener?.(request);
+  // A field behind the dialog that keeps its input focus (and its keyboard) pulls TalkBack to the dialog's first
+  // button instead of its title, and the keyboard hiding races the dialog's focus (WH-292): blur the field, and
+  // with the keyboard up open the dialog only after it has hidden. Dialogs raised meanwhile queue up behind.
+  let keyboardUp = false;
+  try {
+    keyboardUp = Keyboard.isVisible();
+  } catch {
+    // Treated as hidden.
+  }
+  if (keyboardUp || pending.length > 0) {
+    pending.push(request);
+    startKeyboardWait();
+    return;
+  }
+  try {
+    Keyboard.dismiss();
+  } catch {
+    // The dialog opens all the same.
+  }
+  enqueue(request);
 }
 
 /** One button of an `askAlert` dialog and the answer it gives. */

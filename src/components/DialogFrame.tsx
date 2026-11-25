@@ -19,13 +19,13 @@
  *     </DialogOverlay>
  *   </Modal>
  */
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
-import type { TextRef } from '@/types/nativeRefs';
+import type { ViewRef } from '@/types/nativeRefs';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -71,6 +71,7 @@ const makeStyles = (t: ThemeTokens) => ({
   iconWarning: { backgroundColor: t.status.critical.background },
   iconDanger: { backgroundColor: t.status.negative.background },
   iconSuccess: { backgroundColor: t.status.positive.background },
+  group: { alignSelf: 'stretch' as const },
   title: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const, alignSelf: 'stretch' as const },
   message: {
     ...typography.body,
@@ -202,6 +203,9 @@ export interface DialogHeadingProps {
   messageAlign?: 'center' | 'left';
 }
 
+/** Wait after the group's first layout before moving screen-reader focus, so the Modal window has settled. */
+const FOCUS_SETTLE_MS = 400;
+
 const TONE_ICON: Record<DialogTone, IconName | undefined> = {
   default: undefined,
   warning: 'alert-outline',
@@ -210,22 +214,33 @@ const TONE_ICON: Record<DialogTone, IconName | undefined> = {
 };
 
 /**
- * Status icon in its circle, the title and the message. When the dialog opens, screen-reader focus moves to the
- * title (once, after its first layout); where that is not available nothing happens.
+ * Status icon in its circle, the title and the message. The title and the message are ONE screen-reader stop (an
+ * accessible View with no role of its own): TalkBack reads the title, then the message, in one announcement, and a
+ * dialog with no message has the title alone. When the dialog opens, screen-reader focus moves to that stop: once,
+ * `FOCUS_SETTLE_MS` after its first layout (a Modal is a new window and TalkBack picks its own first item; WH-292).
+ * The buttons are never hidden. The timer is cleared on unmount; where focus events are not available nothing happens.
  */
 export function DialogHeading({ title, message, tone = 'default', icon, messageAlign = 'center' }: DialogHeadingProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const titleRef = useRef<TextRef>(null);
-  const focused = useRef(false);
-  const focusTitle = useCallback(() => {
-    if (focused.current) return;
-    focused.current = true;
-    try {
-      if (titleRef.current) AccessibilityInfo.sendAccessibilityEvent(titleRef.current, 'focus');
-    } catch {
-      // Not available on this platform: the dialog still works.
-    }
+  const groupRef = useRef<ViewRef>(null);
+  const scheduled = useRef(false);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach(clearTimeout);
+  }, []);
+  const focusGroup = useCallback(() => {
+    if (scheduled.current) return;
+    scheduled.current = true;
+    const send = () => {
+      try {
+        if (groupRef.current) AccessibilityInfo.sendAccessibilityEvent(groupRef.current, 'focus');
+      } catch {
+        // Not available on this platform: the dialog still works.
+      }
+    };
+    timers.current.push(setTimeout(send, FOCUS_SETTLE_MS));
   }, []);
   const name = icon ?? TONE_ICON[tone];
   const color =
@@ -238,10 +253,10 @@ export function DialogHeading({ title, message, tone = 'default', icon, messageA
           <Icon name={name} size={iconSize.xl} color={color} />
         </View>
       ) : null}
-      <Text ref={titleRef} onLayout={focusTitle} style={styles.title} accessibilityRole="header">
-        {title}
-      </Text>
-      {message ? <Text style={[styles.message, messageAlign === 'left' && styles.messageLeft]}>{message}</Text> : null}
+      <View ref={groupRef} onLayout={focusGroup} accessible style={styles.group}>
+        <Text style={styles.title}>{title}</Text>
+        {message ? <Text style={[styles.message, messageAlign === 'left' && styles.messageLeft]}>{message}</Text> : null}
+      </View>
     </>
   );
 }

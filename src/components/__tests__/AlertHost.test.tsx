@@ -272,18 +272,37 @@ describe('AlertHost screen-reader focus (WH-219)', () => {
     await show('First', 'One', [{ text: 'OK' }]);
     await queue('Second', 'Two', [{ text: 'Done' }]);
     const layoutTitle = async (title: string) => {
-      await fireEvent(await screen.findByRole('header', { name: title }), 'layout');
+      // The title and the message are one accessible View (WH-292); its layout starts the timer.
+      const parent = (await screen.findByText(title)).parent;
+      if (!parent) throw new Error(`The group View of the title "${title}" is not on the screen`);
+      await fireEvent(parent, 'layout');
     };
+    // Each event goes to the group of the alert on the screen: its title and its message.
+    const sentTo = (call: number) => {
+      const node = setFocus.mock.calls[call][0] as unknown as { props: { children: { props: { children: string } }[] } };
+      return node.props.children.map(child => child.props.children);
+    };
+    // The event goes 400 ms after the layout (WH-292), not at the layout.
+    const settle = async (ms: number) => act(async () => { jest.advanceTimersByTime(ms); });
 
     await layoutTitle('First');
+    expect(setFocus).not.toHaveBeenCalled();
+    await settle(399);
+    expect(setFocus).not.toHaveBeenCalled();
+    await settle(1);
     expect(setFocus).toHaveBeenCalledTimes(1);
     expect(setFocus).toHaveBeenLastCalledWith(expect.anything(), 'focus');
-    // A layout of the same title again moves nothing.
+    // Nothing more comes later, and a layout of the same title again moves nothing.
+    await settle(5000);
     await layoutTitle('First');
+    await settle(5000);
     expect(setFocus).toHaveBeenCalledTimes(1);
 
     await press(user, 'OK');
     await layoutTitle('Second');
+    await settle(400);
     expect(setFocus).toHaveBeenCalledTimes(2);
+    expect(sentTo(0)).toEqual(['First', 'One']);
+    expect(sentTo(1)).toEqual(['Second', 'Two']);
   });
 });
