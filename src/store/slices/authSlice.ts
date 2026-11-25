@@ -27,7 +27,7 @@ import { getSessionGeneration, renewAheadMs } from '@/config/sessionLifecycle';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { isStaleFacility } from '@/config/staleFacilitySession';
-import { isOfflineStarted, onFirstServerAnswer, readOfflineStart } from '@/config/offlineStart';
+import { isCopyRole, isOfflineStarted, onFirstServerAnswer, readOfflineStart } from '@/config/offlineStart';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 // Privacy cleanup services - clear user-specific data on logout
@@ -254,6 +254,10 @@ export const initializeAuth = createAsyncThunk.withTypes<{
             null,
             'Failed to get cached profile for JWT auth'
           );
+
+          // An offline restore is only for the roles that have the phone copy (Product's P5).
+          if (offlineRestore && !isCopyRole((cachedProfile as { role?: unknown } | null)?.role))
+            return { session: null, user: null, userProfile: null };
 
           if (cachedProfile) {
             authSliceLogger.info(

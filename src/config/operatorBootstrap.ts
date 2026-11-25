@@ -11,6 +11,7 @@ import {
   clearOfflineStarted,
   forgetOfflineStart,
   hasSyncCapability,
+  isCopyRole,
   isNoAnswer,
   markOfflineStarted,
   readOfflineStart,
@@ -27,7 +28,7 @@ type BootstrapResult =
 /**
  * The kept config of the selected facility when the app may open into it with no answer from the server (WH-298,
  * contract 3.2): the facility has the offline feature, and the person is signed in on this phone (a stored token, of
- * any validity, and a cached profile for it). The client is set up from the kept config first, because the cached
+ * any validity, and a cached profile for it) in a role that has the phone copy. The client is set up from the kept config first, because the cached
  * profile is filed under the facility's address. Null otherwise: the facility still needs the server.
  */
 async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfig | null> {
@@ -36,7 +37,9 @@ async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfi
   const token = await getStoredToken();
   if (!token.authToken) return null;
   initializeSupabase(config.supabaseUrl, config.anonKey);
-  return (await getCachedUserProfile({ allowExpired: true })) == null ? null : config;
+  // Customer accounts never open offline (Product's P5): their screens keep today's behaviour.
+  const profile = (await getCachedUserProfile({ allowExpired: true })) as { role?: unknown } | null;
+  return profile && isCopyRole(profile.role) ? config : null;
 }
 
 // Discovery is public. Complete local cleanup before adopting a replacement
