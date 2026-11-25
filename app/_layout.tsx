@@ -75,7 +75,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { OfflineStatusBar } from '@/components/OfflineStatusBar';
 import { PhoneCopyLifecycle } from '@/features/phone-copy/components/PhoneCopyLifecycle';
-import { useCopyFeatureOn, useCopySession } from '@/hooks/usePhoneCopyStatus';
+import { useCopyFeatureOn, useCopySession, useEraseCopyForRole } from '@/hooks/usePhoneCopyStatus';
 import UpgradingBanner from '@/components/UpgradingBanner';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
 import BackendTooOldScreen from '@/components/BackendTooOldScreen';
@@ -433,6 +433,7 @@ function ThemedContent() {
   // bar replaces the offline banner where the facility has the feature.
   const copySession = useCopySession();
   const copyBar = useCopyFeatureOn();
+  useEraseCopyForRole();
 
   // Restore credentials before any route screen can redirect an initially
   // empty Redux auth state. Deep links can bypass the tab layout, so auth

@@ -2,16 +2,14 @@
  * The phone copy's published state for screens (WH-298, contract 7.2), and whether the copy and its status bar are on
  * for the signed-in person.
  */
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { useFacilityCapabilities } from '@/hooks/useCapability';
 import { formatCopySize } from '@/features/phone-copy/copyStorage';
 import { getSyncSnapshot, subscribeSync, type SyncSnapshot } from '@/features/phone-copy/syncStore';
 import { t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
-import type { UserRole } from '@/types/user.types';
-
-/** Customer accounts keep today's behaviour until WH-306 (Product's P5). */
-const COPY_ROLES: readonly UserRole[] = ['admin', 'supervisor', 'staff'];
+import { isCopyRole } from '@/config/offlineStart';
+import { eraseCopy } from '@/features/phone-copy/copyDb';
 
 export function usePhoneCopyStatus(): SyncSnapshot {
   return useSyncExternalStore(subscribeSync, getSyncSnapshot, getSyncSnapshot);
@@ -20,7 +18,20 @@ export function usePhoneCopyStatus(): SyncSnapshot {
 /** A signed-in administrator, supervisor or staff member: the person the phone copy is for. */
 export function useCopySession(): boolean {
   const role = useAppSelector(state => state.auth.userProfile?.role);
-  return role !== undefined && COPY_ROLES.includes(role);
+  return isCopyRole(role);
+}
+
+/**
+ * A signed-in person whose role has no phone copy (a customer account, or a role changed to one) keeps none: the file
+ * and its key are erased (contract section 1). A facility without the feature is PhoneCopyLifecycle's to erase; a
+ * sign-out erases through the session teardown.
+ */
+export function useEraseCopyForRole(): void {
+  const role = useAppSelector(state => state.auth.userProfile?.role);
+  useEffect(() => {
+    if (role === undefined || isCopyRole(role)) return;
+    void eraseCopy();
+  }, [role]);
 }
 
 /** The facility has the feature for this session and the server has not turned it off since. */

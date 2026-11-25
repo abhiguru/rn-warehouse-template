@@ -17,6 +17,10 @@ import type { OperatorServer } from './operatorServer';
 
 const STORAGE_KEY = 'offline_start_v1';
 
+/** The roles the phone copy and the offline start are for; customer accounts keep today's behaviour (Product's P5). */
+export const COPY_ROLES: readonly string[] = ['admin', 'supervisor', 'staff'];
+export const isCopyRole = (role: unknown): boolean => typeof role === 'string' && COPY_ROLES.includes(role);
+
 export interface OfflineStartRecord {
   origin: string;
   instanceId: string;
