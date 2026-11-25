@@ -69,6 +69,7 @@
       "./plugins/with-ios-transport-policy",
       "./plugins/with-android-lan-cleartext",
       "expo-secure-store",
+      ["expo-sqlite", { "useSQLCipher": true, "enableFTS": true }],
       [
         "expo-image-picker",
         {
