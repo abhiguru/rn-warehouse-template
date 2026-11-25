@@ -1,6 +1,6 @@
 /** Gujarati text: components. Follows docs/GUJARATI_GLOSSARY.md. */
 import type { components as source } from '../en/components';
-import type { Translation } from '../../types';
+import type { Translation } from '@/i18n/types';
 
 export const components: Translation<typeof source> = {
   loading: 'લોડ થઈ રહ્યું છે',
@@ -451,6 +451,29 @@ export const components: Translation<typeof source> = {
   skeleton: {
     loadingDetails: 'વિગતો લોડ થઈ રહી છે',
     loadingList: 'યાદી લોડ થઈ રહી છે',
+  },
+  offlineStatus: {
+    // Design's draft, may ship as written (WH-298 P8); native-speaker reading in WH-149. હજી is spelled હજુ as in
+    // the rest of the app (consistency.gu, Design's standing rule).
+    upToDate: 'અપડેટ છે',
+    updating: 'અપડેટ થઈ રહ્યું છે… છેલ્લે અપડેટ થયું: {{time}}',
+    offline: 'ઑફલાઇન. છેલ્લે અપડેટ થયું: {{time}}',
+    updateFailed: 'અપડેટ થઈ શક્યું નથી. છેલ્લે અપડેટ થયું: {{time}}',
+    firstLoad: 'વખારની માહિતી આ ફોનમાં લોડ થઈ રહી છે…',
+    olderLoading: 'જૂની માહિતી હજુ લોડ થઈ રહી છે.',
+    olderPaused: 'જૂની માહિતી ફરી જોડાશો ત્યારે લોડ થશે.',
+    notReady: 'આ ફોન હજુ તૈયાર નથી. વખારની માહિતી લોડ કરવા ઇન્ટરનેટ જોડો.',
+    unsent: {
+      one: '૧ એન્ટ્રી મોકલવાની બાકી છે. {{time}} સુધીમાં ઇન્ટરનેટ જોડીને મોકલો.',
+      other: '{{count}} એન્ટ્રી મોકલવાની બાકી છે. {{time}} સુધીમાં ઇન્ટરનેટ જોડીને મોકલો.',
+    },
+    sending: { one: '૧ એન્ટ્રી મોકલાઈ રહી છે…', other: '{{count}} એન્ટ્રી મોકલાઈ રહી છે…' },
+    unsentLimit: {
+      one: '૧ એન્ટ્રી ૨ કલાકથી વધુ સમયથી મોકલવાની બાકી છે. વધુ નોંધવા ઇન્ટરનેટ જોડીને મોકલો.',
+      other: '{{count}} એન્ટ્રી ૨ કલાકથી વધુ સમયથી મોકલવાની બાકી છે. વધુ નોંધવા ઇન્ટરનેટ જોડીને મોકલો.',
+    },
+    storageLow: 'ફોનમાં જગ્યા લગભગ ભરાઈ ગઈ છે. માહિતી સાચવી શકાય તે માટે થોડી જગ્યા ખાલી કરો.',
+    retryLabel: 'ફરી અપડેટ કરવાનો પ્રયાસ કરો',
   },
   offline: {
     message: 'તમે ઑફલાઇન છો. સર્વરની જરૂર હોય તેવાં કામ ફરી કનેક્ટ થશો ત્યારે ચાલશે.',

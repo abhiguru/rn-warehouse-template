@@ -73,6 +73,9 @@ import { clearPendingEnrollment } from '@/config/supabaseConfig';
 import ConfigErrorScreen from '@/components/ConfigErrorScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { OfflineStatusBar } from '@/components/OfflineStatusBar';
+import { PhoneCopyLifecycle } from '@/features/phone-copy/components/PhoneCopyLifecycle';
+import { useCopyFeatureOn, useCopySession } from '@/hooks/usePhoneCopyStatus';
 import UpgradingBanner from '@/components/UpgradingBanner';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
 import BackendTooOldScreen from '@/components/BackendTooOldScreen';
@@ -303,7 +306,12 @@ function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
   const isOffline = useIsOffline();
   const upgrading = useUpgrading();
-  const value = React.useMemo(() => (isOffline || upgrading ? { ...insets, top: 0 } : insets), [insets, isOffline, upgrading]);
+  // The phone copy's status bar (WH-298) is always there while the feature is on, and pads for the status bar itself.
+  const copyBar = useCopyFeatureOn();
+  const value = React.useMemo(
+    () => (isOffline || upgrading || copyBar ? { ...insets, top: 0 } : insets),
+    [insets, isOffline, upgrading, copyBar]
+  );
   return <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>;
 }
 
@@ -421,6 +429,10 @@ function ThemedContent() {
   useProfileLanguage();
   // A GRN or dispatch whose save was in flight when the app last closed: the server is asked what became of it.
   useUnfinishedSaveCheck();
+  // The phone copy (WH-298): its sync runs for a signed-in administrator, supervisor or staff member, and its status
+  // bar replaces the offline banner where the facility has the feature.
+  const copySession = useCopySession();
+  const copyBar = useCopyFeatureOn();
 
   // Restore credentials before any route screen can redirect an initially
   // empty Redux auth state. Deep links can bypass the tab layout, so auth
@@ -503,7 +515,9 @@ function ThemedContent() {
           <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
               <ForceUpdateModal />
-              <OfflineBanner />
+              {/* The phone copy's bar where the feature is on (WH-298), today's banner elsewhere. */}
+              {copyBar ? <OfflineStatusBar /> : <OfflineBanner />}
+              {copySession ? <PhoneCopyLifecycle /> : null}
               <UpgradingBanner />
               <BottomSheetModalProvider>
                 <BelowOfflineBanner>

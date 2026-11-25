@@ -454,6 +454,28 @@ export const components = {
     loadingDetails: 'Loading details',
     loadingList: 'Loading list',
   },
+  offlineStatus: {
+    // The status bar of the phone copy (WH-298; product/design/offline-capture.md Part 1, 1.4).
+    upToDate: 'Up to date',
+    updating: 'Updating… Last updated {{time}}',
+    offline: 'Offline. Last updated {{time}}',
+    updateFailed: "Couldn't update. Last updated {{time}}",
+    firstLoad: 'Loading the warehouse onto this phone…',
+    olderLoading: 'Older records are still loading.',
+    olderPaused: 'Older records will load when you reconnect.',
+    notReady: "This phone isn't ready yet. Connect to load the warehouse.",
+    unsent: {
+      one: '1 item not sent yet. Connect and send it by {{time}}.',
+      other: '{{count}} items not sent yet. Connect and send them by {{time}}.',
+    },
+    sending: { one: 'Sending 1 item…', other: 'Sending {{count}} items…' },
+    unsentLimit: {
+      one: '1 item not sent for over 2 hours. Connect and send it to record more.',
+      other: '{{count}} items not sent for over 2 hours. Connect and send them to record more.',
+    },
+    storageLow: 'Phone storage is almost full. Free some space so records can be kept.',
+    retryLabel: 'Try updating again',
+  },
   offline: {
     message: "You're offline. Actions that need the server will work again when you reconnect.",
     // Shown instead of the line above when the warehouse network (not the internet) reached the server but
