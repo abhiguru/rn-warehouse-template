@@ -9,13 +9,12 @@ import type { OperatorServer } from './operatorServer';
 import { getCachedUserProfile, getStoredToken, initializeSupabase } from './supabaseConfig';
 import {
   clearOfflineStarted,
-  forgetOfflineStart,
   hasSyncCapability,
   isCopyRole,
   isNoAnswer,
+  keepOfflineStart,
   markOfflineStarted,
   readOfflineStart,
-  rememberOfflineStart,
 } from './offlineStart';
 
 type Discovery = Awaited<ReturnType<typeof discoverOperator>>;
@@ -92,8 +91,7 @@ export async function verifySelectedOperator(
   setFacilityCapabilities(discovery.server, discovery.config.capabilities);
   noteBackendRelease(discovery.server, discovery.config);
   // The config an offline start opens with: kept while the facility has the feature, removed when it is switched off.
-  if (hasSyncCapability(discovery.config)) await rememberOfflineStart(discovery.server, discovery.config);
-  else await forgetOfflineStart();
+  await keepOfflineStart(discovery.server, discovery.config);
   if (!isCurrent()) return { kind: 'superseded' };
   return { kind: 'verified', discovery };
 }

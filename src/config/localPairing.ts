@@ -17,6 +17,7 @@ import { switchOperatorServer } from '@/store/operatorSwitch';
 import { appTooOldInfo, isAppTooOld, type AppTooOldInfo } from './appTooOld';
 import { noteBackendRelease } from './backendTooOld';
 import { setFacilityCapabilities } from './facilityCapabilities';
+import { keepOfflineStart } from './offlineStart';
 import { getLanContext, setLanContext } from './lanTransport';
 import { localOnlyOrigin } from './localFacility';
 import { discoverOperator, getActiveOperatorServer } from './operatorServer';
@@ -126,6 +127,8 @@ export async function pairWithFacility(
     initializeSupabase(discovery.config.supabaseUrl, discovery.config.anonKey);
     setFacilityCapabilities(discovery.server, discovery.config.capabilities);
     noteBackendRelease(discovery.server, discovery.config);
+    // Kept for an offline start of this facility (WH-298): the sign-in path must keep it too, not only a verified start.
+    await keepOfflineStart(discovery.server, discovery.config);
     const signedIn = await pairedSignIn(session);
     if (!signedIn.success) return fail('failed');
     return { ok: true, userProfile: signedIn.userProfile };

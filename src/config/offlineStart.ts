@@ -59,6 +59,18 @@ export async function readOfflineStart(server: Pick<OperatorServer, 'origin' | '
   }
 }
 
+/**
+ * Where the app adopts a facility's public config (every verified start, opening a facility from My facilities, an SMS
+ * sign-in to it, pairing a local facility, break-glass sign-in): keeps it for an offline start while the facility has
+ * the feature, and removes the record when it has not. Never throws.
+ */
+export async function keepOfflineStart(server: Pick<OperatorServer, 'origin' | 'instanceId'>, config: PublicConfig): Promise<void> {
+  // A config without capabilities (an older server) has no feature: no record.
+  const capabilities = (config as { capabilities?: Record<string, unknown> | null }).capabilities;
+  if (capabilities?.sync === true) await rememberOfflineStart(server, config);
+  else await forgetOfflineStart();
+}
+
 /** Never throws. */
 export async function forgetOfflineStart(): Promise<void> {
   try {
