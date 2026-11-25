@@ -27,7 +27,7 @@ import { getSessionGeneration, renewAheadMs } from '@/config/sessionLifecycle';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { isStaleFacility } from '@/config/staleFacilitySession';
-import { isOfflineStarted, readOfflineStart } from '@/config/offlineStart';
+import { isOfflineStarted, onFirstServerAnswer, readOfflineStart } from '@/config/offlineStart';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 // Privacy cleanup services - clear user-specific data on logout
@@ -277,6 +277,14 @@ export const initializeAuth = createAsyncThunk.withTypes<{
             // The cached copy may be up to a day old: ask the server in the
             // background and show what it says now.
             void reconcileCachedProfile(dispatch, cachedProfile);
+            // After an offline start that asking found no server: ask again when the server first answers, so a
+            // role or assignment changed meanwhile applies (screens and the phone copy follow it).
+            if (offlineRestore) {
+              const restored = cachedProfile as UserProfile;
+              onFirstServerAnswer(() => {
+                if (generation === getSessionGeneration()) void reconcileCachedProfile(dispatch, restored);
+              });
+            }
 
             return { session: null, user: null, userProfile: cachedProfile };
           } else {

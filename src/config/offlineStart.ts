@@ -83,18 +83,33 @@ export function isNoAnswer(error: unknown): boolean {
 }
 
 // In memory only: a new run starts online until its facility check says otherwise.
-const startState = { offline: false };
+const startState = { offline: false, onAnswer: new Set<() => void>() };
 
 /** The facility check of this run had no answer and the app opened from the kept config. */
 export function markOfflineStarted(): void {
   startState.offline = true;
 }
 
-/** The server answered the facility check: from now on the server decides about the session, as before WH-298. */
+/**
+ * The server answered the facility check: from now on the server decides about the session, as before WH-298. The
+ * waiting `onFirstServerAnswer` listeners run once, after an offline start only.
+ */
 export function clearOfflineStarted(): void {
+  if (!startState.offline) return;
   startState.offline = false;
+  const waiting = [...startState.onAnswer];
+  startState.onAnswer.clear();
+  for (const listener of waiting) listener();
 }
 
 export function isOfflineStarted(): boolean {
   return startState.offline;
+}
+
+/** Runs `listener` once when the server first answers after an offline start. Returns a cancel function. */
+export function onFirstServerAnswer(listener: () => void): () => void {
+  startState.onAnswer.add(listener);
+  return () => {
+    startState.onAnswer.delete(listener);
+  };
 }
