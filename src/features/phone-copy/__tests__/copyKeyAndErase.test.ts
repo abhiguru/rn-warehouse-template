@@ -17,9 +17,9 @@
  *  - `clearSessionScopedState(dispatch)` (src/store/sessionScopedState.ts) runs the entry registered as `phone-copy`.
  * ===========================================================================================
  */
-import { bootPhone, env, eraseEverything, resetEnv, type Phone } from '../tests/phoneEnv';
-import { failStatement, fakeDatabaseNames, statementLog } from '../tests/fakeExpoSqlite';
-import { grnRow } from '../tests/fakeFeed';
+import { bootPhone, env, eraseEverything, resetEnv, type Phone } from '@/tests/phoneCopy/phoneEnv';
+import { failStatement, fakeDatabaseNames, statementLog } from '@/tests/phoneCopy/fakeExpoSqlite';
+import { grnRow } from '@/tests/phoneCopy/fakeFeed';
 
 jest.mock('@/lib/queryClient', () => ({ queryClient: { cancelQueries: jest.fn(async () => {}), clear: jest.fn() } }));
 jest.mock('@/features/item-pricing/useItemRates', () => ({ clearItemRatesCache: jest.fn() }));

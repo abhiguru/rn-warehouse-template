@@ -13,9 +13,9 @@
  *  - Row fields read from the server rows: GRN `gr_no`, `customer_name`, `registration`, `date`; lot `item_name`, `package_mark`, `rack`, `gr_id`.
  * ============================================================
  */
-import { bootPhone, env, eraseEverything, resetEnv, type Phone } from '../tests/phoneEnv';
-import { statementLog } from '../tests/fakeExpoSqlite';
-import { grnRow, lotRow } from '../tests/fakeFeed';
+import { bootPhone, env, eraseEverything, resetEnv, type Phone } from '@/tests/phoneCopy/phoneEnv';
+import { statementLog } from '@/tests/phoneCopy/fakeExpoSqlite';
+import { grnRow, lotRow } from '@/tests/phoneCopy/fakeFeed';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 
 type Lot = { lotId: string; gr_no: string; customer: string; item: string; mark: string; rack: string; reg: string | null; date: string };
@@ -61,7 +61,7 @@ describe('T49: the same rows as the server\'s rule', () => {
     const phone = await loaded();
     const expected = expectedIds(query);
     expect(await found(phone, query)).toEqual(expected);
-    if (query === 'zzzz') expect(expected).toEqual([]);
+    if (query.includes('zzzz')) expect(expected).toEqual([]);   // every word must be found, so one unknown word finds nothing
     else expect(expected.length).toBeGreaterThan(0);
   });
 

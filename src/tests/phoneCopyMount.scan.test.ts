@@ -16,7 +16,7 @@ const walk = (dir: string): string[] =>
   fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap(entry => {
     const rel = path.join(dir, entry.name);
     if (entry.isDirectory()) return entry.name === '__tests__' ? [] : walk(rel);
-    return /\.tsx?$/.test(entry.name) ? [rel] : [];
+    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [rel] : [];   // not the tests, this file included
   });
 
 describe('the status bar is mounted once, at the root', () => {

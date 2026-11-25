@@ -37,12 +37,13 @@ describe('normalizeCapabilities', () => {
   });
 
   it('takes each known key that is true or false', () => {
-    expect(normalizeCapabilities({ printing: true, sensors: true, realtime: false, customerDocuments: true, payments: true })).toEqual({
+    expect(normalizeCapabilities({ printing: true, sensors: true, realtime: false, customerDocuments: true, payments: true, sync: true })).toEqual({
       printing: true,
       sensors: true,
       realtime: false,
       customerDocuments: true,
       payments: true,
+      sync: true,
     });
   });
 
@@ -50,8 +51,15 @@ describe('normalizeCapabilities', () => {
     expect(normalizeCapabilities({ sensors: 'true', printing: 1, realtime: null, telegram: true })).toEqual(DEMO_CAPABILITIES);
     expect(normalizeCapabilities({ sensors: true })).toEqual({ ...DEMO_CAPABILITIES, sensors: true });
     expect(Object.keys(normalizeCapabilities({ telegram: true })).sort()).toEqual(
-      ['customerDocuments', 'payments', 'printing', 'realtime', 'sensors']
+      ['customerDocuments', 'payments', 'printing', 'realtime', 'sensors', 'sync']
     );
+  });
+
+  it('has sync off unless the config says true (WH-298: a server without the feature behaves as today)', () => {
+    expect(DEMO_CAPABILITIES.sync).toBe(false);
+    expect(normalizeCapabilities({}).sync).toBe(false);
+    expect(normalizeCapabilities({ sync: 'true' }).sync).toBe(false);
+    expect(normalizeCapabilities({ sync: true }).sync).toBe(true);
   });
 
   it('has payments off unless the config says true', () => {

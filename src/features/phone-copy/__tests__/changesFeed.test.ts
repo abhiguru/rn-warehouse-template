@@ -18,9 +18,9 @@
  *  - SQLITE_FULL is an error whose message contains "disk is full".
  * ===========================================================================================
  */
-import { bootPhone, env, eraseEverything, idsOf, metaOf, resetEnv, rowsOf, type Phone } from '../tests/phoneEnv';
-import { failStatement } from '../tests/fakeExpoSqlite';
-import { ENTITIES, grnRow, hex, lotRow, type Change } from '../tests/fakeFeed';
+import { bootPhone, env, eraseEverything, idsOf, metaOf, resetEnv, rowsOf, type Phone } from '@/tests/phoneCopy/phoneEnv';
+import { failStatement } from '@/tests/phoneCopy/fakeExpoSqlite';
+import { ENTITIES, grnRow, hex, lotRow, type Change } from '@/tests/phoneCopy/fakeFeed';
 
 const upsert = (e: string, id: string, row: Record<string, unknown>, v = `v-${id}-new`): Change => ({ e, id, op: 'upsert', v: v === 'not-hex' ? v : hex(v), row: { id, ...row } });
 const page = (position: string, changes: Change[], more = false, extra: Record<string, unknown> = {}) => ({
@@ -247,7 +247,7 @@ describe('T29: "reload_all" (Product\'s answer to P1)', () => {
   it.each(['ACCESS_CHANGED', 'POSITION_AHEAD', 'RESTORED', 'RESET', 'TRUNCATED'])('%s: the copy is erased first (nothing readable meanwhile), then loaded again, and the answer\'s position is not stored', async reason => {
     const phone = await loaded();
     env.feed.changeAnswers.push(reloadAll(reason));
-    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'dispatch');
+    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'goodsreceived');
     const run = phone.engine.syncNow('pull-to-refresh');
     await gate.opened;
     expect(phone.engine.isCopyReadable()).toBe(false);
@@ -281,7 +281,7 @@ describe('T29: "reload_all" (Product\'s answer to P1)', () => {
     const phone = await loaded();
     env.freeBytes = 400_000_000;
     env.feed.changeAnswers.push(reloadAll(reason));
-    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'dispatch');
+    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'goodsreceived');
     const run = phone.engine.syncNow('pull-to-refresh');
     await gate.opened;
     expect(phone.engine.isCopyReadable()).toBe(false);

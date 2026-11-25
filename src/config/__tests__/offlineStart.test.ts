@@ -22,6 +22,7 @@ import { loadOperatorServer, saveOperatorServer, getActiveOperatorServer } from 
 import { clearAppTooOld } from '../appTooOld';
 import { resetUpgradeNotice } from '../upgradeNotice';
 import { resetFacilityCapabilities, getFacilityCapabilities } from '../facilityCapabilities';
+import { RequestTimeoutError } from '@/config/supabaseConfig';
 import { forgetOfflineStart, isNoAnswer, readOfflineStart, rememberOfflineStart } from '../offlineStart';
 
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '0.1.0' } } }));
@@ -86,7 +87,10 @@ describe('T1: opening with no connection', () => {
   it('works after a kill: the record is in storage, not in memory', async () => {
     await openedOnline();
     signedIn();
+    // A kill reloads every module but not the phone's storage: the reloaded app gets the same stored files.
+    const storage = jest.requireMock('@react-native-async-storage/async-storage');
     jest.resetModules();
+    jest.doMock('@react-native-async-storage/async-storage', () => storage);
     const fresh = require('../operatorBootstrap') as typeof import('../operatorBootstrap');
     const server = require('../operatorServer') as typeof import('../operatorServer');
     await server.loadOperatorServer();
@@ -113,8 +117,7 @@ describe('T1: opening with no connection', () => {
   it('a no-answer timeout opens offline like a lost connection', async () => {
     await openedOnline();
     signedIn();
-    const { RequestTimeoutError } = require('@/config/supabaseConfig') as { RequestTimeoutError: new (m?: string) => Error };
-    jest.mocked(global.fetch).mockRejectedValue(new RequestTimeoutError('timed out'));
+    jest.mocked(global.fetch).mockRejectedValue(new RequestTimeoutError());
     expect((await verifySelectedOperator(() => true, never)).kind).toBe('offline');
   });
 });

@@ -15,8 +15,8 @@
  *  - `meta.checksum_at` is milliseconds on the phone's clock.
  * ===========================================================================================
  */
-import { bootPhone, env, eraseEverything, idsOf, metaOf, resetEnv, type Phone } from '../tests/phoneEnv';
-import { grnRow } from '../tests/fakeFeed';
+import { bootPhone, env, eraseEverything, idsOf, metaOf, resetEnv, type Phone } from '@/tests/phoneCopy/phoneEnv';
+import { grnRow } from '@/tests/phoneCopy/fakeFeed';
 
 const reports: unknown[][] = [];
 const HOUR = 3_600_000;

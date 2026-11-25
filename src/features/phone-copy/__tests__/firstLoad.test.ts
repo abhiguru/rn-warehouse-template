@@ -16,9 +16,9 @@
  *  - Staff and customers are not told apart here: the fake server lists the entities of contract 3.1 for any caller.
  * ===========================================================================================
  */
-import { bootPhone, env, eraseEverything, idsOf, metaOf, resetEnv, rowsOf, setReachable, type Phone } from '../tests/phoneEnv';
-import { failStatement, holdStatement } from '../tests/fakeExpoSqlite';
-import { ENTITIES, STAGE_TWO, defaultV, grnRow, hex, lotRow } from '../tests/fakeFeed';
+import { bootPhone, env, eraseEverything, idsOf, metaOf, resetEnv, rowsOf, setReachable, type Phone } from '@/tests/phoneCopy/phoneEnv';
+import { failStatement, holdStatement } from '@/tests/phoneCopy/fakeExpoSqlite';
+import { ENTITIES, STAGE_TWO, defaultV, grnRow, hex, lotRow } from '@/tests/phoneCopy/fakeFeed';
 
 beforeEach(() => {
   resetEnv();
@@ -58,7 +58,9 @@ describe('T15: the order of the first load', () => {
   it('asks for at most 2000 rows on every call (criterion 13)', async () => {
     const phone = bootPhone();
     await start(phone);
-    for (const call of env.feed.calls.filter(c => c.name !== 'get_sync_start')) expect(call.args.p_limit).toBe(2000);
+    // get_sync_checksums takes no p_limit (server contract 3.4); every page and changes call carries it
+    for (const call of env.feed.calls.filter(c => c.name === 'get_sync_page' || c.name === 'get_sync_changes')) expect(call.args.p_limit).toBe(2000);
+    expect(env.feed.calls.some(c => c.name === 'get_sync_page')).toBe(true);
   });
 
   it('reads an entity bigger than a page in several pages, each after the last id of the one before', async () => {
@@ -145,6 +147,13 @@ describe('two stages, and a phone that is usable after stage one (spec step 2)',
     env.feed.changeAnswers.push({
       position: '1048600', as_of: env.feed.asOf, more: false, reload_all: null, reload: [],
       changes: [{ e: 'goodsreceived', id: 'g1', op: 'upsert', v: hex('v-new'), row: { id: 'g1', gr_no: 'G-001', rack: 'R-9' } }],
+    });
+    // The server's rows now hold that change too (it happened on the server during the load), so the later checksum agrees.
+    env.feed.hold(c => {
+      if (c.name === 'get_sync_changes' && !env.feed.rows.goodsreceived[0].row.rack) {
+        env.feed.rows.goodsreceived[0] = { id: 'g1', row: { id: 'g1', gr_no: 'G-001', rack: 'R-9' }, v: hex('v-new') };
+      }
+      return false;
     });
     const phone = bootPhone();
     await start(phone);

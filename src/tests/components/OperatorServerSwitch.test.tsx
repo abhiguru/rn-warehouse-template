@@ -19,6 +19,8 @@ import { commitStagedOperatorServer, discoverOperator, getActiveOperatorServer, 
 
 // The theme reads the build's brand pack from expo-constants (WH-141); this test replaces react-native wholesale, so give it a plain config.
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: {} } }));
+// The phone copy (WH-298) is now reached through the session teardown; its native database module is not needed here.
+jest.mock('expo-sqlite', () => ({ openDatabaseAsync: jest.fn(), deleteDatabaseAsync: jest.fn() }));
 jest.mock('react-native', () => {
   const React = require('react');
   function flatten(style: unknown): unknown {

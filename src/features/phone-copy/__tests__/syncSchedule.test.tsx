@@ -18,20 +18,20 @@
  */
 import React from 'react';
 import { render } from '@testing-library/react-native';
-import { env, resetEnv, setForeground, setReachable, controlAppState } from '../tests/phoneEnv';
-import { defaultV, grnRow, hex } from '../tests/fakeFeed';
+import { env, resetEnv, setForeground, setReachable, controlAppState } from '@/tests/phoneCopy/phoneEnv';
+import { defaultV, grnRow, hex } from '@/tests/phoneCopy/fakeFeed';
 import { setFacilityCapabilities, resetFacilityCapabilities } from '@/config/facilityCapabilities';
 import * as engine from '@/features/phone-copy/syncEngine';
 import * as syncStore from '@/features/phone-copy/syncStore';
 import * as copyDb from '@/features/phone-copy/copyDb';
 import { PhoneCopyLifecycle } from '@/features/phone-copy/components/PhoneCopyLifecycle';
 
-jest.mock('expo-sqlite', () => require('../tests/phoneEnv').mockFactories.sqlite(), { virtual: true });
-jest.mock('expo-secure-store', () => require('../tests/phoneEnv').mockFactories.secureStore());
-jest.mock('expo-file-system', () => require('../tests/phoneEnv').mockFactories.fileSystem());
-jest.mock('@/config/supabaseConfig', () => require('../tests/phoneEnv').mockFactories.supabase());
-jest.mock('@react-native-community/netinfo', () => require('../tests/phoneEnv').mockFactories.netinfo());
-jest.mock('@/config/lanTransport', () => require('../tests/phoneEnv').mockFactories.lan());
+jest.mock('expo-sqlite', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.sqlite(), { virtual: true });
+jest.mock('expo-secure-store', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.secureStore());
+jest.mock('expo-file-system', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.fileSystem());
+jest.mock('@/config/supabaseConfig', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.supabase());
+jest.mock('@react-native-community/netinfo', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.netinfo());
+jest.mock('@/config/lanTransport', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.lan());
 
 const server = { origin: 'https://warehouse.example.test', instanceId: 'instance-a' };
 const changeCalls = () => env.feed.named('get_sync_changes').length;
@@ -221,8 +221,10 @@ describe('T36: after a failed run', () => {
     expect(changeCalls()).toBe(1);
     const waits = [5, 15, 30, 60, 60];
     let expected = 1;
+    let first = true;   // after the first wait each check starts half a second past the last retry, so stop half a second short of the next
     for (const wait of waits) {
-      await settle(wait * 1000 - 500);
+      await settle(wait * 1000 - (first ? 500 : 1000));
+      first = false;
       expect(changeCalls()).toBe(expected);
       await settle(1000);
       expected += 1;

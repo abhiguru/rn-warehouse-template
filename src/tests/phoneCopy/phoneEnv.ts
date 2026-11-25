@@ -57,7 +57,7 @@ export async function setForeground(state: 'active' | 'background') {
   for (const listener of [...env.appListeners]) listener(state);
 }
 
-/** The fakes as module factories: `jest.mock('expo-secure-store', () => require('../tests/phoneEnv').mockFactories.secureStore())`. */
+/** The fakes as module factories: `jest.mock('expo-secure-store', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.secureStore())`. */
 export const mockFactories = {
   sqlite: () => expoSqliteModule(),
   secureStore: () => ({
