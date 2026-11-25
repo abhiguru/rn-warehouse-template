@@ -4,9 +4,40 @@ import { noteBackendRelease } from './backendTooOld';
 import { clearAppTooOld, isAppTooOld, reportAppTooOld } from './appTooOld';
 import { noteDiscoveryAnswered, noteDiscoveryUpgrading } from './upgradeNotice';
 import { UPGRADING_CODE } from '@/utils/serverText';
+import type { PublicConfig } from '@/services/configService';
+import type { OperatorServer } from './operatorServer';
+import { getCachedUserProfile, getStoredToken, initializeSupabase } from './supabaseConfig';
+import {
+  clearOfflineStarted,
+  forgetOfflineStart,
+  hasSyncCapability,
+  isNoAnswer,
+  markOfflineStarted,
+  readOfflineStart,
+  rememberOfflineStart,
+} from './offlineStart';
 
 type Discovery = Awaited<ReturnType<typeof discoverOperator>>;
-type BootstrapResult = { kind: 'selection' } | { kind: 'superseded' } | { kind: 'verified'; discovery: Discovery };
+type BootstrapResult =
+  | { kind: 'selection' }
+  | { kind: 'superseded' }
+  | { kind: 'verified'; discovery: Discovery }
+  | { kind: 'offline'; server: OperatorServer; config: PublicConfig };
+
+/**
+ * The kept config of the selected facility when the app may open into it with no answer from the server (WH-298,
+ * contract 3.2): the facility has the offline feature, and the person is signed in on this phone (a stored token, of
+ * any validity, and a cached profile for it). The client is set up from the kept config first, because the cached
+ * profile is filed under the facility's address. Null otherwise: the facility still needs the server.
+ */
+async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfig | null> {
+  const config = await readOfflineStart(selected);
+  if (!config || !hasSyncCapability(config)) return null;
+  const token = await getStoredToken();
+  if (!token.authToken) return null;
+  initializeSupabase(config.supabaseUrl, config.anonKey);
+  return (await getCachedUserProfile({ allowExpired: true })) == null ? null : config;
+}
 
 // Discovery is public. Complete local cleanup before adopting a replacement
 // identity or allowing callers to initialize an authenticated application.
@@ -28,6 +59,18 @@ export async function verifySelectedOperator(
       if (isAppTooOld(error)) reportAppTooOld(error);
       else if ((error as { code?: unknown } | null)?.code === UPGRADING_CODE) noteDiscoveryUpgrading();
     }
+    // No answer at all (never an answer with an error): a facility opened on this phone before opens from its kept
+    // config. Its capabilities are those of that last answer.
+    if (isNoAnswer(error)) {
+      if (!isCurrent()) return { kind: 'superseded' };
+      const config = await offlineStartConfig(selected);
+      if (!isCurrent()) return { kind: 'superseded' };
+      if (config) {
+        setFacilityCapabilities(selected, config.capabilities);
+        markOfflineStarted();
+        return { kind: 'offline', server: selected, config };
+      }
+    }
     throw error;
   }
   if (!isCurrent()) return { kind: 'superseded' };
@@ -35,6 +78,7 @@ export async function verifySelectedOperator(
   // the facility afresh, so ending the banner here needs no second check.)
   clearAppTooOld();
   noteDiscoveryAnswered();
+  clearOfflineStarted();
   if (selected.instanceId !== discovery.server.instanceId) {
     await clearReplacedInstance();
     if (!isCurrent()) return { kind: 'superseded' };
@@ -44,6 +88,9 @@ export async function verifySelectedOperator(
   // foreground), so the facility's capabilities are always those of its latest answer.
   setFacilityCapabilities(discovery.server, discovery.config.capabilities);
   noteBackendRelease(discovery.server, discovery.config);
+  // The config an offline start opens with: kept while the facility has the feature, removed when it is switched off.
+  if (hasSyncCapability(discovery.config)) await rememberOfflineStart(discovery.server, discovery.config);
+  else await forgetOfflineStart();
   if (!isCurrent()) return { kind: 'superseded' };
   return { kind: 'verified', discovery };
 }

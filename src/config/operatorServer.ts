@@ -187,7 +187,8 @@ export async function discoverOperator(input: string): Promise<{ server: Operato
     new Promise<never>((_, reject) => {
       timeout = setTimeout(() => {
         controller.abort();
-        reject(new Error(t('errors.server.discoveryTimedOut')));
+        // No answer in time: marked so an offline start can tell it from an answer (src/config/offlineStart.ts).
+        reject(Object.assign(new Error(t('errors.server.discoveryTimedOut')), { noAnswer: true }));
       }, 15000);
     }),
   ]).finally(() => clearTimeout(timeout));

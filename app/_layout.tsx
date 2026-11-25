@@ -626,6 +626,15 @@ function BootstrapApp() {
         if (run === bootstrapRun.current) { setNeedsSelection(true); setIsReady(true); }
         return;
       }
+      if (result.kind === 'offline') {
+        // No answer from the facility, and it was opened on this phone before (WH-298, src/config/offlineStart.ts):
+        // the app opens with its last settings. The facility check stays required, so the first request to the
+        // server runs it again first, and "update the app" or "being upgraded" then apply as on a normal start.
+        initializeSupabase(result.config.supabaseUrl, result.config.anonKey);
+        operatorResumeGate.suspend();
+        if (run === bootstrapRun.current) { setConfigError(null); setIsReady(true); }
+        return;
+      }
       const discovered = result.discovery;
       console.log('[Bootstrap] Starting app bootstrap');
 

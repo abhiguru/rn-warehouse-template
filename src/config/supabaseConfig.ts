@@ -2153,13 +2153,24 @@ interface CachedProfile {
 
 // Get cached user profile
 // S8 Fix: Now uses SecureStore with TTL validation
-export const getCachedUserProfile = async () => {
+//
+// `allowExpired` is for the offline start only (WH-298, src/config/offlineStart.ts): the server has not answered
+// since the app started, so the access token may be past its expiry without having been refused. The copy cached
+// for this token's person and session is then read as it is, whatever its age, and nothing is asked of the server.
+// The token itself is never sent: every request first renews it (acquireValidSession), and a refusal signs out.
+export const getCachedUserProfile = async (options: { allowExpired?: boolean } = {}) => {
+  const allowExpired = options.allowExpired === true;
   const generation = getSessionGeneration();
   try {
-    const scope = await profileScope();
+    const scope = await profileScope(allowExpired);
     if (!scope || generation !== getSessionGeneration()) return null;
     // Try SecureStore first
     const cached = await SecureStore.getItemAsync('cached_user_profile');
+    if (allowExpired) {
+      if (!cached) return null;
+      const kept = JSON.parse(cached) as CachedProfile;
+      return kept.scope === scope && generation === getSessionGeneration() ? (kept.profile as UserProfile) : null;
+    }
     if (cached) {
       const parsed: CachedProfile = JSON.parse(cached);
       // Validate TTL
@@ -2271,9 +2282,9 @@ export const getSessionIdentity = async (): Promise<SessionIdentity | null> => {
 
 // Store user profile in cache
 // S8 Fix: Now uses SecureStore with TTL tracking
-async function profileScope(): Promise<string | null> {
+async function profileScope(allowExpired = false): Promise<string | null> {
   const stored = await getStoredToken();
-  if (!stored.authToken || !stored.isValid) return null;
+  if (!stored.authToken || (!stored.isValid && !allowExpired)) return null;
   const claims = decodeClaims(stored.authToken);
   if (!claims?.sub || !claims.session_id) return null;
   try {
