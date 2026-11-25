@@ -18,6 +18,8 @@ export interface SyncSnapshot {
   storageLow: boolean;
   /** Size of the file and its -wal. */
   copyBytes: number | null;
+  /** Free space on the phone when the size was read (Settings' note); absent until then. */
+  freeBytes?: number | null;
 }
 
 const INITIAL: SyncSnapshot = {

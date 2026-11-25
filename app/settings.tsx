@@ -51,6 +51,7 @@ import { settingsFeatureRows, type SettingsFeature } from '@/config/roles';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { countPendingEnrollments } from '@/services/enrollmentReviewService';
 import { useFacilityCapabilities } from '@/hooks/useCapability';
+import { useCopySpaceText } from '@/hooks/usePhoneCopyStatus';
 
 const THEME_OPTIONS: {
   value: ThemePreference;
@@ -69,6 +70,8 @@ const brandName = (brand: Brand, language: AppLanguage): string =>
 const SettingsScreen: React.FC = () => {
   const { userProfile } = useAppSelector(state => state.auth);
   const capabilities = useFacilityCapabilities();
+  // The space the phone copy takes, under Account (WH-298), for every role that has the copy.
+  const copySpace = useCopySpaceText();
   const insets = useSafeAreaInsets();
   // Sign-out, leaving the facility and deletion: the same actions as Profile (§14.8).
   const account = useAccountActions();
@@ -283,7 +286,7 @@ const SettingsScreen: React.FC = () => {
         </SettingsSection>
 
         {/* Account */}
-        <SettingsSection title={t('settings.account.title')} testID="settings-section-account">
+        <SettingsSection title={t('settings.account.title')} footer={copySpace} testID="settings-section-account">
           {account.mode === 'legacy' ? (
             <SettingsRow
               icon="server"

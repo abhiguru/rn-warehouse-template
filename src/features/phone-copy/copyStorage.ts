@@ -3,6 +3,7 @@
  * short under 500 MB free, or when a write failed for lack of space).
  */
 import { File, Paths } from 'expo-file-system';
+import { localizeDigits } from '@/i18n/language';
 import { COPY_FILE, fileUri } from './copyDriver';
 
 export const LOW_STORAGE_BYTES = 500_000_000;
@@ -36,4 +37,12 @@ export const isSpaceShort = (freeBytes: number | null): boolean => freeBytes !==
 export function isDiskFull(error: unknown): boolean {
   const text = error instanceof Error ? error.message : String(error);
   return /disk is full|SQLITE_FULL|no space left/i.test(text);
+}
+
+/** A size for Settings: "151 MB" under a gigabyte, else "2.3 GB" (decimal units), in the language's digits. */
+export function formatCopySize(bytes: number): string {
+  const text = bytes < 1_000_000_000
+    ? `${Math.max(0, Math.round(bytes / 1_000_000))} MB`
+    : `${(Math.round(bytes / 100_000_000) / 10).toFixed(1)} GB`;
+  return localizeDigits(text);
 }

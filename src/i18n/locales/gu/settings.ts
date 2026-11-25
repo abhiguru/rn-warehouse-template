@@ -1,8 +1,12 @@
 /** Gujarati text: settings. Follows docs/GUJARATI_GLOSSARY.md. */
 import type { settings as source } from '../en/settings';
-import type { Translation } from '../../types';
+import type { Translation } from '@/i18n/types';
 
 export const settings: Translation<typeof source> = {
+  copySpace: {
+    // The phone copy's space, as a note under Account (WH-298; offline-capture.md 1.4).
+    footer: 'આ ફોનમાં માહિતી: {{size}}. ફોનમાં {{free}} ખાલી.',
+  },
   title: 'સેટિંગ',
   profileHint: 'તમારી પ્રોફાઇલ ખોલે છે',
   profileRoleAtFacility: '{{role}} · {{facility}}',

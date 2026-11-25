@@ -1,5 +1,9 @@
 /** English text: settings. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const settings = {
+  copySpace: {
+    // The phone copy's space, as a note under Account (WH-298; offline-capture.md 1.4).
+    footer: 'Data on this phone: {{size}}. {{free}} free on the phone.',
+  },
   title: 'Settings',
   profileHint: 'Opens your profile',
   // The profile card with central login: role, a middle dot, the facility's name.

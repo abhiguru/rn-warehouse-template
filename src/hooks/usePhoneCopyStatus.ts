@@ -3,9 +3,10 @@
  * for the signed-in person.
  */
 import { useSyncExternalStore } from 'react';
-import { getFacilityCapabilities, subscribeFacilityCapabilities } from '@/config/facilityCapabilities';
-import { onOperatorServerChange } from '@/config/operatorServer';
+import { useFacilityCapabilities } from '@/hooks/useCapability';
+import { formatCopySize } from '@/features/phone-copy/copyStorage';
 import { getSyncSnapshot, subscribeSync, type SyncSnapshot } from '@/features/phone-copy/syncStore';
+import { t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
 import type { UserRole } from '@/types/user.types';
 
@@ -16,16 +17,6 @@ export function usePhoneCopyStatus(): SyncSnapshot {
   return useSyncExternalStore(subscribeSync, getSyncSnapshot, getSyncSnapshot);
 }
 
-const subscribeCapabilities = (listener: () => void) => {
-  const stopCapabilities = subscribeFacilityCapabilities(listener);
-  const stopServer = onOperatorServerChange(listener);
-  return () => {
-    stopCapabilities();
-    stopServer();
-  };
-};
-const readSync = () => getFacilityCapabilities().sync;
-
 /** A signed-in administrator, supervisor or staff member: the person the phone copy is for. */
 export function useCopySession(): boolean {
   const role = useAppSelector(state => state.auth.userProfile?.role);
@@ -35,7 +26,19 @@ export function useCopySession(): boolean {
 /** The facility has the feature for this session and the server has not turned it off since. */
 export function useCopyFeatureOn(): boolean {
   const session = useCopySession();
-  const capability = useSyncExternalStore(subscribeCapabilities, readSync, readSync);
+  const capability = useFacilityCapabilities().sync === true;
   const feature = useSyncExternalStore(subscribeSync, () => getSyncSnapshot().feature, () => getSyncSnapshot().feature);
   return session && capability && feature !== 'off';
+}
+
+/**
+ * Settings' note on the space the copy takes (Design offline-capture.md 1.4, "Space used"): "Data on this phone:
+ * 151 MB. 2.3 GB free on the phone."; undefined when the copy is off or its size is not known yet. Both are read
+ * after each stage and each full sync.
+ */
+export function useCopySpaceText(): string | undefined {
+  const on = useCopyFeatureOn();
+  const { copyBytes, freeBytes } = usePhoneCopyStatus();
+  if (!on || copyBytes === null || freeBytes === null || freeBytes === undefined) return undefined;
+  return t('settings.copySpace.footer', { size: formatCopySize(copyBytes), free: formatCopySize(freeBytes) });
 }

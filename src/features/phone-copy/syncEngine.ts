@@ -176,7 +176,7 @@ function setCurrent(on: boolean): void {
 /** Reads size and free space; low storage follows free space (a failed write sets it on its own). */
 function noteStorage(db: CopyDriver, writeWorked: boolean): void {
   const { copyBytes, freeBytes } = readCopyStorage(db.path);
-  const patch: Partial<SyncSnapshot> = { copyBytes };
+  const patch: Partial<SyncSnapshot> = { copyBytes, freeBytes };
   if (isSpaceShort(freeBytes)) patch.storageLow = true;
   else if (writeWorked) patch.storageLow = false;
   publish(patch);
