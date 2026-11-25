@@ -69,16 +69,25 @@ export async function forgetOfflineStart(): Promise<void> {
 }
 
 /**
- * True for a failure where the server gave no answer: a lost connection (fetch's TypeError), a request the app gave
- * up waiting for, or an abort. False for anything the server answered, whatever its status or code.
+ * Expo's fetch (installed as the global fetch since SDK 57) rejects only when no answer came, with its FetchError,
+ * whose message always starts like this ("fetch failed: java.net.UnknownHostException: ..." on Android). An answer
+ * with an error status never rejects fetch.
+ */
+const EXPO_FETCH_FAILED = 'fetch failed: ';
+
+/**
+ * True for a failure where the server gave no answer: a lost connection (React Native's fetch TypeError, Expo's fetch
+ * FetchError), a request the app gave up waiting for, or an abort. False for anything the server answered, whatever
+ * its status or code.
  */
 export function isNoAnswer(error: unknown): boolean {
   if (error instanceof RequestTimeoutError) return true;
   if (typeof error !== 'object' || error === null) return false;
-  const fields = error as { name?: unknown; noAnswer?: unknown; status?: unknown };
+  const fields = error as { name?: unknown; noAnswer?: unknown; status?: unknown; message?: unknown };
   if (fields.noAnswer === true) return true;
   if (fields.status !== undefined) return false;
   if (error instanceof TypeError) return true;
+  if (typeof fields.message === 'string' && fields.message.startsWith(EXPO_FETCH_FAILED)) return true;
   return fields.name === 'TimeoutError' || fields.name === 'AbortError';
 }
 
