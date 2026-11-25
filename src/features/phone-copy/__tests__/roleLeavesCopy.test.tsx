@@ -24,7 +24,7 @@ import * as engine from '@/features/phone-copy/syncEngine';
 import * as syncStore from '@/features/phone-copy/syncStore';
 import * as copyDb from '@/features/phone-copy/copyDb';
 import { PhoneCopyLifecycle } from '@/features/phone-copy/components/PhoneCopyLifecycle';
-import { useCopySession } from '@/hooks/usePhoneCopyStatus';
+import { useCopySession, useEraseCopyForRole } from '@/hooks/usePhoneCopyStatus';
 import authReducer, { setUserProfile } from '@/store/slices/authSlice';
 
 jest.mock('expo-sqlite', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.sqlite(), { virtual: true });
@@ -53,6 +53,7 @@ const profile = (role: 'staff' | 'customer') => ({ id: 'profile-1', role, name: 
 /** What app/_layout.tsx does with the role: the lifecycle is mounted for the roles the copy is for. */
 function Root() {
   const copySession = useCopySession();
+  useEraseCopyForRole();
   return copySession ? <PhoneCopyLifecycle /> : null;
 }
 
@@ -96,5 +97,22 @@ describe('a role the copy is not for', () => {
     expect(fakeDatabaseNames()).toEqual([]);
     expect(env.secure.has(KEY_NAME)).toBe(false);
     expect(syncStore.getSyncSnapshot().phase).toBe('empty');
+  });
+});
+
+describe('a role the copy is for', () => {
+  it('a remount of the lifecycle (as on a facility switch back) does not erase the copy', async () => {
+    const store = configureStore({ reducer: { auth: authReducer } });
+    mockStore = store;
+    store.dispatch(setUserProfile(profile('staff')));
+    const first = await render(<Root />);
+    await settle(50);
+    expect(env.secure.has(KEY_NAME)).toBe(true);
+    await first.unmount();
+    await settle(50);
+    await render(<Root />);
+    await settle(50);
+    expect(fakeDatabaseNames().length).toBeGreaterThan(0);
+    expect(env.secure.has(KEY_NAME)).toBe(true);
   });
 });

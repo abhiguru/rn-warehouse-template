@@ -65,8 +65,10 @@ const staff = { id: 'user-1', auth_user_id: 'auth-1', name: 'Asha Fictional', ro
 const customer = { id: 'user-2', auth_user_id: 'auth-2', name: 'Ravi Fictional', role: 'customer', assignedCustomerIds: ['c1'] };
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 const makeStore = () => configureStore({ reducer: { auth: authReducer } });
+// The real trigger (Development, 4d93670a): the first answer of the server after an offline start, which
+// operatorBootstrap reports through clearOfflineStarted().
 const networkReturns = async () => {
-  for (const listener of [...mockNetListeners]) listener({ type: 'wifi', isConnected: true, isInternetReachable: true, details: null });
+  clearOfflineStarted();
   await flush();
 };
 
