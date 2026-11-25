@@ -22,6 +22,7 @@ import { clearItemRatesCache } from '@/features/item-pricing/useItemRates';
 import { dropAlertsWithHandlers } from '@/utils/alert';
 import { clearStandardRateCache } from '@/features/item-pricing/useStandardRate';
 import { registerSessionScoped, runSessionScopedClears } from '@/config/sessionScopedRegistry';
+import { eraseCopy } from '@/features/phone-copy/copyDb';
 
 // The teardown's order is the registration order below. Modules that keep a cache of their own and
 // can import the registry without a cycle register themselves (registerSessionScoped); the
@@ -67,13 +68,17 @@ registerSessionScoped('local-photo-files', async () => {
 });
 // Local teardown must not fail because a cached file could not be removed.
 registerSessionScoped('shared-documents', async () => {
-  await sweepSharedDocuments().catch(() => {});
+  await sweepSharedDocuments().catch(() => undefined);
 });
 
 // And the photos fetched over the warehouse network (WH-133).
 registerSessionScoped('lan-photos', async () => {
   await sweepLanPhotos();
 });
+
+// The copy of the facility on this phone (WH-298, spec step 26, decision 7): the file, its -wal and -shm, and its key.
+// Not on a session generation change: a token refresh is the same person and keeps it. Never throws.
+registerSessionScoped('phone-copy', () => eraseCopy());
 
 export async function clearSessionScopedState(
   dispatch: (action: UnknownAction) => unknown

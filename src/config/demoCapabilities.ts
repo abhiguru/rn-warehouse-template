@@ -17,6 +17,11 @@ export interface FacilityCapabilities {
    * when it does (backend migration 139; the app has no payment entry). Off unless the config says true.
    */
   payments: boolean;
+  /**
+   * The facility keeps a copy of its data on the phone and the app opens with no connection (WH-298, the change-log
+   * feed of the backend). Off unless the config says true.
+   */
+  sync: boolean;
 }
 
 /**
@@ -31,4 +36,5 @@ export const DEMO_CAPABILITIES: FacilityCapabilities = {
   realtime: true,
   customerDocuments: false,
   payments: false,
+  sync: false,
 };
