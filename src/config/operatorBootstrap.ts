@@ -27,7 +27,8 @@ type BootstrapResult =
 /**
  * The kept config of the selected facility when the app may open into it with no answer from the server (WH-298,
  * contract 3.2): the facility has the offline feature, and the person is signed in on this phone (a stored token, of
- * any validity, and a cached profile for it) in a role that has the phone copy. The client is set up from the kept config first, because the cached
+ * any validity, and a cached profile for it that the server confirmed within the idle limit of
+ * src/config/offlineLimit.ts) in a role that has the phone copy. The client is set up from the kept config first, because the cached
  * profile is filed under the facility's address. Null otherwise: the facility still needs the server.
  */
 async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfig | null> {

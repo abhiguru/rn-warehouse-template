@@ -34,6 +34,7 @@ import { noteRequestNetworkFailure } from './netReachability';
 import { noteExpiredTokenRenewal } from './sessionRenewal';
 import { parseSessionEnd, SESSION_ENDS_AT_KEY, storeSessionEnd } from './sessionEnd';
 import { awaitRoleRecheck, isRoleRecheckPending } from './roleRecheck';
+import { isOfflineLimitPassed, isStoredTime, type ConfirmationTimes } from './offlineLimit';
 import { forgetLanKey, LAN_KEY_STORE_KEY, parseLanKey, storeLanKey } from './lanKey';
 
 const authLogger = createLogger('Auth');
@@ -1727,6 +1728,8 @@ const refreshSession = async (
       // Clear cached authenticated client so it picks up new token
       clearAuthenticatedClientCache();
 
+      await confirmCachedProfile(newAccessToken, generation);
+
       return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
@@ -2154,10 +2157,45 @@ const clearStoredTokensRaw = async (): Promise<boolean> => {
 /// S8 Fix: Cache TTL for user profile - using centralized config
 const PROFILE_CACHE_TTL_MS = CACHE_DURATION_LONG_MS;
 
-interface CachedProfile {
+interface CachedProfile extends ConfirmationTimes {
   profile: unknown;
+  /** The age the 24 hour refresh goes by. */
   cachedAt: number;
   scope: string;
+}
+
+/**
+ * Rewrites the cached copy of `scope`, in the credential queue, while its session is still the current one.
+ * `change` returns null to leave it as it is. Never throws: a copy that cannot be rewritten stays as it was.
+ */
+async function updateCachedProfile(
+  generation: number,
+  scope: string,
+  change: (entry: CachedProfile) => CachedProfile | null
+): Promise<void> {
+  await serializeCredentials(async () => {
+    if (generation !== getSessionGeneration()) return;
+    try {
+      const cached = await SecureStore.getItemAsync('cached_user_profile');
+      if (!cached) return;
+      const entry = JSON.parse(cached) as CachedProfile;
+      const next = entry.scope === scope ? change(entry) : null;
+      if (next) await SecureStore.setItemAsync('cached_user_profile', JSON.stringify(next));
+    } catch {
+      authLogger.warn('The cached profile could not be updated.');
+    }
+  });
+}
+
+/**
+ * A renewed session is a server answer for this person (WH-349): the idle limit of the copy counts from now
+ * (src/config/offlineLimit.ts). `cachedAt` stays: the profile itself was not read again.
+ */
+async function confirmCachedProfile(accessToken: string, generation: number): Promise<void> {
+  const scope = profileScopeOf(accessToken);
+  if (!scope) return;
+  const now = Date.now();
+  await updateCachedProfile(generation, scope, entry => ({ ...entry, confirmedAt: now, seenAt: now }));
 }
 
 // Get cached user profile
@@ -2165,8 +2203,10 @@ interface CachedProfile {
 //
 // `allowExpired` is for the offline start only (WH-298, src/config/offlineStart.ts): the server has not answered
 // since the app started, so the access token may be past its expiry without having been refused. The copy cached
-// for this token's person and session is then read as it is, whatever its age, and nothing is asked of the server.
-// The token itself is never sent: every request first renews it (acquireValidSession), and a refusal signs out.
+// for this token's person and session is then read whatever its 24 hour age, and nothing is asked of the server,
+// for up to 30 days since the server last confirmed that person (WH-349, src/config/offlineLimit.ts). Past that
+// the read gives nothing and the copy is kept. The token itself is never sent: every request first renews it
+// (acquireValidSession), and a refusal signs out.
 export const getCachedUserProfile = async (options: { allowExpired?: boolean } = {}) => {
   const allowExpired = options.allowExpired === true;
   const generation = getSessionGeneration();
@@ -2178,7 +2218,15 @@ export const getCachedUserProfile = async (options: { allowExpired?: boolean } =
     if (allowExpired) {
       if (!cached) return null;
       const kept = JSON.parse(cached) as CachedProfile;
-      return kept.scope === scope && generation === getSessionGeneration() ? (kept.profile as UserProfile) : null;
+      if (kept.scope !== scope) return null;
+      const now = Date.now();
+      const passed = isOfflineLimitPassed(kept, now);
+      // The time this read saw is kept, refused or not, so setting the clock back afterwards does not reopen the copy.
+      await updateCachedProfile(generation, scope, entry => {
+        const seen = entry.seenAt ?? 0;
+        return (seen === 0 || isStoredTime(seen)) && now > seen ? { ...entry, seenAt: now } : null;
+      });
+      return !passed && generation === getSessionGeneration() ? (kept.profile as UserProfile) : null;
     }
     if (cached) {
       const parsed: CachedProfile = JSON.parse(cached);
@@ -2211,14 +2259,12 @@ export const getCachedUserProfile = async (options: { allowExpired?: boolean } =
         }
 
         return generation === getSessionGeneration() ? profile : null;
-      } else {
-        // Cache expired, clean up
-        await SecureStore.deleteItemAsync('cached_user_profile');
       }
     }
 
     // A profile cache timeout is not a session timeout. Reload the active profile
-    // through RLS instead of discarding a still-refreshable login.
+    // through RLS instead of discarding a still-refreshable login. The old copy stays
+    // until the server answers: an offline start still opens from it (WH-349).
     return await loadUserProfile(generation, false);
   } catch (error) {
     authLogger.error('Error getting cached profile:');
@@ -2242,12 +2288,27 @@ async function loadUserProfile(generation: number, strict: boolean) {
     .eq('auth_user_id', subject)
     .eq('active', true)
     .single();
-  if (error || !profile) return null;
+  if (error || !profile) {
+    // PGRST116: the server answered that this person has no active profile. The copy must not open offline.
+    if (error?.code === 'PGRST116') await forgetCachedProfile(generation);
+    return null;
+  }
   const { data: customerIds, error: customersError } = await client.rpc('user_accessible_customers');
   if (customersError && strict) return null;
   const result = { ...profile, assignedCustomerIds: customerIds || [] };
   await cacheUserProfile(result, generation);
   return generation === getSessionGeneration() ? result : null;
+}
+
+async function forgetCachedProfile(generation: number): Promise<void> {
+  await serializeCredentials(async () => {
+    if (generation !== getSessionGeneration()) return;
+    try {
+      await SecureStore.deleteItemAsync('cached_user_profile');
+    } catch {
+      authLogger.warn('The cached profile could not be removed.');
+    }
+  });
 }
 
 /**
@@ -2294,7 +2355,12 @@ export const getSessionIdentity = async (): Promise<SessionIdentity | null> => {
 async function profileScope(allowExpired = false): Promise<string | null> {
   const stored = await getStoredToken();
   if (!stored.authToken || (!stored.isValid && !allowExpired)) return null;
-  const claims = decodeClaims(stored.authToken);
+  return profileScopeOf(stored.authToken);
+}
+
+/** The key a cached profile is filed under: this facility, and the token's person and session. */
+function profileScopeOf(accessToken: string): string | null {
+  const claims = decodeClaims(accessToken);
   if (!claims?.sub || !claims.session_id) return null;
   try {
     return JSON.stringify([
@@ -2324,7 +2390,9 @@ export const cacheUserProfile = async (
   await serializeCredentials(async () => {
     if (generation !== getSessionGeneration()) return;
     try {
-      const entry: CachedProfile = { profile, cachedAt: Date.now(), scope };
+      // Only server answers are cached here: each one confirms the person.
+      const now = Date.now();
+      const entry: CachedProfile = { profile, cachedAt: now, confirmedAt: now, seenAt: now, scope };
       await SecureStore.setItemAsync(
         'cached_user_profile',
         JSON.stringify(entry)

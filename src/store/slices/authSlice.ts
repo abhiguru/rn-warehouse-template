@@ -234,22 +234,21 @@ export const initializeAuth = createAsyncThunk.withTypes<{
               );
               // The session manager clears only definitive rejections, never transient network errors.
               tokenData = await getStoredToken();
-              // Offline start (WH-298, src/config/offlineStart.ts): the facility check of this run had no answer and
-              // the server has not answered since, so a token still stored has not been refused, only not renewed.
-              // The session is restored from the profile cached for this token's person and session, on this
-              // facility (the token store is bound to it). The expired token is never sent: every request renews it
-              // first, and a refusal then signs out and erases what the session left.
-              offlineRestore =
-                !tokenData.isValid &&
-                tokenData.type === 'jwt' &&
-                Boolean(tokenData.authToken) &&
-                isOfflineStarted() &&
-                selected !== null &&
-                (await readOfflineStart(selected)) !== null;
-              if (!tokenData.isValid && !offlineRestore)
-                return { session: null, user: null, userProfile: null };
             }
           }
+
+          // Offline start (WH-298, src/config/offlineStart.ts): the facility check of this run had no answer and
+          // the server has not answered since, so a token still stored has not been refused, expired or not. The
+          // session is restored from the profile cached for this token's person and session, on this facility (the
+          // token store is bound to it), within the offline idle limit and whatever the token's expiry (WH-349).
+          // An expired token is never sent: every request renews it first, and a refusal then signs out and erases
+          // what the session left.
+          offlineRestore =
+            tokenData.type === 'jwt' &&
+            Boolean(tokenData.authToken) &&
+            isOfflineStarted() &&
+            selected !== null &&
+            (await readOfflineStart(selected)) !== null;
         }
 
         // Check if we have valid JWT tokens
