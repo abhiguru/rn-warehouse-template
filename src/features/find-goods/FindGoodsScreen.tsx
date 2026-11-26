@@ -243,7 +243,6 @@ export function FindGoodsScreen({ switcher }: FindGoodsScreenProps) {
         <View style={styles.fill} testID="find-goods-no-match" accessibilityLiveRegion="polite">
           <ListEmptyState
             activeFilterCount={1}
-            filteredIcon="magnify"
             filteredTitle={translate('findGoods.noMatchTitle', { text: query })}
             filteredSubtitle={translate('findGoods.noMatchText')}
             clearFiltersLabel={translate('common.clearSearch')}
