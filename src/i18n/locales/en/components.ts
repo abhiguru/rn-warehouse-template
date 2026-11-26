@@ -43,6 +43,11 @@ export const components = {
     storeUnreadableTitle: "Couldn't start the app",
     storeUnreadableMessage: "This phone couldn't read the app's saved sign-in. Nothing has been deleted. Try again. If it keeps happening, restart the phone.",
     storeUnreadableRetryLabel: 'Try starting the app again',
+    storeUnreadableSignInHint: "If restarting the phone didn't help, you can sign in again.",
+    signInAgain: 'Sign in again',
+    signInAgainTitle: 'Sign in again?',
+    signInAgainMessage: 'The saved sign-in and the data on this phone will be removed. The data loads again after you sign in with your mobile number and OTP.',
+    signInAgainKeepsUnsent: 'Entries not sent yet stay on this phone and are sent after you sign in.',
   },
   errorBoundary: {
     title: 'Something went wrong',

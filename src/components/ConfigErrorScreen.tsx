@@ -17,6 +17,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { StateActionButton } from '@/components/ErrorBoundary';
 import { createLogger } from '@/utils/logger';
 import { t as tr } from '@/i18n';
+import { showAlert } from '@/utils/alert';
 
 const logger = createLogger('ConfigErrorScreen');
 
@@ -39,6 +40,11 @@ export interface ConfigErrorScreenProps {
   unsentKept?: boolean;
   /** The phone's secure store stayed unreadable (WH-362): its own title, text and label, "Try again" only, no connection hint. */
   storeUnreadable?: boolean;
+  /**
+   * With `storeUnreadable` (WH-363): after repeated failed tries the person may sign in again. Confirmed in a dialog
+   * here; the caller removes the saved sign-in and the phone copy. Not passed until the tries are enough.
+   */
+  onSignInAgain?: () => void | Promise<unknown>;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -91,6 +97,7 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
   offlineTooLong = false,
   unsentKept = false,
   storeUnreadable = false,
+  onSignInAgain,
 }) => {
   const [isRetrying, setIsRetrying] = useState(false);
   const styles = useThemedStyles(makeStyles);
@@ -112,7 +119,11 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
   const copy = () => {
     if (upgrading) return { title: tr('components.upgrading.title'), message: tr('components.upgrading.message') };
     if (storeUnreadable) {
-      return { title: tr('components.configError.storeUnreadableTitle'), message: tr('components.configError.storeUnreadableMessage') };
+      const base = tr('components.configError.storeUnreadableMessage');
+      return {
+        title: tr('components.configError.storeUnreadableTitle'),
+        message: signInAgainOffered ? `${base} ${tr('components.configError.storeUnreadableSignInHint')}` : base,
+      };
     }
     if (!offlineTooLong) return { title: tr('components.configError.title'), message: tr('components.configError.message') };
     const message = tr('components.configError.offlineTooLongMessage');
@@ -121,6 +132,7 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
       message: unsentKept ? `${message} ${tr('components.configError.offlineTooLongKept')}` : message,
     };
   };
+  const signInAgainOffered = storeUnreadable && Boolean(onSignInAgain);
   const { title, message } = copy();
   const retryLabel = (() => {
     if (storeUnreadable) return tr('components.configError.storeUnreadableRetryLabel');
@@ -128,6 +140,19 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
   })();
   // An unreadable store is not mended by leaving the facility: "Try again" is the only action (Design 12.1).
   const showSecondAction = Boolean(onChangeServer) && !storeUnreadable;
+
+  // The confirmation (STYLE_GUIDE 14.3): Cancel changes nothing. The sentence about unsent entries only when some are.
+  const confirmSignInAgain = () => {
+    const base = tr('components.configError.signInAgainMessage');
+    showAlert(
+      tr('components.configError.signInAgainTitle'),
+      unsentKept ? `${base} ${tr('components.configError.signInAgainKeepsUnsent')}` : base,
+      [
+        { text: tr('common.cancel'), style: 'cancel' },
+        { text: tr('components.configError.signInAgain'), onPress: () => void Promise.resolve(onSignInAgain?.()).catch(err => logger.error('Sign in again failed:', err)) },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -171,6 +196,16 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
               onPress={() => void handleRetry()}
               accessibilityLabel={isRetrying ? tr('components.configError.retrying') : retryLabel}
             />
+
+            {signInAgainOffered && (
+              <StateActionButton
+                fullWidth
+                variant="secondary"
+                label={tr('components.configError.signInAgain')}
+                onPress={confirmSignInAgain}
+                disabled={isRetrying}
+              />
+            )}
 
             {/* Opens the selection screen only; nothing is signed out until the
                 operator confirms a change there. */}

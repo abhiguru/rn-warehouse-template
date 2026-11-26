@@ -46,6 +46,11 @@ export const components: Translation<typeof source> = {
     storeUnreadableTitle: 'ઍપ શરૂ થઈ શકી નથી',
     storeUnreadableMessage: 'આ ફોન ઍપનું સાચવેલું લૉગિન વાંચી શક્યો નથી. કંઈ કાઢી નાખ્યું નથી. ફરી પ્રયાસ કરો. વારંવાર થાય તો ફોન બંધ કરીને ફરી ચાલુ કરો.',
     storeUnreadableRetryLabel: 'ઍપ ફરી શરૂ કરવાનો પ્રયાસ કરો',
+    storeUnreadableSignInHint: 'ફોન ફરી ચાલુ કરવાથી ઠીક ન થયું હોય તો ફરી લૉગિન કરી શકો છો.',
+    signInAgain: 'ફરી લૉગિન કરો',
+    signInAgainTitle: 'ફરી લૉગિન કરવું છે?',
+    signInAgainMessage: 'સાચવેલું લૉગિન અને આ ફોનમાંની માહિતી કાઢી નખાશે. મોબાઇલ નંબર અને OTP થી લૉગિન કર્યા પછી માહિતી ફરી લોડ થશે.',
+    signInAgainKeepsUnsent: 'મોકલવાની બાકી એન્ટ્રી આ ફોનમાં રહેશે અને લૉગિન પછી મોકલાશે.',
   },
   errorBoundary: {
     title: 'કંઈક ખોટું થયું',

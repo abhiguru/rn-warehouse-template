@@ -103,6 +103,8 @@ import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/centralSession';
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
+import { endSessionKeepingFacility } from '@/store/signInAgain';
+import { recordStoreUnreadableTry, resetStoreUnreadableTries } from '@/config/storeUnreadableTries';
 import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
 import { dropAllAlerts, showAlert } from '@/utils/alert';
 import { isNetworkError, isUpgradingAnswer } from '@/utils/serverText';
@@ -459,6 +461,7 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: () => voi
     let mounted = true;
     let facilitySignedIn = false;
     let centralUnreadable = false;
+    let facilityUnreadable = false;
     void Promise.all([
       dispatch(initializeAuth())
         .unwrap()
@@ -470,6 +473,7 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: () => voi
         // that stays unreadable is the exception: the screens are not opened as
         // signed out, the load-error screen takes their place (WH-360).
         .catch((error: unknown) => {
+          if (error === SESSION_STORE_UNREADABLE) facilityUnreadable = true;
           if (mounted && error === SESSION_STORE_UNREADABLE) onSessionUnreadable();
         }),
       // With central login the guard also needs to know whether the person is
@@ -487,6 +491,8 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: () => voi
       // nobody is signed in there: the load-error screen takes the screens' place (WH-361).
       if (centralUnreadable && !facilitySignedIn) onSessionUnreadable();
       else setAuthCheckSettled(true);
+      // The stores answered: the count of failed tries (WH-363) goes, and "Sign in again" with it.
+      if (!centralUnreadable && !facilityUnreadable) void resetStoreUnreadableTries();
     });
     return () => {
       mounted = false;
@@ -589,6 +595,8 @@ function BootstrapApp() {
   const [pastOfflineLimit, setPastOfflineLimit] = useState(false);
   // With `configError`: the phone's secure store stayed unreadable after the retries, so the screen says that (WH-362).
   const [storeUnreadable, setStoreUnreadable] = useState(false);
+  // With `storeUnreadable`: enough tries have failed in a row, so "Sign in again" is offered (WH-363).
+  const [signInAgainOffered, setSignInAgainOffered] = useState(false);
   // The facility answered the cold start with `upgrading`: its own full-screen state, not a load error.
   const [serverUpgrading, setServerUpgrading] = useState(false);
   // The selected facility needs a newer app: its own screen, not a connection error. Set by the facility check
@@ -620,8 +628,11 @@ function BootstrapApp() {
     setServerUpgrading(false);
     setChangingServer(false);
     setPastOfflineLimit(isPastOfflineLimit(error));
-    setStoreUnreadable(isStoreUnreadable(error));
+    const unreadable = isStoreUnreadable(error);
+    setStoreUnreadable(unreadable);
+    setSignInAgainOffered(false);
     setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
+    if (unreadable) void recordStoreUnreadableTry().then(setSignInAgainOffered);
   };
 
   // The restore could not read a stored session, after retries (WH-360, WH-361): nothing is signed out or erased, and
@@ -629,8 +640,10 @@ function BootstrapApp() {
   const closeForUnreadableSession = useCallback(() => {
     setPastOfflineLimit(false);
     setStoreUnreadable(true);
+    setSignInAgainOffered(false);
     setServerUpgrading(false);
     setConfigError(translate('errors.auth.initializeFailed'));
+    void recordStoreUnreadableTry().then(setSignInAgainOffered);
   }, []);
 
   useEffect(() => {
@@ -693,6 +706,7 @@ function BootstrapApp() {
     setConfigError(null);
     setPastOfflineLimit(false);
     setStoreUnreadable(false);
+    setSignInAgainOffered(false);
     setServerUpgrading(false);
     clearAppTooOld();
     clearBackendTooOld();
@@ -801,8 +815,13 @@ function BootstrapApp() {
         return;
       }
       if (run === bootstrapRun.current) {
+        const unreadable = isStoreUnreadable(error);
+        // Counted before the screen shows, so a third failure offers "Sign in again" at once (WH-363).
+        const offered = unreadable ? await recordStoreUnreadableTry() : false;
+        if (run !== bootstrapRun.current) return;
         setPastOfflineLimit(isPastOfflineLimit(error));
-        setStoreUnreadable(isStoreUnreadable(error));
+        setStoreUnreadable(unreadable);
+        setSignInAgainOffered(offered);
         setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
         setIsReady(true);
       }
@@ -859,6 +878,15 @@ function BootstrapApp() {
     );
   }
 
+  // "Sign in again" (WH-363), after the person confirmed: the saved sign-in and the phone copy go, the facility stays
+  // selected and listed, and its own sign-in (mobile number and code) comes next. A removal that fails changes nothing.
+  const signInAgain = async () => {
+    const outcome = await endSessionKeepingFacility(store.dispatch);
+    if (outcome !== 'ready') return;
+    await resetStoreUnreadableTries();
+    await bootstrapApp();
+  };
+
   if (configError) {
     if (changingServer) {
       return <OperatorServerSelection initial onCancel={() => setChangingServer(false)} />;
@@ -870,6 +898,7 @@ function BootstrapApp() {
         // `unsentKept` is not passed: the app stores no unsent work yet (WH-301 adds it).
         offlineTooLong={pastOfflineLimit}
         storeUnreadable={storeUnreadable}
+        onSignInAgain={storeUnreadable && signInAgainOffered ? signInAgain : undefined}
         onRetry={bootstrapApp}
         toFacilities={centralLogin}
         onChangeServer={
