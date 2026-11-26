@@ -4,6 +4,7 @@
  * actions read synchronously. Rebuilt from the file after every write and every change of session.
  */
 import { useSyncExternalStore } from 'react';
+import { getActiveOperatorServer } from '@/config/operatorServer';
 import { onSessionChange } from '@/config/sessionLifecycle';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -154,4 +155,29 @@ export async function initUnsent(): Promise<void> {
 /** The summary as a hook. */
 export function useUnsentSummary(): UnsentSummary {
   return useSyncExternalStore(subscribeUnsent, getUnsentSummary, getUnsentSummary);
+}
+
+/**
+ * Whether this phone keeps unsent work (an item not sent yet, or an unfinished form) for the person of the saved sign-in,
+ * for the screens that cannot start a session: "away too long" and "Sign in again" say it is kept (Design 11.2, 12.3). Asked
+ * of the file, with no session loaded. When the saved sign-in cannot be read, the facility's items of anyone count. A file
+ * that cannot be read says nothing: the screen does not promise what cannot be checked.
+ */
+export async function hasKeptWork(): Promise<boolean> {
+  try {
+    const db = await getUnsentDb();
+    const scope = await getSessionCacheScope();
+    const server = getActiveOperatorServer();
+    const mine = (own: string): boolean => {
+      if (scope !== null) return own === scope;
+      const [origin, instance] = JSON.parse(own) as string[];
+      return server !== null && origin === server.origin && instance === server.instanceId;
+    };
+    const items = await db.all<{ scope: string }>(`SELECT scope FROM items WHERE state IN ('saved', 'sending', 'refused')`);
+    const forms = await db.all<{ scope: string }>('SELECT scope FROM forms');
+    return [...items, ...forms].some(row => mine(row.scope));
+  } catch (error) {
+    logger.warn('Whether unsent work is kept could not be told', loggableError(error));
+    return false;
+  }
 }

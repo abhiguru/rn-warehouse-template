@@ -42,6 +42,7 @@ import {
 
 import { showAlert } from '@/utils/alert';
 import { createLogger } from '@/utils/logger';
+import { refuseAtLimit } from '@/features/unsent/limitDialog';
 
 const logger = createLogger('OrderGroupCard');
 // ============================================================================
@@ -164,6 +165,8 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
     (header: ConvertedDispatchData['header'], items: ConvertedDispatchData['items'], orderLots: ConvertedDispatchData['orderLots']) => {
       if (isOpening.current) return;
       if (refusedByOpenForm()) return;
+      // The 2-hour rule: no new record while old work is unsent (WH-301).
+      if (refuseAtLimit()) return;
       isOpening.current = true;
       dispatch(loadFromOrder({
         header,

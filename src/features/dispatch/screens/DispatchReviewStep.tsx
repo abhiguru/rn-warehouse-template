@@ -65,6 +65,7 @@ import { DataTable } from '@/components/table/DataTable';
 import { sourceColumnWidth, sourceText } from '@/components/dispatch-details/DispatchItemsTab';
 import { getLanguage } from '@/i18n/language';
 import { invoiceFileName } from '@/utils/invoiceLabel';
+import { refuseAtLimit } from '@/features/unsent/limitDialog';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
@@ -293,6 +294,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Handle form submission
     const handleSubmit = async () => {
         if (orderEmpty) return;
+        // The 2-hour rule: old unsent work stops a new save; the form stays as it is (WH-301, Design 4.3).
+        if (refuseAtLimit({ formOpen: true })) return;
         // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
         // photo still being prepared holds the save; one that could not be prepared has to go.
         if (isCreateMode) {

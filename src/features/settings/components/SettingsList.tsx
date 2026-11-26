@@ -125,6 +125,7 @@ export function SettingsRow({
   leading,
   label,
   subtitle,
+  subtitleTestID,
   value,
   onPress,
   showChevron = true,
@@ -139,6 +140,8 @@ export function SettingsRow({
   leading?: React.ReactNode;
   label: string;
   subtitle?: string;
+  /** testID of the subtitle's text (a refused action's reason, WH-301). */
+  subtitleTestID?: string;
   /** The current choice, shown before the chevron. */
   value?: string;
   onPress: () => void;
@@ -183,7 +186,11 @@ export function SettingsRow({
               {value}
             </Text>
           ) : null}
-          {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
+          {subtitle ? (
+            <Text style={styles.rowSubtitle} testID={subtitleTestID}>
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
         {value && !stacked ? (
           <Text style={styles.rowValue} numberOfLines={1}>

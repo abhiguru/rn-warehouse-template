@@ -32,6 +32,10 @@ import { useCentralState } from '@/hooks/useCentralState';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { normalizeDigits, t } from '@/i18n';
 import { showAlert } from '@/utils/alert';
+import { getSessionCacheScope } from '@/utils/cacheManager';
+import { countOwnForms, deleteOwnForms } from '@/features/unsent/formDrafts';
+import { refuseIfUnsent, refusedSubtitle } from '@/features/unsent/refuseAccountAction';
+import { useUnsentSummary } from '@/features/unsent/unsentStore';
 import { showToast } from '@/utils/toast';
 import type { ConfirmDialogProps } from '@/components/ConfirmDialog';
 import type { ConfirmInputDialogProps } from '@/components/ConfirmInputDialog';
@@ -49,6 +53,8 @@ export interface AccountAction {
   /** Drawn in the negative colour, without a chevron. */
   destructive: boolean;
   testID: string;
+  /** Set while the action is refused for unsent work: the id of the subtitle that says so (WH-301). */
+  subtitleTestID?: string;
 }
 
 export type AccountDialogProps = ConfirmDialogProps & { busy: boolean };
@@ -136,6 +142,9 @@ export function useAccountActions(): {
   const facilityName = server ? server.companyName || server.displayName || server.origin : '';
 
   const offline = useIsOffline();
+  // Read so the rows redraw when unsent work appears or is sent (the gate itself reads the store).
+  useUnsentSummary();
+  const refusal = refusedSubtitle();
   // Whether Settings is still the screen on show: an answer that arrives later opens no dialog elsewhere.
   const focused = useIsFocused();
   const focusedRef = useRef(focused);
@@ -157,9 +166,10 @@ export function useAccountActions(): {
     id: 'signOut',
     icon: 'logout',
     label: t('auth.signOut.action'),
-    subtitle: t('users.profile.signOutSubtitle'),
+    subtitle: refusal ?? t('users.profile.signOutSubtitle'),
     destructive: false,
     testID: 'account-sign-out',
+    ...(refusal === null ? {} : { subtitleTestID: 'account-sign-out-refused' }),
   };
   const actions: AccountAction[] =
     mode === 'central'
@@ -168,19 +178,21 @@ export function useAccountActions(): {
             id: 'leaveFacility',
             icon: 'exit-to-app',
             label: t('central.leave.action'),
-            subtitle: facilityName
-              ? t('central.leave.subtitle', { facility: facilityName })
-              : t('central.leave.subtitleNoName'),
+            subtitle:
+              refusal ??
+              (facilityName ? t('central.leave.subtitle', { facility: facilityName }) : t('central.leave.subtitleNoName')),
             destructive: false,
             testID: 'account-leave-facility',
+            ...(refusal === null ? {} : { subtitleTestID: 'account-leave-facility-refused' }),
           },
           {
             id: 'signOutPhone',
             icon: 'logout',
             label: t('central.phoneSignOut.action'),
-            subtitle: t('central.phoneSignOut.subtitle'),
+            subtitle: refusal ?? t('central.phoneSignOut.subtitle'),
             destructive: false,
             testID: 'account-sign-out-phone',
+            ...(refusal === null ? {} : { subtitleTestID: 'account-sign-out-phone-refused' }),
           },
         ]
       : [signOutAction];
@@ -188,6 +200,8 @@ export function useAccountActions(): {
   const request = (id: AccountActionId) => {
     // The only-administrator check is running on the Delete row: the other rows wait for it too.
     if (checkingAdmins.current) return;
+    // Unsent work: the reason in a dialog, and today's confirmation is not shown (Design 4.3).
+    if (refuseIfUnsent(id === 'leaveFacility' ? 'leaveFacility' : 'signOut')) return;
     if (actions.some(action => action.id === id)) setPending(id);
   };
   const close = () => setPending(null);
@@ -270,6 +284,8 @@ export function useAccountActions(): {
   const [deleteConfirmPhone, setDeleteConfirmPhone] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // How many unfinished forms Delete my account will remove, counted when its warning opens (Design 4.6).
+  const [formsToGo, setFormsToGo] = useState(0);
   // As `running`: a second tap on Delete account before the next draw sends nothing.
   const deleting = useRef(false);
   // The account's number, the last ten digits (the profile may hold it in either field).
@@ -324,12 +340,16 @@ export function useAccountActions(): {
     deleting.current = true;
     setDeletingAccount(true);
     setDeleteError(null);
+    // Read now: once the account is gone the person's scope can no longer be asked for.
+    const formScope = await getSessionCacheScope();
 
     try {
       if (centralLogin) {
         // The profile at this facility is deleted; the route guard returns to My facilities.
         const outcome = await deleteFacilityAccount(dispatch);
         setDeleteStep(null);
+        // The server deleted the account (or only the phone's own clean-up failed): the forms go with it.
+        if (outcome === 'left' || outcome === 'failed' || outcome === 'busy_deleted') await deleteOwnForms(formScope);
         // 'reported': the failure was published on My facilities, where the person now is.
         const where = facilityName || t('central.leave.thisFacility');
         const deletedText = t('settings.deleteAccount.deleted', { facility: where });
@@ -343,6 +363,7 @@ export function useAccountActions(): {
         return;
       }
       await dispatch(deleteAccountThunk()).unwrap();
+      await deleteOwnForms(formScope);
       setDeleteStep(null);
       router.replace('/login');
       showToast(t('settings.deleteAccount.deletedNoName'));
@@ -363,6 +384,9 @@ export function useAccountActions(): {
   };
 
   const facility = { facility: facilityName };
+  const baseWarning = atFacility ? t('settings.deleteAccount.centralWarningMessage', facility) : t('settings.deleteAccount.warningMessage');
+  // The unfinished forms that go with the account are told at the end, only when there are some (Design 4.6).
+  const warningMessage = formsToGo > 0 ? `${baseWarning} ${t('offline.unfinishedWillGo', { count: formsToGo })}` : baseWarning;
   const deletionDialog: ConfirmInputDialogProps =
     deleteStep === 'confirm'
       ? {
@@ -396,7 +420,7 @@ export function useAccountActions(): {
           visible: deleteStep === 'warning',
           testID: 'delete-account-warning',
           title: atFacility ? t('settings.deleteAccount.centralWarningTitle', facility) : t('settings.deleteAccount.warningTitle'),
-          message: atFacility ? t('settings.deleteAccount.centralWarningMessage', facility) : t('settings.deleteAccount.warningMessage'),
+          message: warningMessage,
           messageAlign: 'left',
           confirmText: t('common.continue'),
           variant: 'danger',
@@ -411,10 +435,16 @@ export function useAccountActions(): {
     subtitle: atFacility ? t('settings.account.deleteAtFacilitySubtitle') : t('settings.account.deleteAccountSubtitle'),
     open: () => {
       if (!deletionAvailable) return;
+      // Unsent work refuses it, with the reason (Design 4.3).
+      if (refuseIfUnsent('deleteAccount')) return;
       const showWarning = () => {
         setDeleteConfirmPhone('');
         setDeleteError(null);
-        setDeleteStep('warning');
+        void countOwnForms().then(count => {
+          if (!mounted.current) return;
+          setFormsToGo(count);
+          setDeleteStep('warning');
+        });
       };
       // Only an administrator can be the last one; everyone else opens the warning at once.
       if (userProfile?.role !== 'admin') return showWarning();

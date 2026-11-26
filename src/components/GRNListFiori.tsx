@@ -91,6 +91,7 @@ import { formatSectionDate, formatNumber, formatCount, formatCardDate, formatWei
 
 import { Fab } from '@/components/ui/Fab';
 import { t as translate, formatIdentifier } from '@/i18n';
+import { refuseAtLimit } from '@/features/unsent/limitDialog';
 const logger = createLogger('GRNListFiori');
 
 /** Receipts on the first page and on each later one. A facility that pages lines gets 20, then 80 lines. */
@@ -876,10 +877,13 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange, subHead
 
   const handleEdit = useCallback((group: GRNGroupData) => {
     if (!group?.grnId) return;
+    // The 2-hour rule: no new change while old work is unsent (WH-301).
+    if (refuseAtLimit()) return;
     router.push(`/grn-edit/${group.grnId}/step1`);
   }, []);
 
   const handleCreateGRN = useCallback(() => {
+    if (refuseAtLimit()) return;
     router.push('/grn-form/step1');
   }, []);
 

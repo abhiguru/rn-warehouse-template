@@ -125,6 +125,7 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { getGrnItemRates, getItemsWithoutRate } from '@/services/item-pricing-service';
 import type { ScrollViewRef } from '@/types/nativeRefs';
 import { invoiceFileName } from '@/utils/invoiceLabel';
+import { refuseAtLimit } from '@/features/unsent/limitDialog';
 
 const log = createLogger('grn');
 
@@ -497,6 +498,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       if (!photosNotUploaded) setShowSuccessDialog(true);
       return;
     }
+    // The 2-hour rule: old unsent work stops a new save; the form stays as it is (WH-301, Design 4.3).
+    if (refuseAtLimit({ formOpen: true })) return;
     // Counted by the connection history when a gap is open (WH-177).
     noteSavePressed();
 

@@ -302,6 +302,7 @@ const SettingsScreen: React.FC = () => {
               icon={action.icon}
               label={action.label}
               subtitle={action.subtitle}
+              subtitleTestID={action.subtitleTestID}
               onPress={() => account.request(action.id)}
               showChevron={false}
               destructive={action.destructive}

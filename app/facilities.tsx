@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/Button';
 import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
 import { useAppDispatch } from '@/store/hooks';
 import { signOutPhoneWithMessages } from '@/features/account/useAccountActions';
+import { refuseIfUnsent } from '@/features/unsent/refuseAccountAction';
 import { useCentralState } from '@/hooks/useCentralState';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { getCentralState, setCentralState, type FacilityStatus, type OpenFailureReason } from '@/config/centralState';
@@ -182,6 +183,8 @@ export default function FacilitiesScreen() {
   };
 
   const confirmSignOut = () => {
+    // Unsent work of this person on the phone refuses it, with the reason (WH-301, Design 4.3).
+    if (refuseIfUnsent('signOut')) return;
     showAlert(tr('auth.signOut.confirmTitle'), tr('central.signOut.confirmMessage'), [
       { text: tr('common.cancel'), style: 'cancel' },
       {
@@ -231,6 +234,8 @@ export default function FacilitiesScreen() {
           }
           // A tap during the wait is the person's own choice: the automatic open is not for them any more.
           setCentralState({ autoOpenSpent: true });
+          // Opening another facility leaves this one: refused while this person's work is unsent (WH-301, Design 4.3).
+          if (refuseIfUnsent('switchFacility')) return;
           void openFacility(item.origin, item.name);
         }}
         accessibilityRole="button"

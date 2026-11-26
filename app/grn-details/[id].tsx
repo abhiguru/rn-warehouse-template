@@ -84,6 +84,7 @@ import { invoiceTableFrom } from '@/components/common/invoiceTable';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { beginNewBill, newBillIsCurrent, newBillToken, releaseNewBill } from '@/features/invoice/utils/startNewBill';
 import { invoiceFileName } from '@/utils/invoiceLabel';
+import { refuseAtLimit } from '@/features/unsent/limitDialog';
 
 const log = createLogger('grn');
 const makeStyles = (t: ThemeTokens) => ({
@@ -598,6 +599,8 @@ function GRNDetailScreen() {
   // Handle edit action
   const handleEditGRN = () => {
     if (deleteRunningRef.current) return;
+    // The 2-hour rule: no new change while old work is unsent (WH-301).
+    if (refuseAtLimit()) return;
     router.push(`/grn-edit/${id}/step1`);
   };
 

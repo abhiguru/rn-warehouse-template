@@ -71,6 +71,7 @@ import ConfigService from '@/services/configService';
 import { initializeSupabase } from '@/config/supabaseConfig';
 import { clearPendingEnrollment } from '@/config/supabaseConfig';
 import ConfigErrorScreen from '@/components/ConfigErrorScreen';
+import { hasKeptWork } from '@/features/unsent/unsentStore';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { OfflineStatusBar } from '@/components/OfflineStatusBar';
@@ -603,6 +604,18 @@ function BootstrapApp() {
   const [configError, setConfigError] = useState<string | null>(null);
   // With `configError`: the kept profile is past the offline limit, so the screen says the phone was away too long (WH-351).
   const [pastOfflineLimit, setPastOfflineLimit] = useState(false);
+  // With `configError`: unsent work is kept on this phone, so the screen says so (WH-301, Design 11.2 and 12.3).
+  const [unsentKept, setUnsentKept] = useState(false);
+  useEffect(() => {
+    if (configError === null) return undefined;
+    let live = true;
+    void hasKeptWork().then(kept => {
+      if (live) setUnsentKept(kept);
+    });
+    return () => {
+      live = false;
+    };
+  }, [configError]);
   // With `configError`: the phone's secure store stayed unreadable after the retries, so the screen says that (WH-362).
   const [storeUnreadable, setStoreUnreadable] = useState(false);
   // With `storeUnreadable`: enough tries have failed in a row, so "Sign in again" is offered (WH-363).
@@ -914,7 +927,7 @@ function BootstrapApp() {
       <ConfigErrorScreen
         error={configError}
         upgrading={serverUpgrading}
-        // `unsentKept` is not passed: the app stores no unsent work yet (WH-301 adds it).
+        unsentKept={unsentKept}
         offlineTooLong={pastOfflineLimit}
         storeUnreadable={storeUnreadable}
         onSignInAgain={storeUnreadable && signInAgainOffered ? signInAgain : undefined}
