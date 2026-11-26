@@ -553,6 +553,9 @@ async function clearReplacedOperatorInstance() {
 
 // Bootstrap component (inside providers)
 function BootstrapApp() {
+  // The saved language, before anything below is drawn or worded: the splash, the server choice and the
+  // refusal screens come up without ThemedContent (WH-351). The store is rehydrated here (PersistGate).
+  useAppLanguage();
   const [isReady, setIsReady] = useState(false);
   const [needsSelection, setNeedsSelection] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
