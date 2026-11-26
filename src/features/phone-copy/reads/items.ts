@@ -5,7 +5,7 @@
  */
 import { enCompare, likeUnescaped } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
-import { parseRow, pick, textOf, type Row } from './rows';
+import { compareText, parseRow, parseRows, pick, textOf, type Row } from './rows';
 
 export interface ItemListRequest {
   search: string | null;
@@ -44,6 +44,13 @@ export async function readItemList(q: CopyReader, request: ItemListRequest): Pro
   rows.sort((a, b) => enCompare(textOf(a.name), textOf(b.name)) || enCompare(textOf(a.id), textOf(b.id)));
   const offset = Math.max(request.offset, 0);
   return { items: rows.slice(offset, offset + request.limit).map(itemOf), total_count: rows.length, limit: request.limit, offset: request.offset };
+}
+
+/** The active items by name then id, as the items table is read for the rates screens (`id, name, packaging, description`). */
+export async function readActiveItems(q: CopyReader): Promise<Row[]> {
+  const rows = parseRows(await q.all<{ row: string }>('SELECT row FROM items WHERE active = 1'));
+  rows.sort((a, b) => enCompare(textOf(a.name), textOf(b.name)) || compareText(String(a.id), String(b.id)));
+  return rows.map(row => ({ id: row.id, name: pick(row, 'name'), packaging: pick(row, 'packaging'), description: pick(row, 'description') }));
 }
 
 /** One item as `get_item` answers it; null when there is none (the server answers `success: false`). */

@@ -5,6 +5,7 @@ import { getAuthenticatedClient } from '../config/supabaseConfig';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { readVia } from '@/features/phone-copy/readRoute';
 import { readGrnItemRates } from '@/features/phone-copy/reads/grnRates';
+import { readActiveItems } from '@/features/phone-copy/reads/items';
 import { readItemStoragePrices, readStandardRate } from '@/features/phone-copy/reads/itemRates';
 import { readPriceHistory } from '@/features/phone-copy/reads/priceHistory';
 import type {
@@ -700,6 +701,14 @@ const ITEMS_PAGE_SIZE = 500;
 
 /** The active items, by name (the items table, as the item pickers read it), page after page so none is cut. */
 export const listActiveItems = async (): Promise<ActiveItem[]> => {
+  // The phone copy answers when it can (WH-348): the same rows, in the same order.
+  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readActiveItems(q));
+  if (copy) {
+    return copy.value.map(row => ({
+      id: String(row.id), name: typeof row.name === 'string' ? row.name : '', packaging: typeof row.packaging === 'string' ? row.packaging : null,
+      description: typeof row.description === 'string' ? row.description : null,
+    }));
+  }
   const client = await getAuthenticatedClient();
   const out: ActiveItem[] = [];
   for (let from = 0; ; from += ITEMS_PAGE_SIZE) {
