@@ -132,9 +132,12 @@ export function SettingsRow({
   destructive = false,
   last = false,
   busy = false,
+  disabled = false,
   testID,
 }: {
   testID?: string;
+  /** The row's action needs the server and the phone is offline: the row is read as disabled and a tap does nothing (WH-348). */
+  disabled?: boolean;
   icon?: IconName;
   /** Drawn in place of the icon, e.g. brand swatches. */
   leading?: React.ReactNode;
@@ -160,10 +163,11 @@ export function SettingsRow({
   return (
     <Pressable
       testID={testID}
-      style={({ pressed }) => [styles.row, pressed && !busy && styles.rowPressed]}
-      onPress={busy ? undefined : onPress}
+      style={({ pressed }) => [styles.row, pressed && !busy && !disabled && styles.rowPressed]}
+      onPress={busy || disabled ? undefined : onPress}
+      disabled={disabled}
       accessibilityRole="button"
-      accessibilityState={busy ? { busy: true } : undefined}
+      accessibilityState={busy || disabled ? { ...(busy ? { busy: true } : {}), ...(disabled ? { disabled: true } : {}) } : undefined}
       accessibilityLabel={[label, value, subtitle].filter(Boolean).join(', ')}
     >
       {leading ? (
