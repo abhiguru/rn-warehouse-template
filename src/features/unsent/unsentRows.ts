@@ -13,10 +13,10 @@ export type ItemState = 'saved' | 'sending' | 'sent' | 'refused' | 'waiting';
 
 /**
  * The states of an item that is still unsent: the bar, the 2-hour clock and the account refusals count them. A refused item
- * and the items that depend on it are "held" and no longer count (Product's ruling and Design 4.6, 2026-11-26); they stay on
- * the phone, listed under "Held".
+ * and the items that depend on it are listed under "Held" but still count until the server holds them (Product's sharpened
+ * ruling, 2026-11-26; WH-304 adds the `held` state that leaves the count).
  */
-export const UNSENT_STATES: readonly ItemState[] = ['saved', 'sending'];
+export const UNSENT_STATES: readonly ItemState[] = ['saved', 'sending', 'refused'];
 
 export interface ItemRow {
   id: string;
