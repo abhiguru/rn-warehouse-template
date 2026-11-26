@@ -20,7 +20,9 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { askAlert } from '@/utils/alert';
 import { formatLoadedAt } from '@/utils/formatters';
 import { createLogger, loggableError } from '@/utils/logger';
+import { endFormDraft } from './formDrafts';
 import { sendNow } from './sendEngine';
+import { requestContinue } from './useFormDraft';
 import { deleteItem } from './unsentQueue';
 import { useUnsentList, type UnsentListRow } from './unsentList';
 import { UnsentRow } from './UnsentRow';
@@ -38,6 +40,7 @@ const makeStyles = (t: ThemeTokens) => ({
 type Entry = { type: 'header'; key: string; testID: string; title: string; count: number } | { type: 'row'; key: string; row: UnsentListRow; divider: boolean };
 
 const SECTION_TITLES = {
+  unfinished: 'offline.unsent.sectionUnfinished',
   unsent: 'offline.unsent.sectionUnsent',
   held: 'offline.unsent.sectionHeld',
   sent: 'offline.unsent.sectionSent',
@@ -45,7 +48,7 @@ const SECTION_TITLES = {
 
 function entriesOf(rows: UnsentListRow[]): Entry[] {
   const out: Entry[] = [];
-  for (const section of ['unsent', 'held', 'sent'] as const) {
+  for (const section of ['unfinished', 'unsent', 'held', 'sent'] as const) {
     const own = rows.filter(row => row.section === section);
     if (own.length === 0) continue;
     out.push({
@@ -81,11 +84,35 @@ export function UnsentItemsScreen() {
   }, [sending]);
 
   const open = useCallback((row: UnsentListRow) => {
+    // An unfinished form opens where it was left, without asking again.
+    if (row.form !== null) {
+      requestContinue(row.form.kind, row.form.grnId);
+      if (row.form.kind === 'grn') router.push('/grn-form/step1');
+      else if (row.form.kind === 'dispatch') router.push('/dispatch-form/step1');
+      else router.push(`/grn-edit/${row.form.grnId ?? ''}/step1`);
+      return;
+    }
     if (row.target.grnId !== undefined) router.push(`/grn-details/${row.target.grnId}`);
     else if (row.target.dispatchId !== undefined) router.push(`/dispatch-details/${row.target.dispatchId}`);
   }, []);
 
   const remove = useCallback(async (row: UnsentListRow) => {
+    if (row.form !== null) {
+      // A form asks today's discard question (Design 4.3).
+      const form = row.form;
+      const title = form.kind === 'grn' ? tr('components.steps.discardFor.grn') : form.kind === 'dispatch' ? tr('components.steps.discardFor.dispatch') : tr('common.discardChangesTitle');
+      const discard = await askAlert<'keep' | 'discard'>(
+        title,
+        form.kind === 'grnEdit' ? tr('common.discardChangesMessage') : tr('grn.form.discardMessage'),
+        [
+          { text: tr('common.cancel'), style: 'cancel', value: 'keep' },
+          { text: tr('common.discard'), style: 'destructive', value: 'discard' },
+        ],
+        'keep'
+      );
+      if (discard === 'discard') await endFormDraft(form.kind, form.grnId);
+      return;
+    }
     const answer = await askAlert(
       tr('offline.delete.title'),
       tr('offline.delete.message', { what: row.title, customer: row.customer ?? '', time: formatLoadedAt(row.recordedAt) }),

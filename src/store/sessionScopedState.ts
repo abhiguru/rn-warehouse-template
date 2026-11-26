@@ -23,6 +23,7 @@ import { dropAlertsWithHandlers } from '@/utils/alert';
 import { clearStandardRateCache } from '@/features/item-pricing/useStandardRate';
 import { registerSessionScoped, runSessionScopedClears } from '@/config/sessionScopedRegistry';
 import { eraseCopy } from '@/features/phone-copy/copyDb';
+import { whileSessionEnds } from '@/features/unsent/formDrafts';
 
 // The teardown's order is the registration order below. Modules that keep a cache of their own and
 // can import the registry without a cycle register themselves (registerSessionScoped); the
@@ -35,8 +36,11 @@ registerSessionScoped('query-client', async () => {
 });
 registerSessionScoped('autocomplete', () => clearAutocompleteCache());
 registerSessionScoped('forms', ({ dispatch }) => {
-  dispatch(resetGrn());
-  dispatch(resetDispatch());
+  // An unfinished GRN or dispatch form is kept for the person (WH-301): this reset is not their Discard.
+  whileSessionEnds(() => {
+    dispatch(resetGrn());
+    dispatch(resetDispatch());
+  });
   dispatch(resetInvoice());
 });
 // Filters and searches name customers and items of this session's facility.

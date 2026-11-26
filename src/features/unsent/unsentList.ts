@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr } from '@/i18n';
+import { listOwnForms, type FormKind } from './formDrafts';
 import { DEPENDS_ON_REFUSED } from './sendEngine';
 import { listItems, photosOfItem, type UnsentRowView } from './unsentQueue';
 import { getLastSentAt, type ItemState } from './unsentRows';
@@ -16,7 +17,7 @@ const logger = createLogger('[unsent-list]');
 export interface UnsentListRow {
   id: string;
   state: ItemState;
-  section: 'unsent' | 'held' | 'sent';
+  section: 'unfinished' | 'unsent' | 'held' | 'sent';
   /** The row's title in the person's language, and the customer. */
   title: string;
   customer: string | null;
@@ -25,8 +26,10 @@ export interface UnsentListRow {
   sentNumber: string | null;
   /** A photo file of this item is gone from the phone (the record was sent without it). */
   photoMissing: boolean;
-  /** The tag shown at the right. */
-  tag: 'saved' | 'sending' | 'sent' | 'waiting' | 'held';
+  /** The tag shown at the right; an unfinished form has none. */
+  tag: 'saved' | 'sending' | 'sent' | 'waiting' | 'held' | null;
+  /** Set for an unfinished form (the row of "Not finished"): which form it is. */
+  form: { kind: FormKind; grnId: string | null } | null;
   /** Under "Held": why it was not sent (the footnote); null when nothing is known. */
   reason: string | null;
   /** The record a tap opens, when it exists. */
@@ -109,6 +112,7 @@ export async function loadUnsentList(): Promise<{ rows: UnsentListRow[]; lastSen
       sentNumber: view.section === 'sent' ? numberOf(view.result) : null,
       photoMissing,
       tag: tagOf(view.state),
+      form: null,
       reason: view.section === 'held' ? heldReason(view.reason) : null,
       target: view.target,
     });
@@ -126,7 +130,32 @@ export async function loadUnsentList(): Promise<{ rows: UnsentListRow[]; lastSen
   };
   for (const root of roots) place(root.id);
   const sent = rows.filter(row => row.section === 'sent').reverse();
-  return { rows: [...unsent, ...held, ...sent], lastSentAt: await getLastSentAt() };
+  const unfinished = (await listOwnForms()).map(formRow);
+  return { rows: [...unfinished, ...unsent, ...held, ...sent], lastSentAt: await getLastSentAt() };
+}
+
+/** A row of "Not finished": the form's words, when it was started, no tag. */
+function formRow(form: Awaited<ReturnType<typeof listOwnForms>>[number]): UnsentListRow {
+  const title =
+    form.kind === 'grn'
+      ? tr('offline.unsent.whatFormGrn')
+      : form.kind === 'dispatch'
+        ? tr('offline.unsent.whatFormDispatch')
+        : tr('offline.unsent.whatFormEdit', { number: form.number ?? '' });
+  return {
+    id: form.id,
+    state: 'saved',
+    section: 'unfinished',
+    title,
+    customer: form.customer,
+    recordedAt: form.startedAt,
+    sentNumber: null,
+    photoMissing: false,
+    tag: null,
+    form: { kind: form.kind, grnId: form.grnId },
+    reason: null,
+    target: {},
+  };
 }
 
 /** The list as a hook: loaded again on every change of the store. */

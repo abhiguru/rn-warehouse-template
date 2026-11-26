@@ -5,13 +5,12 @@
  */
 
 import { createLogger } from '@/utils/logger';
-import { createSlice, PayloadAction, createSelector } from '@reduxjs/toolkit';
+import { createSlice, createSelector, current, type PayloadAction } from '@reduxjs/toolkit';
 import type {
   DispatchFormState,
   DispatchHeaderData,
   DispatchItemData,
   DispatchImageData,
-  ItemFormData,
   OrderLotAsk,
 } from '@/types/dispatch.types';
 import { createEmptyDispatchHeader } from '@/types/dispatch.types';
@@ -441,7 +440,7 @@ const dispatchFormSlice = createSlice({
         ...item,
         unique_id: item.unique_id || `item_${Date.now()}_${Math.random()}`,
       }));
-      state.images = images || [];
+      state.images = images ?? [];
       state.current_step = 0;
       state.validationErrors = {};
       state.submissionNonce = null;
@@ -508,6 +507,22 @@ const dispatchFormSlice = createSlice({
      */
     // A full reset also drops rollback data and errors from the old warehouse.
     resetForm: () => createInitialState(),
+
+    /**
+     * An unfinished form put back as it was saved (WH-301). An upload that was running when the form was left is not
+     * running now: its photo is shown as failed, so the person can send it again.
+     */
+    hydrateDraft: (_state, action: PayloadAction<DispatchFormState>) => ({
+      ...createInitialState(),
+      ...action.payload,
+      images: action.payload.images.map((image) => (image.upload_status === 'uploading' ? { ...image, upload_status: 'failed' as const } : image)),
+      is_saving: false,
+      checkingAnswer: false,
+      error: null,
+      takenNumberError: null,
+      validationErrors: {},
+      snapshot: null,
+    }),
 
     /**
      * Reset only form data, keep UI state
@@ -607,9 +622,9 @@ const dispatchFormSlice = createSlice({
     saveSnapshot: (state) => {
       state.snapshot = {
         dispatch_id: state.dispatch_id,
-        header: JSON.parse(JSON.stringify(state.header)),
-        items: JSON.parse(JSON.stringify(state.items)),
-        images: JSON.parse(JSON.stringify(state.images)),
+        header: current(state.header),
+        items: current(state.items),
+        images: current(state.images),
       };
     },
 
@@ -689,6 +704,7 @@ export const {
   setDateRefusal,
   reloadFromOrder,
   resetForm,
+  hydrateDraft,
   resetFormData,
   setTakenNumberError,
   loadFromOrder,
@@ -757,7 +773,6 @@ export const selectIsReadyToSubmit = (state: { dispatchForm: DispatchFormState }
 // ============================================================================
 
 // Base selectors for memoization
-const selectDispatchFormState = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm;
 export const selectDispatchFormHeader = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.header;
 export const selectDispatchFormItems = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.items;
 export const selectDispatchFormImages = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.images;

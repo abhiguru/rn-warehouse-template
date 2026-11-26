@@ -1,5 +1,5 @@
 import { createLogger } from '@/utils/logger';
-import { createSlice, PayloadAction, createSelector, original } from '@reduxjs/toolkit';
+import { createSlice, createSelector, current, original, type PayloadAction } from '@reduxjs/toolkit';
 
 import { toLocalISODate } from '@/utils/formatters';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
@@ -100,7 +100,7 @@ interface GRNFormSnapshot {
 }
 
 // Form state
-interface GRNFormState {
+export interface GRNFormState {
   // IDs
   grnId: string | null;
   tempGrnId: string | null;
@@ -419,7 +419,7 @@ const grnFormSlice = createSlice({
     },
     updateItemImageProgress: (state, action: PayloadAction<{ itemId: string; imageId: string; progress: number }>) => {
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
-      if (item && item.trl_images) {
+      if (item?.trl_images) {
         const image = item.trl_images.find(img => img.id === action.payload.imageId);
         if (image && image.uploadStatus !== 'completed') {
           image.uploadProgress = action.payload.progress;
@@ -429,7 +429,7 @@ const grnFormSlice = createSlice({
     },
     completeItemImageUpload: (state, action: PayloadAction<{ itemId: string; imageId: string; persistedImageId?: string; storagePath?: string; imageUrl?: string; fileSize?: number; mimeType?: string }>) => {
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
-      if (item && item.trl_images) {
+      if (item?.trl_images) {
         const image = item.trl_images.find(img => img.id === action.payload.imageId);
         if (image) {
           if (action.payload.persistedImageId) {
@@ -454,7 +454,7 @@ const grnFormSlice = createSlice({
     },
     failItemImageUpload: (state, action: PayloadAction<{ itemId: string; imageId: string; error: string }>) => {
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
-      if (item && item.trl_images) {
+      if (item?.trl_images) {
         const image = item.trl_images.find(img => img.id === action.payload.imageId);
         if (image) {
           image.uploadStatus = 'failed';
@@ -464,7 +464,7 @@ const grnFormSlice = createSlice({
     },
     removeItemImage: (state, action: PayloadAction<{ itemId: string; imageId: string }>) => {
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
-      if (item && item.trl_images) {
+      if (item?.trl_images) {
         rememberRemovedImage(state, item.trl_images.find(img => img.id === action.payload.imageId));
         item.trl_images = item.trl_images.filter(img => img.id !== action.payload.imageId);
       }
@@ -566,6 +566,28 @@ const grnFormSlice = createSlice({
       return createInitialState();
     },
 
+    /**
+     * An unfinished form put back as it was saved (WH-301). An upload that was running when the form was left is
+     * not running now: its photo is shown as failed, so the person can send it again.
+     */
+    hydrateDraft: (_state, action: PayloadAction<GRNFormState>) => {
+      const restart = (images: GRNImageData[]): GRNImageData[] =>
+        images.map((image) => (image.uploadStatus === 'uploading' ? { ...image, uploadStatus: 'failed' as const } : image));
+      const saved = action.payload;
+      return {
+        ...createInitialState(),
+        ...saved,
+        header: { ...saved.header, gr_images: restart(saved.header.gr_images ?? []) },
+        items: saved.items.map((item) => ({ ...item, trl_images: restart(item.trl_images ?? []) })),
+        isLoading: false,
+        isSaving: false,
+        error: null,
+        takenNumberError: null,
+        validationErrors: {},
+        snapshot: null,
+      };
+    },
+
     // #18 Fix: Snapshot actions for optimistic update rollback
     /**
      * Save current form state before submission.
@@ -575,8 +597,8 @@ const grnFormSlice = createSlice({
       state.snapshot = {
         grnId: state.grnId,
         tempGrnId: state.tempGrnId,
-        header: JSON.parse(JSON.stringify(state.header)), // Deep clone
-        items: JSON.parse(JSON.stringify(state.items)),   // Deep clone
+        header: current(state.header),
+        items: current(state.items),
       };
     },
 
@@ -645,6 +667,7 @@ export const {
   setRemovedGrnRates,
   loadGRNData,
   resetForm,
+  hydrateDraft,
   // #18 Fix: Snapshot actions for optimistic update rollback
   saveSnapshot,
   rollbackToSnapshot,

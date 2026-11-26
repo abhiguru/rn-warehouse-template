@@ -5,6 +5,7 @@
 import { router } from 'expo-router';
 import { t } from '@/i18n';
 import { showAlert } from '@/utils/alert';
+import { flushFormDraft } from './useFormDraft';
 import { canStartWork } from './workGate';
 
 /** "2 h 15 min", in the language's digits (Design 4.4). */
@@ -26,6 +27,8 @@ export function refuseAtLimit(options: { formOpen?: boolean } = {}): boolean {
   const gate = canStartWork();
   if (gate.ok) return false;
   const message = t('offline.limit.message', { count: gate.count, age: formatAge(gate.oldestAgeMs ?? 0) });
+  // "Your form is kept": it is saved now, as an unfinished form, whatever the person does next.
+  if (options.formOpen) void flushFormDraft();
   showAlert(t('offline.limit.title'), options.formOpen ? `${message} ${t('offline.limit.formKept')}` : message, [
     { text: t('offline.unsent.title'), onPress: () => router.push('/unsent-items') },
     { text: t('common.close'), style: 'cancel' },

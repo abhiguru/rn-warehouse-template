@@ -18,6 +18,7 @@ import { getSessionCacheScope } from '@/utils/cacheManager';
 import { getLanStatus } from '@/config/lanTransport';
 import { getNetInfoGeneration, subscribeNetInfoGeneration } from '@/config/netInfoGeneration';
 import { isOfflineState } from '@/config/netOffline';
+import { FormDraftHost } from '@/features/unsent/FormDraftHost';
 import { initUnsent } from '@/features/unsent/unsentStore';
 import { sendNow } from '@/features/unsent/sendEngine';
 import { eraseCopy } from '../copyDb';
@@ -120,7 +121,7 @@ export function PhoneCopyLifecycle() {
     };
   }, []);
 
-  return null;
+  return <FormDraftHost />;
 }
 
 export default PhoneCopyLifecycle;

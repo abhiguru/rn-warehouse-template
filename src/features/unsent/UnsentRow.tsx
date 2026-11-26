@@ -42,7 +42,9 @@ const makeStyles = (t: ThemeTokens) => ({
   swipeText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.destructive.onFill },
 });
 
-const TAG_STATUS: Record<UnsentListRow['tag'], StatusKind> = {
+type TagName = NonNullable<UnsentListRow['tag']>;
+
+const TAG_STATUS: Record<TagName, StatusKind> = {
   saved: 'informative',
   sending: 'informative',
   sent: 'positive',
@@ -50,7 +52,7 @@ const TAG_STATUS: Record<UnsentListRow['tag'], StatusKind> = {
   held: 'critical',
 };
 
-const TAG_TEXT: Record<UnsentListRow['tag'], 'stateSaved' | 'stateSending' | 'stateSent' | 'stateWaiting' | 'stateHeld'> = {
+const TAG_TEXT: Record<TagName,'stateSaved' | 'stateSending' | 'stateSent' | 'stateWaiting' | 'stateHeld'> = {
   saved: 'stateSaved',
   sending: 'stateSending',
   sent: 'stateSent',
@@ -69,17 +71,18 @@ export const UnsentRow = memo(function UnsentRow({ row, divider, onOpen, onDelet
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
   const swipeable = useRef<SwipeableMethods>(null);
-  const opens = row.target.grnId !== undefined || row.target.dispatchId !== undefined;
-  const deletable = row.section === 'unsent';
-  const tagText = tr(`offline.unsent.${TAG_TEXT[row.tag]}`);
+  const opens = row.form !== null || row.target.grnId !== undefined || row.target.dispatchId !== undefined;
+  const deletable = row.section === 'unsent' || row.section === 'unfinished';
+  const tagText = row.tag === null ? null : tr(`offline.unsent.${TAG_TEXT[row.tag]}`);
   // "Sent · GRN 312": the number is an identifier, so it keeps 0-9.
-  const tagLabel = row.sentNumber === null ? tagText : `${tagText} · ${formatIdentifier(row.sentNumber)}`;
-  const recorded = tr('offline.unsent.recordedAt', { time: formatLoadedAt(row.recordedAt) });
+  const tagLabel = tagText !== null && row.sentNumber !== null ? `${tagText} · ${formatIdentifier(row.sentNumber)}` : tagText;
+  // A form says when it was started; a record, when it was recorded.
+  const recorded = row.form === null ? tr('offline.unsent.recordedAt', { time: formatLoadedAt(row.recordedAt) }) : tr('offline.unsent.startedAt', { time: formatLoadedAt(row.recordedAt) });
   const label = [row.title, row.customer, recorded, tagLabel, row.reason].filter(Boolean).join(', ');
 
   const content = (
     <Pressable
-      testID={`unsent-row-${row.id}`}
+      testID={row.form === null ? `unsent-row-${row.id}` : `unsent-form-${row.id}`}
       disabled={!opens}
       onPress={() => onOpen(row)}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
@@ -105,9 +108,11 @@ export const UnsentRow = memo(function UnsentRow({ row, divider, onOpen, onDelet
           </Text>
         ) : null}
       </View>
-      <View style={styles.stack}>
-        <StatusTag testID={`unsent-row-tag-${row.id}`} status={TAG_STATUS[row.tag]} label={tagLabel} wrap />
-      </View>
+      {row.tag !== null && tagLabel !== null ? (
+        <View style={styles.stack}>
+          <StatusTag testID={`unsent-row-tag-${row.id}`} status={TAG_STATUS[row.tag]} label={tagLabel} wrap />
+        </View>
+      ) : null}
       {opens ? <Icon name="chevron-right" size={iconSize.md} color={tokens.icon.secondary} style={styles.chevron} importantForAccessibility="no" /> : null}
     </Pressable>
   );
