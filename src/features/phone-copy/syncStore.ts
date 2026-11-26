@@ -8,6 +8,8 @@ export interface SyncSnapshot {
   /** 'unknown' until the capability and the format are known for this session. */
   feature: 'unknown' | 'on' | 'off';
   phase: CopyPhase;
+  /** The payload format of what the copy holds; absent until a load has begun (WH-299: the screens read format 2 on). */
+  format?: number;
   running: null | 'first-load' | 'changes' | 'reload' | 'checksums';
   /** A full sync within the last minute and the server reachable. */
   current: boolean;

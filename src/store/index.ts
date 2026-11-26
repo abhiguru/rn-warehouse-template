@@ -3,6 +3,7 @@ import { persistStore, persistReducer } from 'redux-persist';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { combineReducers } from 'redux';
 import { restorePreferences } from './persistence';
+import { provideCopyRole } from '@/features/phone-copy/copyRole';
 
 // Import slices
 import authReducer from './slices/authSlice';
@@ -70,6 +71,9 @@ export const store = configureStore({
 });
 
 export const persistor = persistStore(store);
+
+// The phone copy's read route asks who is signed in (WH-299).
+provideCopyRole(() => store.getState().auth.userProfile?.role);
 
 // Define RootState from rootReducer to avoid circular reference with middleware
 export type RootState = ReturnType<typeof rootReducer>;

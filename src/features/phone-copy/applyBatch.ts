@@ -3,7 +3,10 @@
  * transaction that its caller opened, so a page is stored whole or not at all.
  */
 import type { CopyDriver, SqlValue } from './copyDriver';
-import { extractValues, extractedColumns, rebuildAllSearch, rebuildSearchFor, vParts, type EntityName } from './copySchema';
+import {
+  RANK_KINDS, RANK_SOURCES, extractValues, extractedColumns, rankMetaKey, rebuildAllDispatchSearch, rebuildAllSearch,
+  rebuildDispatchSearchFor, rebuildSearchFor, vParts, type EntityName,
+} from './copySchema';
 import type { Change, FeedRow } from './syncApi';
 
 /** Rows per INSERT statement. */
@@ -22,8 +25,31 @@ export async function writeRows(tx: CopyDriver, entity: EntityName, rows: readon
       `INSERT INTO ${entity} (${columns.join(', ')}) VALUES ${chunk.map(() => marks).join(', ')} ON CONFLICT(id) DO UPDATE SET ${update}`,
       params
     );
+    await noteRankValues(tx, entity, chunk);
   }
 }
+
+/** A written value that has no rank yet: the ranks of its kind are worked out again at the next read that needs them. */
+async function noteRankValues(tx: CopyDriver, entity: EntityName, rows: readonly FeedRow[]): Promise<void> {
+  for (const kind of RANK_KINDS) {
+    const source = RANK_SOURCES[kind];
+    if (source.entity !== entity) continue;
+    const values = rows.map(r => r.row[source.key]).filter((value): value is string => typeof value === 'string');
+    if (!values.length) continue;
+    await tx.run(
+      `DELETE FROM meta WHERE k = ? AND EXISTS (SELECT 1 FROM (VALUES ${values.map(() => '(?)').join(', ')}) AS written
+         WHERE NOT EXISTS (SELECT 1 FROM text_rank r WHERE r.kind = ? AND r.value = written.column1))`,
+      [rankMetaKey(kind), ...values, kind]
+    );
+  }
+}
+
+/** What goes from the phone with a row of an entity. */
+const CASCADES: Readonly<Partial<Record<EntityName, readonly EntityName[]>>> = {
+  goodsreceived: ['goodsreceived_trl', 'grn_images', 'grn_lock'],
+  dispatch: ['dispatch_trl', 'dispatch_images'],
+  invoice: ['invoice_trl'],
+};
 
 /** Removes a row with what hangs under it on the phone (server contract, "Delete cascade on the phone"). */
 export async function deleteWithCascade(tx: CopyDriver, entity: EntityName, id: string): Promise<void> {
@@ -35,6 +61,7 @@ export async function deleteWithCascade(tx: CopyDriver, entity: EntityName, id: 
   } else if (entity === 'goodsreceived_trl') {
     await tx.run('DELETE FROM lot_search WHERE lot_id = ?', [id]);
   } else if (entity === 'dispatch') {
+    await tx.run('DELETE FROM dispatch_search WHERE disp_id = ?', [id]);
     await tx.run('DELETE FROM dispatch_trl WHERE disp_id = ?', [id]);
     await tx.run('DELETE FROM dispatch_images WHERE dispatch_id = ?', [id]);
   } else if (entity === 'invoice') {
@@ -43,16 +70,45 @@ export async function deleteWithCascade(tx: CopyDriver, entity: EntityName, id: 
   await tx.run(`DELETE FROM ${entity} WHERE id = ?`, [id]);
 }
 
-/** Applies one page of changes in array order; then the search rows of the lots and GRNs it wrote. */
-export async function applyChanges(tx: CopyDriver, changes: readonly Change[], searchBuilt: boolean): Promise<void> {
+/** The dispatches the given lines are on now. */
+async function dispatchesOfLines(tx: CopyDriver, column: 'id' | 'gr_trl_id' | 'gr_id', ids: readonly string[], into: Set<string>): Promise<void> {
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const found = await tx.all<{ disp_id: string | null }>(
+      `SELECT DISTINCT disp_id FROM dispatch_trl WHERE ${column} IN (${chunk.map(() => '?').join(', ')})`,
+      chunk
+    );
+    for (const { disp_id: dispatchId } of found) if (dispatchId) into.add(dispatchId);
+  }
+}
+
+/**
+ * Applies one page of changes in array order; then the search rows of what it wrote. Answers the entities the page
+ * touched, what went with a deleted row included.
+ */
+export async function applyChanges(tx: CopyDriver, changes: readonly Change[], searchBuilt: boolean): Promise<Set<EntityName>> {
+  const touched = new Set<EntityName>();
   const lots = new Set<string>();
   const grns = new Set<string>();
+  const dispatches = new Set<string>();
   // Consecutive upserts of one entity go in one statement; anything else ends the run first, so the order holds.
   const batch: { entity: EntityName | null; rows: FeedRow[] } = { entity: null, rows: [] };
   const flush = async () => {
-    if (batch.entity && batch.rows.length) await writeRows(tx, batch.entity, batch.rows);
+    if (batch.entity && batch.rows.length) {
+      const ids = batch.rows.map(r => r.id);
+      const lines = searchBuilt && batch.entity === 'dispatch_trl';
+      // A line moved to another dispatch changes both: the one it leaves, and the one it joins.
+      if (lines) await dispatchesOfLines(tx, 'id', ids, dispatches);
+      await writeRows(tx, batch.entity, batch.rows);
+      if (lines) await dispatchesOfLines(tx, 'id', ids, dispatches);
+    }
     batch.entity = null;
     batch.rows = [];
+  };
+  const note = (entity: EntityName, id: string) => {
+    if (entity === 'goodsreceived_trl') lots.add(id);
+    if (entity === 'goodsreceived') grns.add(id);
+    if (entity === 'dispatch') dispatches.add(id);
   };
   for (const entry of changes) {
     if (entry.op === 'upsert') {
@@ -61,16 +117,29 @@ export async function applyChanges(tx: CopyDriver, changes: readonly Change[], s
         batch.entity = entry.e;
       }
       batch.rows.push({ id: entry.id, v: entry.v, row: entry.row });
-      if (entry.e === 'goodsreceived_trl') lots.add(entry.id);
-      if (entry.e === 'goodsreceived') grns.add(entry.id);
+      touched.add(entry.e);
+      note(entry.e, entry.id);
       continue;
     }
     await flush();
-    if (entry.op === 'stale') await tx.run('INSERT OR IGNORE INTO money_stale (customer_id) VALUES (?)', [entry.id]);
-    else await deleteWithCascade(tx, entry.e, entry.id);
+    if (entry.op === 'stale') {
+      await tx.run('INSERT OR IGNORE INTO money_stale (customer_id) VALUES (?)', [entry.id]);
+      continue;
+    }
+    if (searchBuilt && entry.e === 'dispatch_trl') await dispatchesOfLines(tx, 'id', [entry.id], dispatches);
+    await deleteWithCascade(tx, entry.e, entry.id);
+    touched.add(entry.e);
+    for (const child of CASCADES[entry.e] ?? []) touched.add(child);
+    note(entry.e, entry.id);
   }
   await flush();
-  if (searchBuilt && (lots.size || grns.size)) await rebuildSearchFor(tx, [...lots], [...grns]);
+  if (searchBuilt) {
+    if (lots.size || grns.size) await rebuildSearchFor(tx, [...lots], [...grns]);
+    await dispatchesOfLines(tx, 'gr_trl_id', [...lots], dispatches);
+    await dispatchesOfLines(tx, 'gr_id', [...grns], dispatches);
+    if (dispatches.size) await rebuildDispatchSearchFor(tx, [...dispatches]);
+  }
+  return touched;
 }
 
 /** Keeps a page of a reload aside; the copy's own rows stay as they are until the reload ends. */
@@ -112,6 +181,8 @@ export async function finishReload(tx: CopyDriver, entities: readonly EntityName
   }
   if (whole) await tx.run('DELETE FROM money_stale');
   if (entities.includes('invoice') || whole) await tx.run('INSERT OR IGNORE INTO money_stale (customer_id) SELECT id FROM customers');
-  if (whole || entities.includes('goodsreceived') || entities.includes('goodsreceived_trl')) await rebuildAllSearch(tx);
+  const lotsChanged = whole || entities.includes('goodsreceived') || entities.includes('goodsreceived_trl');
+  if (lotsChanged) await rebuildAllSearch(tx);
+  if (lotsChanged || entities.includes('dispatch') || entities.includes('dispatch_trl')) await rebuildAllDispatchSearch(tx);
   await tx.run('DELETE FROM stage_rows');
 }

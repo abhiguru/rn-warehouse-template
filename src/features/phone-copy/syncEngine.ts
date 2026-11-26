@@ -17,11 +17,13 @@ import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger } from '@/utils/logger';
 import { applyChanges, finishReload, stageRows, writeRows } from './applyBatch';
 import { compareChecksums } from './checksums';
+import { forgetCopyChanges, noteCopyChange, publishCopyChanges } from './copyChanges';
 import { CopyKeyUnreadableError, eraseCopyFiles, openCopy, replaceWithEmptyCopy, setBeforeErase } from './copyDb';
 import type { CopyDriver } from './copyDriver';
 import { recordCopyKeyReadTry, resetCopyKeyReadTries } from './copyKeyReadTries';
 import {
-  ALL_ENTITIES, LAST_STAGE_ONE_ENTITY, SYNC_FORMATS, createIndexes, isEntityName, rebuildAllSearch, type EntityName,
+  ALL_ENTITIES, LAST_STAGE_ONE_ENTITY, SYNC_FORMATS, createIndexes, isEntityName, rebuildAllDispatchSearch,
+  rebuildAllSearch, type EntityName,
 } from './copySchema';
 import { isDiskFull, isSpaceShort, readCopyStorage } from './copyStorage';
 import {
@@ -109,6 +111,8 @@ const engine = {
   schedule: false,
   foreground: true,
   offline: false,
+  /** Screens that follow the connection; each removes itself on unmount. */
+  offlineListeners: new Set<() => void>(),
   backoff: 0,
   timer: null as ReturnType<typeof setTimeout> | null,
   currentTimer: null as ReturnType<typeof setTimeout> | null,
@@ -211,7 +215,7 @@ const isReadablePhase = (phase: CopyPhase): boolean => phase === 'stage2' || pha
 async function publishFromMeta(db: CopyDriver, offline: boolean): Promise<void> {
   const phase = await phaseOf(db);
   const format = Number(await meta(db, 'format'));
-  const patch: Partial<SyncSnapshot> = { phase, asOf: await meta(db, 'as_of'), copyOpen: true };
+  const patch: Partial<SyncSnapshot> = { phase, asOf: await meta(db, 'as_of'), format: format || undefined, copyOpen: true };
   if (phase !== 'empty' && SYNC_FORMATS.includes(format) && getSyncSnapshot().feature !== 'off') patch.feature = 'on';
   if (isReadablePhase(phase) || offline) patch.pending = false;
   publish(patch);
@@ -223,7 +227,7 @@ async function publishFromMeta(db: CopyDriver, offline: boolean): Promise<void> 
 /** Empties the copy's data, keeping its file, key, schema and scope. */
 async function clearData(tx: CopyDriver): Promise<void> {
   for (const entity of ALL_ENTITIES) await tx.run(`DELETE FROM ${entity}`);
-  await tx.exec('DELETE FROM lot_search; DELETE FROM stage_rows; DELETE FROM money_stale;');
+  await tx.exec('DELETE FROM lot_search; DELETE FROM dispatch_search; DELETE FROM text_rank; DELETE FROM stage_rows; DELETE FROM money_stale;');
   await tx.run("DELETE FROM meta WHERE k NOT IN ('schema_version', 'scope')");
   await setMeta(tx, 'phase', 'empty');
 }
@@ -245,7 +249,7 @@ async function startLoad(run: Run): Promise<void> {
     await setMeta(tx, 'phase', 'stage1');
     if (entities.length) await setMeta(tx, 'load_cursor', JSON.stringify({ entity: entities[0], after: null }));
   });
-  publish({ feature: 'on', phase: 'stage1', asOf: start.asOf });
+  publish({ feature: 'on', phase: 'stage1', asOf: start.asOf, format: start.format });
 }
 
 async function fetchPage(run: Run, cursor: Cursor): Promise<SyncPage> {
@@ -286,6 +290,7 @@ async function firstLoad(run: Run): Promise<void> {
     });
     phase = 'stage2';
     publish({ phase: 'stage2' });
+    noteCopyChange(stageOne);
     noteStorage(db, true);
   };
 
@@ -314,12 +319,14 @@ async function firstLoad(run: Run): Promise<void> {
   const startPosition = await meta(db, 'start_position');
   await write(run, async tx => {
     await createIndexes(tx, stageTwo);
+    await rebuildAllDispatchSearch(tx);
     await setMeta(tx, 'phase', 'ready');
     await deleteMeta(tx, 'load_cursor');
     if (startPosition) await setMeta(tx, 'position', startPosition);
     await deleteMeta(tx, 'start_position');
   });
   publish({ phase: 'ready' });
+  noteCopyChange(entities);
 }
 
 // ---------- reloads (contract 6.4) ----------
@@ -353,7 +360,8 @@ async function runReload(run: Run, pending: PendingReload): Promise<void> {
     await setMeta(tx, 'position', pending.position);
     await deleteMeta(tx, 'pending_reload');
   });
-  if (pending.whole && pending.asOf) publish({ asOf: pending.asOf });
+  noteCopyChange(pending.entities);
+  if (pending.whole && pending.asOf) publish({ asOf: pending.asOf, format: pending.format });
 }
 
 async function beginReload(run: Run, entities: EntityName[], position: string): Promise<void> {
@@ -419,11 +427,13 @@ async function catchUp(run: Run): Promise<void> {
       continue;
     }
     const page = answer;
+    let touched: ReadonlySet<EntityName> = new Set<EntityName>();
     await write(run, async tx => {
-      await applyChanges(tx, page.changes, true);
+      touched = await applyChanges(tx, page.changes, true);
       await setMeta(tx, 'position', page.position);
       await setMeta(tx, 'as_of', page.asOf);
     });
+    noteCopyChange(touched);
     publish({ asOf: page.asOf });
     if (!page.more) return;
   }
@@ -593,6 +603,7 @@ async function runOnce(): Promise<SyncOutcome> {
     publish({ lastRunFailed: false, running: null, pending: false });
     setCurrent(!engine.offline);
     noteStorage(run.db, true);
+    publishCopyChanges();
     return 'done';
   } catch (error) {
     if (error instanceof SyncStoppedError || epoch !== engine.epoch) {
@@ -612,6 +623,8 @@ async function runOnce(): Promise<SyncOutcome> {
       clearScheduleTimer();
       return 'stopped';
     }
+    // What the run stored before it failed is in the copy: the screens read it now.
+    publishCopyChanges();
     if (isDiskFull(error)) publish({ storageLow: true });
     else if (!(error instanceof SyncFailedError) && !(error instanceof SyncRefusedError)) {
       engine.writeFailures += 1;
@@ -753,15 +766,30 @@ export function setCopyForeground(active: boolean): void {
 
 /** The connection: offline the copy is never current and nothing is scheduled. */
 export function setCopyOffline(offline: boolean): void {
+  const changed = engine.offline !== offline;
   engine.offline = offline;
   if (offline) {
     if (!getSyncSnapshot().pending) clearScheduleTimer();
     setCurrent(false);
   }
+  if (changed) for (const listener of [...engine.offlineListeners]) listener();
+}
+
+/** The connection as the engine was last told (WH-299: the read route uses it, with no second NetInfo listener). */
+export function isCopyOffline(): boolean {
+  return engine.offline;
+}
+
+export function subscribeCopyOffline(listener: () => void): () => void {
+  engine.offlineListeners.add(listener);
+  return () => {
+    engine.offlineListeners.delete(listener);
+  };
 }
 
 setBeforeErase(async () => {
   await stopPhoneCopy();
+  forgetCopyChanges();
   engine.halted = false;
   engine.backoff = 0;
   engine.writeFailures = 0;
