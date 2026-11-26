@@ -50,6 +50,17 @@ async function linesOf(q: CopyReader, invoiceId: string): Promise<Line[]> {
 const byLineId = (a: Line, b: Line): number =>
   compareNullsLast(uuidTimestampUs(textOf(a.line.id)), uuidTimestampUs(textOf(b.line.id)), compareNumbers) || compareText(String(a.line.id), String(b.line.id));
 
+/**
+ * The invoice's line totals are the server's figures (decision 4): a feed that does not send them yet (`line_amounts` on
+ * each line with details, `items_total_amount` on the invoice) cannot answer this screen, and the phone never works them
+ * out. The read then does not answer, so the screen takes the server's path as a copy of an older format does.
+ */
+function requireServerFigures(invoice: Row, lines: readonly Line[]): void {
+  if (!('items_total_amount' in invoice) || lines.some(({ line, dispatchLine }) => (isSet(line.details_kept_at) || dispatchLine !== null) && !('line_amounts' in line))) {
+    throw new Error('the feed does not send the invoice line totals');
+  }
+}
+
 /** The kept copy of a line (a cancelled invoice's, or an imported one's) wins over the dispatch line, GRN and item. */
 const kept = (line: Row): boolean => isSet(line.details_kept_at);
 
@@ -99,6 +110,7 @@ export async function readInvoiceData(q: CopyReader, invoiceId: string): Promise
   const grn = await one(q, 'goodsreceived', invoice.gr_id);
   if (!customer || !grn) return null;
   const lines = (await linesOf(q, invoiceId)).sort(byLineId);
+  requireServerFigures(invoice, lines);
   const creator = await person(q, invoice.created_by);
   const canceller = await person(q, invoice.cancelled_by);
   const keptMode = lines.map(({ line }) => textOf(line.kept_pricing_mode)).find(mode => mode !== null) ?? null;
@@ -173,7 +185,9 @@ export async function readInvoiceItemsDetailed(q: CopyReader, invoiceId: string)
   if (!invoice || isSet(invoice.deleted_at)) return null;
   const cancelled = isSet(invoice.cancelled_at);
   // A live invoice lists a line only when every join matches, or when it kept its details.
-  const lines = (await linesOf(q, invoiceId)).filter(l => cancelled || kept(l.line) || (l.dispatchLine && l.dispatch && l.lot && l.grn));
+  const all = await linesOf(q, invoiceId);
+  requireServerFigures(invoice, all);
+  const lines = all.filter(l => cancelled || kept(l.line) || (l.dispatchLine && l.dispatch && l.lot && l.grn));
   const built = lines.map(({ line, dispatchLine, dispatch, lot, grn, item }) => {
     const keptLine = kept(line);
     const ok = keptLine || dispatchLine !== null;
