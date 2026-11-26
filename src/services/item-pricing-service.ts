@@ -2,6 +2,9 @@
 // Uses RPC functions for all CRUD operations
 
 import { getAuthenticatedClient } from '../config/supabaseConfig';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readPriceHistory } from '@/features/phone-copy/reads/priceHistory';
 import type {
   ItemPricingFilters,
   ItemPricingListParams,
@@ -233,6 +236,17 @@ export const getItemPriceHistory = async (
   });
 
   try {
+    // The phone copy answers when it can (WH-348): one source for all the pages of this request.
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readPriceHistory(q, {
+      customerId: params.customerId ?? null, itemId: params.itemId ?? null, limit, offset,
+    }), { key: JSON.stringify({ item: params.itemId ?? null, customer: params.customerId ?? null, limit }), page: Math.floor(offset / Math.max(limit, 1)) });
+    if (copy && 'restart' in copy) {
+      return failed(t('pricing.list.tryAgainInAMoment'));
+    }
+    if (copy) {
+      return { success: true, data: copy.value.data as unknown as ItemPriceHistoryEntry[], pagination: copy.value.pagination, source: copy.source };
+    }
+
     const authenticatedClient = await getAuthenticatedClient();
     const { data, error } = await authenticatedClient.rpc('get_item_price_history', {
       p_limit: limit,
