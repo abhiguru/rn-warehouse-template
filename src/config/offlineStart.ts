@@ -14,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { PublicConfig } from '@/services/configService';
 import { RequestTimeoutError } from './supabaseConfig';
 import type { OperatorServer } from './operatorServer';
+import { getSessionGeneration } from './sessionLifecycle';
 
 const STORAGE_KEY = 'offline_start_v1';
 
@@ -104,11 +105,29 @@ export function isNoAnswer(error: unknown): boolean {
 }
 
 // In memory only: a new run starts online until its facility check says otherwise.
-const startState = { offline: false, onAnswer: new Set<() => void>() };
+const startState = {
+  offline: false,
+  /** The session generation whose role has not been confirmed since the server gave no answer; null once it has. */
+  unconfirmed: null as number | null,
+  onAnswer: new Set<() => void>(),
+};
 
 /** The facility check of this run had no answer and the app opened from the kept config. */
 export function markOfflineStarted(): void {
   startState.offline = true;
+  startState.unconfirmed = getSessionGeneration();
+}
+
+/**
+ * True from such a start until the person's role has been read from the server again (WH-346). Unlike
+ * `isOfflineStarted` it stays true when the server answers the facility check: that answer says nothing about the role.
+ */
+export function isRoleUnconfirmed(): boolean {
+  return startState.unconfirmed === getSessionGeneration();
+}
+
+export function noteRoleConfirmed(): void {
+  startState.unconfirmed = null;
 }
 
 /**

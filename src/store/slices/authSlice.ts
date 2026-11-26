@@ -27,7 +27,15 @@ import { getSessionGeneration, renewAheadMs } from '@/config/sessionLifecycle';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { isStaleFacility } from '@/config/staleFacilitySession';
-import { isCopyRole, isOfflineStarted, onFirstServerAnswer, readOfflineStart } from '@/config/offlineStart';
+import {
+  isCopyRole,
+  isOfflineStarted,
+  isRoleUnconfirmed,
+  noteRoleConfirmed,
+  onFirstServerAnswer,
+  readOfflineStart,
+} from '@/config/offlineStart';
+import { holdWritesForRoleRecheck, retryRoleRecheckNow } from '@/config/roleRecheck';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 // Privacy cleanup services - clear user-specific data on logout
@@ -280,14 +288,21 @@ export const initializeAuth = createAsyncThunk.withTypes<{
 
             // The cached copy may be up to a day old: ask the server in the
             // background and show what it says now.
-            void reconcileCachedProfile(dispatch, cachedProfile);
-            // After an offline start that asking found no server: ask again when the server first answers, so a
-            // role or assignment changed meanwhile applies (screens and the phone copy follow it).
-            if (offlineRestore) {
+            if (isRoleUnconfirmed()) {
+              // After an offline start (WH-346) nothing is written until that answer has come: it is asked again,
+              // with growing waits and when the server first answers, until it does (src/config/roleRecheck.ts).
+              // A changed role or assignment then applies: screens and the phone copy follow it.
               const restored = cachedProfile as UserProfile;
-              onFirstServerAnswer(() => {
-                if (generation === getSessionGeneration()) void reconcileCachedProfile(dispatch, restored);
+              holdWritesForRoleRecheck(generation, async () => {
+                const confirmed = await reconcileCachedProfile(dispatch, restored);
+                if (confirmed) noteRoleConfirmed();
+                return confirmed;
               });
+              onFirstServerAnswer(() => {
+                if (generation === getSessionGeneration()) retryRoleRecheckNow();
+              });
+            } else {
+              void reconcileCachedProfile(dispatch, cachedProfile);
             }
 
             return { session: null, user: null, userProfile: cachedProfile };
@@ -596,16 +611,20 @@ const sameProfile = (a: UserProfile, b: UserProfile): boolean => {
 };
 
 // After a start from the cached profile: replace it when the server's differs
-// (a changed role or customer assignment). Nothing happens offline.
+// (a changed role or customer assignment). Nothing happens offline. True when the
+// server's profile and assignments were read for this session, changed or not.
 async function reconcileCachedProfile(
   dispatch: (action: ReturnType<typeof authSlice.actions.setUserProfile>) => unknown,
   cached: UserProfile
-): Promise<void> {
+): Promise<boolean> {
   const generation = getSessionGeneration();
   const fresh = (await reloadUserProfile()) as UserProfile | null;
-  if (!fresh || generation !== getSessionGeneration() || sameProfile(cached, fresh)) return;
-  dispatch(authSlice.actions.setUserProfile(fresh));
-  setSentryUser(fresh.role);
+  if (!fresh || generation !== getSessionGeneration()) return false;
+  if (!sameProfile(cached, fresh)) {
+    dispatch(authSlice.actions.setUserProfile(fresh));
+    setSentryUser(fresh.role);
+  }
+  return true;
 }
 
 /**

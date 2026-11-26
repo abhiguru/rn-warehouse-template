@@ -33,6 +33,7 @@ import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 import { noteRequestNetworkFailure } from './netReachability';
 import { noteExpiredTokenRenewal } from './sessionRenewal';
 import { parseSessionEnd, SESSION_ENDS_AT_KEY, storeSessionEnd } from './sessionEnd';
+import { awaitRoleRecheck, isRoleRecheckPending } from './roleRecheck';
 import { forgetLanKey, LAN_KEY_STORE_KEY, parseLanKey, storeLanKey } from './lanKey';
 
 const authLogger = createLogger('Auth');
@@ -213,6 +214,14 @@ async function gatedFetch(
   init: RequestInit | undefined,
   { generation, mutation, honorSwitch, afterUpgradeWait, afterRateLimitWait }: GatedFetchOptions
 ): Promise<Response> {
+  // After an offline start no write leaves the phone until the person's role has been read again (WH-346,
+  // ./roleRecheck.ts). Every write to the facility passes here. Reads, the token refresh and sign-out
+  // (`honorSwitch` false) are not held: that read depends on them.
+  if (mutation && honorSwitch && isRoleRecheckPending(generation) && !isReadRequest(input, init)) {
+    await awaitRoleRecheck(generation);
+    // A caller that gave up while this waited: its write is not sent late.
+    if (init?.signal?.aborted) throw abortedRead();
+  }
   // A verified identity is the common case; keep it synchronous so a server
   // switch sees this request registered before the first await.
   if (!operatorResumeGate.isVerified()) await awaitIdentityGate(generation);
