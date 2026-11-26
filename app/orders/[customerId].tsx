@@ -13,7 +13,8 @@ import type { ChangeLogEntry, ChangeLogAnalytics, CustomerSummary } from '@/type
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, radius, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
-import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { getOrderScreenCustomer } from '@/services/order-service';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { isWarehouseUser } from '@/config/roles';
@@ -29,6 +30,8 @@ export default function CustomerOrderScreen() {
     (state) => Boolean(state.auth.userProfile) || Boolean(state.auth.user && state.auth.session)
   );
   const staffView = useAppSelector((state) => isWarehouseUser(state.auth.userProfile?.role));
+  // Reading the phone copy with no connection: History and adding items need the server (Design 2.10b, Product PQ1).
+  const needsConnection = useNeedsConnection();
   const [customerName, setCustomerName] = useState<string>('');
   // The business whose name has been read. `loading` follows from it, so on a change of
   // `customerId` the very next render is the spinner: the editor of the old business is
@@ -121,20 +124,10 @@ export default function CustomerOrderScreen() {
     let deactivated = false;
     let unread = false;
     try {
-      const authenticatedClient = await getAuthenticatedClient();
-      const { data, error } = await authenticatedClient
-        .from('customers')
-        .select('name, active, deleted_at')
-        .eq('id', requestedFor)
-        .single();
-
-      if (error) {
-        console.error('[CustomerOrderScreen] Error fetching customer:', error);
-        unread = true;
-      } else {
-        name = data?.name || name;
-        deactivated = data?.active === false;
-      }
+      // From the phone copy when it can answer (WH-328), else the server's customer record.
+      const customer = await getOrderScreenCustomer(requestedFor);
+      name = customer.name || name;
+      deactivated = customer.active === false;
     } catch (error) {
       console.error('[CustomerOrderScreen] Exception:', error);
       unread = true;
@@ -217,22 +210,26 @@ export default function CustomerOrderScreen() {
           loading ? null : (
             <View style={styles.headerActions}>
               <Pressable
+                testID="order-screen-history"
                 style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                 onPress={handleOpenChangelog}
-                accessibilityLabel={tr('orders.screen.viewHistory')}
+                disabled={needsConnection}
+                accessibilityState={{ disabled: needsConnection }}
+                accessibilityLabel={needsConnection ? needsConnectionLabel(tr('orders.screen.viewHistory')) : tr('orders.screen.viewHistory')}
                 accessibilityRole="button"
               >
-                <Icon name="history" size={iconSize.lg} color={t.brand.tint} />
+                <Icon name="history" size={iconSize.lg} color={needsConnection ? t.text.disabled : t.brand.tint} />
               </Pressable>
               <Pressable
+                testID="order-screen-add"
                 style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                 onPress={handleOpenItemCatalog}
-                disabled={businessDeleted}
-                accessibilityState={{ disabled: businessDeleted }}
-                accessibilityLabel={tr('orders.screen.addItemsToOrder')}
+                disabled={businessDeleted || needsConnection}
+                accessibilityState={{ disabled: businessDeleted || needsConnection }}
+                accessibilityLabel={needsConnection ? needsConnectionLabel(tr('orders.screen.addItemsToOrder')) : tr('orders.screen.addItemsToOrder')}
                 accessibilityRole="button"
               >
-                <Icon name="plus" size={iconSize.lg} color={businessDeleted ? t.text.disabled : t.brand.tint} />
+                <Icon name="plus" size={iconSize.lg} color={businessDeleted || needsConnection ? t.text.disabled : t.brand.tint} />
               </Pressable>
             </View>
           ),
