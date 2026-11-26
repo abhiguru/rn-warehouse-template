@@ -6,7 +6,9 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { copyRoute, readVia } from '@/features/phone-copy/readRoute';
+import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { readRackPresets } from '@/features/phone-copy/reads/pickers';
 import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
@@ -63,8 +65,10 @@ registerSessionScoped('rack-presets', () => resetRackPresetsCache());
  */
 export async function getRackPresets(options: { refresh?: boolean } = {}): Promise<RackPresetsAnswer | null> {
   const generation = getSessionGeneration();
-  // The phone copy holds the setting (WH-299); a read that must be the server's own (`refresh`) still asks it.
-  if (!options.refresh) {
+  // The phone copy holds the setting (WH-299); a read that must be the server's own (`refresh`) still asks it, except while
+  // the phone is offline over a copy of format 3: the editor then shows the copy's values and cannot save (WH-348, contract 14.2).
+  const offlineFromCopy = options.refresh === true && isCopyOffline() && copyRoute({ stage: 'all', format: COPY_FORMAT_V3 }) === 'copy';
+  if (!options.refresh || offlineFromCopy) {
     const copy = await readVia('stage1', readRackPresets);
     if (copy) {
       const fromCopy = asAnswer(copy.value);
