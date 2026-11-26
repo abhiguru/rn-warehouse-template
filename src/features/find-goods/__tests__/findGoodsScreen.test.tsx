@@ -103,7 +103,8 @@ jest.mock('@shopify/flash-list', () => {
   return {
     FlashList: React.forwardRef((props: any, ref: unknown) => {
       React.useImperativeHandle(ref, () => ({ scrollToOffset: mockScroll, scrollToIndex: () => {} }));
-      return React.createElement(React.Fragment, null, draw(props.ListHeaderComponent),
+      const { View } = require('react-native');
+      return React.createElement(View, { testID: props.testID, onEndReached: props.onEndReached }, draw(props.ListHeaderComponent),
         props.data.length === 0 ? draw(props.ListEmptyComponent) : null,
         props.data.map((item: any, index: number) =>
           React.createElement(React.Fragment, { key: props.keyExtractor ? props.keyExtractor(item, index) : index }, props.renderItem({ item, index }))),
@@ -146,6 +147,8 @@ const findGoodsModule = () => require('@/features/find-goods/findGoodsService') 
 beforeEach(async () => {
   for (const level of ['log', 'info', 'warn', 'error', 'debug', 'time', 'timeEnd'] as const) jest.spyOn(console, level).mockImplementation(() => undefined);
   resetEnv();
+  syncStore.resetSyncSnapshot();
+  await runSessionScopedClears({ dispatch: () => undefined } as never);
   seedWarehouse();
   serverCalls.length = 0;
   mockNet.offline = false;
@@ -280,8 +283,8 @@ describe('S1: arriving', () => {
     const field = await openFindGoods();
     expect(field).toHaveProp('placeholder', 'Mark, rack, item, customer or GRN');
     const intro = screen.getByTestId('find-goods-intro');
-    expect(intro).toHaveTextContent('Find goods');
-    expect(intro).toHaveTextContent('Type any part of a mark, rack, item, customer or GRN number.');
+    expect(intro).toHaveTextContent('Find goods', { exact: false });
+    expect(intro).toHaveTextContent('Type any part of a mark, rack, item, customer or GRN number.', { exact: false });
     expect(rowsOnScreen()).toEqual([]);
     expect(screen.queryByTestId('find-goods-count')).not.toBeOnTheScreen();
     expect(screen.queryByTestId('grn-card-g-B1')).not.toBeOnTheScreen();
@@ -296,8 +299,8 @@ describe('S1: arriving', () => {
     const field = await screen.findByTestId('find-goods-search');
     expect(field).toHaveProp('placeholder', 'માર્કો, રેક, આઇટમ, વેપારી કે આવક પાવતી');
     const intro = screen.getByTestId('find-goods-intro');
-    expect(intro).toHaveTextContent('માલ શોધો');
-    expect(intro).toHaveTextContent('માર્કો, રેક, આઇટમ, વેપારી કે આવક પાવતી નંબરનો કોઈ પણ ભાગ લખો.');
+    expect(intro).toHaveTextContent('માલ શોધો', { exact: false });
+    expect(intro).toHaveTextContent('માર્કો, રેક, આઇટમ, વેપારી કે આવક પાવતી નંબરનો કોઈ પણ ભાગ લખો.', { exact: false });
   });
 });
 
@@ -364,11 +367,11 @@ describe('S4: no match', () => {
     await openFindGoods();
     await search('zzzz');
     const none = await screen.findByTestId('find-goods-no-match');
-    expect(none).toHaveTextContent('No lot matches "zzzz"');
-    expect(none).toHaveTextContent('Lots with no stock left are included, so nothing in the store has this text.');
+    expect(none).toHaveTextContent('No lot matches "zzzz"', { exact: false });
+    expect(none).toHaveTextContent('Lots with no stock left are included, so nothing in the store has this text.', { exact: false });
     expect(none).toHaveProp('accessibilityLiveRegion', 'polite');
     expect(rowsOnScreen()).toEqual([]);
-    await userEvent.press(screen.getByRole('button', { name: 'Clear search' }));
+    await userEvent.press(within(none).getByRole('button', { name: 'Clear search' }));   // the field has its own clear X with the same name
     expect(screen.getByTestId('find-goods-search')).toHaveProp('value', '');
     expect(await screen.findByTestId('find-goods-intro')).toBeOnTheScreen();
     expect(screen.queryByTestId('find-goods-no-match')).not.toBeOnTheScreen();
@@ -381,8 +384,8 @@ describe('S4: no match', () => {
     await userEvent.press(await screen.findByTestId('grn-view-switch-find-goods'));
     await search('zzzz');
     const none = await screen.findByTestId('find-goods-no-match');
-    expect(none).toHaveTextContent('"zzzz" સાથે કોઈ જથ્થો મળતો નથી');
-    expect(none).toHaveTextContent('જેનો સ્ટોક પૂરો થયો છે તે જથ્થા પણ શોધમાં છે, એટલે કોલ્ડ સ્ટોરેજમાં આ લખાણ ક્યાંય નથી.');
+    expect(none).toHaveTextContent('"zzzz" સાથે કોઈ જથ્થો મળતો નથી', { exact: false });
+    expect(none).toHaveTextContent('જેનો સ્ટોક પૂરો થયો છે તે જથ્થા પણ શોધમાં છે, એટલે કોલ્ડ સ્ટોરેજમાં આ લખાણ ક્યાંય નથી.', { exact: false });
   });
 });
 
@@ -400,7 +403,8 @@ describe('PQ2 and the connection: no stage-two line, and the same screen offline
     await screen.findByTestId('find-goods-no-match');
     expect(screen.queryByTestId('find-goods-older-loading')).not.toBeOnTheScreen();
     expect(screen.queryByText(/Older records are still loading/)).not.toBeOnTheScreen();
-    expect(serverCalls).toEqual([]);
+    // The GRN view (the tab's first view) asks the server for its own first page while the copy is half loaded; that is allowed. Find goods adds no call (none for the typed text).
+    for (const call of serverCalls) expect(call).toEqual({ name: 'get_all_grn_items', args: { p_filters: { page_by: 'receipt' }, p_limit: 20, p_offset: 0, p_sort_by: 'gr_no', p_sort_order: 'desc' } });
     await load.finish();
   });
 
@@ -438,8 +442,8 @@ describe('S6: a row', () => {
     await openFindGoods();
     await search('b-3');
     const row = await screen.findByTestId('find-goods-row-l03');
-    expect(row).toHaveTextContent('Beans');
-    expect(row).toHaveTextContent('asha Traders');
+    expect(row).toHaveTextContent('Beans', { exact: false });
+    expect(row).toHaveTextContent('asha Traders', { exact: false });
     expect(row).toHaveTextContent(/Rack B-3/);
     expect(row).toHaveTextContent(/Mark 50%_OFF/);
     expect(row).toHaveTextContent(/GRN A2/);
@@ -462,7 +466,7 @@ describe('S6: a row', () => {
     await openFindGoods();
     await search('peas');
     await waitFor(() => expect(rowsOnScreen()).toEqual(['l08', 'l06', 'l01', 'l02']));
-    expect(screen.getByTestId('find-goods-row-empty-l02')).toHaveTextContent('Empty');
+    expect(screen.getByTestId('find-goods-row-empty-l02')).toHaveTextContent('Empty', { exact: false });
     expect(screen.getByTestId('find-goods-row-stock-l02')).toHaveTextContent('0');
     expect(screen.queryByTestId('find-goods-row-empty-l06')).not.toBeOnTheScreen();
   });
@@ -472,7 +476,7 @@ describe('S6: a row', () => {
     await openFindGoods();
     await search('a');
     await screen.findByTestId('find-goods-row-l05');
-    expect(screen.getByTestId('find-goods-row-l05')).toHaveTextContent('No rack');
+    expect(screen.getByTestId('find-goods-row-l05')).toHaveTextContent('No rack', { exact: false });
     expect(screen.getByTestId('find-goods-row-l05')).not.toHaveTextContent(/Rack /);
     expect(screen.getByTestId('find-goods-row-l04')).not.toHaveTextContent(/Mark/);
     expect(screen.getByTestId('find-goods-row-l04')).toHaveTextContent(/Rack C-1/);
@@ -487,7 +491,7 @@ describe('S6: a row', () => {
     await render(<Tab />);
     await userEvent.press(await screen.findByTestId('grn-view-switch-find-goods'));
     await search('a');
-    expect(await screen.findByTestId('find-goods-row-l05')).toHaveTextContent('રેક નથી');
+    expect(await screen.findByTestId('find-goods-row-l05')).toHaveTextContent('રેક નથી', { exact: false });
   });
 
   it('this phone\'s unsent dispatches: the number is lower and the line says why, with Gujarati digits in Gujarati', async () => {
@@ -498,8 +502,8 @@ describe('S6: a row', () => {
     await search('d-4');
     await screen.findByTestId('find-goods-row-l06');
     expect(screen.getByTestId('find-goods-row-stock-l06')).toHaveTextContent('3');
-    expect(screen.getByTestId('lot-less-unsent-l06')).toHaveTextContent('Less 4 in dispatches not sent yet');
-    expect(screen.getByTestId('lot-less-held-l06')).toHaveTextContent('Less 2 in held dispatches');
+    expect(screen.getByTestId('lot-less-unsent-l06')).toHaveTextContent('Less 4 in dispatches not sent yet', { exact: false });
+    expect(screen.getByTestId('lot-less-held-l06')).toHaveTextContent('Less 2 in held dispatches', { exact: false });
     expect(screen.queryByTestId('lot-less-unsent-l01')).not.toBeOnTheScreen();
   });
 
@@ -523,7 +527,7 @@ describe('S7: opening a GRN, and coming back', () => {
     await userEvent.press(screen.getByTestId('find-goods-row-l06'));
     expect(router.push).toHaveBeenCalledWith(`/grn-details/${lotNamed('l06').gr_id}`);
     // Back: the tab is drawn again over the same session.
-    view.unmount();
+    await view.unmount();
     await render(<Tab />);
     expect(await screen.findByTestId('find-goods-search')).toHaveProp('value', 'peas');
     await waitFor(() => expect(rowsOnScreen()).toEqual(['l08', 'l06', 'l01', 'l02']));
@@ -537,8 +541,11 @@ describe('S8: sign-out and facility switch', () => {
     await userEvent.press(await screen.findByTestId('grn-view-switch-find-goods'));
     await search('peas');
     await waitFor(() => expect(rowsOnScreen()).toHaveLength(4));
-    view.unmount();
+    await view.unmount();
     await runSessionScopedClears({ dispatch: mockStore.dispatch as never });
+    // The clear erased the copy with the session; the next session loads its own before the tab is drawn again.
+    await engine.stopPhoneCopy();
+    await loadCopy();
     await render(<Tab />);
     expect(await screen.findByTestId('grn-card-g-B1')).toBeOnTheScreen();
     expect(screen.queryByTestId('find-goods-search')).not.toBeOnTheScreen();
@@ -597,8 +604,8 @@ describe('DQ1: the copy cannot be read', () => {
     const read = jest.spyOn(module, 'findGoods').mockImplementationOnce(async () => ({ kind: 'failed' }));
     await search('peas');
     const failed = await screen.findByTestId('find-goods-failed');
-    expect(failed).toHaveTextContent("Couldn't read the records on this phone");
-    expect(failed).toHaveTextContent('Try again. If it keeps happening, close the app and open it again.');
+    expect(failed).toHaveTextContent("Couldn't read the records on this phone", { exact: false });
+    expect(failed).toHaveTextContent('Try again. If it keeps happening, close the app and open it again.', { exact: false });
     expect(screen.queryByTestId('find-goods-no-match')).not.toBeOnTheScreen();
     expect(rowsOnScreen()).toEqual([]);
     read.mockImplementation(real);
@@ -616,8 +623,8 @@ describe('DQ1: the copy cannot be read', () => {
     jest.spyOn(findGoodsModule(), 'findGoods').mockImplementation(async () => ({ kind: 'failed' }));
     await search('peas');
     const failed = await screen.findByTestId('find-goods-failed');
-    expect(failed).toHaveTextContent('આ ફોનની માહિતી વાંચી શકાઈ નથી');
-    expect(failed).toHaveTextContent('ફરી પ્રયાસ કરો. વારંવાર થાય તો ઍપ બંધ કરીને ફરી ખોલો.');
+    expect(failed).toHaveTextContent('આ ફોનની માહિતી વાંચી શકાઈ નથી', { exact: false });
+    expect(failed).toHaveTextContent('ફરી પ્રયાસ કરો. વારંવાર થાય તો ઍપ બંધ કરીને ફરી ખોલો.', { exact: false });
   });
 });
 

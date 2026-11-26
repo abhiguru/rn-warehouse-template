@@ -235,7 +235,8 @@ describe('F2 and F3: the rows and their order', () => {
     for (const role of ['admin', 'supervisor', 'staff'] as const) {
       const w = await bootWarehouse({ role });
       await loadCopy(w);
-      const expected = await expectedFor(query);
+      // Contract 2 and F1: nothing typed is an empty page, never every lot; the server's list for "" is not what Find goods shows.
+      const expected = query === '' ? { rows: [], total: 0 } : await expectedFor(query);
       const actual = await allPages(query);
       expect(actual.rows).toEqual(expected.rows);
       expect(actual.total).toBe(expected.total);
@@ -401,6 +402,7 @@ describe('F9 (service half): the answer carries the copy it came from', () => {
     const first = (await service().findGoods('a', 0)) as Extract<Answer, { kind: 'page' }>;
     await w.phone.engine.stopPhoneCopy();
     await (require('@/features/phone-copy/copyDb') as typeof import('@/features/phone-copy/copyDb')).eraseCopy();
+    env.feed.copy = '1.6f1c0000-0000-4000-8000-000000000002.9e107d9d372bb6826bd81d3542a419d6';   // the server names a new copy on each start; the fake feed otherwise repeats one
     await loadCopy(w);
     const again = (await service().findGoods('a', 0)) as Extract<Answer, { kind: 'page' }>;
     expect(again.copyId).not.toBe(first.copyId);
