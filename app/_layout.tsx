@@ -456,9 +456,14 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: () => voi
   // restoration belongs at the root navigation boundary.
   useEffect(() => {
     let mounted = true;
+    let facilitySignedIn = false;
+    let centralUnreadable = false;
     void Promise.all([
       dispatch(initializeAuth())
         .unwrap()
+        .then(restored => {
+          facilitySignedIn = Boolean(restored.userProfile);
+        })
         // initializeAuth records its failure in Redux; the root only needs to
         // release the navigation gate after the attempt settles. A secure store
         // that stays unreadable is the exception: the screens are not opened as
@@ -468,9 +473,19 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: () => voi
         }),
       // With central login the guard also needs to know whether the person is
       // signed in at the association: read that stored session too (no network).
-      isCentralLoginConfigured() ? restoreCentralSession().catch(() => undefined) : undefined,
+      isCentralLoginConfigured()
+        ? restoreCentralSession({
+            onUnreadable: () => {
+              centralUnreadable = true;
+            },
+          }).catch(() => undefined)
+        : undefined,
     ]).finally(() => {
-      if (mounted) setAuthCheckSettled(true);
+      if (!mounted) return;
+      // With no facility session the guard would show central sign-in, and an unread store does not say that
+      // nobody is signed in there: the load-error screen takes the screens' place (WH-361).
+      if (centralUnreadable && !facilitySignedIn) onSessionUnreadable();
+      else setAuthCheckSettled(true);
     });
     return () => {
       mounted = false;
@@ -605,7 +620,7 @@ function BootstrapApp() {
     setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
   };
 
-  // The restore could not read the stored session, after retries (WH-360): nothing is signed out or erased, and
+  // The restore could not read a stored session, after retries (WH-360, WH-361): nothing is signed out or erased, and
   // "Try again" runs the start, and with it the restore, again. Stable, so the restore is not run again by a render.
   const closeForUnreadableSession = useCallback(() => {
     setPastOfflineLimit(false);
