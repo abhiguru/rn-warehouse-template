@@ -149,7 +149,7 @@ async function apply(row: ItemRow, outcome: SendOutcome, before: ItemRow): Promi
       for (const photo of await photosOf(row.id)) removePhotoFile(photo.file);
       return;
     case 'refused':
-      await updateItem(row.id, { state: 'refused', last_error: outcome.reason });
+      await updateItem(row.id, { state: 'refused', last_error: outcome.reason, result: outcome.code ? JSON.stringify({ code: outcome.code }) : null });
       return;
     case 'transient':
     case 'stop':

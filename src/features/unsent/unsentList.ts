@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr } from '@/i18n';
 import { listOwnForms, type FormKind } from './formDrafts';
+import { refusalCodeOf, refusalFamilyOf } from './refusalTags';
 import { DEPENDS_ON_REFUSED } from './sendEngine';
 import { listItems, otherPeople, photosOfItem, type UnsentRowView } from './unsentQueue';
 import { getLastSentAt, type ItemState } from './unsentRows';
@@ -91,12 +92,14 @@ function tagOf(state: ItemState): UnsentListRow['tag'] {
 
 /**
  * The footnote of a held item: what follows a refused item says so in its own words, never the refused item's reason
- * (Design 4.6). A refused item never shows the server's raw text: its words are `refusedGeneric` (Design 4.10; 7.5's
- * sentences need the values of the refusal and have no Gujarati yet, so none is a known reason here).
+ * (Design 4.6). A refused item never shows the server's raw text: a code with a row in 7.5 shows its tag ("Refused: Stock
+ * short", Design 4.10 of 2026-11-27; the answer carries no figures for the full sentence), any other code `refusedGeneric`.
  */
-function heldReason(reason: string | null): string | null {
+function heldReason(reason: string | null, result: unknown): string | null {
   if (reason === null) return null;
-  return reason === DEPENDS_ON_REFUSED ? tr('offline.unsent.dependsOnRefused') : tr('offline.unsent.refusedGeneric');
+  if (reason === DEPENDS_ON_REFUSED) return tr('offline.unsent.dependsOnRefused');
+  const family = refusalFamilyOf(refusalCodeOf(result));
+  return family ? tr('offline.unsent.refusedTag', { tag: tr(`offline.unsent.refusedTags.${family}`) }) : tr('offline.unsent.refusedGeneric');
 }
 
 export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>> {
@@ -115,7 +118,7 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
       photoMissing,
       tag: tagOf(view.state),
       form: null,
-      reason: view.section === 'held' ? heldReason(view.reason) : null,
+      reason: view.section === 'held' ? heldReason(view.reason, view.result) : null,
       target: view.target,
     });
   }
