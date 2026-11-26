@@ -155,6 +155,8 @@ const startState = {
   offline: false,
   /** The session generation whose role has not been confirmed since the server gave no answer; null once it has. */
   unconfirmed: null as number | null,
+  /** How many times the role has been marked unconfirmed in this run. */
+  marks: 0,
   onAnswer: new Set<() => void>(),
   onUnconfirmed: new Set<() => void>(),
 };
@@ -172,6 +174,7 @@ export function markOfflineStarted(): void {
  */
 export function markRoleUnconfirmed(): void {
   startState.unconfirmed = getSessionGeneration();
+  startState.marks += 1;
   for (const listener of [...startState.onUnconfirmed]) listener();
 }
 
@@ -190,6 +193,9 @@ export function onRoleUnconfirmed(listener: () => void): () => void {
 export function isRoleUnconfirmed(): boolean {
   return startState.unconfirmed === getSessionGeneration();
 }
+
+/** Changes with every mark: a read of the role begun before the latest one confirms nothing (WH-358). */
+export const roleMarkCount = (): number => startState.marks;
 
 export function noteRoleConfirmed(): void {
   startState.unconfirmed = null;

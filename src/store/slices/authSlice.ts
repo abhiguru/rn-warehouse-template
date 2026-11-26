@@ -32,6 +32,7 @@ import {
   isOfflineStarted,
   isRoleUnconfirmed,
   noteRoleConfirmed,
+  roleMarkCount,
   onFirstServerAnswer,
   readOfflineStart,
 } from '@/config/offlineStart';
@@ -599,20 +600,23 @@ const sameProfile = (a: UserProfile, b: UserProfile): boolean => {
 };
 
 // After a start from the cached profile: replace it when the server's differs
-// (a changed role or customer assignment). Nothing happens offline. True when the
-// server's profile and assignments were read for this session, changed or not.
+// (a changed role or customer assignment). Nothing happens offline. 'read' when the
+// server's profile and assignments were read for this session, changed or not;
+// 'outdated' when such an answer is `outdated` by then, and is not applied.
 async function reconcileCachedProfile(
   dispatch: (action: ReturnType<typeof authSlice.actions.setUserProfile>) => unknown,
-  cached: UserProfile
-): Promise<boolean> {
+  cached: UserProfile,
+  outdated: () => boolean = () => false
+): Promise<'read' | 'outdated' | 'failed'> {
   const generation = getSessionGeneration();
   const fresh = (await reloadUserProfile()) as UserProfile | null;
-  if (!fresh || generation !== getSessionGeneration()) return false;
+  if (!fresh || generation !== getSessionGeneration()) return 'failed';
+  if (outdated()) return 'outdated';
   if (!sameProfile(cached, fresh)) {
     dispatch(authSlice.actions.setUserProfile(fresh));
     setSentryUser(fresh.role);
   }
-  return true;
+  return 'read';
 }
 
 /**
@@ -626,9 +630,16 @@ function holdUntilRoleReread(
   profile: UserProfile
 ): void {
   holdWritesForRoleRecheck(generation, async () => {
-    const confirmed = await reconcileCachedProfile(dispatch, profile);
-    if (confirmed) noteRoleConfirmed();
-    return confirmed;
+    // Only a read begun after the latest mark releases the writes (WH-358): an answer to one that a newer mark
+    // overtook releases nothing, and the role is read again at once. A read with no answer waits as any failed one
+    // does (the read itself can mark the role, through the facility check, so it must not repeat at once).
+    for (;;) {
+      const mark = roleMarkCount();
+      const result = await reconcileCachedProfile(dispatch, profile, () => mark !== roleMarkCount());
+      if (result === 'outdated') continue;
+      if (result === 'read') noteRoleConfirmed();
+      return result === 'read';
+    }
   });
   onFirstServerAnswer(() => {
     if (generation === getSessionGeneration()) retryRoleRecheckNow();
