@@ -322,10 +322,14 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
       {onDelete ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={tr('dispatch.photos.deleteLabel', { index: index + 1, total: images.length })}
-          accessibilityState={{ disabled: isDeleting || isUploading }}
-          disabled={isDeleting || isUploading}
-          style={styles.removeButton}
+          accessibilityLabel={
+            needsConnection
+              ? needsConnectionLabel(tr('dispatch.photos.deleteLabel', { index: index + 1, total: images.length }))
+              : tr('dispatch.photos.deleteLabel', { index: index + 1, total: images.length })
+          }
+          accessibilityState={{ disabled: isDeleting || isUploading || needsConnection }}
+          disabled={isDeleting || isUploading || needsConnection}
+          style={[styles.removeButton, needsConnection && styles.addDisabled]}
           onPress={() => onDelete(item)}
         >
           {({ pressed }) => (

@@ -223,6 +223,7 @@ interface ImageTileProps {
   item: GRNImageData;
   onPress: () => void;
   onDelete?: () => void;
+  needsConnection: boolean;
   styles: Styles;
   t: ThemeTokens;
 }
@@ -240,7 +241,7 @@ const RemoteImageTile: React.FC<ImageTileProps> = props => {
   return <ImageTileView {...props} uri={uri} />;
 };
 
-const ImageTileView: React.FC<ImageTileProps & { uri: string | undefined }> = ({ item, onPress, onDelete, styles, t, uri: imageUri }) => {
+const ImageTileView: React.FC<ImageTileProps & { uri: string | undefined }> = ({ item, onPress, onDelete, needsConnection, styles, t, uri: imageUri }) => {
   const { width } = useWindowDimensions();
   const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
   const [isLoading, setIsLoading] = useState(true);
@@ -330,8 +331,10 @@ const ImageTileView: React.FC<ImageTileProps & { uri: string | undefined }> = ({
       {onDelete && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={deleteImageLabel(item)}
-          style={styles.removeButton}
+          accessibilityLabel={needsConnection ? needsConnectionLabel(deleteImageLabel(item)) : deleteImageLabel(item)}
+          accessibilityState={{ disabled: needsConnection }}
+          disabled={needsConnection}
+          style={[styles.removeButton, needsConnection && styles.addIconButtonDisabled]}
           onPress={onDelete}
         >
           {({ pressed }) => (
@@ -448,6 +451,7 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
       item={item}
       onPress={() => onImagePress?.(filteredImages, index)}
       onDelete={onDeleteImage ? () => onDeleteImage(item) : undefined}
+      needsConnection={needsConnection}
       styles={styles}
       t={t}
     />
