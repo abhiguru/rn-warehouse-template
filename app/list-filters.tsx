@@ -259,6 +259,12 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
                     ? translate('filters.page.sectionWithUnit', { label: field.label.toUpperCase(), unit: field.unit.toUpperCase() })
                     : field.label.toUpperCase()}
                 </Text>
+                {/* Why a filter cannot be chosen for now: once, under its heading, above its choices (Design 2.10a). */}
+                {field.unavailable?.(filters.ctx) ? (
+                  <Text style={styles.sectionNote} testID={field.unavailable(filters.ctx)?.testID}>
+                    {field.unavailable(filters.ctx)?.note}
+                  </Text>
+                ) : null}
                 <FieldEditor
                   // Remount after Reset so fields that keep typed text start empty. Never while
                   // typing: a remount there would drop the keyboard focus after one character.
@@ -270,12 +276,6 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
                   onInvalid={bad => setInvalid(previous => ({ ...previous, [field.key]: bad }))}
                   errorRef={node => { errorNodes.current[field.key] = node; }}
                 />
-                {/* Why a filter cannot be chosen for now. */}
-                {field.unavailable?.(filters.ctx) ? (
-                  <Text style={styles.sectionNote} testID={field.unavailable(filters.ctx)?.testID}>
-                    {field.unavailable(filters.ctx)?.note}
-                  </Text>
-                ) : null}
               </View>
             )
           )}
