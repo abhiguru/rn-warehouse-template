@@ -643,3 +643,62 @@ describe('Modals cover the status bar: they keep the real top inset', () => {
     });
   });
 });
+
+// WH-347: with the feature off, the offline strip and the upgrading banner also zero the top inset of the screens below,
+// but a Modal covers them and keeps the window's own top inset.
+describe('Modals under the offline strip or the upgrading banner (feature off) keep the real top inset', () => {
+  const upgrading = () =>
+    act(async () => {
+      await noteUpgradeAnswer({
+        status: 503,
+        headers: { get: () => '120' },
+        clone() { return { json: async () => ({ code: 'upgrading' }) }; },
+      } as unknown as Response);
+    });
+  const covers: [string, () => React.ReactElement, () => unknown, number[]][] = [
+    [
+      'the payment form',
+      () => <PaymentFormModal visible invoiceId="invoice-fictional" invoiceNumber="FXI0001" editing={null} onClose={jest.fn()} onDone={jest.fn()} onRefused={jest.fn()} />,
+      () => screen.getByTestId('payment-form-close'),
+      [TOP],
+    ],
+    [
+      'a dialog that keeps clear of the system bars',
+      () => (
+        <DialogOverlay safeArea>
+          <DialogCard><Text>Dialog body</Text></DialogCard>
+        </DialogOverlay>
+      ),
+      () => screen.getByText('Dialog body'),
+      [TOP + space.lg],
+    ],
+    [
+      'the camera',
+      () => <CameraModal visible onClose={jest.fn()} onCapture={jest.fn()} />,
+      () => screen.getByRole('button', { name: 'Close camera' }),
+      [TOP + space.sm],
+    ],
+  ];
+
+  describe.each(covers)('%s', (_name, element, opened, expected) => {
+    it('while offline, is padded by the window top inset although the screen under it is given none', async () => {
+      facilitySync(false);
+      mockOffline = true;
+      await showOnStack(element());
+      expect(screen.queryByText('phone copy bar')).not.toBeOnTheScreen();
+      expect(screen.getByText('screen top inset 0', { includeHiddenElements: true })).toBeOnTheScreen();
+      expect(opened()).toBeOnTheScreen();
+      expect(topSpacings()).toEqual(expected);
+    });
+
+    it('during an upgrade, is padded by the window top inset although the screen under it is given none', async () => {
+      facilitySync(false);
+      await showOnStack(element());
+      await upgrading();
+      expect(screen.getByText('screen top inset 0', { includeHiddenElements: true })).toBeOnTheScreen();
+      expect(opened()).toBeOnTheScreen();
+      // The banner, online, pads the status bar itself (first); then the Modal's own spacing.
+      expect(topSpacings()).toEqual([TOP, ...expected]);
+    });
+  });
+});

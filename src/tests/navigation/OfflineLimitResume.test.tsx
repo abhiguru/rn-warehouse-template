@@ -13,6 +13,7 @@ import { AppState } from 'react-native';
 import { act, render, screen, userEvent } from '@testing-library/react-native';
 import '@/tests/helpers/fakeTimersFirst';
 import RootLayout from '../../../app/_layout';
+import { beginNativeHandoff } from '@/config/nativeHandoff';
 import { clearOfflineStarted } from '@/config/offlineStart';
 import { operatorResumeGate } from '@/config/operatorResume';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
@@ -35,11 +36,16 @@ jest.mock('@/config/sentryConfig', () => ({
   initializeSentry: jest.fn(), setSentryUser: jest.fn(), clearSentryUser: jest.fn(), captureException: jest.fn(),
   captureMessage: jest.fn(), addBreadcrumb: jest.fn(), Sentry: { wrap: (c: unknown) => c },
 }));
+// NetInfo's change events, which a test sends with `netChange` (WH-354).
+let mockNetListeners: ((state: unknown) => void)[] = [];
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
   default: {
     configure: jest.fn(),
-    addEventListener: jest.fn(() => () => {}),
+    addEventListener: jest.fn((listener: (state: unknown) => void) => {
+      mockNetListeners.push(listener);
+      return () => { mockNetListeners = mockNetListeners.filter(item => item !== listener); };
+    }),
     fetch: jest.fn(async () => ({ type: 'wifi', isConnected: true, isInternetReachable: true, details: null })),
     refresh: jest.fn(async () => ({})),
   },
@@ -618,5 +624,113 @@ describe('"Try again" on the closed screen', () => {
     expect(result).toMatchObject({ error: null });
     expect(count(WRITE_PATH)).toBe(1);
     expect(store.getState().auth.userProfile).toMatchObject({ role: 'supervisor' });
+  });
+});
+
+// WH-354: the same limit, with the app kept in front or away only inside the grace window (10 minutes).
+describe('with no connection while the app stays in front', () => {
+  /** The phone's connection changes: NetInfo tells the app, and the server answers (or not). */
+  const netChange = async (connected: boolean) => {
+    server.up = connected;
+    await act(async () => {
+      mockNetListeners.forEach(listener =>
+        listener({ type: connected ? 'wifi' : 'none', isConnected: connected, isInternetReachable: connected, details: null }));
+    });
+    await wait();
+  };
+  const MINUTE = 60_000;
+
+  it('going offline past the limit closes to the start screen with no return to the front, and reads the phone only', async () => {
+    await openApp();
+    await phoneDate(CONFIRMED + 31 * DAY);
+    shownOnScreen();
+    server.sent = [];
+
+    await netChange(false);
+
+    shownClosed();
+    // The expired access token's own renewal may be tried; the check itself reads the phone only: no profile read, no facility check.
+    expect(paths().filter(path => !path.endsWith(REFRESH_PATH))).toEqual([]);
+  });
+
+  it('going offline within the limit changes nothing, now or at the next check', async () => {
+    await openApp();
+    await phoneDate(CONFIRMED + 10 * DAY);
+
+    await netChange(false);
+    await wait(16 * MINUTE);
+
+    shownOnScreen();
+  });
+
+  it('crossing the limit while offline closes at the next 15-minute check, not before', async () => {
+    await openApp();
+    await phoneDate(CONFIRMED + 10 * DAY);
+    await netChange(false);
+    shownOnScreen();
+
+    jest.setSystemTime(CONFIRMED + 31 * DAY);
+    await wait(14 * MINUTE);
+    shownOnScreen();
+    await wait(MINUTE);
+
+    shownClosed();
+  });
+
+  it('a brief stay (a camera or picker round trip), offline, past the limit: closes on return', async () => {
+    await openApp();
+    await phoneDate(CONFIRMED + 10 * DAY);
+    await netChange(false);
+    shownOnScreen();
+
+    expect(operatorResumeGate.isVerified()).toBe(true);
+    const endHandoff = beginNativeHandoff();
+    jest.setSystemTime(CONFIRMED + 31 * DAY); // while in front: the date moves, no check is due yet
+    await goBack();
+    await wait(MINUTE);
+    await goFront();
+    endHandoff();
+
+    shownClosed();
+  });
+
+  it('a brief stay (a camera or picker round trip), offline, within the limit: the screens stay', async () => {
+    await openApp();
+    await user.type(screen.getByLabelText('Remarks'), '40 bags');
+    await phoneDate(CONFIRMED + 10 * DAY);
+    await netChange(false);
+
+    const endHandoff = beginNativeHandoff();
+    await goBack();
+    await wait(MINUTE);
+    await goFront();
+    endHandoff();
+
+    shownOnScreen();
+    expect(screen.getByLabelText('Remarks', everything)).toHaveDisplayValue('40 bags');
+  });
+
+  it('online, past the limit: the screens stay and nothing is closed by the check', async () => {
+    await openApp();
+    await phoneDate(CONFIRMED + 31 * DAY);
+
+    await wait(16 * MINUTE);
+    await goBack();
+    await wait(MINUTE);
+    await goFront();
+
+    shownOnScreen();
+  });
+
+  it('coming back online stops the check: the screens stay as the date passes the limit', async () => {
+    await openApp();
+    await phoneDate(CONFIRMED + 10 * DAY);
+    await netChange(false);
+    await netChange(true);
+
+    jest.setSystemTime(CONFIRMED + 31 * DAY);
+    await wait(16 * MINUTE);
+
+    shownOnScreen();
   });
 });
