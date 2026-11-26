@@ -499,6 +499,8 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   const lessUnsent = overlay.lessUnsent(lotId);
   const lessHeld = overlay.lessHeld(lotId);
   const lessUnsentText = lessUnsent > 0 ? tr('findGoods.lessNotSent', { count: lessUnsent }) : null;
+  const lessOthers = overlay.lessOthersUnsent?.(lotId) ?? 0;
+  const lessOthersText = lessOthers > 0 ? tr('components.offlineRead.lessOtherPerson', { count: lessOthers }) : null;
   const lessHeldText = lessHeld > 0 ? tr('findGoods.lessHeld', { count: lessHeld }) : null;
   // − and −10 on a line above its stock lower it to the stock (the removal question when there is none): the spoken labels say so.
   const lowerLabel = (amount: number): string | undefined => {
@@ -561,6 +563,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         </View>
 
         {lessUnsentText ? <Text style={styles.footnote} testID={`order-line-less-unsent-${item.id}`}>{lessUnsentText}</Text> : null}
+        {lessOthersText ? <Text style={styles.footnote} testID={`order-line-less-others-${item.id}`}>{lessOthersText}</Text> : null}
         {lessHeldText ? <Text style={styles.footnote} testID={`order-line-less-held-${item.id}`}>{lessHeldText}</Text> : null}
 
         {overStock ? (
