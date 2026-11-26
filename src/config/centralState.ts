@@ -100,6 +100,8 @@ export type CentralState = {
   pendingLink: PendingLink | null;
   /** False until My facilities has had its one chance to skip the list at start. */
   autoOpenSpent: boolean;
+  /** The facility "Sign in again" left selected after it removed the central sign-in (WH-366): opened once after the next central sign-in. */
+  reopenOrigin: string | null;
 };
 
 const initial: CentralState = {
@@ -113,6 +115,7 @@ const initial: CentralState = {
   outcome: null,
   pendingLink: null,
   autoOpenSpent: false,
+  reopenOrigin: null,
 };
 
 let state: CentralState = initial;

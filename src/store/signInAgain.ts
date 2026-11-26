@@ -36,7 +36,13 @@ export async function endSessionKeepingFacility(
     // The start could not read the central sign-in either (WH-361): with no facility session it would show "Couldn't
     // start the app" again after the restart, so it goes too and the person signs in centrally.
     if (options.centralUnreadable && !(await signOutCentral())) return 'failed';
-    setCentralState({ autoOpenSpent: true, facilitySmsOrigin: facility.origin, pendingLink: null });
+    setCentralState({
+      autoOpenSpent: true,
+      facilitySmsOrigin: facility.origin,
+      pendingLink: null,
+      // The central sign-in is gone: after the person signs in again, this facility opens once (WH-366).
+      reopenOrigin: options.centralUnreadable ? facility.origin : null,
+    });
     return 'ready';
   } catch {
     return 'failed';

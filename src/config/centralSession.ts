@@ -452,6 +452,7 @@ function forgetInMemory(message: string | null): void {
     opening: null,
     outcome: null,
     pendingLink: null,
+    reopenOrigin: null,
   });
 }
 

@@ -22,7 +22,7 @@ import { useAppDispatch } from '@/store/hooks';
 import { signOutPhoneWithMessages } from '@/features/account/useAccountActions';
 import { useCentralState } from '@/hooks/useCentralState';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { setCentralState, type FacilityStatus, type OpenFailureReason } from '@/config/centralState';
+import { getCentralState, setCentralState, type FacilityStatus, type OpenFailureReason } from '@/config/centralState';
 import { fetchCentralProfile, fetchFacilityCatalogue } from '@/config/centralSession';
 import {
   loadMyFacilities,
@@ -126,9 +126,14 @@ export default function FacilitiesScreen() {
     }
     // Not while a sign-out is still finishing: the open would be refused with a dialog nobody asked for.
     if (leaving) return;
-    setCentralState({ autoOpenSpent: true });
-    const sole = soleApprovedFacility(list);
-    if (sole && !opening && !hasOutcome) void openFacility(sole.origin, sole.name);
+    // "Sign in again" (WH-366): the facility it left selected opens this once, whatever else is listed. If that
+    // open fails, the chance is already spent: the list stays, with no second try.
+    const reopen = getCentralState().reopenOrigin;
+    setCentralState({ autoOpenSpent: true, reopenOrigin: null });
+    const target = reopen !== null
+      ? list.find(item => item.origin === reopen && item.status === 'approved' && !item.gone)
+      : soleApprovedFacility(list);
+    if (target && !opening && !hasOutcome) void openFacility(target.origin, target.name);
   }, [list, catalogueChecked, autoOpenSpent, leaving, focused, opening, hasOutcome]);
 
   // The answer of an open. It is held outside this screen, because opening a facility
