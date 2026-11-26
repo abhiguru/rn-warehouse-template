@@ -15,6 +15,7 @@ import { useAppSelector } from '@/store/hooks';
 import { showAlert } from '@/utils/alert';
 import { createLogger, loggableError } from '@/utils/logger';
 import { showToast } from '@/utils/toast';
+import { confirmedLotValues } from './confirmedLotValues';
 import { saveLotChange, type LotValues } from './lotChangeService';
 import { QUICK_CHANGE_WAIT_MS, waitForOutcome } from './quickChangeOutcome';
 import { QuickChangeSheet } from './QuickChangeSheet';
@@ -79,7 +80,7 @@ export function useQuickChange(): {
           grnId: target.grnId,
           grnNumber: target.grnNumber,
           ...(target.customer ? { customer: target.customer } : {}),
-          copy: target.confirmed ?? target.shown,
+          copy: await confirmedLotValues(target.lotId, target.confirmed ?? target.shown),
           ...values,
         });
         if (saved.dropped) {

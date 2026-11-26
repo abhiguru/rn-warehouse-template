@@ -21,6 +21,7 @@ import { t } from '@/i18n';
 import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
 import { readVia } from '@/features/phone-copy/readRoute';
+import { rememberServerLotValues } from '@/features/quick-change/confirmedLotValues';
 import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
 import { readGrnDetails, readItemDispatches } from '@/features/phone-copy/reads/grnDetails';
 import { keepPhoto, photoFile } from '@/features/phone-copy/photoStore';
@@ -343,6 +344,7 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
         item.processed_images = [];
         // A rack or mark this phone changed and has not sent shows, never the old value (WH-302, Product PQ3).
         const changed = unsent.lot(item.id);
+        rememberServerLotValues(item.id, item);
         if (changed) Object.assign(item, changed);
       });
     }
