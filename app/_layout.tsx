@@ -85,6 +85,7 @@ import { clearAppTooOld, getAppTooOld, isAppTooOld, reportAppTooOld, subscribeAp
 import { AlertHost } from '@/components/AlertHost';
 import { ToastHost } from '@/components/ToastHost';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useOfflineLimitWhileOpen } from '@/hooks/useOfflineLimitWhileOpen';
 import { useUpgrading } from '@/hooks/useUpgrading';
 import { createLogger } from '@/utils/logger';
 import { useAppDispatch } from '@/store/hooks';
@@ -644,6 +645,8 @@ function BootstrapApp() {
     setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
     if (unreadable) void recordStoreUnreadableTry().then(setSignInAgainOffered);
   };
+  // The same check with no connection while the app stays in front or is away only briefly (WH-354); it asks no server.
+  useOfflineLimitWhileOpen(closeForOfflineLimit);
 
   // The restore could not read a stored session, after retries (WH-360, WH-361): nothing is signed out or erased, and
   // "Try again" runs the start, and with it the restore, again. Stable, so the restore is not run again by a render.
