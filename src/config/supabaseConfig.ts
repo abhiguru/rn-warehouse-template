@@ -1890,6 +1890,17 @@ export function invalidateStoredTokenCache(): void {
 // after it read SecureStore again.
 onSessionChange(invalidateStoredTokenCache);
 
+/** A read of the stored session that the secure store itself failed (not a write, and not a missing value). */
+class StoreUnreadableError extends Error {}
+
+async function readSessionValue(key: string): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch {
+    throw new StoreUnreadableError();
+  }
+}
+
 // Session Management (supports both JWT tokens and session markers)
 // S2/S3 Fix: Now uses SecureStore for encrypted token storage
 const readStoredToken = async (): Promise<{
@@ -1898,6 +1909,8 @@ const readStoredToken = async (): Promise<{
   expiresAt?: number;
   isValid: boolean;
   type?: 'jwt' | 'session';
+  /** The secure store could not be read this time: whether a session is stored is not known. */
+  unreadable?: boolean;
 }> => {
   try {
     const cached = storedSessionCache;
@@ -1917,16 +1930,16 @@ const readStoredToken = async (): Promise<{
     const operatorAtStart = operatorKey();
     let migrated = false;
     // S2/S3 Fix: First check SecureStore for tokens
-    let authToken = await SecureStore.getItemAsync(SECURE_KEYS.AUTH_TOKEN);
-    let refreshToken = await SecureStore.getItemAsync(
+    let authToken = await readSessionValue(SECURE_KEYS.AUTH_TOKEN);
+    let refreshToken = await readSessionValue(
       SECURE_KEYS.REFRESH_TOKEN
     );
-    let expiresAtStr = await SecureStore.getItemAsync(
+    let expiresAtStr = await readSessionValue(
       SECURE_KEYS.TOKEN_EXPIRES
     );
     // A session that an earlier sign-out could not remove is removed now and stays signed out.
     // A marker for another session, or with no session, is old and is removed.
-    const marker = await SecureStore.getItemAsync(SECURE_KEYS.SIGNED_OUT);
+    const marker = await readSessionValue(SECURE_KEYS.SIGNED_OUT);
     if (marker != null) {
       if (refreshToken && (marker === '*' || marker === digestOf(refreshToken))) {
         if (await clearStoredTokensRaw()) await SecureStore.deleteItemAsync(SECURE_KEYS.SIGNED_OUT).catch(() => {});
@@ -1936,7 +1949,7 @@ const readStoredToken = async (): Promise<{
     }
     const operator = getActiveOperatorServer();
     if (operator && authToken) {
-      const identity = await SecureStore.getItemAsync(SECURE_KEYS.OPERATOR_IDENTITY);
+      const identity = await readSessionValue(SECURE_KEYS.OPERATOR_IDENTITY);
       if (identity !== `${operator.origin}|${operator.instanceId}`) {
         await clearStoredTokensRaw();
         return { isValid: false };
@@ -1985,13 +1998,33 @@ const readStoredToken = async (): Promise<{
     }
 
     return { isValid: false };
-  } catch {
+  } catch (error) {
     authLogger.error('Unable to read a securely persisted session.');
-    return { isValid: false };
+    return error instanceof StoreUnreadableError ? { isValid: false, unreadable: true } : { isValid: false };
   }
 };
 
 type StoredToken = Awaited<ReturnType<typeof readStoredToken>>;
+
+/**
+ * The waits before a failed secure-store read is tried again, where "could not be read" would otherwise decide that
+ * the app closes (WH-357). Only a store that still cannot be read after them counts as "cannot tell".
+ */
+export const SECURE_READ_RETRY_MS = [250, 750, 2000] as const;
+
+const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/** `read`, tried again after each wait while it rejects; the last failure is the caller's. */
+async function readRetried<T>(read: () => Promise<T>): Promise<T> {
+  for (const wait of SECURE_READ_RETRY_MS) {
+    try {
+      return await read();
+    } catch {
+      await pause(wait);
+    }
+  }
+  return read();
+}
 
 // Reads that start together share one queued read. A caller joins the read in
 // flight only when nothing has been queued after it (credentialQueueStamp), the
@@ -2011,7 +2044,7 @@ const operatorKey = (): string => {
   return operator ? `${operator.origin}|${operator.instanceId}` : '';
 };
 
-export const getStoredToken = async (): Promise<StoredToken> => {
+const readTokenOnce = async (): Promise<StoredToken> => {
   const generation = getSessionGeneration();
   const operator = operatorKey();
   let slot = sharedRead;
@@ -2034,6 +2067,21 @@ export const getStoredToken = async (): Promise<StoredToken> => {
   return generation === getSessionGeneration()
     ? { ...stored }
     : ({ isValid: false } as StoredToken);
+};
+
+/** The stored session. `retryUnreadable` reads again, after SECURE_READ_RETRY_MS, while the store cannot be read. */
+export const getStoredToken = async (options?: { retryUnreadable?: boolean }): Promise<StoredToken> => {
+  const generation = getSessionGeneration();
+  let stored = await readTokenOnce();
+  if (!options?.retryUnreadable) return stored;
+  for (const wait of SECURE_READ_RETRY_MS) {
+    if (!stored.unreadable) break;
+    await pause(wait);
+    // A session that ended or was replaced meanwhile is not the one asked about.
+    if (generation !== getSessionGeneration()) return { isValid: false };
+    stored = await readTokenOnce();
+  }
+  return stored;
 };
 
 // Read-only compatibility for migrating old sessions; never encode new tokens.
@@ -2254,8 +2302,9 @@ export const getCachedUserProfile = async (
   try {
     const scope = await profileScope(allowExpired);
     if (!scope || generation !== getSessionGeneration()) return null;
-    // Try SecureStore first
-    const cached = await SecureStore.getItemAsync('cached_user_profile');
+    // Try SecureStore first. For the offline start a failed read is tried again: it must not close the app (WH-357).
+    const read = () => SecureStore.getItemAsync('cached_user_profile');
+    const cached = await (allowExpired ? readRetried(read) : read());
     if (allowExpired) {
       if (!cached) return null;
       const kept = JSON.parse(cached) as CachedProfile;
@@ -2397,7 +2446,7 @@ export const getSessionIdentity = async (): Promise<SessionIdentity | null> => {
 // Store user profile in cache
 // S8 Fix: Now uses SecureStore with TTL tracking
 async function profileScope(allowExpired = false): Promise<string | null> {
-  const stored = await getStoredToken();
+  const stored = await getStoredToken({ retryUnreadable: allowExpired });
   if (!stored.authToken || (!stored.isValid && !allowExpired)) return null;
   return profileScopeOf(stored.authToken);
 }

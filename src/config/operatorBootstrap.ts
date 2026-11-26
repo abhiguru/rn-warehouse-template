@@ -33,13 +33,16 @@ type BootstrapResult =
  * src/config/offlineLimit.ts) in a role that has the phone copy. The client is set up from the kept config first, because the cached
  * profile is filed under the facility's address. Null otherwise: the facility still needs the server.
  * 'profile-refused' also needs the server: the person is signed in at a facility with the feature, but the kept profile
- * gives nothing (no readable profile for this session). 'past-limit' is the same, for a role with the phone copy
- * whose kept profile is past the idle limit, has no stored time, or meets a clock set back (WH-351).
+ * gives nothing (no readable profile for this session), or the secure store stays unreadable after retries.
+ * 'past-limit' is the same, for a role with the phone copy whose kept profile is past the idle limit, has no stored
+ * time, or meets a clock set back (WH-351).
  */
 async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfig | 'profile-refused' | 'past-limit' | null> {
   const config = await readOfflineStart(selected);
   if (!config || !hasSyncCapability(config)) return null;
-  const token = await getStoredToken();
+  // A read that fails is tried again; only a store that stays unreadable says "cannot tell" (WH-357).
+  const token = await getStoredToken({ retryUnreadable: true });
+  if (token.unreadable) return 'profile-refused';
   if (!token.authToken) return null;
   initializeSupabase(config.supabaseUrl, config.anonKey);
   // Customer accounts never open offline (Product's P5): their screens keep today's behaviour.
