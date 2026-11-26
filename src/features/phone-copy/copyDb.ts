@@ -1,6 +1,7 @@
 /**
  * The one open handle of the phone copy (WH-298, contract 4.2 and 4.3): opens the copy of the current session, erases
- * a copy that belongs to another session, another schema or cannot be opened, and erases it with the session.
+ * a copy that belongs to another session, another schema or can never be read, and erases it with the session. A read or
+ * open that merely failed erases nothing (WH-355): it throws, and the engine tries again.
  *
  * A copy belongs to one server and one person (the scope, getSessionCacheScope). It is never read for another scope.
  */
@@ -46,11 +47,7 @@ async function metaValue(db: CopyDriver, key: string): Promise<string | null> {
   return rows[0]?.v ?? null;
 }
 
-/** A new, empty copy for `scope` with a new key. */
-async function createCopy(scope: string): Promise<CopyDriver> {
-  await deleteCopyFile(COPY_FILE);
-  const key = await makeCopyKey(scope);
-  const db = await openExpoDriver(COPY_FILE, key.keyHex);
+async function writeEmptyCopy(db: CopyDriver, scope: string): Promise<void> {
   await db.transaction(async tx => {
     await createSchema(tx);
     await tx.run(
@@ -58,35 +55,49 @@ async function createCopy(scope: string): Promise<CopyDriver> {
       [String(SCHEMA_VERSION), scope]
     );
   });
+}
+
+/** SQLite's own verdict that this file is never readable with this key: SQLITE_NOTADB (also a wrong key) or SQLITE_CORRUPT. */
+function isUnreadableFile(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /is not a database|disk image is malformed|SQLITE_NOTADB|SQLITE_CORRUPT/i.test(text);
+}
+
+/** A new, empty copy for `scope` with a new key. */
+async function createCopy(scope: string): Promise<CopyDriver> {
+  await deleteCopyFile(COPY_FILE);
+  const key = await makeCopyKey(scope);
+  const db = await openExpoDriver(COPY_FILE, key.keyHex);
+  try {
+    await writeEmptyCopy(db, scope);
+  } catch (error) {
+    await db.close().catch(() => undefined);
+    throw error;
+  }
   return db;
 }
 
-/** The existing copy when its key opens it and it is this scope's and this schema's; null otherwise (closed). */
+/**
+ * The existing copy when its key opens it and it is this scope's and this schema's. Null (closed) when it is another's,
+ * of another schema, or can never be read. Throws (closed) when it could not be opened or read this time.
+ */
 async function openExisting(key: CopyKey, scope: string): Promise<CopyDriver | null> {
-  let db: CopyDriver;
+  let db: CopyDriver | null = null;
   try {
     db = await openExpoDriver(COPY_FILE, key.keyHex);
-  } catch {
-    // Wrong key, not a database, corrupt, or a file restored from a backup or another phone: never readable here.
-    logger.warn('The copy on the phone could not be opened; it is erased and loaded again');
-    return null;
-  }
-  try {
     const hasMeta = await db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'");
     if (hasMeta.length === 0) {
       // A file the key opens but that has no copy in it (made and left before its schema was written).
-      await db.transaction(async tx => {
-        await createSchema(tx);
-        await tx.run(
-          "INSERT OR REPLACE INTO meta (k, v) VALUES ('schema_version', ?), ('scope', ?), ('phase', 'empty')",
-          [String(SCHEMA_VERSION), scope]
-        );
-      });
+      await writeEmptyCopy(db, scope);
       return db;
     }
     if ((await metaValue(db, 'schema_version')) === String(SCHEMA_VERSION) && (await metaValue(db, 'scope')) === scope) return db;
-  } catch {
-    logger.warn('The copy on the phone could not be read; it is erased and loaded again');
+  } catch (error) {
+    await db?.close().catch(() => undefined);
+    if (!isUnreadableFile(error)) throw error;
+    // Corrupt, or a file restored from a backup or another phone: never readable here.
+    logger.warn('The copy on the phone cannot be read; it is erased and loaded again');
+    return null;
   }
   await db.close().catch(() => undefined);
   return null;
@@ -94,7 +105,8 @@ async function openExisting(key: CopyKey, scope: string): Promise<CopyDriver | n
 
 /**
  * The copy of `scope`, opened (and kept open) for the caller. A copy of another scope or schema, a file the key does not
- * open, or a file with no key is erased and replaced by an empty copy with a new key.
+ * open, or a file with no key is erased and replaced by an empty copy with a new key. Rejects, erasing nothing, when
+ * secure storage or the database failed this time.
  */
 export function openCopy(scope: string): Promise<CopyDriver> {
   const open = holder.handle;

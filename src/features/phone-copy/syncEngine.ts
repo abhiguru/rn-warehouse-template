@@ -40,6 +40,12 @@ const CURRENT_MS = 60_000;
 const INTERVAL_MS = 45_000;
 /** Waits after failed runs while the server is reachable. */
 const BACKOFF_MS = [5_000, 15_000, 30_000, 60_000] as const;
+/**
+ * A copy that failed to open this often, over at least this long, is taken as unreadable: it is replaced and loaded
+ * again while the server is reachable (spec section I; WH-355). Anything less is a passing error.
+ */
+const OPEN_PROOF_FAILURES = 4;
+const OPEN_PROOF_MS = 30_000;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 /** Reasons whose old copy is still true as of its time (Product's P1): kept readable until the new one is complete. */
@@ -113,6 +119,9 @@ const engine = {
   currentTimer: null as ReturnType<typeof setTimeout> | null,
   /** The same local write failed this many runs in a row (contract 6.5): at three the copy is loaded again. */
   writeFailures: 0,
+  /** Attempts to open the copy that failed since the last one that worked, and when the first of them was. */
+  openFailures: 0,
+  openFailingSince: 0,
 };
 
 // ---------- meta ----------
@@ -146,7 +155,10 @@ const entityList = (raw: string | null): EntityName[] => (parseJson<unknown[]>(r
 async function guard(run: Run): Promise<void> {
   if (run.epoch !== engine.epoch) throw new SyncStoppedError();
   const scope = await getSessionCacheScope();
-  if (scope !== run.scope || run.epoch !== engine.epoch) throw new SyncStoppedError();
+  if (run.epoch !== engine.epoch) throw new SyncStoppedError();
+  // Not read is not another session: nothing is written now, and the run is tried again (WH-355).
+  if (!scope) throw new SyncFailedError('session not read');
+  if (scope !== run.scope) throw new SyncStoppedError();
 }
 
 /** One local transaction of this run, after the guard. */
@@ -167,6 +179,20 @@ function publish(patch: Partial<SyncSnapshot>): void {
 function noteOpenFailed(epoch: number): void {
   if (epoch === engine.epoch && getSyncSnapshot().pending) publish({ openFailed: true });
 }
+
+/** The copy's file or key failed this attempt. A full phone says nothing about the file, so it does not count. */
+function countOpenFailure(epoch: number, error: unknown): void {
+  if (epoch !== engine.epoch) return;
+  if (isDiskFull(error)) {
+    publish({ storageLow: true });
+    return;
+  }
+  if (engine.openFailures === 0) engine.openFailingSince = Date.now();
+  engine.openFailures += 1;
+}
+
+const isOpenFailureProven = (): boolean =>
+  engine.openFailures >= OPEN_PROOF_FAILURES && Date.now() - engine.openFailingSince >= OPEN_PROOF_MS;
 
 function setCurrent(on: boolean): void {
   if (engine.currentTimer) clearTimeout(engine.currentTimer);
@@ -511,19 +537,38 @@ async function turnOff(): Promise<void> {
   resetSyncSnapshot({ feature: 'off' });
 }
 
+/** The copy of this run, its state published when the open at start failed or left that to the run. */
+async function openForRun(scope: string, epoch: number, offline: boolean): Promise<CopyDriver> {
+  const publishWhenPending = async (db: CopyDriver) => {
+    if (epoch === engine.epoch && getSyncSnapshot().pending) await publishFromMeta(db, offline);
+    return db;
+  };
+  try {
+    return await publishWhenPending(await openCopy(scope));
+  } catch (error) {
+    countOpenFailure(epoch, error);
+    // Offline the file is kept whatever happened: it could not be loaded again.
+    if (offline || epoch !== engine.epoch || isDiskFull(error) || !isOpenFailureProven()) throw error;
+    logger.warn('The copy on the phone stays unreadable; it is erased and loaded again');
+    engine.openFailures = 0;
+    return publishWhenPending(await replaceWithEmptyCopy(scope));
+  }
+}
+
 async function runOnce(): Promise<SyncOutcome> {
   const epoch = engine.epoch;
   const scope = await getSessionCacheScope();
-  if (!scope || epoch !== engine.epoch) return 'stopped';
+  if (epoch !== engine.epoch) return 'stopped';
   const offline = await readOffline();
   setCopyOffline(offline);
   // Offline the copy is still opened when the bar does not yet know what is on the phone.
   if (offline && !getSyncSnapshot().pending) return 'offline';
   let db: CopyDriver;
   try {
-    db = await openCopy(scope);
-    // The open at start failed, or left the state to this run.
-    if (epoch === engine.epoch && getSyncSnapshot().pending) await publishFromMeta(db, offline);
+    // The session could not be read just now (secure storage): nothing is decided, and the run is tried again.
+    if (!scope) throw new SyncFailedError('session not read');
+    db = await openForRun(scope, epoch, offline);
+    engine.openFailures = 0;
   } catch {
     logger.warn('The copy could not be opened');
     noteOpenFailed(epoch);
@@ -611,17 +656,25 @@ function scheduleAfter(outcome: SyncOutcome): void {
 /** Session ready and the feature on: opens the copy and publishes what it holds. Makes no request. */
 export async function startPhoneCopy(): Promise<void> {
   if (engine.started) return;
-  const scope = await getSessionCacheScope();
-  if (!scope) return;
   engine.started = true;
   engine.halted = false;
   const epoch = engine.epoch;
+  const scope = await getSessionCacheScope();
+  // Stopped or erased while the session was read: nothing is opened, or made, after that.
+  if (epoch !== engine.epoch) return;
+  if (!scope) {
+    // The session could not be read just now: the run that follows tries again.
+    noteOpenFailed(epoch);
+    return;
+  }
   try {
     const db = await openCopy(scope);
     await publishFromMeta(db, await readOffline());
-  } catch {
+    engine.openFailures = 0;
+  } catch (error) {
     // The run that follows tries again (and again after it, as after any failed run).
     logger.warn('The copy could not be opened');
+    countOpenFailure(epoch, error);
     noteOpenFailed(epoch);
   }
 }
@@ -704,4 +757,5 @@ setBeforeErase(async () => {
   engine.halted = false;
   engine.backoff = 0;
   engine.writeFailures = 0;
+  engine.openFailures = 0;
 });

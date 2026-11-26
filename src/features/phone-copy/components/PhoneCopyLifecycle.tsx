@@ -7,11 +7,13 @@
  * - Reconnecting: sync at once. Offline: no tick, and the copy is not current.
  * - While mounted, the engine's interval (45 s after a full sync) and its waits after a failure run.
  * - The facility without the feature: no copy on the phone.
+ * - The facility's settings not read yet: nothing is started and nothing erased (WH-355).
  */
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
-import { getCapabilitiesOf, subscribeFacilityCapabilities } from '@/config/facilityCapabilities';
+import { getKnownCapabilitiesOf, subscribeFacilityCapabilities } from '@/config/facilityCapabilities';
+import { getActiveOperatorServer } from '@/config/operatorServer';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { getLanStatus } from '@/config/lanTransport';
 import { getNetInfoGeneration, subscribeNetInfoGeneration } from '@/config/netInfoGeneration';
@@ -33,11 +35,16 @@ export function PhoneCopyLifecycle() {
 
     let known = false;
     const applyCapability = async () => {
-      // The capability of the server this session belongs to (its scope names the server).
+      // The capability of the server this session belongs to (its scope names the server; while the session cannot be
+      // read, that is the selected server).
       const scope = await getSessionCacheScope();
       const [origin, instanceId] = scope ? (JSON.parse(scope) as string[]) : [];
-      const on = Boolean(origin && instanceId && getCapabilitiesOf({ origin, instanceId }).sync);
-      if (!live || (known && on === enabled)) return;
+      const server = origin && instanceId ? { origin, instanceId } : getActiveOperatorServer();
+      const capabilities = server ? getKnownCapabilitiesOf(server) : undefined;
+      // Not known is not off: the subscription below asks again when the server's settings are read.
+      if (!live || !capabilities) return;
+      const on = capabilities.sync;
+      if (known && on === enabled) return;
       known = true;
       enabled = on;
       setSyncSchedule(on);

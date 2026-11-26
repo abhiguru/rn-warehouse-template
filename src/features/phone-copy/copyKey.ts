@@ -17,10 +17,14 @@ const KEY_NAME = 'secure_phone_copy_key';
 
 const toHex = (bytes: Uint8Array): string => Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 
+/**
+ * The kept key; null when secure storage answered and holds none that can be used. Throws when secure storage could not
+ * be read: that says nothing about the key, and the copy must not be replaced for it (WH-355).
+ */
 export async function loadCopyKey(): Promise<CopyKey | null> {
+  const raw = await SecureStore.getItemAsync(KEY_NAME);
+  if (!raw) return null;
   try {
-    const raw = await SecureStore.getItemAsync(KEY_NAME);
-    if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<CopyKey> | null;
     if (typeof parsed?.scope !== 'string' || typeof parsed.keyHex !== 'string' || !/^[0-9a-f]{64}$/.test(parsed.keyHex))
       return null;

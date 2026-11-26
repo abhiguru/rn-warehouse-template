@@ -67,9 +67,12 @@ export function getFacilityCapabilities(): FacilityCapabilities {
   return (active ? byServer.get(keyOf(active)) : undefined) ?? DEMO_CAPABILITIES;
 }
 
-/** The capabilities of a given server (the one a session belongs to); DEMO_CAPABILITIES when none are known for it. */
-export function getCapabilitiesOf(server: ServerIdentity): FacilityCapabilities {
-  return byServer.get(keyOf(server)) ?? DEMO_CAPABILITIES;
+/**
+ * The capabilities a given server's config named (the one a session belongs to); undefined while its config has not
+ * been read in this run, which is not the same as a feature being off.
+ */
+export function getKnownCapabilitiesOf(server: ServerIdentity): FacilityCapabilities | undefined {
+  return byServer.get(keyOf(server));
 }
 
 export function hasCapability(name: CapabilityName): boolean {
