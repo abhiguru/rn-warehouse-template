@@ -132,6 +132,13 @@ async function markMissingPhotos(row: ItemRow): Promise<void> {
   }
 }
 
+/**
+ * The reason kept on an item that goes with the refused item it depends on (Product's ruling, WH-301): the reason
+ * `dependsOnRefused` and the id of the item it follows, never the refused item's own reason.
+ */
+export const DEPENDS_ON_REFUSED = 'dependsOnRefused';
+const dependsOnRefusedReason = (row: ItemRow): string => `${DEPENDS_ON_REFUSED}:${row.depends_on ?? ''}`;
+
 /** The outcome of one send, written to the item. */
 async function apply(row: ItemRow, outcome: SendOutcome, before: ItemRow): Promise<void> {
   switch (outcome.kind) {
@@ -254,7 +261,7 @@ async function pumpPhotos(pass: Pass): Promise<void> {
     if (getSendKind(row.kind)?.lane !== 'photo' || engine.active.has(row.id)) continue;
     const verdict = settle(row, byId);
     if (verdict === 'refused') {
-      await updateItem(row.id, { state: 'refused', last_error: 'dependency refused' });
+      await updateItem(row.id, { state: 'refused', last_error: dependsOnRefusedReason(row) });
       continue;
     }
     if (verdict === 'wait') continue;
@@ -284,7 +291,7 @@ async function nextRecord(pass: Pass): Promise<{ row: ItemRow; byId: Map<string,
     const verdict = settle(row, byId);
     if (verdict === 'refused') {
       // A dependant goes with what it depended on (contract section 3).
-      await updateItem(row.id, { state: 'refused', last_error: 'dependency refused' });
+      await updateItem(row.id, { state: 'refused', last_error: dependsOnRefusedReason(row) });
       return 'again';
     }
     if (verdict === 'ready') return { row, byId };
