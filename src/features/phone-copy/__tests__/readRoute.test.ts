@@ -124,6 +124,29 @@ describe('readVia', () => {
     expect((await route().readVia('all', async () => 'rows'))?.source).toEqual({ kind: 'copy', asOf: '2026-11-25T06:40:00.000+00:00' });
   });
 
+  it('gives the reader a view of the open copy: its rows, first row, server time, phase and identity', async () => {
+    const w = await bootWarehouse();
+    await loadCopy(w);
+    type Reader = {
+      all: <T>(sql: string, params?: string[]) => Promise<T[]>;
+      get: <T>(sql: string, params?: string[]) => Promise<T | null>;
+      asOf: string; phase: string; copyId: string;
+    };
+    const answer = await route().readVia('stage1', async q => {
+      const reader = q as Reader;
+      return {
+        all: await reader.all<{ id: string }>('SELECT id FROM items ORDER BY id'),
+        first: await reader.get<{ id: string }>('SELECT id FROM items WHERE id = ?', ['i2']),
+        none: await reader.get('SELECT id FROM items WHERE id = ?', ['nowhere']),
+        asOf: reader.asOf, phase: reader.phase, copyId: reader.copyId,
+      };
+    });
+    expect(answer && 'value' in answer ? answer.value : null).toEqual({
+      all: [{ id: 'i1' }, { id: 'i2' }, { id: 'i3' }], first: { id: 'i2' }, none: null,
+      asOf: env.feed.asOf, phase: 'ready', copyId: env.feed.copy,
+    });
+  });
+
   it('answers null, without calling the reader, when the route is the server', async () => {
     const w = await bootWarehouse({ capability: false });
     await loadCopy(w);

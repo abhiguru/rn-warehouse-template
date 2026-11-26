@@ -255,6 +255,11 @@ describe('P2: search finds the rows the server finds', () => {
       expect(pgSearchTerms('')).toEqual([]);
     });
 
+    it('drops the word after 119 Gujarati letters and an emoji', () => {
+      const word = `${'ક'.repeat(119)}\u{1F95C}`;
+      expect(pgSearchTerms(`${word} tail`)).toEqual([word]);
+    });
+
     it('cuts at 120 characters, counting a two-unit character once', () => {
       const word = '\u{1F95C}'.repeat(61);
       expect(pgSearchTerms(`${word} abc`)).toEqual([word, 'abc']);
@@ -312,8 +317,8 @@ describe('DS2: offline while older records load', () => {
     await goOffline(w);
     const result = await list(w);
     expect(sortedIds(result)).toEqual(ALL_LOTS);
-    expect(result.data.items.map(i => (i as { invoice_state?: string | null }).invoice_state ?? null))
-      .toEqual(ALL_LOTS.map(() => null));
+    // The key is present and null (contract section 5).
+    for (const item of result.data.items) expect(item).toHaveProperty('invoice_state', null);
     await load.finish();
   });
 });

@@ -1,4 +1,4 @@
-import { matchesSearch, searchTerms } from '../searchMatch';
+import { hasTooManyWords, matchesSearch, searchTerms } from '../searchMatch';
 
 // The same cases as the backend's tests/list_search.sql, so the two rules cannot drift.
 describe('search terms', () => {
@@ -15,6 +15,17 @@ describe('search terms', () => {
   });
   it('reads only the first 120 characters', () => {
     expect(searchTerms(`${'x'.repeat(119)} tail`)).toEqual(['x'.repeat(119)]);
+  });
+  // WH-299 (contract app-offline-read-from-copy.md 7.1): the server's `left(…, 120)` counts characters, not UTF-16 units.
+  it('counts an emoji as one of the 120 characters, whole', () => {
+    const word = `${'ક'.repeat(119)}\u{1F95C}`;
+    expect(searchTerms(`${word} tail`)).toEqual([word]);
+  });
+  it('counts the words within the first 120 characters, not UTF-16 units', () => {
+    // 60 emoji are 120 units but 60 characters: all nine words are inside the 120 the server reads.
+    const nine = `${'\u{1F95C}'.repeat(60)} b c d e f g h i`;
+    expect(searchTerms(nine)).toEqual(['\u{1F95C}'.repeat(60), 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
+    expect(hasTooManyWords(nine)).toBe(true);
   });
 });
 
