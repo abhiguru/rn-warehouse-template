@@ -2293,18 +2293,25 @@ async function confirmCachedProfile(accessToken: string, generation: number): Pr
 // for up to 30 days since the server last confirmed that person (WH-349, src/config/offlineLimit.ts). Past that
 // the read gives nothing and the copy is kept. The token itself is never sent: every request first renews it
 // (acquireValidSession), and a refusal signs out. `onLimitPassed` is told the kept role when that limit, and no
-// other cause, is why the read gives nothing (WH-351).
+// other cause, is why the read gives nothing (WH-351). `onUnreadable` is for the session restore (WH-360): failed
+// secure-store reads are tried again, and it is told when the store stays unreadable, so nothing is known.
 export const getCachedUserProfile = async (
-  options: { allowExpired?: boolean; onLimitPassed?: (role: unknown) => void } = {}
+  options: { allowExpired?: boolean; onLimitPassed?: (role: unknown) => void; onUnreadable?: () => void } = {}
 ) => {
   const allowExpired = options.allowExpired === true;
+  const { onUnreadable } = options;
+  const retry = allowExpired || onUnreadable !== undefined;
   const generation = getSessionGeneration();
   try {
-    const scope = await profileScope(allowExpired);
+    const scope = await profileScope(allowExpired, { retry, onUnreadable });
     if (!scope || generation !== getSessionGeneration()) return null;
-    // Try SecureStore first. For the offline start a failed read is tried again: it must not close the app (WH-357).
+    // Try SecureStore first. For the offline start and the session restore a failed read is tried again: it must not
+    // close the app (WH-357) or look like a sign-out (WH-360).
     const read = () => SecureStore.getItemAsync('cached_user_profile');
-    const cached = await (allowExpired ? readRetried(read) : read());
+    const cached = await (retry ? readRetried(read) : read()).catch((error: unknown) => {
+      onUnreadable?.();
+      throw error;
+    });
     if (allowExpired) {
       if (!cached) return null;
       const kept = JSON.parse(cached) as CachedProfile;
@@ -2445,8 +2452,12 @@ export const getSessionIdentity = async (): Promise<SessionIdentity | null> => {
 
 // Store user profile in cache
 // S8 Fix: Now uses SecureStore with TTL tracking
-async function profileScope(allowExpired = false): Promise<string | null> {
-  const stored = await getStoredToken({ retryUnreadable: allowExpired });
+async function profileScope(
+  allowExpired = false,
+  { retry = false, onUnreadable }: { retry?: boolean; onUnreadable?: () => void } = {}
+): Promise<string | null> {
+  const stored = await getStoredToken({ retryUnreadable: retry });
+  if (stored.unreadable) onUnreadable?.();
   if (!stored.authToken || (!stored.isValid && !allowExpired)) return null;
   return profileScopeOf(stored.authToken);
 }

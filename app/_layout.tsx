@@ -32,7 +32,7 @@ if (Platform.OS !== 'android' && buildSplashBackground) {
   SystemUI.setBackgroundColorAsync(buildSplashBackground);
 }
 
-import React, { useEffect, useState, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useState, useMemo, useRef, useSyncExternalStore } from 'react';
 
 // Type declaration for React Native's global ErrorUtils
 interface ErrorUtilsType {
@@ -112,7 +112,13 @@ import { installConnectionHistory, readConnectionSession } from '@/config/connec
 import { startDailyLanCheck } from '@/config/lanCheck';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
-import { isCopyRole, isPastOfflineLimit, markRoleUnconfirmed, onRoleUnconfirmed } from '@/config/offlineStart';
+import {
+  isCopyRole,
+  isPastOfflineLimit,
+  markRoleUnconfirmed,
+  onRoleUnconfirmed,
+  SESSION_STORE_UNREADABLE,
+} from '@/config/offlineStart';
 import { createResumeLifecycle } from '@/config/resumeLifecycle';
 import { isNativeHandoffActive } from '@/config/nativeHandoff';
 import { hasActiveOperatorMutation, invalidateStoredTokenCache } from '@/config/supabaseConfig';
@@ -426,7 +432,7 @@ export function NavigationStack({ screenBackground }: { screenBackground: string
 }
 
 // Themed content component that uses Redux state for theme
-function ThemedContent() {
+function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: () => void }) {
   const dispatch = useAppDispatch();
   const [authCheckSettled, setAuthCheckSettled] = useState(false);
   // Brand and mode from the Settings choice (falls back to the system mode).
@@ -454,8 +460,12 @@ function ThemedContent() {
       dispatch(initializeAuth())
         .unwrap()
         // initializeAuth records its failure in Redux; the root only needs to
-        // release the navigation gate after the attempt settles.
-        .catch(() => undefined),
+        // release the navigation gate after the attempt settles. A secure store
+        // that stays unreadable is the exception: the screens are not opened as
+        // signed out, the load-error screen takes their place (WH-360).
+        .catch((error: unknown) => {
+          if (mounted && error === SESSION_STORE_UNREADABLE) onSessionUnreadable();
+        }),
       // With central login the guard also needs to know whether the person is
       // signed in at the association: read that stored session too (no network).
       isCentralLoginConfigured() ? restoreCentralSession().catch(() => undefined) : undefined,
@@ -465,7 +475,7 @@ function ThemedContent() {
     return () => {
       mounted = false;
     };
-  }, [dispatch]);
+  }, [dispatch, onSessionUnreadable]);
 
   // I10: Handle cold start deep links only after the root auth check settles.
   useColdStartDeepLink(authCheckSettled);
@@ -594,6 +604,14 @@ function BootstrapApp() {
     setPastOfflineLimit(isPastOfflineLimit(error));
     setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
   };
+
+  // The restore could not read the stored session, after retries (WH-360): nothing is signed out or erased, and
+  // "Try again" runs the start, and with it the restore, again. Stable, so the restore is not run again by a render.
+  const closeForUnreadableSession = useCallback(() => {
+    setPastOfflineLimit(false);
+    setServerUpgrading(false);
+    setConfigError(translate('errors.auth.initializeFailed'));
+  }, []);
 
   useEffect(() => {
     // Documents handed to the share sheet in an earlier run are not session
@@ -847,7 +865,7 @@ function BootstrapApp() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AppStateManager>
-          <ThemedContent />
+          <ThemedContent onSessionUnreadable={closeForUnreadableSession} />
         </AppStateManager>
       </QueryClientProvider>
     </ErrorBoundary>

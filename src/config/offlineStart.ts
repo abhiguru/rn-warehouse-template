@@ -45,6 +45,12 @@ export async function rememberOfflineStart(server: Pick<OperatorServer, 'origin'
   }
 }
 
+/**
+ * What `initializeAuth` is rejected with when the secure store stays unreadable after the retries (WH-360): whether a
+ * person is signed in is not known, so the root shows the load-error screen and nothing is signed out or erased.
+ */
+export const SESSION_STORE_UNREADABLE = 'auth/session-store-unreadable';
+
 /** The kept config for this facility, or null unless origin AND instance id match. */
 export async function readOfflineStart(server: Pick<OperatorServer, 'origin' | 'instanceId'>): Promise<PublicConfig | null> {
   try {

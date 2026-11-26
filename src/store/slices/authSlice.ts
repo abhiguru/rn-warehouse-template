@@ -35,6 +35,7 @@ import {
   roleMarkCount,
   onFirstServerAnswer,
   readOfflineStart,
+  SESSION_STORE_UNREADABLE,
 } from '@/config/offlineStart';
 import { holdWritesForRoleRecheck, isRoleRecheckPending, retryRoleRecheckNow } from '@/config/roleRecheck';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
@@ -164,6 +165,14 @@ const fetchConfigOnce = (
     });
 };
 
+/** The restore could not read the secure store, after retries: not an answer that nobody is signed in (WH-360). */
+class SessionStoreUnreadableError extends Error {}
+
+const requireReadStore = <T extends { unreadable?: boolean }>(stored: T): T => {
+  if (stored.unreadable) throw new SessionStoreUnreadableError();
+  return stored;
+};
+
 // Async thunks
 export const initializeAuth = createAsyncThunk.withTypes<{
   pendingMeta: { generation: number };
@@ -195,10 +204,12 @@ export const initializeAuth = createAsyncThunk.withTypes<{
 
         // Restore from the stored JWT tokens first
         let offlineRestore = false;
-        let tokenData = await safeAsyncOp(
-          () => getStoredToken(),
-          { isValid: false as const },
-          'Failed to get stored token'
+        let tokenData = requireReadStore(
+          await safeAsyncOp(
+            () => getStoredToken({ retryUnreadable: true }),
+            { isValid: false as const },
+            'Failed to get stored token'
+          )
         );
 
         // Check if we have JWT tokens (valid or expired)
@@ -224,17 +235,19 @@ export const initializeAuth = createAsyncThunk.withTypes<{
             if (refreshResult) {
               authSliceLogger.info('Token refresh successful!');
               // Re-fetch token data after refresh
-              tokenData = await safeAsyncOp(
-                () => getStoredToken(),
-                { isValid: false as const },
-                'Failed to get refreshed token'
+              tokenData = requireReadStore(
+                await safeAsyncOp(
+                  () => getStoredToken({ retryUnreadable: true }),
+                  { isValid: false as const },
+                  'Failed to get refreshed token'
+                )
               );
             } else {
               authSliceLogger.info(
                 'Token refresh failed, will require re-authentication'
               );
               // The session manager clears only definitive rejections, never transient network errors.
-              tokenData = await getStoredToken();
+              tokenData = requireReadStore(await getStoredToken({ retryUnreadable: true }));
             }
           }
 
@@ -257,11 +270,20 @@ export const initializeAuth = createAsyncThunk.withTypes<{
           authSliceLogger.info(
             offlineRestore ? 'Offline start: checking cached profile' : 'Found valid JWT tokens, checking cached profile'
           );
+          let profileUnreadable = false;
           const cachedProfile = await safeAsyncOp(
-            () => getCachedUserProfile(offlineRestore ? { allowExpired: true } : undefined),
+            () =>
+              getCachedUserProfile({
+                allowExpired: offlineRestore,
+                onUnreadable: () => {
+                  profileUnreadable = true;
+                },
+              }),
             null,
             'Failed to get cached profile for JWT auth'
           );
+          // Before the role check below: an unread profile has no role, which says nothing about the person.
+          if (profileUnreadable) throw new SessionStoreUnreadableError();
 
           // An offline restore is only for the roles that have the phone copy (Product's P5).
           if (offlineRestore && !isCopyRole((cachedProfile as { role?: unknown } | null)?.role))
@@ -318,6 +340,10 @@ export const initializeAuth = createAsyncThunk.withTypes<{
 
         return { session: null, user: null, userProfile: null };
       } catch (error: unknown) {
+        if (error instanceof SessionStoreUnreadableError) {
+          authSliceLogger.warn('The stored session could not be read.');
+          return rejectWithValue(SESSION_STORE_UNREADABLE);
+        }
         const errorMessage =
           error instanceof Error ? error.message : t('errors.auth.initializeFailed');
         authSliceLogger.error('Initialize auth error:', error);
@@ -754,6 +780,8 @@ const authSlice = createSlice({
         state.initializeRequest = undefined;
         state.initializeStatus = 'settled';
         state.isLoading = false;
+        // An unreadable secure store ends nothing: who is signed in is not known (WH-360).
+        if (action.payload === SESSION_STORE_UNREADABLE) return;
         state.session = null;
         state.user = null;
         state.userProfile = null;
