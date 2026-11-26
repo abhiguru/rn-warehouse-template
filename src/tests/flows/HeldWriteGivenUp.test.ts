@@ -562,6 +562,45 @@ describe('the rate and sensor services, whose screens give up after 30 seconds',
       expect(sentTo(path)).toHaveLength(0);
     });
   });
+
+  // WH-368: the words follow the change as a whole. Once an attempt was sent and its answer lost, a resend that is
+  // refused before it is sent does not make the change "not saved": the first attempt may have been applied.
+  describe.each(KEYED)('%s, first answer lost then resent', (_name, path, save) => {
+    const CHECK_PATH = '/rest/v1/rpc/get_submission_result';
+
+    it('resend refused before it is sent: "couldn\'t confirm", not "couldn\'t save" (WH-368)', async () => {
+      answers[CHECK_PATH] = () => ({ found: false });
+      let calls = 0;
+      // First send: the connection drops after the request went out. Resend: the phone cannot reach the host at all.
+      answers[path] = () => { throw (++calls === 1 ? droppedAnswer() : new Error('fetch failed: java.net.UnknownHostException: Unable to resolve host "warehouse.example.test"')); };
+
+      const result = watch(save(new AbortController().signal));
+      await flush();
+      await wait(60_000);
+
+      expect(calls).toBe(2);
+      expect(result.done).toBe(true);
+      expect(result.value).toMatchObject({ success: false, outcomeUnknown: true });
+      expect((result.value as { message?: string }).message).toMatch(/couldn't confirm/i);
+      expect((result.value as { message?: string }).message).not.toMatch(/couldn't save/i);
+    });
+
+    it('resend answered by the server with a success: saved, unchanged by WH-368', async () => {
+      answers[CHECK_PATH] = () => ({ found: false });
+      let calls = 0;
+      answers[path] = () => {
+        if (++calls === 1) throw droppedAnswer();
+        return { success: true, data: { saved: true } };
+      };
+
+      const result = watch(save(new AbortController().signal));
+      await flush();
+      await wait(60_000);
+
+      expect(calls).toBe(2);
+      expect(result.value).toMatchObject({ success: true });
+    });
+  });
 });
 
 describe('more than four photos while writes are held (the save waits 30 seconds)', () => {
