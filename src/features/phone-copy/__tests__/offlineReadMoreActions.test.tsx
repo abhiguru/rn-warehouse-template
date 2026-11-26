@@ -143,10 +143,11 @@ const WH348_FORMAT = 3;
 const SERVER = { origin: 'https://warehouse.example.test', instanceId: 'instance-a', displayName: 'Fictional Cold Store', companyName: 'Fictional Cold Store' };
 const NEEDS = 'This needs a connection. It will load when you reconnect.';
 
-const NUMBERING_RULES = (['grn', 'dispatch', 'invoice'] as const).map(document_type => ({
-  document_type, scheme: 'sequence', prefix: `${document_type.slice(0, 1).toUpperCase()}-`, width: 4, start: 1, first_letter: null, per_letter: null,
-  check: true, fy_reset: false, hint: null, existing_documents: 0, not_following: 0, updated_at: '2026-11-01T05:00:00+00:00', updated_by: 'Asha Fictional',
-}));
+/** The `numbering` feed body for admin and supervisor (contract 14.4): an object keyed by document type, no `document_type` inside. */
+const NUMBERING_BODY = Object.fromEntries((['grn', 'dispatch', 'other'] as const).map(type => [type, {
+  scheme: 'sequence', prefix: `${type.slice(0, 1).toUpperCase()}-`, width: 4, start: 1, first_letter: null, per_letter: null,
+  check: true, fy_reset: false, server_issues: false, updated_at: '2026-11-01T05:00:00+00:00', updated_by: 'Asha Fictional',
+}]));
 /** What a format-3 copy holds for these screens (contract 14.1). */
 function seedFormat3() {
   const feed = env.feed;
@@ -169,9 +170,10 @@ function seedFormat3() {
     sac_storage: '996711', sac_labour: '996719', saved_by_name: 'Asha Fictional',
   });
   put('settings', 'bills_allowed', { allowed: true });
-  put('settings', 'charging_rule', { step_days: 15, minimum_days: 30, days_counted: 'legacy', rounding: 'up', invoice_as_goods_leave: false,
-    updated_at: '2026-11-01T05:00:00+00:00', updated_by_name: 'Asha Fictional' });
-  put('settings', 'numbering', { rules: NUMBERING_RULES });
+  // The settings bodies are stored as sent (contract 14.4): flat, with no `id` inside.
+  feed.rows.settings.push({ id: 'charging_rule', row: { step_days: 15, minimum_days: 30, days_counted: 'legacy', rounding: 'up',
+    invoice_as_goods_leave: false, updated_at: '2026-11-01T05:00:00+00:00', updated_by: 'p1' } });
+  feed.rows.settings.push({ id: 'numbering', row: NUMBERING_BODY });
 }
 
 let restoreQueries: () => void;
@@ -350,7 +352,8 @@ const EDITORS: Editor[] = [
   { name: 'GST details', Screen: GstDetailsScreen, ready: 'gst-details-gstin', shows: /24AAAAA0000A1Z5/, line: 'gst-details-bottom-bar-needs-connection',
     disabled: ['gst-details-gstin', 'gst-details-address', 'gst-details-legal-name', 'gst-details-sac-storage', 'gst-details-sac-labour'], save: /^Save.*, needs a connection$/ },
   { name: 'Document numbering', Screen: DocumentNumberingScreen, ready: 'numbering-row-grn', shows: /G-/, line: 'numbering-needs-connection',
-    disabled: ['numbering-row-grn', 'numbering-row-dispatch', 'numbering-row-invoice'], save: null },
+    // The third key is `other` in the feed; which row it becomes on screen is not settled, so only the first two are checked.
+    disabled: ['numbering-row-grn', 'numbering-row-dispatch'], save: null },
   { name: 'Charging', Screen: ChargingScreen, ready: 'charging-row-step', shows: /15/, line: 'charging-needs-connection',
     disabled: ['charging-row-step', 'charging-row-minimum', 'charging-row-days', 'charging-row-round'], save: null },
 ];
