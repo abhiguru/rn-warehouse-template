@@ -7,17 +7,13 @@
 
 import React, { useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { getSupervisors } from '@/services/supervisor-service';
 import { SearchableBottomSheet } from '@/components/common';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { layout, space, typography, touchTarget } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { Avatar } from '@/components/ui';
 import { t as tr } from '@/i18n';
-import { createLogger, loggableError } from '@/utils/logger';
-
-const log = createLogger('grn');
-
 // A colleague is picked by name. For an administrator or supervisor the answer
 // also carries each person's mobile number (staff get none, backend migration
 // 47); it is not kept and not shown, because it is not needed to pick one.
@@ -78,23 +74,9 @@ export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
 
-  // Search function for supervisors using RPC
+  // Search function for supervisors (the supervisor service reads the phone copy or asks the server)
   const searchSupervisors = useCallback(
-    async (query: string): Promise<Supervisor[]> => {
-
-      const { data, error } = await (
-        await getAuthenticatedClient()
-      ).rpc('get_supervisors', {
-        search_query: query,
-      });
-
-      if (error) {
-        log.error('RPC error', loggableError(error));
-        return [];
-      }
-
-      return toSupervisors(data);
-    },
+    async (query: string): Promise<Supervisor[]> => toSupervisors(await getSupervisors(query)),
     []
   );
 

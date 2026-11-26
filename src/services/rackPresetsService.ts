@@ -6,6 +6,8 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readRackPresets } from '@/features/phone-copy/reads/pickers';
 import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
@@ -61,6 +63,14 @@ registerSessionScoped('rack-presets', () => resetRackPresetsCache());
  */
 export async function getRackPresets(options: { refresh?: boolean } = {}): Promise<RackPresetsAnswer | null> {
   const generation = getSessionGeneration();
+  // The phone copy holds the setting (WH-299); a read that must be the server's own (`refresh`) still asks it.
+  if (!options.refresh) {
+    const copy = await readVia('stage1', readRackPresets);
+    if (copy) {
+      const fromCopy = asAnswer(copy.value);
+      if (fromCopy) return fromCopy;
+    }
+  }
   if (!options.refresh && cached && cached.generation === generation) return cached.answer;
   const client = await getAuthenticatedClient();
   const { data, error } = await client.rpc('get_rack_presets');

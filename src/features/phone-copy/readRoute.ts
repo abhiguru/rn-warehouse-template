@@ -31,6 +31,8 @@ export interface CopyReader {
   readonly asOf: string;
   readonly phase: CopyPhase;
   readonly copyId: string;
+  /** The signed-in person's role: what the server's function would ask `warehouse_security.active_role()`. */
+  readonly role: 'admin' | 'supervisor' | 'staff';
 }
 
 export interface CopyAnswer<T> {
@@ -85,6 +87,9 @@ export function copyRoute(need: CopyNeed): 'copy' | 'server' {
   return phase === 'stage2' && need === 'stage1' && isCopyOffline() ? 'copy' : 'server';
 }
 
+const copyRoleOf = (role: unknown): CopyReader['role'] | null =>
+  role === 'admin' || role === 'supervisor' || role === 'staff' ? role : null;
+
 const isPhase = (value: string | undefined): value is CopyPhase =>
   value === 'empty' || value === 'stage1' || value === 'stage2' || value === 'ready';
 
@@ -92,7 +97,8 @@ const isPhase = (value: string | undefined): value is CopyPhase =>
 async function readCopy<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<T>): Promise<{ answer: CopyAnswer<T>; copyId: string }> {
   const scope = await getSessionCacheScope();
   const db = currentCopy();
-  if (!db || !scope) throw new CopyReadError();
+  const role = copyRoleOf(signedInRole());
+  if (!db || !scope || !role) throw new CopyReadError();
   let result: { answer: CopyAnswer<T>; copyId: string } | null = null;
   await db.transaction(async tx => {
     const rows = await tx.all<{ k: string; v: string }>("SELECT k, v FROM meta WHERE k IN ('scope', 'copy', 'phase', 'as_of')");
@@ -110,6 +116,7 @@ async function readCopy<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<
       asOf,
       phase,
       copyId,
+      role,
     };
     result = { answer: { value: await fromCopy(reader), source: { kind: 'copy', asOf } }, copyId };
   });

@@ -11,6 +11,8 @@
  */
 
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readCustomerStates } from '@/features/phone-copy/reads/pickers';
 import {
   Customer,
   CustomerListItem,
@@ -134,6 +136,8 @@ class CustomerService {
   async getCustomerStates(ids: string[]): Promise<Map<string, { active: boolean; deleted: boolean }> | null> {
     if (ids.length === 0) return new Map();
     try {
+      const copy = await readVia('stage1', q => readCustomerStates(q, ids));
+      if (copy) return copy.value;
       const client = await getAuthenticatedClient();
       const { data, error } = await client.from('customers').select('id, active, deleted_at').in('id', ids);
       if (error) {
