@@ -95,11 +95,24 @@ export function whenAlertsClosed(): Promise<void> {
  * waiting for it carries on as if the person had cancelled.
  */
 export function dropAlertsWithHandlers(): void {
-  const withHandlers = (request: AlertRequest) => request.buttons.some(b => b.onPress);
-  const dropped = [...queue.filter(withHandlers), ...pending.filter(withHandlers)];
+  dropAlerts(request => request.buttons.some(b => b.onPress));
+}
+
+/**
+ * Drop every waiting dialog, plain messages too. Called when the app closes its screens over the session (WH-350): a
+ * dialog drawn above them could still show what was on them. A dropped question is answered as dismissed.
+ */
+export function dropAllAlerts(): void {
+  dropAlerts(() => true);
+}
+
+function dropAlerts(matches: (request: AlertRequest) => boolean): void {
+  const dropped = [...queue.filter(matches), ...pending.filter(matches)];
   if (dropped.length === 0) return;
   queue = queue.filter(request => !dropped.includes(request));
   pending = pending.filter(request => !dropped.includes(request));
+  // No dialog is left to wait for the keyboard.
+  if (pending.length === 0) endKeyboardWait();
   notifyQueue();
   wakeClosedWaiters();
   dropped.forEach(request => {

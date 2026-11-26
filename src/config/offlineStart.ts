@@ -147,6 +147,14 @@ const startState = {
 /** The facility check of this run had no answer and the app opened from the kept config. */
 export function markOfflineStarted(): void {
   startState.offline = true;
+  markRoleUnconfirmed();
+}
+
+/**
+ * The open app was closed because the kept profile may no longer open it (WH-350): when it opens again, nothing is
+ * written until the person's role has been read from the server.
+ */
+export function markRoleUnconfirmed(): void {
   startState.unconfirmed = getSessionGeneration();
 }
 

@@ -7,6 +7,7 @@ import { UPGRADING_CODE } from '@/utils/serverText';
 import type { PublicConfig } from '@/services/configService';
 import type { OperatorServer } from './operatorServer';
 import { getCachedUserProfile, getStoredToken, initializeSupabase } from './supabaseConfig';
+import { getSessionGeneration } from './sessionLifecycle';
 import {
   clearOfflineStarted,
   hasSyncCapability,
@@ -30,8 +31,10 @@ type BootstrapResult =
  * any validity, and a cached profile for it that the server confirmed within the idle limit of
  * src/config/offlineLimit.ts) in a role that has the phone copy. The client is set up from the kept config first, because the cached
  * profile is filed under the facility's address. Null otherwise: the facility still needs the server.
+ * 'profile-refused' also needs the server: the person is signed in at a facility with the feature, but the kept profile
+ * gives nothing (past the idle limit, no stored time, the clock set back, or no readable profile for this session).
  */
-async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfig | null> {
+async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfig | 'profile-refused' | null> {
   const config = await readOfflineStart(selected);
   if (!config || !hasSyncCapability(config)) return null;
   const token = await getStoredToken();
@@ -39,14 +42,19 @@ async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfi
   initializeSupabase(config.supabaseUrl, config.anonKey);
   // Customer accounts never open offline (Product's P5): their screens keep today's behaviour.
   const profile = (await getCachedUserProfile({ allowExpired: true })) as { role?: unknown } | null;
-  return profile && isCopyRole(profile.role) ? config : null;
+  if (!profile) return 'profile-refused';
+  return isCopyRole(profile.role) ? config : null;
 }
 
 // Discovery is public. Complete local cleanup before adopting a replacement
 // identity or allowing callers to initialize an authenticated application.
+//
+// `onOfflineRefused` is told, with the failure that is then thrown, when the server gave no answer and the kept profile
+// may no longer open the app (WH-350): an app that is already open must close, as a start would not have opened it.
 export async function verifySelectedOperator(
   isCurrent: () => boolean,
-  clearReplacedInstance: () => Promise<void>
+  clearReplacedInstance: () => Promise<void>,
+  onOfflineRefused?: (error: unknown) => void
 ): Promise<BootstrapResult> {
   const selected = await loadOperatorServer();
   if (!isCurrent()) return { kind: 'superseded' };
@@ -66,9 +74,13 @@ export async function verifySelectedOperator(
     // config. Its capabilities are those of that last answer.
     if (isNoAnswer(error)) {
       if (!isCurrent()) return { kind: 'superseded' };
+      const generation = getSessionGeneration();
       const config = await offlineStartConfig(selected);
       if (!isCurrent()) return { kind: 'superseded' };
-      if (config) {
+      if (config === 'profile-refused') {
+        // A session that ended or was replaced during the read says nothing about the one now open.
+        if (generation === getSessionGeneration()) onOfflineRefused?.(error);
+      } else if (config) {
         setFacilityCapabilities(selected, config.capabilities);
         markOfflineStarted();
         return { kind: 'offline', server: selected, config };
@@ -101,10 +113,11 @@ export async function verifySelectedOperator(
 export async function verifyForegroundOperator(
   isCurrent: () => boolean,
   clearReplacedInstance: () => Promise<void>,
-  initializeReplacement: (config: Discovery['config']) => void
+  initializeReplacement: (config: Discovery['config']) => void,
+  onOfflineRefused?: (error: unknown) => void
 ): Promise<boolean> {
   const previous = getActiveOperatorServer();
-  const result = await verifySelectedOperator(isCurrent, clearReplacedInstance);
+  const result = await verifySelectedOperator(isCurrent, clearReplacedInstance, onOfflineRefused);
   if (result.kind !== 'verified' || !isCurrent()) return false;
   if (previous?.origin !== result.discovery.server.origin ||
       previous.instanceId !== result.discovery.server.instanceId) {

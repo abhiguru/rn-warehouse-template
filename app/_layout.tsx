@@ -104,7 +104,7 @@ import { isCentralLoginConfigured } from '@/config/envConfig';
 import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/centralSession';
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
 import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
-import { showAlert } from '@/utils/alert';
+import { dropAllAlerts, showAlert } from '@/utils/alert';
 import { isNetworkError, isUpgradingAnswer } from '@/utils/serverText';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { applyNetReachability, installNetReachability } from '@/config/netReachability';
@@ -112,6 +112,7 @@ import { installConnectionHistory, readConnectionSession } from '@/config/connec
 import { startDailyLanCheck } from '@/config/lanCheck';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
+import { isCopyRole, markRoleUnconfirmed } from '@/config/offlineStart';
 import { createResumeLifecycle } from '@/config/resumeLifecycle';
 import { isNativeHandoffActive } from '@/config/nativeHandoff';
 import { hasActiveOperatorMutation, invalidateStoredTokenCache } from '@/config/supabaseConfig';
@@ -567,6 +568,26 @@ function BootstrapApp() {
   // change re-runs the bootstrap, which clears this flag.
   const [changingServer, setChangingServer] = useState(false);
   const bootstrapRun = useRef(0);
+  // True while the app's own screens are mounted: no splash and no full-screen state in their place.
+  const appOpen = useRef(false);
+  useEffect(() => {
+    appOpen.current =
+      isReady && !(needsSelection && !isCentralLoginConfigured()) && !appTooOld && !backendTooOld && configError === null;
+  });
+
+  // The app came back with no answer from the server and the kept profile may no longer open it (WH-350, the 30-day
+  // rule of src/config/offlineLimit.ts): the open screens, with their dialogs and sheets, give way to the screen a
+  // start shows then. Nothing is signed out or erased; "Try again" runs the start again. Only for the roles that have
+  // the phone copy: a customer account never opens offline and keeps today's behaviour.
+  const closeForOfflineLimit = (error: unknown) => {
+    if (!appOpen.current || !isCopyRole(store.getState().auth.userProfile?.role)) return;
+    appOpen.current = false;
+    markRoleUnconfirmed();
+    dropAllAlerts();
+    setServerUpgrading(false);
+    setChangingServer(false);
+    setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
+  };
 
   useEffect(() => {
     // Documents handed to the share sheet in an earlier run are not session
@@ -588,7 +609,8 @@ function BootstrapApp() {
       return verifyForegroundOperator(
         () => current() && run === bootstrapRun.current,
         clearReplacedOperatorInstance,
-        config => initializeSupabase(config.supabaseUrl, config.anonKey)
+        config => initializeSupabase(config.supabaseUrl, config.anonKey),
+        closeForOfflineLimit
       );
     });
     // Suspend credentialed work for a real background stay only: not for the
