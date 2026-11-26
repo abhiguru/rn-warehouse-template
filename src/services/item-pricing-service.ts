@@ -38,7 +38,7 @@ import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { addDays } from '@/features/item-pricing/rateText';
 import type { TranslationKey } from '@/i18n';
 import { checkSubmission, isAbortError } from '@/utils/lostAnswer';
-import { emptyAnswerAsError, failureText, isLostAnswer, serverText, transportText } from '@/utils/serverText';
+import { emptyAnswerAsError, failureText, isLostAnswer, serverText, transportText, withHttpStatus } from '@/utils/serverText';
 
 import { rememberRateStartFloor } from './rateStartFloor';
 
@@ -546,8 +546,9 @@ const sendUndoRateChange = async (input: UndoRateChangeInput): Promise<UndoRateC
       itemPricingLogger.error('undo_rate_change RPC error:', error);
       handleGlobalAuthError(error);
       const mapped = mapRateError(error, 'undo_rate_change');
-      // An error with no database code is the connection failing (or a gateway's page): the change may have gone through.
-      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return unknown();
+      // An error with no database code that came after the request left is the connection failing (or a gateway's page): the
+      // change may have gone through. One before it left (held and given up, no session) was never sent: not a lost answer (WH-359).
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code && isLostAnswer(withHttpStatus(error, status))) return unknown();
       return failure(mapped.code, mapped.message);
     }
 
