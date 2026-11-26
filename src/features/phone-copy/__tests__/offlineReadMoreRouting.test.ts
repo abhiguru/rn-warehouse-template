@@ -37,14 +37,22 @@ const items = () => (require('@/services/item-service') as typeof import('@/serv
 const users = () => (require('@/services/admin-user-service') as typeof import('@/services/admin-user-service')).adminUserService;
 const invoices = () => require('@/services/invoice-service') as typeof import('@/services/invoice-service');
 
-const mentions = (result: unknown, text: string) => JSON.stringify(result).includes(text);
+const pricing = () => require('@/services/item-pricing-service') as typeof import('@/services/item-pricing-service');
 
-type Read = { name: string; role: Role[]; rpc: string; run: () => Promise<unknown>; shows: string };
+const mentions =(result: unknown, text: string) => JSON.stringify(result).includes(text);
+
+type Read = { name: string; role: Role[]; rpc: string; run: () => Promise<unknown>; shows: string | null };
 const READS: Read[] = [
   { name: 'Customers list', role: ['admin', 'supervisor', 'staff'], rpc: 'from:customers', shows: 'Bhavin Foods', run: () => customers().getCustomerList({ active: null }, 20, 0) },
   { name: 'Items list', role: ['admin', 'supervisor', 'staff'], rpc: 'get_items', shows: 'Beans', run: () => items().getItemList({ active: null }, 20, 0) },
   { name: 'Invoices list', role: ['admin', 'supervisor', 'staff'], rpc: 'get_invoices_list', shows: '7001', run: () => invoices().getInvoicesList({ p_limit: 20, p_offset: 0 }) },
   { name: 'Users list', role: ['admin', 'supervisor'], rpc: 'get_users_list', shows: 'Meera Fictional', run: () => users().getUsersList({}, 20, 0) },
+  // The invoices of one GRN (GRN details, the "Invoices" tab): the same list, filtered to the GRN.
+  { name: 'GRN invoice rows', role: ['admin', 'supervisor', 'staff'], rpc: 'get_invoices_list', shows: '7001',
+    run: () => invoices().getGrnInvoiceRows({ grnId: 'g-A10', grnNo: 'A10', customerId: 'c2', warehouseRole: true }) },
+  // No price history is seeded (its feed entity is not in the fake feed yet): only where the answer comes from is checked.
+  { name: 'Item price history', role: ['admin', 'supervisor'], rpc: 'get_item_price_history', shows: null,
+    run: () => pricing().getItemPriceHistory({ itemId: 'i1' }) },
 ];
 
 async function ready(role: Role): Promise<Warehouse> {
@@ -59,7 +67,7 @@ describe('R1: with a ready copy each list reads the copy and asks the server not
       const w = await ready(role);
       const result = await read.run();
       expect(w.serverCalls).toEqual([]);
-      expect(mentions(result, read.shows)).toBe(true);
+      if (read.shows) expect(mentions(result, read.shows)).toBe(true);
       expect(sourceOf(result)).toEqual(copySource());
     });
   }
@@ -76,10 +84,17 @@ describe('R1: with a ready copy each list reads the copy and asks the server not
 });
 
 describe('R4: a role the feed does not fill for the screen takes today\'s server path', () => {
-  it('staff on the Users list: the server is asked', async () => {
+  // Staff cannot open these online (Product PQ4; contract section 7): their copy carries none of it, so the server answers.
+  const STAFF_CLOSED: [string, string, () => Promise<unknown>][] = [
+    ['Users list', 'get_users_list', () => users().getUsersList({}, 20, 0)],
+    ['Item price history', 'get_item_price_history', () => pricing().getItemPriceHistory({ itemId: 'i1' })],
+    ['Item rates', 'get_item_storage_prices', () => pricing().getItemStoragePrices({})],
+    ['Standard rate', 'get_standard_rate', () => pricing().getStandardRate().catch(() => null)],
+  ];
+  it.each(STAFF_CLOSED)('staff on %s: the server is asked, and the copy is not read', async (_name, rpc, run) => {
     const w = await ready('staff');
-    const result = await users().getUsersList({}, 20, 0);
-    expect(w.serverCalls.map(c => c.name)).toEqual(['get_users_list']);
+    const result = await run();
+    expect(w.serverCalls.map(c => c.name)).toEqual([rpc]);
     expect(sourceOf(result)).toBeUndefined();
   });
 });
@@ -113,7 +128,7 @@ describe('R2 and R3: otherwise each list asks the server as today, and never ans
       const result = await read.run();
       expect(w.serverCalls.map(c => c.name)).toEqual([read.rpc]);
       expect(sourceOf(result)).toBeUndefined();
-      expect(mentions(result, read.shows)).toBe(false);
+      if (read.shows) expect(mentions(result, read.shows)).toBe(false);
     });
   });
 
