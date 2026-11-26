@@ -20,6 +20,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
 import { formatDate, formatSpokenDate, toDate, formatFinancialYear, formatMobile } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import type { InvoiceReasons } from '@/services/invoice-service';
 
 // ============================================================================
@@ -219,6 +220,8 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  // Every action of this section needs the server (WH-348, Design 2.5): disabled offline, one line says so.
+  const needsConnection = useNeedsConnectionV3();
 
   const handlePhonePress = (phone: string) => {
     Linking.openURL(`tel:${phone}`);
@@ -523,6 +526,8 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         deleteLabel={tr('invoice.details.deleteConfirm')}
         deleteBusyLabel={tr('common.deleting')}
         confirmDelete={false}
+        testIDPrefix="invoice-details"
+        needsConnectionTestId={needsConnection ? 'invoice-details-actions-needs-connection' : undefined}
       />
 
       {/* Bottom Spacing */}

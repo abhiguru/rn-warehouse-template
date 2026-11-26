@@ -7,7 +7,7 @@
  * multiplies or rounds money (M1).
  */
 import { stateNameOf } from '@/features/gst/indianStates';
-import { enCompare, uuidTimestampUs } from '../pgCompat';
+import { enCompare, parseTimestampUs, uuidTimestampUs } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
 import { compareNullsLast, compareNumbers, compareText, numberOf, parseRow, parseRows, pick, textOf, type Row } from './rows';
 
@@ -214,6 +214,26 @@ export async function readInvoiceItemsDetailed(q: CopyReader, invoiceId: string)
       total_quantity: built.reduce((sum, entry) => sum + entry.qty, 0),
       total_amount: pick(invoice, 'items_total_amount'),
     },
+  };
+}
+
+/**
+ * The Payments tab's part of `get_invoice_detail`: the invoice's paid, due and status (the invoice row's `payment_state`) and its
+ * `payments[]`, each row as `payment_json` builds it (the feed's payment rows without `payment_date` and `customer_id`), ordered by
+ * the day paid, the time and the payment number. Not for staff (the server sends them none); null when the copy has no such invoice.
+ */
+export async function readInvoicePayments(q: CopyReader, invoiceId: string): Promise<Row | null> {
+  if (q.role === 'staff') throw new Error('payments are not read by staff');
+  const invoice = await one(q, 'invoice', invoiceId);
+  if (!invoice || isSet(invoice.deleted_at)) return null;
+  const rows = parseRows(await q.all<{ row: string }>('SELECT row FROM payments WHERE invoice_id = ?', [invoiceId]));
+  rows.sort((a, b) =>
+    compareText(textOf(a.paid_on) ?? '', textOf(b.paid_on) ?? '') ||
+    compareNullsLast(parseTimestampUs(textOf(a.payment_date)), parseTimestampUs(textOf(b.payment_date)), compareNumbers) ||
+    compareNullsLast(numberOf(a.payment_no), numberOf(b.payment_no), compareNumbers));
+  return {
+    ...obj(invoice.payment_state),
+    payments: rows.map(row => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'payment_date' && key !== 'customer_id'))),
   };
 }
 

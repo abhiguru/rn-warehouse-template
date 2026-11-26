@@ -75,6 +75,8 @@ interface ActionsSectionProps {
    * reason in its screen-reader label, and one line above them says so once. The value is that line's testID.
    */
   needsConnectionTestId?: string;
+  /** testIDs of the buttons: `<prefix>-share-pdf`, `-print`, `-cancel` (the second action) and `-delete` (WH-348). */
+  testIDPrefix?: string;
 }
 
 export const ActionsSection: React.FC<ActionsSectionProps> = ({
@@ -97,7 +99,9 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   deleteIcon = 'trash-can-outline',
   secondAction,
   needsConnectionTestId,
+  testIDPrefix,
 }) => {
+  const idOf = (name: string): string | undefined => (testIDPrefix ? `${testIDPrefix}-${name}` : undefined);
   const colorStyles = useOverviewColors();
   const overviewStyles = useOverviewStyles();
 
@@ -166,6 +170,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               (isShareLoading || needsServer) && overviewStyles.buttonDisabled,
             ]}
             onPress={onSharePDF}
+            testID={idOf('share-pdf')}
             disabled={isShareLoading || needsServer}
             accessibilityRole="button"
             accessibilityLabel={labelled(t('components.sharePdf'))}
@@ -192,6 +197,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               (isPrintLoading || needsServer) && overviewStyles.buttonDisabled,
             ]}
             onPress={onPrint}
+            testID={idOf('print')}
             disabled={isPrintLoading || needsServer}
             accessibilityRole="button"
             accessibilityLabel={labelled(labels.print)}
@@ -218,6 +224,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               busyAny && overviewStyles.buttonDisabled,
             ]}
             onPress={secondAction.onPress}
+            testID={idOf('cancel')}
             disabled={busyAny}
             accessibilityRole="button"
             accessibilityLabel={labelled(secondAction.label)}
@@ -244,6 +251,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               busyAny && overviewStyles.buttonDisabled,
             ]}
             onPress={handleDeletePress}
+            testID={idOf('delete')}
             disabled={busyAny}
             accessibilityRole="button"
             accessibilityLabel={labelled(deleteLabel ?? labels.delete)}
