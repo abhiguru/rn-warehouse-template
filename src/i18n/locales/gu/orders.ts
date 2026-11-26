@@ -3,6 +3,11 @@ import type { orders as source } from '../en/orders';
 import type { Translation } from '../../types';
 
 export const orders: Translation<typeof source> = {
+  // Offline, with the orders on the phone copy (WH-328, Design offline-capture.md 2.10b).
+  offline: {
+    newNeedsConnection: 'નવા ઑર્ડર માટે કનેક્શન જોઈએ.',
+    queueDispatchNeedsConnection: 'જાવક બનાવવા કનેક્શન જોઈએ.',
+  },
   // The order screen of one customer.
   screen: {
     title: 'ઑર્ડર: {{name}}',

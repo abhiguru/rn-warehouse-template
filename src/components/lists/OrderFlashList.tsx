@@ -71,6 +71,8 @@ import { Fab, FAB_CLEARANCE } from '@/components/ui/Fab';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 
@@ -168,6 +170,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   const [hasLoaded, setHasLoaded] = useState(false);
   // The next page failed: the list's last row offers "Try again".
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  // The rows came from the phone copy (WH-328): the status bar tells their time, and "New orders" needs a connection.
+  const [fromPhoneCopy, setFromPhoneCopy] = useState(false);
+  const needsConnection = useNeedsConnection();
 
   // ============================================================================
   // DATA FETCHING
@@ -228,6 +233,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       }
 
       if (result.success && result.data) {
+        setFromPhoneCopy(Boolean(result.source));
         // Filter for orders with items if needed (in case backend doesn't support it)
         let filteredOrders = result.data;
         if (showWithItemsOnly) {
@@ -292,6 +298,12 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       });
       if (sessionGeneration !== getSessionGeneration()) return;
       if (!isMountedRef.current || currentRequestId !== requestIdRef.current) return;
+      // The next page would come from another source than the first: ask for the first page again.
+      if (result.copyRestart) {
+        loadedCountRef.current = 0;
+        liveRefreshPendingRef.current = true;
+        return;
+      }
       if (result.success && result.data) {
         const page = result.data;
         loadedCountRef.current = offset + page.length;
@@ -467,7 +479,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   const isOffline = useIsOffline();
   // While the keyboard is up the list area ends at its top (WH-261), so the no-match state is centred above it.
   const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
-  const offlineUpdatedAt = isOffline && !error ? refreshTimestamp : undefined;
+  // Rows of the phone copy have no time line of their own: the status bar's time is the only one (Design 2.10b).
+  const offlineUpdatedAt = isOffline && !error && !fromPhoneCopy ? refreshTimestamp : undefined;
 
   const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Order>; index: number }) => {
     if (item.type === 'header') {
@@ -610,9 +623,13 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   return (
     <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.container, { marginBottom: keyboardLift }]}>
       {header}
+      {/* The "+" is hidden while the phone is offline: its reason is a lasting fact about the list (Design 2.10b). */}
+      {needsConnection ? (
+        <NeedsConnectionLine testID="orders-new-needs-connection" text={translate('orders.offline.newNeedsConnection')} />
+      ) : null}
       {content}
 
-      <Fab label={translate('lists.order.create')} onPress={handleAddOrder} />
+      {needsConnection ? null : <Fab label={translate('lists.order.create')} onPress={handleAddOrder} testID="orders-create" />}
 
       {/* Customer Search Bottom Sheet */}
       <CustomerSearchBottomSheet

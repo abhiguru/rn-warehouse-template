@@ -1,5 +1,10 @@
 /** English text: orders. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const orders = {
+  // Offline, with the orders on the phone copy (WH-328, Design offline-capture.md 2.10b).
+  offline: {
+    newNeedsConnection: 'New orders need a connection.',
+    queueDispatchNeedsConnection: 'Creating a dispatch needs a connection.',
+  },
   // The order screen of one customer.
   screen: {
     title: 'Order for {{name}}',

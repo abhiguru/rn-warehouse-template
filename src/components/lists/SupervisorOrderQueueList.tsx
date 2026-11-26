@@ -22,6 +22,8 @@ import { ActivityIndicator } from 'react-native-paper';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
 import { listRefreshAccessibility } from './listRefreshAccessibility';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 import { useFocusEffect } from 'expo-router';
 import { ListSkeleton } from '@/components/skeletons';
@@ -86,6 +88,8 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
+  // The rows came from the phone copy (WH-328): the status bar tells their time.
+  const [fromPhoneCopy, setFromPhoneCopy] = useState(false);
   // The queue's size as the server counts it (all pages), not only the cards loaded so far.
   const [totalCount, setTotalCount] = useState<number | null>(null);
   // Rows received from the server so far; the next page starts here.
@@ -169,6 +173,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       }
 
       if (result.success && result.data) {
+        setFromPhoneCopy(Boolean(result.source));
         // Double-check filter for orders with items
         const ordersWithItems = result.data.filter((order: Order) => {
           const itemCount = order.item_count ?? order.total_items ?? order.items?.length ?? 0;
@@ -229,6 +234,12 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       });
       if (sessionGeneration !== getSessionGeneration()) return;
       if (!isMountedRef.current || currentRequestId !== requestIdRef.current) return;
+      // The next page would come from another source than the first: ask for the first page again.
+      if (result.copyRestart) {
+        loadedCountRef.current = 0;
+        liveRefreshPendingRef.current = true;
+        return;
+      }
       if (result.success && result.data) {
         const page = result.data;
         loadedCountRef.current = offset + page.length;
@@ -375,7 +386,9 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // Offline with no failed refresh: the top of the list says when the queue was loaded. A failed refresh says it in
   // its strip instead.
   const isOffline = useIsOffline();
-  const offlineUpdatedAt = isOffline && !error ? loadedAt : undefined;
+  const needsConnection = useNeedsConnection();
+  // Rows of the phone copy have no time line of their own: the status bar's time is the only one (Design 2.10b).
+  const offlineUpdatedAt = isOffline && !error && !fromPhoneCopy ? loadedAt : undefined;
   // An element, not a component: the line comes and goes without remounting the recent section (a remount reloads
   // it, and offline that load fails).
   const ListHeaderComponent = useMemo(() => (
@@ -513,6 +526,10 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   return (
     <View style={styles.container}>
       {header}
+      {/* One line for the whole Queue: each card's Create dispatch is disabled and says why in its label (Design 2.10b, DQ3). */}
+      {needsConnection ? (
+        <NeedsConnectionLine testID="queue-dispatch-needs-connection" text={translate('orders.offline.queueDispatchNeedsConnection')} />
+      ) : null}
       {content}
 
     </View>
