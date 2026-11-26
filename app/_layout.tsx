@@ -76,6 +76,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { OfflineStatusBar } from '@/components/OfflineStatusBar';
 import { PhoneCopyLifecycle } from '@/features/phone-copy/components/PhoneCopyLifecycle';
 import { useCopyFeatureOn, useCopySession, useEraseCopyForRole } from '@/hooks/usePhoneCopyStatus';
+import { BelowCopyBarContext, useBelowCopyBar } from '@/hooks/useBelowCopyBar';
 import UpgradingBanner from '@/components/UpgradingBanner';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
 import BackendTooOldScreen from '@/components/BackendTooOldScreen';
@@ -300,7 +301,8 @@ const SplashScreen = () => (
 /**
  * While offline or upgrading, the banner at the top already pads for the status bar, so the
  * screens below it get a zero top inset; otherwise their headers would add a
- * second status-bar gap under the banner.
+ * second status-bar gap under the banner. Native views do not read that inset: under the
+ * phone copy's bar they are told through BelowCopyBarContext.
  */
 function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
@@ -312,13 +314,18 @@ function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
     () => (isOffline || upgrading || copyBar ? { ...insets, top: 0 } : insets),
     [insets, isOffline, upgrading, copyBar]
   );
-  return <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>;
+  return (
+    <BelowCopyBarContext.Provider value={copyBar}>
+      <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>
+    </BelowCopyBarContext.Provider>
+  );
 }
 
 /** The root stack; exported so a test can list the routes it declares. */
 export function NavigationStack({ screenBackground }: { screenBackground: string }) {
   const insets = useSafeAreaInsets();
   const t = useTokens();
+  const belowCopyBar = useBelowCopyBar();
 
   // Only apply bottom safe area padding on Android (iOS handles it natively)
   const androidBottomPadding = Platform.OS === 'android' ? insets.bottom : 0;
@@ -335,6 +342,8 @@ export function NavigationStack({ screenBackground }: { screenBackground: string
         headerTintColor: t.brand.tint,
         headerTitleStyle: { ...typography.headline, color: t.text.primary },
         headerShadowVisible: false,
+        // The native header pads for the status bar from the window, whatever the inset above says.
+        unstable_nativeProps: belowCopyBar ? { headerConfig: { disableTopInsetApplication: true } } : undefined,
         contentStyle: {
           backgroundColor: screenBackground,
           // Apply bottom safe area padding for Android system nav bar only
@@ -519,7 +528,7 @@ function ThemedContent() {
               {/* The phone copy's bar where the feature is on (WH-298), today's banner elsewhere. */}
               {copyBar ? <OfflineStatusBar /> : <OfflineBanner />}
               {copySession ? <PhoneCopyLifecycle /> : null}
-              <UpgradingBanner />
+              <UpgradingBanner belowCopyBar={copyBar} />
               <BottomSheetModalProvider>
                 <BelowOfflineBanner>
                   <NavigationStack key={language} screenBackground={screenBackground} />

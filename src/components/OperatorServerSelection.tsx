@@ -6,6 +6,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
+import { useBelowCopyBar } from '@/hooks/useBelowCopyBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -58,6 +59,7 @@ export function OperatorServerSelection({
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const belowCopyBar = useBelowCopyBar();
   // Shown before the app shell exists (app/_layout.tsx), so this screen follows the language itself.
   useAppLanguage();
   const [focused, setFocused] = useState(false);
@@ -155,7 +157,7 @@ export function OperatorServerSelection({
 
   if (tooOld) return <AppTooOldScreen {...tooOld} onClose={() => setTooOld(null)} />;
 
-  return <SafeAreaView style={styles.screen} edges={underHeader ? ['bottom', 'left', 'right'] : undefined}>
+  return <SafeAreaView style={styles.screen} edges={underHeader || belowCopyBar ? ['bottom', 'left', 'right'] : undefined}>
     {initial && <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />}
     {/* Same as the sign-in screens (PhoneSignInForm, CodeEntryForm): padding on iOS, height on Android. */}
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>

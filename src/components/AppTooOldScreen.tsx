@@ -12,6 +12,7 @@ import React from 'react';
 import { Linking, ScrollView, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBelowCopyBar } from '@/hooks/useBelowCopyBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -46,6 +47,7 @@ const makeStyles = (t: ThemeTokens) => ({
 const AppTooOldScreen: React.FC<AppTooOldScreenProps> = ({ minimum, current, updateUrl, facilityDownload, onClose }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const belowCopyBar = useBelowCopyBar();
 
   const openUpdate = () => {
     if (!updateUrl) return;
@@ -54,7 +56,7 @@ const AppTooOldScreen: React.FC<AppTooOldScreenProps> = ({ minimum, current, upd
   };
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={belowCopyBar ? ['bottom', 'left', 'right'] : undefined}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.column}>
