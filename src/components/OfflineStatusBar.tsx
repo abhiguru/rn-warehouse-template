@@ -62,10 +62,11 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
+/** Two sentences of line 1 are joined with ". "; a first one that already ends in its own mark only gets the space (Design 1.5 row 6). */
 function lineOneText(view: StatusBarContent): string {
   return view.line1
     .map(part => tr(`components.offlineStatus.${part.key}`, part.time === undefined ? undefined : { time: formatLoadedAt(part.time) }))
-    .join(' ');
+    .reduce((line, sentence) => `${line}${/[.…]$/.test(line) ? ' ' : '. '}${sentence}`);
 }
 
 function lineTwoText(view: StatusBarContent): string | null {
