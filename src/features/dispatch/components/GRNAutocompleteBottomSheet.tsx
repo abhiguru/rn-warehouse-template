@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import { useRouter, Href } from 'expo-router';
 import { SheetSearchField } from '@/components/common/SheetSearchField';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -656,7 +656,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   currentValue,
   customerId,
 }) => {
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
   const router = useRouter();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();

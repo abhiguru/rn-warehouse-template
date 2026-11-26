@@ -22,7 +22,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
 import type { ViewRef } from '@/types/nativeRefs';
@@ -146,7 +146,7 @@ function OverlayView({ children, onScrimPress, scrimLabel, style, top = 0, botto
 
 // The insets are read only by a dialog that asks for them (tests render a plain one without a provider).
 function SafeOverlay(props: DialogOverlayProps) {
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
   return <OverlayView {...props} top={insets.top + space.lg} bottom={insets.bottom + space.lg} />;
 }
 

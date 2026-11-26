@@ -25,7 +25,7 @@ import {
   type StyleProp,
   type TextStyle,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -262,7 +262,7 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Counts the searches; an answer is used only while its search is the latest.
   const searchRequest = useRef(0);

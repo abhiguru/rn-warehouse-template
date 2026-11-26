@@ -315,7 +315,7 @@ function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
     [insets, isOffline, upgrading, copyBar]
   );
   return (
-    <BelowCopyBarContext.Provider value={copyBar}>
+    <BelowCopyBarContext.Provider value={copyBar ? insets : null}>
       <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>
     </BelowCopyBarContext.Provider>
   );

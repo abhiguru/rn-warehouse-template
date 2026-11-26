@@ -18,7 +18,7 @@ import {
   ActivityIndicator,
 } from 'react-native-paper';
 import { router } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
 import { StatusTag } from '@/components/ui/StatusTag';
@@ -144,7 +144,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
 
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);

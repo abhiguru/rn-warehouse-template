@@ -6,7 +6,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
 import { DatePickerInput } from '@/components/ui/DatePickerInput';
@@ -101,7 +101,7 @@ const today = (): Date => todayInIST();
 export function PaymentFormModal({ visible, invoiceId, invoiceNumber, dueText, editing, onClose, onDone, onRefused }: PaymentFormModalProps) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
   const [date, setDate] = useState<Date>(today());
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<PaymentMode>('cash');

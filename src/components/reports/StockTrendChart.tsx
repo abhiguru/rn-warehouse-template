@@ -27,7 +27,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { LineChart } from 'react-native-gifted-charts';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -280,7 +280,7 @@ function TrendTable({ points, values, nowIndex, asOf }: { points: MonthlyTrendPo
 export function StockTrendChart({ trends, currentStock }: StockTrendChartProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [fullscreen, setFullscreen] = useState(false);
   const [view, setView] = useState<'chart' | 'table'>('chart');

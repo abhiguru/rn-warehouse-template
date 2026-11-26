@@ -21,7 +21,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import { LineChart } from 'react-native-gifted-charts';
 import { ONE_LINE, makeTableStyles, numberColumnWidth, useTableLayout } from '@/components/common/DetailTable';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -525,7 +525,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
   const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenView, setFullscreenView] = useState<FullscreenView>('chart');

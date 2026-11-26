@@ -27,7 +27,7 @@ import React, { useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import ImageViewing from 'react-native-image-viewing';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useLanPhotoUris } from '@/hooks/useLanStatus';
 import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
@@ -104,7 +104,7 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
 
   // Convert images to format expected by react-native-image-viewing
   // P6 Fix: Memoize to prevent array recreation on every render

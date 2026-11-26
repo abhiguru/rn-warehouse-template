@@ -19,7 +19,8 @@ import {
     ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { CameraView, useCameraPermissions, FlashMode } from 'expo-camera';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -67,7 +68,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 }) => {
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
-    const insets = useSafeAreaInsets();
+    const insets = useWindowInsets();
     const [flashMode, setFlashMode] = useState<FlashMode>('on'); // Default flash ON
     const [isCapturing, setIsCapturing] = useState(false);
     const [facing, setFacing] = useState<'front' | 'back'>('back');
