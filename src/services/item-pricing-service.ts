@@ -4,6 +4,7 @@
 import { getAuthenticatedClient } from '../config/supabaseConfig';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { readVia } from '@/features/phone-copy/readRoute';
+import { readGrnItemRates } from '@/features/phone-copy/reads/grnRates';
 import { readStandardRate } from '@/features/phone-copy/reads/itemRates';
 import { readPriceHistory } from '@/features/phone-copy/reads/priceHistory';
 import type {
@@ -858,19 +859,26 @@ const numOrNull = (v: unknown): number | null => (v === null || v === undefined 
  * when the server lacks the function (an older one). Throws when the facility cannot be reached or refuses.
  */
 export const getGrnItemRates = async (grnId: string): Promise<RpcGrnItemRates | null> => {
-  const client = await getAuthenticatedClient();
-  const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_grn_item_rates', { p_grn_id: grnId })), RPC_TIMEOUT_MS, 'GRN item rates');
-  if (error) {
-    handleGlobalAuthError(error);
-    if (isMissingFunction(error)) return null;
-    throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The rates of the GRN could not be loaded');
+  // The phone copy answers when it can (WH-348, contract 16.2): the server's own figure per lot, copied as it is.
+  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readGrnItemRates(q, grnId));
+  let d: Record<string, unknown>;
+  if (copy?.value) {
+    d = copy.value as unknown as Record<string, unknown>;
+  } else {
+    const client = await getAuthenticatedClient();
+    const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_grn_item_rates', { p_grn_id: grnId })), RPC_TIMEOUT_MS, 'GRN item rates');
+    if (error) {
+      handleGlobalAuthError(error);
+      if (isMissingFunction(error)) return null;
+      throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The rates of the GRN could not be loaded');
+    }
+    const response = unwrapArrayResponse(data) as { success?: unknown; data?: Record<string, unknown> | null } | null;
+    if (!response || response.success !== true || !response.data) {
+      handleGlobalAuthError(response);
+      throw new Error('The rates of the GRN could not be loaded');
+    }
+    d = response.data;
   }
-  const response = unwrapArrayResponse(data) as { success?: unknown; data?: Record<string, unknown> | null } | null;
-  if (!response || response.success !== true || !response.data) {
-    handleGlobalAuthError(response);
-    throw new Error('The rates of the GRN could not be loaded');
-  }
-  const d = response.data;
   const rows = Array.isArray(d.rates) ? (d.rates as Array<Record<string, unknown>>) : [];
   const sources = ['invoice', 'grn', 'customer', 'item'];
   return {

@@ -45,6 +45,8 @@ import { isManager } from '@/config/roles';
 import { customerPricingPath, itemRatesPath } from '@/features/item-pricing/contract';
 import { useAppSelector } from '@/store/hooks';
 import { t } from '@/i18n';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { money } from '@/features/item-pricing/rateText';
 import { cleanPackaging, packageUnit } from '@/utils/packagingWord';
 import { space, type ThemeTokens } from '@/theme/tokens';
@@ -127,6 +129,8 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
   const th = useTokens();
   const screen = useTableLayout();
   const { rates, priceType, status, retry } = useGrnItemRates(grnId);
+  // Offline, the row that opens this GRN's rate step is a plain row: GRN details' Edit needs the server (WH-348, Design DQ-R1).
+  const needsConnection = useNeedsConnectionV3();
   const role = useAppSelector(state => state.auth?.userProfile?.role);
   // Administrators and supervisors open the rate's home (see the header); staff get no link to the
   // price list; a customer's priced rows open "Your rate".
@@ -155,7 +159,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
           ? 'item'
           : rate.source === 'customer' && customerId
             ? 'customer'
-            : rate.source === 'grn' && canEdit && grnId
+            : rate.source === 'grn' && canEdit && grnId && !needsConnection
               ? 'grn'
               : null;
       const link = managerTarget !== null || opensYourRate;
@@ -182,7 +186,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
         .join(', ');
       return { priced, managerTarget, link, under, label };
     },
-    [isCustomer, manager, grnId, customerId, canEdit, repeated, stacked, oneTime],
+    [isCustomer, manager, grnId, customerId, canEdit, repeated, stacked, oneTime, needsConnection],
   );
 
   const columns = useMemo(
@@ -326,10 +330,15 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
                   type="secondary"
                   onPress={() => router.push(grnRatesStepPath(grnId))}
                   accessibilityHint={t('grn.rates.opensRatesStep')}
+                  disabled={needsConnection}
+                  accessibilityLabel={needsConnection ? needsConnectionLabel(t('grn.rates.setRates')) : undefined}
                   testID="grn-imported-set-rates"
                 >
                   {t('grn.rates.setRates')}
                 </Button>
+                {needsConnection ? (
+                  <NeedsConnectionLine testID="grn-imported-set-rates-needs-connection" text={t('components.offlineRead.needsConnection')} />
+                ) : null}
               </View>
             ) : null}
             <View style={own.note}>
