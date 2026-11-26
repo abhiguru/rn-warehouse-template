@@ -623,8 +623,6 @@ async function runOnce(): Promise<SyncOutcome> {
       clearScheduleTimer();
       return 'stopped';
     }
-    // What the run stored before it failed is in the copy: the screens read it now.
-    publishCopyChanges();
     if (isDiskFull(error)) publish({ storageLow: true });
     else if (!(error instanceof SyncFailedError) && !(error instanceof SyncRefusedError)) {
       engine.writeFailures += 1;

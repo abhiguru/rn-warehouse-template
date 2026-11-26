@@ -10,7 +10,6 @@ import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger } from '@/utils/logger';
 import { currentCopy } from './copyDb';
 import type { SqlValue } from './copyDriver';
-import { copyRole } from './copyRole';
 import { READ_FORMAT, type RankKind } from './copySchema';
 import { ensureRanks } from './reads/textRank';
 import { CopyReadError, type DataSource } from './sourced';
@@ -65,11 +64,21 @@ function recordChain(key: string, record: ChainRecord): void {
 }
 
 /**
+ * The signed-in person's role. The store is loaded when first asked: the services that read through this route would
+ * otherwise bring the whole store, and its screens' hooks, into everything that imports them.
+ */
+function signedInRole(): unknown {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports -- loaded when first asked, see above
+  const { store } = require('@/store') as typeof import('@/store');
+  return store.getState().auth.userProfile?.role;
+}
+
+/**
  * 'copy' only for a warehouse role, on a facility with the feature, over a copy of format 2 that is complete, or that
  * holds what the read needs while the phone is offline and the older records have not arrived.
  */
 export function copyRoute(need: CopyNeed): 'copy' | 'server' {
-  if (!hasCapability('sync') || !isCopyRole(copyRole())) return 'server';
+  if (!hasCapability('sync') || !isCopyRole(signedInRole())) return 'server';
   const { feature, phase, format } = getSyncSnapshot();
   if (feature === 'off' || format === undefined || format < READ_FORMAT) return 'server';
   if (phase === 'ready') return 'copy';

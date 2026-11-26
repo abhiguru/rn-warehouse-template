@@ -44,13 +44,6 @@ async function noteRankValues(tx: CopyDriver, entity: EntityName, rows: readonly
   }
 }
 
-/** What goes from the phone with a row of an entity. */
-const CASCADES: Readonly<Partial<Record<EntityName, readonly EntityName[]>>> = {
-  goodsreceived: ['goodsreceived_trl', 'grn_images', 'grn_lock'],
-  dispatch: ['dispatch_trl', 'dispatch_images'],
-  invoice: ['invoice_trl'],
-};
-
 /** Removes a row with what hangs under it on the phone (server contract, "Delete cascade on the phone"). */
 export async function deleteWithCascade(tx: CopyDriver, entity: EntityName, id: string): Promise<void> {
   if (entity === 'goodsreceived') {
@@ -84,7 +77,7 @@ async function dispatchesOfLines(tx: CopyDriver, column: 'id' | 'gr_trl_id' | 'g
 
 /**
  * Applies one page of changes in array order; then the search rows of what it wrote. Answers the entities the page
- * touched, what went with a deleted row included.
+ * named (a screen that shows a record's lines or photos also reads the record's own entity).
  */
 export async function applyChanges(tx: CopyDriver, changes: readonly Change[], searchBuilt: boolean): Promise<Set<EntityName>> {
   const touched = new Set<EntityName>();
@@ -129,7 +122,6 @@ export async function applyChanges(tx: CopyDriver, changes: readonly Change[], s
     if (searchBuilt && entry.e === 'dispatch_trl') await dispatchesOfLines(tx, 'id', [entry.id], dispatches);
     await deleteWithCascade(tx, entry.e, entry.id);
     touched.add(entry.e);
-    for (const child of CASCADES[entry.e] ?? []) touched.add(child);
     note(entry.e, entry.id);
   }
   await flush();

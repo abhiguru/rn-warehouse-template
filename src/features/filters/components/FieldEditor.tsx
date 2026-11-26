@@ -33,6 +33,7 @@ export function FieldEditor({ field, value, onChange, ctx, onInvalid, errorRef }
       return (
         <ChoiceChips
           accessibilityLabel={field.label}
+          disabled={Boolean(field.unavailable?.(ctx))}
           options={visibleOptions(field, ctx)}
           value={typeof value === 'string' ? value : field.defaultValue}
           onChange={onChange}

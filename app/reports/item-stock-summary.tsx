@@ -584,9 +584,12 @@ function useItemGRNs(customerId: string | undefined, key: string) {
     [key]
   );
 
-  /** GRN_LIMIT lines of the item from `offset`, or undefined when they could not be read. */
+  /**
+   * GRN_LIMIT lines of the item from `offset`, or undefined when they could not be read. 'restart': the lines are now
+   * answered from somewhere else than the first ones were (phone copy or server), so they are read from the first again.
+   */
   const fetchPage = useCallback(
-    async (itemId: string, offset: number): Promise<GRNPage | undefined> => {
+    async (itemId: string, offset: number): Promise<GRNPage | 'restart' | undefined> => {
       const drillDown = {
         p_filters: { item_ids: [itemId], stock_status: 'in_stock' as const },
         p_limit: GRN_LIMIT,
@@ -594,6 +597,7 @@ function useItemGRNs(customerId: string | undefined, key: string) {
       };
       try {
         const response = customerId ? await getCustomerGRNItems(customerId, drillDown) : await getAllGRNItems(drillDown);
+        if (response.copyRestart) return 'restart';
         const items = response.data?.items;
         if (!response.success || !items) return undefined;
         const pagination = response.data?.pagination;
@@ -620,7 +624,8 @@ function useItemGRNs(customerId: string | undefined, key: string) {
     async (itemId: string) => {
       update(state => ({ ...state, grns: { ...state.grns, [itemId]: { status: 'loading' } } }));
       const page = await fetchPage(itemId, 0);
-      const answer: GRNLoad = page
+      // A first page has no earlier lines to disagree with, so it never answers 'restart'.
+      const answer: GRNLoad = page && page !== 'restart'
         ? {
             status: 'loaded',
             rows: grnRows(page.items, 0),
@@ -652,6 +657,10 @@ function useItemGRNs(customerId: string | undefined, key: string) {
       extend(load => ({ ...load, more: 'loading' }));
       const page = await fetchPage(itemId, offset);
       if (!live.current) return;
+      if (page === 'restart') {
+        void read(itemId);
+        return;
+      }
       if (!page) {
         extend(load => ({ ...load, more: 'failed' }));
         return;
@@ -676,7 +685,7 @@ function useItemGRNs(customerId: string | undefined, key: string) {
         };
       });
     },
-    [drill, fetchPage, update]
+    [drill, fetchPage, read, update]
   );
 
   return useMemo(

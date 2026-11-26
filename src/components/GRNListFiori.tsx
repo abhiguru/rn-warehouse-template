@@ -9,7 +9,7 @@
  * - Which cells are open is kept by the list, so a recycled cell never shows another GRN's state
  */
 
-import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, memo } from 'react';
 import { View, Text, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
@@ -29,6 +29,10 @@ import {
   GRNItem,
   GRNListResponse,
 } from '@/services/grn-service';
+import { syncNow } from '@/features/phone-copy/syncEngine';
+import { useOlderRecordsAbsent } from '@/features/phone-copy/useOlderRecordsAbsent';
+import { useQuietReread, type QuietReread } from '@/features/phone-copy/useQuietReread';
+import type { EntityName } from '@/features/phone-copy/copySchema';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
@@ -91,6 +95,12 @@ const logger = createLogger('GRNListFiori');
 /** Receipts on the first page and on each later one. A facility that pages lines gets 20, then 80 lines. */
 const PAGE_SIZE = 20;
 const LINE_PAGE_SIZE = 80;
+/** The records of the phone copy the list's rows are made of (WH-299). */
+const LIST_KINDS: ReadonlySet<EntityName> = new Set<EntityName>(['goodsreceived', 'goodsreceived_trl', 'grn_lock']);
+/** When the rows of an answer were true: the phone copy's own time, or now for the server's. */
+const timeOfAnswer = (asOf: string | null): number => (asOf === null ? Date.now() : Date.parse(asOf));
+/** What of a page shows on screen: a re-read that gives the same replaces nothing. */
+const shownOf = (data: GRNListResponse['data']) => JSON.stringify([data.items, data.pagination.total_count, data.aggregations]);
 
 /** Row title. A receipt saved without a number says so instead of showing a bare "GRN". */
 const grnTitle = (grNo: string) => (grNo.trim() ? translate('lists.grn.cardTitle', { number: formatIdentifier(grNo) }) : translate('lists.grn.noNumber'));
@@ -569,6 +579,12 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   const [loadedAt, setLoadedAt] = useState(() => Date.now());
   // The rows on screen came from the phone's saved copy (the server could not be reached): they always say when they were loaded.
   const [fromSavedCopy, setFromSavedCopy] = useState(false);
+  // The rows came from the phone copy (WH-299): the status bar tells their time, and they read again after a sync.
+  const [fromPhoneCopy, setFromPhoneCopy] = useState(false);
+  // A quiet re-read keeps the rows in view where they are; a list asked for anew starts at the top, as ever.
+  const [anchored, setAnchored] = useState(false);
+  /** Grows when a list that kept its place is replaced by one asked for anew, so it starts with no place to keep. */
+  const [listEpoch, setListEpoch] = useState(0);
 
   // Filters, search and sort
   const filters = useListFilters(GRN_FILTERS);
@@ -576,6 +592,9 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   const sortedByNumber = sort?.field === 'gr_no';
   const linesHidden = useMemo(() => grnLinesHidden(request), [request]);
   const words = useMemo(() => searchWords(readSearch(GRN_FILTERS, filters.values).text), [filters.values]);
+  // Offline while older records load, the copy has no invoice state and not every GRN (WH-299, Design 2.6 and 2.10a).
+  const olderAbsent = useOlderRecordsAbsent() && !isCustomerAccount;
+  const invoiceFilterWaits = olderAbsent && request.p_filters?.invoiced !== undefined;
   const listRef = useRef<FlashListRef<FlattenedItem<GRNGroupData>>>(null);
 
   // Open cells
@@ -630,12 +649,75 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   // The rows loaded so far, in the unit the facility pages by (receipts or lines): what a refresh asks for.
   const loadedCount = useRef(0);
   loadedCount.current = currentOffset;
+  // What a quiet re-read looks at when it comes to be done, as of the latest render.
+  const anchoredRef = useRef(anchored);
+  const shownData = useRef(data);
+  const phoneCopyShown = useRef(fromPhoneCopy);
+  const busy = useRef(true);
+  useLayoutEffect(() => {
+    anchoredRef.current = anchored;
+    shownData.current = data;
+    phoneCopyShown.current = fromPhoneCopy;
+    busy.current = loading || loadingMore || refreshing;
+  });
+  /** Resolved when the list has been told to keep its place. */
+  const onAnchored = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!anchored) return;
+    onAnchored.current?.();
+    onAnchored.current = null;
+  }, [anchored]);
+
+  // The same request again, from the top, for as many rows as are loaded, with nothing on screen saying so (§11.1).
+  const readQuietly = async () => {
+    const asked = latestRequest.current;
+    const offset = loadedCount.current;
+    const params = withReceiptPages({ ...request, p_limit: Math.max(PAGE_SIZE, offset), p_offset: 0 });
+    const result = await getGRNListPage(params, null);
+    // A load that began meanwhile replaces the rows itself; a failure leaves them as they are.
+    if (asked !== latestRequest.current || !result.success || result.fromCache) return;
+    const asOf = result.source?.asOf ?? null;
+    if (asOf !== null && shownData.current && shownOf(shownData.current) === shownOf(result.data)) return;
+    // First the list is told to keep its place, then the rows are replaced.
+    if (!anchoredRef.current) {
+      await new Promise<void>(resolve => {
+        onAnchored.current = resolve;
+        setAnchored(true);
+      });
+      if (asked !== latestRequest.current) return;
+    }
+    // A finger came down, or more rows arrived, since the read: read again later.
+    if (!quiet.atRest() || offset !== loadedCount.current) {
+      quiet.markDue();
+      return;
+    }
+    const unit = result.data.pagination.unit === 'receipt' ? 'receipt' : 'line';
+    pageUnit.current = unit;
+    setData(result.data);
+    setCurrentOffset(unit === 'receipt' ? countReceipts(result.data.items) : result.data.items.length);
+    setFromPhoneCopy(asOf !== null);
+    setFromSavedCopy(false);
+    setRefreshError(false);
+    setLoadMoreFailed(false);
+    setLoadedAt(timeOfAnswer(asOf));
+  };
+  const quiet: QuietReread = useQuietReread({
+    kinds: LIST_KINDS,
+    active: () => phoneCopyShown.current,
+    idle: () => !busy.current,
+    read: readQuietly,
+  });
+  useEffect(() => {
+    if (!loading && !loadingMore && !refreshing) quiet.settle();
+  }, [loading, loadingMore, refreshing, quiet]);
   // `keepPlace`: a refresh when the screen comes back into view. The rows on screen stay until the answer, the list
   // is not scrolled to the top (the person was reading it), and it asks for as many rows as are loaded (at least a
   // first page), so the answer replaces them all and the place is not lost when the list is longer than a page.
   const fetchGRNItems = useCallback(async (offset = 0, append = false, keepPlace = false) => {
     const requestId = append ? latestRequest.current : ++latestRequest.current;
     const requestKey = JSON.stringify(request);
+    // A load of the whole list brings what a sync changed.
+    if (!append) quiet.clear();
     try {
       if (offset === 0 && !append && !keepPlace) setLoading(true);
       if (append) setLoadingMore(true);
@@ -646,6 +728,24 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
       const params = withReceiptPages({ ...request, p_limit: limit, p_offset: offset });
       const result = await getGRNListPage(params, isCustomerAccount ? assignedCustomerIds : null);
       if (requestId !== latestRequest.current) return;
+
+      // The next page would come from somewhere else than the first (phone copy or server): drop the pages and ask
+      // for the first again, with no error (WH-299, one source per screen).
+      if (result.copyRestart) {
+        void fetchGRNItems();
+        return;
+      }
+      // The Invoicing filter cannot be answered yet: no rows, and the list says why in their place.
+      if (result.invoiceFilterWaiting) {
+        setData(null);
+        shownRequest.current = null;
+        setCurrentOffset(0);
+        setLoadError(false);
+        setRefreshError(false);
+        setLoadMoreFailed(false);
+        setFromPhoneCopy(true);
+        return;
+      }
 
       // The service answers a network failure with the first page kept on the phone. A refresh of the rows on
       // screen that got only that did not refresh: it is a failure (strip, loadedAt kept), not a new load (§14.9).
@@ -678,10 +778,19 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           setRefreshError(false);
           setLoadMoreFailed(false);
           // A page answered from the phone's saved copy was loaded when that copy was stored, not now.
-          setLoadedAt(result.fromCache && result.cachedAt ? result.cachedAt : Date.now());
+          // The phone copy's rows are as old as the copy.
+          if (result.source) setLoadedAt(Date.parse(result.source.asOf));
+          else setLoadedAt(result.fromCache && result.cachedAt ? result.cachedAt : Date.now());
           setFromSavedCopy(Boolean(result.fromCache));
+          setFromPhoneCopy(Boolean(result.source));
           shownRequest.current = requestKey;
-          if (!keepPlace) listRef.current?.scrollToOffset({ offset: 0, animated: false });
+          if (!keepPlace) {
+            if (anchoredRef.current) {
+              setAnchored(false);
+              setListEpoch(epoch => epoch + 1);
+            }
+            listRef.current?.scrollToOffset({ offset: 0, animated: false });
+          }
         }
       } else {
         // Keep the server message for support; show plain words to the user
@@ -699,13 +808,14 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
         setLoadingMore(false);
       }
     }
-  }, [assignedCustomerIds, request, isCustomerAccount, showLoadFailure]);
+  }, [assignedCustomerIds, request, isCustomerAccount, showLoadFailure, quiet]);
 
-  // Any change of filter, search or sort is a new first page.
+  // Any change of filter, search or sort is a new first page; so is the moment the Invoicing filter starts or stops
+  // having to wait.
   useEffect(() => {
     setCurrentOffset(0);
     fetchGRNItems();
-  }, [fetchGRNItems]);
+  }, [fetchGRNItems, invoiceFilterWaits]);
 
   // The list reads again when the screen comes back into view (after a GRN was created, edited or deleted, or
   // goods were dispatched): the first focus is the mount, which the effect above loads. A failed refresh keeps
@@ -722,12 +832,16 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
       const whenLeft = requestWhenLeftRef.current;
       requestWhenLeftRef.current = null;
       if (whenLeft !== null && whenLeft === requestKeyRef.current) {
-        void fetchGRNItemsRef.current(0, false, true);
+        // Rows of the phone copy are read again quietly, keeping their place (WH-299).
+        if (phoneCopyShown.current) quiet.markDue();
+        else void fetchGRNItemsRef.current(0, false, true);
       }
+      quiet.setFocused(true);
       return () => {
         requestWhenLeftRef.current = requestKeyRef.current;
+        quiet.setFocused(false);
       };
-    }, [])
+    }, [quiet])
   );
 
   // Event handlers
@@ -775,8 +889,15 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchGRNItems();
-  }, [fetchGRNItems]);
+    if (!fromPhoneCopy) {
+      fetchGRNItems();
+      return;
+    }
+    // Rows of the phone copy: bring the copy up to date, then read it (a sync that cannot run changes nothing).
+    void syncNow('pull-to-refresh')
+      .catch(() => undefined)
+      .then(() => fetchGRNItemsRef.current());
+  }, [fetchGRNItems, fromPhoneCopy]);
 
   const handleLoadMore = useCallback(() => {
     if (!data?.pagination.has_more || loadingMore || loading) return;
@@ -926,19 +1047,28 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   }, [loadingMore, loadMoreFailed, handleLoadMore, styles, t]);
 
   // Offline with no failed refresh: the top of the list says when the cards were loaded (§14.9). A failed
-  // refresh says it in its strip instead.
-  const offlineUpdatedAt = (isOffline || fromSavedCopy) && !refreshError ? loadedAt : undefined;
+  // refresh says it in its strip instead. Rows of the phone copy have their time in the status bar (WH-299).
+  const offlineUpdatedAt = (isOffline || fromSavedCopy) && !refreshError && !fromPhoneCopy ? loadedAt : undefined;
+  const olderNote = olderAbsent && filters.search.trim() !== '' ? translate('grn.offline.olderLoadingSearch') : null;
   const renderListHeader = useCallback(
-    () => (offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top withDate testID="grn-last-updated" /> : null),
-    [offlineUpdatedAt]
+    () => (
+      <>
+        {olderNote ? <Text style={styles.listNote} testID="grn-search-older-loading">{olderNote}</Text> : null}
+        {offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top withDate testID="grn-last-updated" /> : null}
+      </>
+    ),
+    [offlineUpdatedAt, olderNote, styles]
   );
 
-  const hasRows = flattenedData.length > 0;
+  // While the Invoicing filter waits there are no rows to show, whatever was loaded before.
+  const hasRows = !invoiceFilterWaits && flattenedData.length > 0;
 
-  // First load, or a new first page with no rows on screen.
-  const showsSkeleton = loading && (!data || (!hasRows && !refreshing));
+  // First load, or a new first page with no rows on screen; also nothing answered yet and nothing failed (the moment
+  // the Invoicing filter stops waiting), which is never "no match".
+  const unanswered = !data && !loadError && !refreshError;
+  const showsSkeleton = !invoiceFilterWaits && (unanswered || (loading && (!data || (!hasRows && !refreshing))));
   // No rows on screen: a failed first page, new filter, or reload of a request that had none is the error state.
-  const showsLoadError = !showsSkeleton && !hasRows && (loadError || refreshError);
+  const showsLoadError = !invoiceFilterWaits && !showsSkeleton && !hasRows && (loadError || refreshError);
   useReloadWhenVerified(showsLoadError, handleRetry);
 
   // The header, search field and filter bar are shown in every state, so a search
@@ -956,7 +1086,20 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   );
 
   let content: React.ReactNode;
-  if (showsSkeleton) {
+  if (invoiceFilterWaits) {
+    content = (
+      <ListEmptyState
+        testID="grn-invoicing-wait"
+        activeFilterCount={1}
+        filteredTitle={translate('grn.offline.invoicingWaitTitle')}
+        filteredSubtitle={translate('grn.offline.invoicingWaitMessage')}
+        clearFiltersLabel={translate('grn.offline.clearInvoicingFilter')}
+        clearTestID="grn-invoicing-wait-clear"
+        // Only the Invoicing filter goes: the other filters and the search stay.
+        onClearFilters={() => filters.setField('invoicing', undefined)}
+      />
+    );
+  } else if (showsSkeleton) {
     // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
     // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
@@ -974,11 +1117,16 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
             testID="grn-stale-strip"
           />
         ) : null}
+        {/* A touch on the list holds a quiet re-read, a press on a row included. */}
+        <View style={styles.listHold} {...quiet.touchHandlers}>
         <FlashList
+          key={listEpoch}
           ref={listRef}
           data={flattenedData}
-          // Re-sorted lists must not stay anchored on the row that was on top before.
-          maintainVisibleContentPosition={{ disabled: true }}
+          // Re-sorted lists must not stay anchored on the row that was on top before. Only a quiet re-read keeps
+          // the rows in view where they are.
+          maintainVisibleContentPosition={{ disabled: !anchored }}
+          {...quiet.scrollHandlers}
           renderItem={renderItem}
           keyExtractor={(item: FlattenedItem<GRNGroupData>) => item.key}
           getItemType={getItemType}
@@ -999,6 +1147,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
+        </View>
       </>
     );
   } else if (showsLoadError) {
@@ -1018,6 +1167,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
         emptyTitle={translate('lists.grn.emptyTitle')}
         emptySubtitle={canCreateGRN ? translate('lists.grn.emptyCreator') : translate('lists.grn.emptyViewer')}
         showCreateButton={canCreateGRN}
+        footnote={olderNote ? { text: olderNote, testID: 'grn-search-older-loading' } : undefined}
         createButtonLabel={translate('lists.grn.create')}
         onCreatePress={handleCreateGRN}
       />

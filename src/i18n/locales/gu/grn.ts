@@ -3,6 +3,15 @@ import type { grn as source } from '../en/grn';
 import type { Translation } from '../../types';
 
 export const grn: Translation<typeof source> = {
+  offline: {
+    olderLoadingSearch: 'જૂની માહિતી હજુ લોડ થઈ રહી છે. કેટલીક ખૂટતી હોઈ શકે.',
+    invoicingFilterOff: 'ઇન્વૉઇસ ફિલ્ટર ફરી જોડાશો ત્યારે ચાલશે.',
+    invoicingFilterOffLabel: 'ઇન્વૉઇસ, ફરી જોડાશો ત્યારે ચાલશે',
+    invoicingWaitTitle: 'હજુ ઇન્વૉઇસ પ્રમાણે ફિલ્ટર થઈ શકતું નથી',
+    invoicingWaitMessage: 'ફોનમાં હજુ ઇન્વૉઇસની વિગતો નથી. ફરી જોડાશો ત્યારે લોડ થશે. હમણાં આવક પાવતી જોવા ફિલ્ટર સાફ કરો.',
+    clearInvoicingFilter: 'ઇન્વૉઇસ ફિલ્ટર સાફ કરો',
+  },
+
   steps: {
     details: 'આવક પાવતીની વિગતો',
     detailsShort: 'વિગતો',

@@ -54,6 +54,7 @@ const makeStyles = (t: ThemeTokens) => ({
   // A row pressed shows the pressed surface, not a fade (§10).
   sectionPressed: { backgroundColor: t.surface.cardPressed },
   sectionTitle: { ...typography.footnote, fontWeight: fontWeight.semibold, color: t.text.secondary },
+  sectionNote: { ...typography.footnote, color: t.text.secondary },
   pickerRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -269,6 +270,12 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
                   onInvalid={bad => setInvalid(previous => ({ ...previous, [field.key]: bad }))}
                   errorRef={node => { errorNodes.current[field.key] = node; }}
                 />
+                {/* Why a filter cannot be chosen for now. */}
+                {field.unavailable?.(filters.ctx) ? (
+                  <Text style={styles.sectionNote} testID={field.unavailable(filters.ctx)?.testID}>
+                    {field.unavailable(filters.ctx)?.note}
+                  </Text>
+                ) : null}
               </View>
             )
           )}

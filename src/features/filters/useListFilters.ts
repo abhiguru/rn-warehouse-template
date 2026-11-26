@@ -6,6 +6,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { facilityPagesGrnsByReceipt, subscribeFacilityGrnPaging } from '@/config/facilityGrnPaging';
 import { hasCapability, subscribeFacilityCapabilities } from '@/config/facilityCapabilities';
+import { useOlderRecordsAbsent } from '@/features/phone-copy/useOlderRecordsAbsent';
 import { backendHasFeature } from '@/config/backendFeatures';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -53,13 +54,17 @@ export function useFilterContext(): FilterContext {
   // The facility's capability and release, read from the stores directly (like `usePaymentsVisible`, which the list's tags use).
   const payments = useSyncExternalStore(subscribePayments, paymentsOn, paymentsOn);
   const grnInvoiceFilter = useSyncExternalStore(subscribePayments, grnInvoiceFilterOn, grnInvoiceFilterOn);
+  const grnInvoiceWaiting = useOlderRecordsAbsent();
   return useMemo(() => {
     const role = profile?.role ?? null;
     const isWarehouseRole = role === 'admin' || role === 'supervisor' || role === 'staff';
     const named = profile?.assignedCustomers?.map(customer => ({ id: customer.id, label: customer.name }));
     const assigned = named ?? (profile?.assignedCustomerIds ?? []).map(id => ({ id, label: '' }));
-    return { role, isWarehouseRole, assignedCustomers: isWarehouseRole ? [] : assigned, pagesByReceipt, payments, grnInvoiceFilter };
-  }, [profile?.role, profile?.assignedCustomers, profile?.assignedCustomerIds, pagesByReceipt, payments, grnInvoiceFilter]);
+    return {
+      role, isWarehouseRole, assignedCustomers: isWarehouseRole ? [] : assigned, pagesByReceipt, payments, grnInvoiceFilter,
+      ...(grnInvoiceWaiting ? { grnInvoiceWaiting } : null),
+    };
+  }, [profile?.role, profile?.assignedCustomers, profile?.assignedCustomerIds, pagesByReceipt, payments, grnInvoiceFilter, grnInvoiceWaiting]);
 }
 
 export interface UseListFiltersOptions {

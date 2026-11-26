@@ -21,12 +21,15 @@ export interface ChoiceChipsProps<T extends string> {
   onChange: (value: T) => void;
   /** Name of the group for screen readers. */
   accessibilityLabel: string;
+  /** Shown, but no choice can be made for now (§10). */
+  disabled?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
   // No row gap: the space above and below each pill inside its target already parts the rows.
   group: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, columnGap: space.sm },
   target: { minHeight: touchTarget, justifyContent: 'center' as const },
+  targetDisabled: { opacity: t.interaction.disabledOpacity },
   chip: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -47,7 +50,7 @@ const makeStyles = (t: ThemeTokens) => ({
   labelSelected: { fontWeight: fontWeight.semibold, color: t.brand.tint },
 });
 
-export function ChoiceChips<T extends string>({ options, value, onChange, accessibilityLabel }: ChoiceChipsProps<T>) {
+export function ChoiceChips<T extends string>({ options, value, onChange, accessibilityLabel, disabled = false }: ChoiceChipsProps<T>) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   return (
@@ -57,11 +60,12 @@ export function ChoiceChips<T extends string>({ options, value, onChange, access
         return (
           <Pressable
             key={option.value}
-            style={styles.target}
+            style={[styles.target, disabled && styles.targetDisabled]}
             onPress={() => onChange(option.value)}
+            disabled={disabled}
             accessibilityRole="radio"
             accessibilityLabel={option.a11yLabel ?? option.label}
-            accessibilityState={{ selected, checked: selected }}
+            accessibilityState={{ selected, checked: selected, ...(disabled ? { disabled } : null) }}
           >
             {({ pressed }) => (
               <View style={[styles.chip, selected && styles.chipSelected, pressed && !selected && styles.chipPressed]}>
