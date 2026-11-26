@@ -96,13 +96,18 @@ export function UnsentFootnote({ marker, testID, inline = false }: { marker: Mar
  * joined by ", ". Not a live region as a whole, but its change from "not sent" to "sending" to gone is announced.
  */
 export function UnsentStrip({ marker, fields, testID }: { marker: Marker | null; fields: string[]; testID: string }) {
-  const styles = useThemedStyles(makeStyles);
-  const tokens = useTokens();
   if (marker === null) return null;
   const text =
     marker === 'sending'
       ? tr('components.offlineRead.changesSending')
       : tr('components.offlineRead.changesNotSent', { fields: fields.map(field => tr(field as TranslationKey)).join(', ') });
+  return <InfoStrip text={text} testID={testID} />;
+}
+
+/** The informative message strip (Design 2.3, 4.2 item 3): icon and words in `status.informative`. */
+export function InfoStrip({ text, testID }: { text: string; testID: string }) {
+  const styles = useThemedStyles(makeStyles);
+  const tokens = useTokens();
   return (
     <View style={styles.strip} testID={testID} accessible accessibilityLabel={text} accessibilityLiveRegion="polite">
       <Icon name="cloud-upload-outline" size={iconSize.sm} color={tokens.status.informative.text} importantForAccessibility="no" />

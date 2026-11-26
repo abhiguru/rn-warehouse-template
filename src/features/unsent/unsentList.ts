@@ -8,7 +8,7 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr } from '@/i18n';
 import { listOwnForms, type FormKind } from './formDrafts';
 import { DEPENDS_ON_REFUSED } from './sendEngine';
-import { listItems, photosOfItem, type UnsentRowView } from './unsentQueue';
+import { listItems, otherPeople, photosOfItem, type UnsentRowView } from './unsentQueue';
 import { getLastSentAt, type ItemState } from './unsentRows';
 import { subscribeUnsent } from './unsentStore';
 
@@ -40,6 +40,8 @@ export interface UnsentListState {
   loaded: boolean;
   rows: UnsentListRow[];
   lastSentAt: number | null;
+  /** Another person's unsent items on this phone: their name and how many; never listed, sent or deleted here. */
+  others: { name: string; count: number }[];
 }
 
 const numberOf = (value: unknown): string | null => {
@@ -97,7 +99,7 @@ function heldReason(reason: string | null): string | null {
   return reason === DEPENDS_ON_REFUSED ? tr('offline.unsent.dependsOnRefused') : tr('offline.unsent.refusedGeneric');
 }
 
-export async function loadUnsentList(): Promise<{ rows: UnsentListRow[]; lastSentAt: number | null }> {
+export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>> {
   const views = await listItems();
   const rows: UnsentListRow[] = [];
   for (const view of views) {
@@ -131,7 +133,7 @@ export async function loadUnsentList(): Promise<{ rows: UnsentListRow[]; lastSen
   for (const root of roots) place(root.id);
   const sent = rows.filter(row => row.section === 'sent').reverse();
   const unfinished = (await listOwnForms()).map(formRow);
-  return { rows: [...unfinished, ...unsent, ...held, ...sent], lastSentAt: await getLastSentAt() };
+  return { rows: [...unfinished, ...unsent, ...held, ...sent], lastSentAt: await getLastSentAt(), others: await otherPeople() };
 }
 
 /** A row of "Not finished": the form's words, when it was started, no tag. */
@@ -160,7 +162,7 @@ function formRow(form: Awaited<ReturnType<typeof listOwnForms>>[number]): Unsent
 
 /** The list as a hook: loaded again on every change of the store. */
 export function useUnsentList(): UnsentListState {
-  const [state, setState] = useState<UnsentListState>({ loaded: false, rows: [], lastSentAt: null });
+  const [state, setState] = useState<UnsentListState>({ loaded: false, rows: [], lastSentAt: null, others: [] });
   useEffect(() => {
     // The latest read wins; one that answers after the screen is gone is dropped.
     let latest = 0;
@@ -172,7 +174,7 @@ export function useUnsentList(): UnsentListState {
         next = { loaded: true, ...(await loadUnsentList()) };
       } catch (error) {
         logger.warn('The unsent list could not be read', loggableError(error));
-        next = { loaded: true, rows: [], lastSentAt: null };
+        next = { loaded: true, rows: [], lastSentAt: null, others: [] };
       }
       if (live && mine === latest) setState(next);
     };

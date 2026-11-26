@@ -22,6 +22,7 @@ import { formatLoadedAt } from '@/utils/formatters';
 import { createLogger, loggableError } from '@/utils/logger';
 import { endFormDraft } from './formDrafts';
 import { sendNow } from './sendEngine';
+import { InfoStrip } from './UnsentMarkers';
 import { requestContinue } from './useFormDraft';
 import { deleteItem } from './unsentQueue';
 import { useUnsentList, type UnsentListRow } from './unsentList';
@@ -67,7 +68,7 @@ export function UnsentItemsScreen() {
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
   const offline = useIsOffline();
-  const { loaded, rows, lastSentAt } = useUnsentList();
+  const { loaded, rows, lastSentAt, others } = useUnsentList();
   const [sending, setSending] = useState(false);
   const entries = useMemo(() => entriesOf(rows), [rows]);
   const anyToSend = rows.some(row => row.section === 'unsent');
@@ -135,6 +136,10 @@ export function UnsentItemsScreen() {
       <Text testID="unsent-last-sent" style={styles.lastSent}>
         {lastSentAt === null ? tr('offline.unsent.neverSent') : tr('offline.unsent.lastSent', { time: formatLoadedAt(lastSentAt) })}
       </Text>
+      {/* Someone else's items on this phone: only their name and how many. Not listed, not sent, not deleted here (spec step 27). */}
+      {others.map(person => (
+        <InfoStrip key={person.name} testID="unsent-other-person" text={tr('offline.unsent.otherPerson', { count: person.count, name: person.name })} />
+      ))}
       {anyToSend ? (
         <>
           <Button
