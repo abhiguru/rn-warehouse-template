@@ -43,7 +43,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { createLogger } from '@/utils/logger';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
-import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 
 const logger = createLogger('OrderGroupCard');
 // ============================================================================
@@ -73,7 +73,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
   const router = useRouter();
   const dispatch = useAppDispatch();
   // Creating a dispatch needs the server (Design 2.10b, DQ3): the list says so once, the button says why in its label.
-  const needsConnection = useNeedsConnection();
+  const needsConnection = useNeedsConnectionV3();
 
   // State for fetched items (since getOrdersList doesn't include items)
   const [fetchedItems, setFetchedItems] = useState<OrderItem[] | null>(null);

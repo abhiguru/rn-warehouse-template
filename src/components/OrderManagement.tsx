@@ -22,7 +22,7 @@ import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
 import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
-import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { StatusTag } from '@/components/ui/StatusTag';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -703,7 +703,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   // The "Waiting for the connection…" text follows the same test the wait for the server uses (`useIsDisconnected`).
   const disconnected = useIsDisconnected();
   // Reading the phone copy with no connection: the order is read-only, one line says so above its actions (Design 2.10b).
-  const needsConnection = useNeedsConnection();
+  const needsConnection = useNeedsConnectionV3();
 
   // Saves what the Add items picker changed, one lot after another, and answers
   // for each lot. A lot the user did not touch is not in `changes`, so a line

@@ -14,7 +14,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, radius, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { getOrderScreenCustomer } from '@/services/order-service';
-import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { isWarehouseUser } from '@/config/roles';
@@ -31,7 +31,7 @@ export default function CustomerOrderScreen() {
   );
   const staffView = useAppSelector((state) => isWarehouseUser(state.auth.userProfile?.role));
   // Reading the phone copy with no connection: History and adding items need the server (Design 2.10b, Product PQ1).
-  const needsConnection = useNeedsConnection();
+  const needsConnection = useNeedsConnectionV3();
   const [customerName, setCustomerName] = useState<string>('');
   // The business whose name has been read. `loading` follows from it, so on a change of
   // `customerId` the very next render is the spinner: the editor of the old business is

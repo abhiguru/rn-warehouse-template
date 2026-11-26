@@ -72,7 +72,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
-import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 
@@ -172,7 +172,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   // The rows came from the phone copy (WH-328): the status bar tells their time, and "New orders" needs a connection.
   const [fromPhoneCopy, setFromPhoneCopy] = useState(false);
-  const needsConnection = useNeedsConnection();
+  const needsConnection = useNeedsConnectionV3();
 
   // ============================================================================
   // DATA FETCHING

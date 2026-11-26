@@ -23,7 +23,7 @@ import {
 import StockIndicator from './StockIndicator';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { localizeDigits, t as tr } from '@/i18n';
-import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
 
 /** A count as it is stored (no grouping), in the digits of the language. */
@@ -118,7 +118,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   // The card's buttons are off while the question or the removal is open, and while a lost answer is being checked.
   const locked = isRemoving || checking !== undefined;
   // The phone has no connection and reads the phone copy: every change of the line needs one (WH-328, Design 2.10b).
-  const needsConnection = useNeedsConnection();
+  const needsConnection = useNeedsConnectionV3();
   const controlsOff = locked || needsConnection;
 
   // Animation for red flash

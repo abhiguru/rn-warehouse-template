@@ -42,7 +42,7 @@ import RecentItemsQuickAdd, { QuickAddItem } from './RecentItemsQuickAdd';
 import { askAlert, showAlert, type AlertChoice } from '@/utils/alert';
 import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { useModalSheet } from '@/hooks/useModalSheet';
-import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import {
   applyResults,
@@ -195,7 +195,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   // Adding needs the server; "Cancel adding items" only closes the sheet and stays enabled (Design 2.10b, DQ2).
-  const needsConnection = useNeedsConnection();
+  const needsConnection = useNeedsConnectionV3();
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const sheet = useModalSheet(bottomSheetModalRef);
