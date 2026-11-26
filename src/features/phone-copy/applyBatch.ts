@@ -58,6 +58,8 @@ export async function deleteWithCascade(tx: CopyDriver, entity: EntityName, id: 
     await tx.run('DELETE FROM dispatch_search WHERE disp_id = ?', [id]);
     await tx.run('DELETE FROM dispatch_trl WHERE disp_id = ?', [id]);
     await tx.run('DELETE FROM dispatch_images WHERE dispatch_id = ?', [id]);
+  } else if (entity === 'orders') {
+    await tx.run('DELETE FROM order_items WHERE order_id = ?', [id]);
   } else if (entity === 'invoice') {
     await tx.run('DELETE FROM invoice_trl WHERE invoice_id = ?', [id]);
     await tx.run('DELETE FROM payments WHERE invoice_id = ?', [id]);

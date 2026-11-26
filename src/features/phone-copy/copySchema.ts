@@ -19,7 +19,8 @@ export const COPY_FORMAT_V3 = 3;
 export type EntityName =
   | 'customers' | 'items' | 'settings' | 'people' | 'goodsreceived' | 'goodsreceived_trl' | 'grn_images'
   | 'dispatch' | 'dispatch_trl' | 'dispatch_images' | 'invoice' | 'invoice_trl' | 'grn_lock' | 'user_profiles'
-  | 'users_customers_new' | 'grn_rates' | 'item_storage_prices' | 'standard_rate_tiers' | 'item_price_history' | 'payments';
+  | 'users_customers_new' | 'grn_rates' | 'item_storage_prices' | 'standard_rate_tiers' | 'item_price_history' | 'payments'
+  | 'orders' | 'order_items';
 
 /**
  * A column copied out of the row: `from` are the row keys tried in order; `lower` keeps it lower-cased for search;
@@ -47,7 +48,8 @@ const sortKey = (name: string, key: string) => computed(name, row => documentNum
 export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
   customers: {
     columns: [col('name'), col('active'), col('deleted_at'), lower('name_lc', 'name'),
-      computed('mobile_digits', row => mobileDigits(textOf(row.mobile))), computed('mobile_key', row => mobileKey(textOf(row.mobile)))],
+      computed('mobile_digits', row => mobileDigits(textOf(row.mobile))), computed('mobile_key', row => mobileKey(textOf(row.mobile))),
+      lower('city_lc', 'city')],
     indexes: ['name_lc'],
   },
   items: {
@@ -72,10 +74,10 @@ export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
   },
   grn_images: { columns: [col('grn_id', 'grn_id', 'gr_id'), col('grn_item_id')], indexes: ['grn_id'] },
   dispatch: {
-    columns: [col('disp_no'), col('disp_date'), col('customer_id'), col('deleted_at'), micros('disp_date_us', 'disp_date'),
+    columns: [col('disp_no'), col('disp_date'), col('customer_id'), col('deleted_at'), col('source_order_id'), micros('disp_date_us', 'disp_date'),
       micros('created_at_us', 'created_at'), sortKey('disp_no_sk', 'disp_no'), lower('disp_no_lc', 'disp_no'),
       lower('customer_name_lc', 'customer_name'), lower('registration_lc', 'registration')],
-    indexes: ['customer_id', 'disp_date', 'disp_date_us', 'disp_no_sk'],
+    indexes: ['customer_id', 'disp_date', 'disp_date_us', 'disp_no_sk', 'source_order_id'],
   },
   dispatch_trl: { columns: [col('disp_id'), col('gr_id'), col('gr_trl_id'), col('disp_qty')], indexes: ['disp_id', 'gr_trl_id', 'gr_id'] },
   dispatch_images: { columns: [col('dispatch_id')], indexes: ['dispatch_id'] },
@@ -93,6 +95,16 @@ export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
   standard_rate_tiers: { columns: [], indexes: [] },
   item_price_history: { columns: [col('item_id'), micros('changed_at_us', 'changed_at')], indexes: ['item_id'] },
   payments: { columns: [col('invoice_id'), col('paid_on'), micros('payment_date_us', 'payment_date'), col('payment_no')], indexes: ['invoice_id'] },
+  // WH-328 (product/tech/app-offline-orders-payments.md section 4): the order and its lines, with the columns the list sorts and searches by.
+  orders: {
+    columns: [col('customer_id'), col('status'), col('deleted_at'), micros('created_at_us', 'created_at'), micros('updated_at_us', 'updated_at')],
+    indexes: ['customer_id'],
+  },
+  order_items: {
+    columns: [col('order_id'), col('item_status'), col('grn_items_id'), col('sort_order'), micros('created_at_us', 'created_at'),
+      lower('item_name_lc', 'grn_items_item_name'), lower('package_mark_lc', 'grn_items_package_mark'), lower('gr_no_lc', 'grns_gr_no')],
+    indexes: ['order_id', 'grn_items_id'],
+  },
 };
 
 /** The texts a read sorts in the server's en_US order: where each comes from (reads/textRank.ts, `text_rank`). */
