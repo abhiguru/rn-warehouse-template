@@ -35,7 +35,7 @@ import {
   onFirstServerAnswer,
   readOfflineStart,
 } from '@/config/offlineStart';
-import { holdWritesForRoleRecheck, retryRoleRecheckNow } from '@/config/roleRecheck';
+import { holdWritesForRoleRecheck, isRoleRecheckPending, retryRoleRecheckNow } from '@/config/roleRecheck';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 // Privacy cleanup services - clear user-specific data on logout
@@ -288,18 +288,7 @@ export const initializeAuth = createAsyncThunk.withTypes<{
             // The cached copy may be up to a day old: ask the server in the
             // background and show what it says now.
             if (isRoleUnconfirmed()) {
-              // After an offline start (WH-346) nothing is written until that answer has come: it is asked again,
-              // with growing waits and when the server first answers, until it does (src/config/roleRecheck.ts).
-              // A changed role or assignment then applies: screens and the phone copy follow it.
-              const restored = cachedProfile as UserProfile;
-              holdWritesForRoleRecheck(generation, async () => {
-                const confirmed = await reconcileCachedProfile(dispatch, restored);
-                if (confirmed) noteRoleConfirmed();
-                return confirmed;
-              });
-              onFirstServerAnswer(() => {
-                if (generation === getSessionGeneration()) retryRoleRecheckNow();
-              });
+              holdUntilRoleReread(dispatch, generation, cachedProfile as UserProfile);
             } else {
               void reconcileCachedProfile(dispatch, cachedProfile);
             }
@@ -625,6 +614,43 @@ async function reconcileCachedProfile(
   }
   return true;
 }
+
+/**
+ * While the role is unconfirmed (WH-346) nothing is written until the server has answered with it: it is asked again,
+ * with growing waits and when the server first answers, until it does (src/config/roleRecheck.ts). A changed role or
+ * assignment then applies: screens and the phone copy follow it.
+ */
+function holdUntilRoleReread(
+  dispatch: Parameters<typeof reconcileCachedProfile>[0],
+  generation: number,
+  profile: UserProfile
+): void {
+  holdWritesForRoleRecheck(generation, async () => {
+    const confirmed = await reconcileCachedProfile(dispatch, profile);
+    if (confirmed) noteRoleConfirmed();
+    return confirmed;
+  });
+  onFirstServerAnswer(() => {
+    if (generation === getSessionGeneration()) retryRoleRecheckNow();
+  });
+}
+
+/**
+ * The same hold for a session that is already open when its role is marked unconfirmed, as on a return to the front
+ * with no connection (WH-353); the root dispatches it on every such mark. Nothing to do before a session is restored
+ * (initializeAuth holds it then) or while its writes are already held.
+ */
+export const holdWritesUntilRoleReread =
+  () =>
+  (
+    dispatch: Parameters<typeof reconcileCachedProfile>[0],
+    getState: () => { auth: Pick<AuthState, 'userProfile'> }
+  ): void => {
+    const generation = getSessionGeneration();
+    const profile = getState().auth.userProfile;
+    if (!profile || !isRoleUnconfirmed() || isRoleRecheckPending(generation)) return;
+    holdUntilRoleReread(dispatch, generation, profile);
+  };
 
 /**
  * Renews the access token ahead of its expiry (every minute while signed in

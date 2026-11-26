@@ -94,7 +94,7 @@ import { useUnfinishedSaveCheck } from '@/hooks/useUnfinishedSaveCheck';
 import { GuardedScreen, useRootRouteGuard } from '@/navigation/RouteGuard';
 import { REPORTS } from '@/features/reports/reportRegistry';
 import { t as translate } from '@/i18n';
-import { initializeAuth } from '@/store/slices/authSlice';
+import { holdWritesUntilRoleReread, initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
 import { clearSessionScopedState } from '@/store/sessionScopedState';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
@@ -112,7 +112,7 @@ import { installConnectionHistory, readConnectionSession } from '@/config/connec
 import { startDailyLanCheck } from '@/config/lanCheck';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
-import { isCopyRole, isPastOfflineLimit, markRoleUnconfirmed } from '@/config/offlineStart';
+import { isCopyRole, isPastOfflineLimit, markRoleUnconfirmed, onRoleUnconfirmed } from '@/config/offlineStart';
 import { createResumeLifecycle } from '@/config/resumeLifecycle';
 import { isNativeHandoffActive } from '@/config/nativeHandoff';
 import { hasActiveOperatorMutation, invalidateStoredTokenCache } from '@/config/supabaseConfig';
@@ -609,6 +609,9 @@ function BootstrapApp() {
     // Once a day, on Wi-Fi with the internet up, the phone asks the warehouse network address whether it
     // answers, so a broken fallback shows in Help before an outage (src/config/lanCheck.ts).
     const stopLanCheck = startDailyLanCheck();
+    // Whenever the server gave no answer and the role is unconfirmed, the open session's writes wait for it to be
+    // read again (WH-353). Installed before the verifier below, which is what marks it on a return to the front.
+    const stopRoleHold = onRoleUnconfirmed(() => store.dispatch(holdWritesUntilRoleReread()));
     const unsubscribe = onOperatorServerChange(() => { void bootstrapApp(); });
     const removeVerifier = operatorResumeGate.installVerifier(async current => {
       const run = bootstrapRun.current;
@@ -641,7 +644,7 @@ function BootstrapApp() {
     });
     return () => {
       bootstrapRun.current += 1;
-      lifecycle.remove(); removeVerifier(); unsubscribe(); stopLanCheck(); operatorResumeGate.suspend();
+      lifecycle.remove(); removeVerifier(); unsubscribe(); stopLanCheck(); stopRoleHold(); operatorResumeGate.suspend();
     };
   }, []);
 

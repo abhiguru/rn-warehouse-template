@@ -156,6 +156,7 @@ const startState = {
   /** The session generation whose role has not been confirmed since the server gave no answer; null once it has. */
   unconfirmed: null as number | null,
   onAnswer: new Set<() => void>(),
+  onUnconfirmed: new Set<() => void>(),
 };
 
 /** The facility check of this run had no answer and the app opened from the kept config. */
@@ -165,11 +166,21 @@ export function markOfflineStarted(): void {
 }
 
 /**
- * The open app was closed because the kept profile may no longer open it (WH-350): when it opens again, nothing is
- * written until the person's role has been read from the server.
+ * The server gave no answer, or the open app was closed because the kept profile may no longer open it (WH-350):
+ * nothing is written until the person's role has been read from the server. The `onRoleUnconfirmed` listeners run each
+ * time, so the writes are held at once, whoever marked the role (WH-353).
  */
 export function markRoleUnconfirmed(): void {
   startState.unconfirmed = getSessionGeneration();
+  for (const listener of [...startState.onUnconfirmed]) listener();
+}
+
+/** Runs `listener` every time the role is marked unconfirmed. Returns a cancel function. */
+export function onRoleUnconfirmed(listener: () => void): () => void {
+  startState.onUnconfirmed.add(listener);
+  return () => {
+    startState.onUnconfirmed.delete(listener);
+  };
 }
 
 /**
