@@ -2,7 +2,8 @@
  * Android backup and device-transfer rules for the phone copy (WH-298, product/tech/app-offline-copy-and-sync.md 2).
  *
  * The phone copy (expo-sqlite, `files/SQLite/`) and the secure store that holds its key (`shared_prefs/SecureStore.xml`)
- * must never leave the phone, and so must the photos kept for it (`phone-copy-photos/`, WH-299). `android:allowBackup="false"` (app.json) stops cloud backup, but Android 12 and later
+ * must never leave the phone, and so must the photos kept for it (`phone-copy-photos/`, WH-299) and the unsent work with its
+ * photos (`unsent-work/`, WH-301: unencrypted, app-private, never backed up). `android:allowBackup="false"` (app.json) stops cloud backup, but Android 12 and later
  * ignore it for device-to-device transfer: only `android:dataExtractionRules` excludes data there. Android 11 and
  * earlier read `android:fullBackupContent`. Both are written here, each excluding the two locations; the key is also
  * wrapped by the Android Keystore, so a copy that did travel could not be opened (it is then erased when found).
@@ -19,6 +20,7 @@ const BACKUP_NAME = 'backup_rules';
 
 const EXCLUDES = `        <exclude domain="file" path="SQLite/" />
         <exclude domain="file" path="phone-copy-photos/" />
+        <exclude domain="file" path="unsent-work/" />
         <exclude domain="sharedpref" path="SecureStore.xml" />`;
 
 const DATA_EXTRACTION_RULES_XML = `<?xml version="1.0" encoding="utf-8"?>
