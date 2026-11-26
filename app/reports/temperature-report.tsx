@@ -37,6 +37,9 @@ import { nameFileNamePart } from '@/utils/invoiceLabel';
 
 const DEFAULT_DAYS = 30;
 
+/** The server's reason, or null when it sent none or an empty text (then the default message is shown). */
+const reasonOf = (text: string | undefined): string | null => (text === undefined || text === '' ? null : text);
+
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
   card: {
@@ -158,13 +161,13 @@ function ReportForm({ deviceId, sensor }: { deviceId: string; sensor: ReportSens
           const { title, message } = pdfRefusalText(made.refusal);
           showAlert(title, message);
         } else {
-          showAlert(tr('reports.export.failedTitle'), made.error ?? tr('errors.pdf.generateFailed'));
+          showAlert(tr('reports.export.failedTitle'), reasonOf(made.error) ?? tr('errors.pdf.generateFailed'));
         }
         return;
       }
       const filename = `Temperature report ${nameFileNamePart(sensor?.name)} ${fromDay} to ${toDay}`.replace(/\s+/g, ' ').trim() + '.pdf';
       const shared = await downloadAndSharePDF(made.pdfUrl, filename);
-      if (!shared.success) showAlert(tr('reports.export.shareFailedTitle'), shared.error ?? tr('errors.pdf.shareFailed'));
+      if (!shared.success) showAlert(tr('reports.export.shareFailedTitle'), reasonOf(shared.error) ?? tr('errors.pdf.shareFailed'));
     } finally {
       sharingRef.current = false;
       setSharing(false);
