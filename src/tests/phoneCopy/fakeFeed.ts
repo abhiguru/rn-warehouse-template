@@ -19,6 +19,9 @@ type Gate = { matches: (call: Call) => boolean; release: () => void; opened: Pro
 /** Stage one is customers to grn_images; the rest is stage two (contract 3.1). */
 export const ENTITIES = ['customers', 'items', 'settings', 'people', 'goodsreceived', 'goodsreceived_trl', 'grn_images',
   'dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'grn_lock', 'user_profiles', 'users_customers_new'] as const;
+/** What a format-3 feed adds (WH-348 contract section 14.1; the names are the contract's topics, the build confirms them). */
+export const FORMAT_3_ENTITIES = ['grn_rates', 'item_storage_prices', 'standard_rate_tiers', 'item_price_history', 'payments'] as const;
+const entitiesFor = (format: number): readonly string[] => (format >= 3 ? [...ENTITIES, ...FORMAT_3_ENTITIES] : ENTITIES);
 export const STAGE_ONE = ENTITIES.slice(0, 7);
 export const STAGE_TWO = ENTITIES.slice(7);
 
@@ -30,7 +33,7 @@ export function createFakeFeed() {
     copy: COPY_KEY,
     startPosition: '1048576',
     asOf: '2026-11-25T05:12:00.000+00:00',
-    rows: Object.fromEntries(ENTITIES.map(e => [e, [] as FeedRow[]])) as Record<string, FeedRow[]>,
+    rows: Object.fromEntries([...ENTITIES, ...FORMAT_3_ENTITIES].map(e => [e, [] as FeedRow[]])) as Record<string, FeedRow[]>,
     calls: [] as Call[],
     changeAnswers: [] as Array<ChangesAnswer | { error: { message: string; code?: string } } | { refusal: string }>,
     gates: [] as Gate[],
@@ -65,7 +68,7 @@ export function createFakeFeed() {
       if (feed.failWhen?.(call)) return { data: null, error: { message: 'Network request failed' } };
       if (name === 'get_sync_start') {
         return { data: { success: true, format: feed.format, copy: feed.copy, position: feed.startPosition, as_of: feed.asOf,
-          page_limit: 2000, entities: [...ENTITIES] }, error: null };
+          page_limit: 2000, entities: [...entitiesFor(feed.format)] }, error: null };
       }
       if (name === 'get_sync_page') {
         const entity = String(args.p_entity);
@@ -88,7 +91,7 @@ export function createFakeFeed() {
       }
       if (name === 'get_sync_checksums') {
         // What the server holds now, by the contract's rule: count, and the sum of the first 15 hex digits of v modulo 2^60.
-        const entities = ENTITIES.map(e => {
+        const entities = entitiesFor(feed.format).map(e => {
           const sum = feed.rows[e].reduce((total, r) => total + BigInt(`0x${(r.v ?? defaultV(r.id)).slice(0, 15)}`), 0n) % (1n << 60n);
           return { e, count: feed.rows[e].length, sum: sum.toString(), settled: true };
         });
