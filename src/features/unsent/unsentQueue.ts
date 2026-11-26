@@ -41,6 +41,10 @@ export interface UnsentRowView {
   tag: 'refused' | null;
   /** The number the server gave, once sent. */
   result: unknown;
+  /** The number of the record the item is about (a GRN's number, for its photos), as an identifier. */
+  targetNumber: string | null;
+  /** The record the item is about, when it already exists on the server (a tap opens it). */
+  target: { grnId?: string; dispatchId?: string };
 }
 
 async function ownScope(): Promise<string> {
@@ -99,6 +103,18 @@ export async function mergeInto(id: string, patch: (body: unknown) => unknown): 
   return merged;
 }
 
+function targetNumberOf(raw: string | null): string | null {
+  if (raw === null) return null;
+  const { number } = JSON.parse(raw) as TargetRef;
+  return typeof number === 'string' ? number : null;
+}
+
+function targetOf(raw: string | null): UnsentRowView['target'] {
+  if (raw === null) return {};
+  const { grnId, dispatchId } = JSON.parse(raw) as TargetRef;
+  return { ...(grnId === undefined ? {} : { grnId }), ...(dispatchId === undefined ? {} : { dispatchId }) };
+}
+
 /** Deletes one of the signed-in person's items, the items that wait for it and their photo files. */
 export async function deleteItem(id: string): Promise<void> {
   await deleteItems(await ownScope(), [id]);
@@ -121,6 +137,8 @@ export async function listItems(): Promise<UnsentRowView[]> {
       section: row.state === 'sent' ? ('sent' as const) : ('unsent' as const),
       tag: row.state === 'refused' ? ('refused' as const) : null,
       result: row.result === null ? null : (JSON.parse(row.result) as unknown),
+      targetNumber: targetNumberOf(row.target_ref),
+      target: targetOf(row.target_ref),
     }));
 }
 

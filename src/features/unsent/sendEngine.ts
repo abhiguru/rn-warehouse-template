@@ -25,6 +25,7 @@ import {
   markPhoto,
   photosOf,
   removePhotoFile,
+  setLastSentAt,
   sweepSentRows,
   updateItem,
   type ItemRow,
@@ -136,6 +137,7 @@ async function apply(row: ItemRow, outcome: SendOutcome, before: ItemRow): Promi
   switch (outcome.kind) {
     case 'sent':
       engine.sentAny = true;
+      await setLastSentAt(Date.now()).catch(error => logger.warn('The time of the last send was not kept', loggableError(error)));
       await updateItem(row.id, { state: 'sent', result: JSON.stringify(outcome.result ?? null), sent_day: businessDate(Date.now()), last_error: null });
       for (const photo of await photosOf(row.id)) removePhotoFile(photo.file);
       return;

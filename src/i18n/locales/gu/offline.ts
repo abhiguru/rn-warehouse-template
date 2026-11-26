@@ -1,0 +1,81 @@
+/** Gujarati text: unsent work, the 2-hour rule, unfinished forms (WH-301; Design's draft, offline-capture.md 4.4, 4.6, 4.9). */
+import type { offline as source } from '../en/offline';
+import type { Translation } from '@/i18n/types';
+
+export const offline: Translation<typeof source> = {
+  unsent: {
+    title: 'મોકલવાની બાકી એન્ટ્રી',
+    lastSent: 'છેલ્લે મોકલ્યું: {{time}}',
+    neverSent: 'આ ફોનમાંથી હજુ કંઈ મોકલ્યું નથી',
+    sendNow: 'હમણાં મોકલો',
+    sendingNow: 'મોકલાઈ રહ્યું છે…',
+    sectionUnfinished: 'અધૂરું',
+    sectionUnsent: 'હજુ મોકલવાનું બાકી',
+    sectionSent: 'આજે મોકલેલું',
+    whatNewGrn: 'નવી આવક પાવતી',
+    whatNewGrnNumber: 'નવી આવક પાવતી {{number}}',
+    whatNewDispatch: 'નવી જાવક',
+    whatNewDispatchNumber: 'નવી જાવક {{number}}',
+    whatChange: 'આવક પાવતી {{number}}: {{fields}} બદલ્યું',
+    whatPhotos: { one: 'આવક પાવતી {{number}} ના ૧ ફોટો', other: 'આવક પાવતી {{number}} ના {{count}} ફોટો' },
+    whatFormGrn: 'આવક પાવતી ફોર્મ',
+    whatFormDispatch: 'જાવક ફોર્મ',
+    whatFormEdit: 'આવક પાવતી {{number}} માં ફેરફાર',
+    recordedAt: 'નોંધ્યું: {{time}}',
+    startedAt: 'શરૂ કર્યું: {{time}}',
+    stateSaved: 'ફોનમાં સાચવેલું',
+    stateSending: 'મોકલાઈ રહ્યું છે…',
+    stateSent: 'મોકલાઈ ગયું',
+    stateWaiting: 'આવક પાવતીની રાહ',
+    emptyTitle: 'મોકલવાનું કંઈ બાકી નથી',
+    emptyText: 'આ ફોનમાં નોંધેલું બધું મોકલાઈ ગયું છે.',
+    otherPerson: 'આ ફોનમાં {{name}} એ નોંધેલી {{count}} એન્ટ્રી મોકલવાની બાકી છે. {{name}} આ ફોનમાં ફરી લૉગિન કરશે ત્યારે તે મોકલાશે.',
+    moveToHolding: 'રોકેલી યાદીમાં મૂકો',
+    photoMissing: 'આ ફોનમાં એક ફોટો ફાઇલ નથી; આવક પાવતી તેના વગર મોકલાઈ.',
+  },
+  limit: {
+    title: 'પહેલાં બાકી એન્ટ્રી મોકલો',
+    message: {
+      one: 'આ ફોનમાં ૧ એન્ટ્રી {{age}} થી મોકલવાની બાકી છે. ઇન્ટરનેટ જોડીને મોકલો, પછી વધુ નોંધી શકશો.',
+      other: 'આ ફોનમાં {{count}} એન્ટ્રી મોકલવાની બાકી છે, સૌથી જૂની {{age}} થી. ઇન્ટરનેટ જોડીને મોકલો, પછી વધુ નોંધી શકશો.',
+    },
+    formKept: 'તમારું ફોર્મ સાચવેલું છે. મોકલ્યા પછી પૂરું કરો.',
+  },
+  resume: {
+    grnTitle: 'અધૂરી આવક પાવતી ચાલુ રાખશો?',
+    dispatchTitle: 'અધૂરી જાવક ચાલુ રાખશો?',
+    editTitle: 'આવક પાવતી {{number}} ના ફેરફાર ચાલુ રાખશો?',
+    message: '{{customer}} માટે {{time}} એ શરૂ કર્યું હતું.',
+    messageNoCustomer: '{{time}} એ શરૂ કર્યું હતું.',
+    continue: 'ચાલુ રાખો',
+    startNew: 'નવું શરૂ કરો',
+    startAgain: 'ફરી શરૂ કરો',
+  },
+  refuse: {
+    subtitle: { one: '૧ એન્ટ્રી મોકલવાની બાકી છે. પહેલાં મોકલો.', other: '{{count}} એન્ટ્રી મોકલવાની બાકી છે. પહેલાં મોકલો.' },
+    signOutTitle: 'હજુ લૉગઆઉટ થઈ શકે નહીં',
+    leaveTitle: 'હજુ આ કોલ્ડ સ્ટોરેજ છોડી શકાય નહીં',
+    switchTitle: 'હજુ કોલ્ડ સ્ટોરેજ બદલી શકાય નહીં',
+    deleteAccountTitle: 'હજુ તમારું એકાઉન્ટ ડિલીટ થઈ શકે નહીં',
+    message: 'આ ફોનમાં નોંધેલી {{count}} એન્ટ્રી હજુ મોકલવાની બાકી છે. પહેલાં મોકલો, પછી ફરી પ્રયાસ કરો.',
+  },
+  delete: {
+    title: 'આ બાકી એન્ટ્રી ડિલીટ કરશો?',
+    message: '{{customer}} માટેની {{what}}, {{time}} એ નોંધેલી, હજુ મોકલાઈ નથી. ડિલીટ કરવાથી તે આ ફોનમાંથી કાયમ માટે જશે.',
+    keep: 'રાખો',
+    confirm: 'ડિલીટ કરો',
+  },
+  moveHolding: {
+    title: '{{name}} ની એન્ટ્રી રોકેલી યાદીમાં મૂકશો?',
+    message: 'પછી સુપરવાઇઝર કે એડમિન ત્યાં દરેક સ્વીકારી કે નકારી શકશે.',
+  },
+  barHint: 'મોકલવાની બાકી એન્ટ્રી ખોલે છે',
+  unfinishedWillGo: {
+    one: 'આ ફોનમાંનું ૧ અધૂરું ફોર્મ કાઢી નખાશે.',
+    other: 'આ ફોનમાંનાં {{count}} અધૂરાં ફોર્મ કાઢી નખાશે.',
+  },
+  photosKept: {
+    one: '૧ ફોટો હજુ મોકલી શકાયો નથી. તે આ ફોનમાં સાચવેલો છે અને કનેક્શન સારું થાય ત્યારે મોકલાશે.',
+    other: '{{count}} ફોટો હજુ મોકલી શકાયા નથી. તે આ ફોનમાં સાચવેલા છે અને કનેક્શન સારું થાય ત્યારે મોકલાશે.',
+  },
+};

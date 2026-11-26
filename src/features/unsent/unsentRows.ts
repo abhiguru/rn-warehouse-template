@@ -261,3 +261,18 @@ export async function sweepSentRows(today: string): Promise<void> {
   for (const uri of files) removePhotoFile(uri);
   await announceUnsentChange();
 }
+
+const LAST_SENT_KEY = 'last_sent_at';
+
+/** When anything was last sent from this phone (ms), for "Last sent" on the Unsent items screen; null before the first. */
+export async function getLastSentAt(): Promise<number | null> {
+  const db = await getUnsentDb();
+  const [row] = await db.all<{ value: string }>('SELECT value FROM meta WHERE key = ?', [LAST_SENT_KEY]);
+  const at = row ? Number(row.value) : NaN;
+  return Number.isFinite(at) ? at : null;
+}
+
+export async function setLastSentAt(at: number): Promise<void> {
+  const db = await getUnsentDb();
+  await db.run('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', [LAST_SENT_KEY, String(at)]);
+}

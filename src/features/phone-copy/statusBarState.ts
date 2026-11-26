@@ -4,12 +4,16 @@
  */
 import type { CopyPhase } from './syncStore';
 
-/** Unsent work (WH-301 supplies it; WH-298 passes null). */
+/** Unsent work (WH-301; `null` while the offline feature is off). */
 export interface UnsentSummary {
   count: number;
   /** When the oldest unsent item turns 2 hours old (ms). */
   sendBy: number;
   limitReached: boolean;
+  /** The unsent file could not be read (Design 4.6): no count, critical. */
+  unreadable?: boolean;
+  /** Own items kept but not sendable (role lowered, account deactivated): information only (Design 4.9). */
+  waitingForAdmin?: number;
 }
 
 export interface StatusBarInput {
@@ -46,7 +50,7 @@ export interface StatusBarView {
   tone: 'neutral' | 'critical';
   icon: StatusBarIcon;
   line1: { key: OfflineStatusKey; time?: number }[];
-  line2: { key: 'unsent' | 'sending' | 'unsentLimit'; count: number; time?: number } | null;
+  line2: { key: 'unsent' | 'sending' | 'unsentLimit' | 'unsentUnreadable' | 'waitingForAdmin'; count: number; time?: number } | null;
   action: 'retry' | null;
   actionDisabled: boolean;
 }
@@ -114,8 +118,13 @@ export function deriveStatusBar(input: StatusBarInput): StatusBarView {
 
   let line2: StatusBarView['line2'] = null;
   const unsent = input.unsent;
-  const limit = unsent !== null && unsent.count > 0 && unsent.limitReached;
-  if (unsent && unsent.count > 0) {
+  const unreadable = unsent?.unreadable === true;
+  const limit = unsent !== null && (unreadable || (unsent.count > 0 && unsent.limitReached));
+  if (unreadable) {
+    line2 = { key: 'unsentUnreadable', count: 0 };
+  } else if (unsent && (unsent.waitingForAdmin ?? 0) > 0) {
+    line2 = { key: 'waitingForAdmin', count: unsent.waitingForAdmin ?? 0 };
+  } else if (unsent && unsent.count > 0) {
     if (limit) line2 = { key: 'unsentLimit', count: unsent.count };
     else if (input.offline) line2 = { key: 'unsent', count: unsent.count, time: unsent.sendBy };
     else line2 = { key: 'sending', count: unsent.count };
@@ -138,3 +147,15 @@ export function deriveStatusBar(input: StatusBarInput): StatusBarView {
     actionDisabled: input.running,
   };
 }
+
+/**
+ * Joins two sentences for a screen reader: ". " between them, and only a space when the first already ends in its own
+ * mark (a full stop or "…"), so it never reads ".." (WH-301, Design 1.5 row 6).
+ */
+export function joinSentences(first: string, second: string): string {
+  return `${first}${/[.…]$/.test(first) ? ' ' : '. '}${second}`;
+}
+
+/** Line 2 of these kinds opens "Unsent items"; the unreadable and waiting-for-administrator lines are information only. */
+export const line2OpensUnsent = (line2: StatusBarView['line2']): boolean =>
+  line2 !== null && line2.key !== 'unsentUnreadable' && line2.key !== 'waitingForAdmin';

@@ -487,6 +487,11 @@ export const components = {
       one: '1 item not sent for over 2 hours. Connect and send it to record more.',
       other: '{{count}} items not sent for over 2 hours. Connect and send them to record more.',
     },
+    unsentUnreadable: "Couldn't read this phone's unsent entries. Close the app and open it again.",
+    waitingForAdmin: {
+      one: '1 item you recorded is waiting for an administrator.',
+      other: '{{count}} items you recorded are waiting for an administrator.',
+    },
     storageLow: 'Phone storage is almost full. Free some space so records can be kept.',
     retryLabel: 'Try updating again',
     opening: 'Opening the records on this phone…',
@@ -498,6 +503,7 @@ export const components = {
     needsConnection: 'Needs a connection',
     screenNeedsConnection: 'This needs a connection. It will load when you reconnect.',
     photoNeedsConnection: 'Photo needs a connection',
+    lessOtherPerson: "Less {{count}} in another person's dispatches not sent yet",
   },
   offline: {
     message: "You're offline. Actions that need the server will work again when you reconnect.",

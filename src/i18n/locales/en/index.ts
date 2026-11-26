@@ -24,6 +24,7 @@ import { errors } from './errors';
 import { validation } from './validation';
 import { components } from './components';
 import { findGoods } from './findGoods';
+import { offline } from './offline';
 
 /** Every English text of the app, by area. */
 export const en = {
@@ -53,4 +54,5 @@ export const en = {
   validation,
   components,
   findGoods,
+  offline,
 };

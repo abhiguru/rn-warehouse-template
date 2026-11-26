@@ -12,7 +12,8 @@
  * is said instead (Design 1.5).
  */
 import React from 'react';
-import { Animated, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { router } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
@@ -20,7 +21,8 @@ import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePhoneCopyStatus } from '@/hooks/usePhoneCopyStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { syncNow } from '@/features/phone-copy/syncEngine';
-import { deriveOpeningBar, deriveStatusBar, type StatusBarContent } from '@/features/phone-copy/statusBarState';
+import { deriveOpeningBar, deriveStatusBar, joinSentences, line2OpensUnsent, type StatusBarContent } from '@/features/phone-copy/statusBarState';
+import { useUnsentSummary } from '@/features/unsent/unsentStore';
 import { iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { formatLoadedAt } from '@/utils/formatters';
@@ -52,6 +54,15 @@ const makeStyles = (t: ThemeTokens) => ({
     flexShrink: 1,
     flexGrow: 1,
   },
+  lineTwo: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+  },
+  lineTwoText: {
+    flexShrink: 1,
+    flexGrow: 1,
+  },
   text: {
     ...typography.footnote,
     color: t.text.primary,
@@ -66,7 +77,7 @@ const makeStyles = (t: ThemeTokens) => ({
 function lineOneText(view: StatusBarContent): string {
   return view.line1
     .map(part => tr(`components.offlineStatus.${part.key}`, part.time === undefined ? undefined : { time: formatLoadedAt(part.time) }))
-    .reduce((line, sentence) => `${line}${/[.…]$/.test(line) ? ' ' : '. '}${sentence}`);
+    .reduce(joinSentences);
 }
 
 function lineTwoText(view: StatusBarContent): string | null {
@@ -85,6 +96,7 @@ export function OfflineStatusBar() {
   const snapshot = usePhoneCopyStatus();
   const offline = useIsOffline();
   const { fontScale } = useWindowDimensions();
+  const unsent = useUnsentSummary();
   const [translateY] = React.useState(() => new Animated.Value(HIDDEN_OFFSET));
 
   React.useEffect(() => {
@@ -115,8 +127,7 @@ export function OfflineStatusBar() {
     lastRunFailed: snapshot.lastRunFailed,
     asOf: Number.isFinite(asOf) ? asOf : null,
     storageLow: snapshot.storageLow,
-    // Unsent work arrives with WH-301.
-    unsent: null,
+    unsent,
     running: snapshot.running !== null,
   });
   const opening =
@@ -129,7 +140,9 @@ export function OfflineStatusBar() {
   const colors = critical ? tokens.status.critical : tokens.status.neutral;
   const line1 = lineOneText(view);
   const line2 = lineTwoText(view);
-  const label = line2 ? `${line1}. ${line2}` : line1;
+  const label = line2 ? joinSentences(line1, line2) : line1;
+  // Line 2 opens "Unsent items" (Design 4.1); the opening states have no line 2.
+  const opensUnsent = !empty && opening === null && line2OpensUnsent(view.line2);
 
   // The bar is two parts side by side on one background: the status (one screen-reader stop with the words) and,
   // when there is one, "Try again" (its own stop, so a screen reader reaches it on both platforms).
@@ -144,32 +157,54 @@ export function OfflineStatusBar() {
         },
       ]}
     >
-      <View
+      <Pressable
         testID="offline-status-bar"
+        disabled={!opensUnsent}
+        onPress={() => router.push('/unsent-items')}
         style={[styles.status, { backgroundColor: colors.background, paddingTop: insets.top + space.sm }]}
         accessible={!empty}
+        accessibilityRole={opensUnsent ? 'button' : undefined}
+        accessibilityHint={opensUnsent ? tr('offline.barHint') : undefined}
         accessibilityLabel={empty ? undefined : label}
         accessibilityLiveRegion={empty ? 'none' : 'polite'}
       >
-        {empty ? (
-          // The height of one line of the bar, so nothing below moves when the first state arrives.
-          <View style={{ height: Math.max(iconSize.md, typography.footnote.lineHeight * fontScale) }} />
-        ) : (
+        {({ pressed }) => (
           <>
-            <Icon testID="offline-status-bar-icon" name={view.icon} size={iconSize.md} color={colors.text} importantForAccessibility="no" />
-            <View style={styles.texts}>
-              <Text testID="offline-status-bar-line1" style={styles.text}>
-                {line1}
-              </Text>
-              {line2 ? (
-                <Text testID="offline-status-bar-line2" style={styles.text}>
-                  {line2}
-                </Text>
-              ) : null}
-            </View>
+            {pressed && opensUnsent ? (
+              <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tokens.interaction.pressedOverlay }]} />
+            ) : null}
+            {empty ? (
+              // The height of one line of the bar, so nothing below moves when the first state arrives.
+              <View style={{ height: Math.max(iconSize.md, typography.footnote.lineHeight * fontScale) }} />
+            ) : (
+              <>
+                <Icon testID="offline-status-bar-icon" name={view.icon} size={iconSize.md} color={colors.text} importantForAccessibility="no" />
+                <View style={styles.texts}>
+                  <Text testID="offline-status-bar-line1" style={styles.text}>
+                    {line1}
+                  </Text>
+                  {line2 ? (
+                    <View style={styles.lineTwo}>
+                      <Text testID="offline-status-bar-line2" style={[styles.text, styles.lineTwoText]}>
+                        {line2}
+                      </Text>
+                      {opensUnsent ? (
+                        <Icon
+                          testID="offline-status-bar-chevron"
+                          name="chevron-right"
+                          size={iconSize.sm}
+                          color={tokens.icon.secondary}
+                          importantForAccessibility="no"
+                        />
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              </>
+            )}
           </>
         )}
-      </View>
+      </Pressable>
       {!empty && view.action === 'retry' ? (
         <View style={[styles.actionSlot, { paddingTop: insets.top }]}>
           <Button
