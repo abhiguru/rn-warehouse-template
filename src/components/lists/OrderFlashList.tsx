@@ -72,6 +72,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
+import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 
 const logger = createLogger('OrderList');
 // ============================================================================
@@ -534,8 +535,12 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     </FilteredListHeader>
   );
 
+  const showsSkeleton = isLoading && (!hasLoaded || orders.length === 0);
+  const showsLoadError = !showsSkeleton && orders.length === 0 && Boolean(error);
+  useReloadWhenVerified(showsLoadError, handleRefresh);
+
   let content: React.ReactNode;
-  if (isLoading && (!hasLoaded || orders.length === 0)) {
+  if (showsSkeleton) {
     // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
     // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
@@ -582,7 +587,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         </View>
       </>
     );
-  } else if (error) {
+  } else if (showsLoadError) {
     content = (
       <ErrorStateView
         presentation="inline"

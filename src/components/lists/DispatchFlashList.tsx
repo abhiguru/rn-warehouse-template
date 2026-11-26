@@ -55,6 +55,7 @@ import { localizeDigits, t as translate } from '@/i18n';
 
 // State
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
@@ -520,8 +521,12 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     />
   );
 
+  const showsSkeleton = isLoading && dispatches.length === 0;
+  const showsLoadError = !showsSkeleton && dispatches.length === 0 && loadError;
+  useReloadWhenVerified(showsLoadError, handleRefresh);
+
   let content: React.ReactNode;
-  if (isLoading && dispatches.length === 0) {
+  if (showsSkeleton) {
     // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
     // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
@@ -567,7 +572,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       />
       </>
     );
-  } else if (loadError) {
+  } else if (showsLoadError) {
     content = (
       <ErrorStateView
         presentation="inline"

@@ -22,6 +22,7 @@ import { ActivityIndicator } from 'react-native-paper';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
 import { listRefreshAccessibility } from './listRefreshAccessibility';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 import { useFocusEffect } from 'expo-router';
 import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
@@ -431,8 +432,15 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
     </FilteredListHeader>
   );
 
+  const showsSkeleton = isLoading && (!hasLoaded || orders.length === 0);
+  const showsLoadError = !showsSkeleton && orders.length === 0 && Boolean(error);
+  const handleRetry = useCallback(() => {
+    void fetchOrders();
+  }, [fetchOrders]);
+  useReloadWhenVerified(showsLoadError, handleRetry);
+
   let content: React.ReactNode;
-  if (isLoading && (!hasLoaded || orders.length === 0)) {
+  if (showsSkeleton) {
     // First load, or a new search with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
     // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} />;
@@ -477,13 +485,13 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         </View>
       </>
     );
-  } else if (error) {
+  } else if (showsLoadError) {
     content = (
       <ErrorStateView
         presentation="inline"
         title={translate('lists.queue.loadFailedTitle')}
         message={translate('common.checkConnection')}
-        onRetry={() => fetchOrders()}
+        onRetry={handleRetry}
       />
     );
   } else {

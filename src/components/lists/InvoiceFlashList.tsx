@@ -44,6 +44,7 @@ import { MemoizedInvoiceItem } from '@/components/list-items';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
@@ -458,8 +459,12 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   // RENDER
   // ============================================================================
 
+  const showsSkeleton = isLoading && invoices.length === 0;
+  const showsLoadError = !showsSkeleton && invoices.length === 0 && loadError;
+  useReloadWhenVerified(showsLoadError, handleRefresh);
+
   let content: React.ReactNode;
-  if (isLoading && invoices.length === 0) {
+  if (showsSkeleton) {
     // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
     // Later loads keep the rows on screen while the new ones arrive.
     // One wide block under the header stands for the amounts table (ListSkeleton has no table option).
@@ -505,7 +510,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       />
       </>
     );
-  } else if (loadError) {
+  } else if (showsLoadError) {
     content = (
       <ErrorStateView
         presentation="inline"

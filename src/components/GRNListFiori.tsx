@@ -34,6 +34,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
+import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
 import { printGRNRange, printFailureMessage } from '@/services/print-service';
@@ -934,6 +935,12 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
 
   const hasRows = flattenedData.length > 0;
 
+  // First load, or a new first page with no rows on screen.
+  const showsSkeleton = loading && (!data || (!hasRows && !refreshing));
+  // No rows on screen: a failed first page, new filter, or reload of a request that had none is the error state.
+  const showsLoadError = !showsSkeleton && !hasRows && (loadError || refreshError);
+  useReloadWhenVerified(showsLoadError, handleRetry);
+
   // The header, search field and filter bar are shown in every state, so a search
   // or filter can always be changed or cleared, also while loading or when nothing matches.
   const header = (
@@ -949,7 +956,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
   );
 
   let content: React.ReactNode;
-  if (loading && (!data || (!hasRows && !refreshing))) {
+  if (showsSkeleton) {
     // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
     // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
@@ -994,8 +1001,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
         />
       </>
     );
-  } else if (loadError || refreshError) {
-    // No rows on screen: a failed first page, new filter, or reload of a request that had none is the error state.
+  } else if (showsLoadError) {
     content = (
       <ErrorStateView
         presentation="inline"
