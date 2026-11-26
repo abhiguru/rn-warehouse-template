@@ -258,8 +258,9 @@ describe('PR9: the quiet re-read', () => {
   it('Q2: a changed lot reads the list once, the same search from the top, with nothing moving or spinning', async () => {
     setFilters({ [SEARCH_KEY]: 'peas' });
     await loadCopy();
+    // Taken before openList spies on it: the module is not mocked, so any later read of it is the spy itself.
+    const real = grnService.getGRNListPage;
     const read = await openList();
-    const real = jest.requireActual<typeof grnService>('@/services/grn-service').getGRNListPage;
     let release!: () => void;
     const held = new Promise<void>(resolve => { release = resolve; });
     read.mockImplementation(async (...args) => { await held; return real(...args); });
