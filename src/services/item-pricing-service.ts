@@ -5,7 +5,7 @@ import { getAuthenticatedClient } from '../config/supabaseConfig';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { readVia } from '@/features/phone-copy/readRoute';
 import { readGrnItemRates } from '@/features/phone-copy/reads/grnRates';
-import { readStandardRate } from '@/features/phone-copy/reads/itemRates';
+import { readItemStoragePrices, readStandardRate } from '@/features/phone-copy/reads/itemRates';
 import { readPriceHistory } from '@/features/phone-copy/reads/priceHistory';
 import type {
   ItemPricingFilters,
@@ -112,15 +112,30 @@ export const getItemStoragePrices = async (
 
     const startTime = Date.now();
 
+    // The phone copy answers when it can (WH-348): one source for all the pages of this request; staff are refused online.
+    const pageSize = Number(rpcParams.p_limit);
+    const pageStart = Number(rpcParams.p_offset);
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readItemStoragePrices(q, {
+      filters: (rpcParams.p_filters ?? {}) as Record<string, unknown>, sortBy: params.p_sort_by ?? 'item_name',
+      sortOrder: params.p_sort_order ?? 'asc', limit: pageSize, offset: pageStart,
+    }), { key: JSON.stringify({ filters: rpcParams.p_filters, sort: [rpcParams.p_sort_by, rpcParams.p_sort_order], limit: pageSize }), page: Math.floor(pageStart / Math.max(pageSize, 1)) });
+    if (copy && 'restart' in copy) {
+      return { success: false, data: [], pagination: { total_count: 0, total: 0, limit: pageSize, offset: pageStart, has_more: false }, message: t('errors.price.fetchFailed') };
+    }
+
     // Set a timeout for RPC calls (30 seconds). It is cleared when the answer comes, so no
     // timer is left counting down (it also kept the Jest process open after the suite).
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(t('errors.network.rpcTimedOut30'))), 30000);
     });
+    // Only one of the two answers is used; a timer is started only for the server's.
+    if (copy) clearTimeout(timer);
+    timeoutPromise.catch(() => undefined);
 
-    const rpcPromise = authenticatedClient.rpc('get_item_storage_prices', rpcParams);
-    const { data, error } = await Promise.race([rpcPromise, timeoutPromise]).finally(() => clearTimeout(timer));
+    const { data, error } = copy
+      ? { data: { success: true, ...copy.value }, error: null }
+      : await Promise.race([authenticatedClient.rpc('get_item_storage_prices', rpcParams), timeoutPromise]).finally(() => clearTimeout(timer));
 
     const duration = Date.now() - startTime;
     itemPricingLogger.debug(`RPC call completed in ${duration}ms`);
