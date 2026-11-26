@@ -12,6 +12,10 @@ import { formatNumber } from '@/utils/formatters';
 import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, trimCancelReason } from '@/features/invoice/utils/cancelReason';
 import { createLogger } from '@/utils/logger';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readInvoicesList } from '@/features/phone-copy/reads/invoices';
+import type { DataSource } from '@/features/phone-copy/sourced';
 
 const invoiceServiceLogger = createLogger('InvoiceService');
 
@@ -82,6 +86,10 @@ export interface Invoice {
 export interface InvoiceListResponse {
   success: boolean;
   message: string;
+  /** Set when the phone copy answered (WH-348): the screen shows no time of its own, the status bar tells it. */
+  source?: DataSource;
+  /** The next page would come from another source than the first: the list asks for its first page again. */
+  copyRestart?: boolean;
   data: {
     invoices: Invoice[];
     pagination: {
@@ -142,6 +150,34 @@ export const getInvoicesList = async (
       p_payment_status,
       p_doc_type,
     } = params;
+
+    // The phone copy answers when it can (WH-348): one source for all the pages of this request.
+    const request = {
+      limit: p_limit, offset: p_offset, customerId: p_customer_id ?? null, financialYear: p_financial_year ?? null,
+      searchInvoiceNo: p_search_invoice_no ?? null, searchGrnNo: p_search_grn_no ?? null, invNoFrom: p_inv_no_from ?? null,
+      invNoTo: p_inv_no_to ?? null, sortField: p_sort_field, sortDirection: p_sort_direction, search: p_search?.trim() ?? null,
+      dateFrom: p_date_from ?? null, dateTo: p_date_to ?? null,
+      customerIds: p_customer_ids && p_customer_ids.length > 0 ? p_customer_ids : null,
+      paymentStatus: p_payment_status ?? null, docType: p_doc_type ?? null,
+    };
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readInvoicesList(q, request), {
+      key: JSON.stringify({ ...request, offset: undefined }),
+      page: Math.floor(p_offset / Math.max(p_limit, 1)),
+    });
+    if (copy && 'restart' in copy) {
+      return { success: false, message: t('errors.invoice.fetchListFailed'), copyRestart: true, data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit: p_limit, offset: p_offset } } };
+    }
+    if (copy) {
+      return {
+        success: true,
+        message: t('errors.invoice.listRetrieved'),
+        source: copy.source,
+        data: {
+          invoices: (copy.value.invoices as unknown as Invoice[]).map(withNumericAmounts),
+          pagination: { total_count: copy.value.total_count, limit: p_limit, offset: p_offset, has_more: copy.value.has_more },
+        },
+      };
+    }
 
     invoiceServiceLogger.debug('Getting authenticated client...');
     const authenticatedClient = await getAuthenticatedClient();
@@ -479,7 +515,7 @@ export interface GrnInvoiceRowsRequest {
  * (getAssignedCustomerInvoices). Both search by GRN number, which also matches longer numbers,
  * so the rows are kept only when their GRN id is this GRN's. The server decides who sees what.
  */
-export const getGrnInvoiceRows = async (request: GrnInvoiceRowsRequest): Promise<{ success: boolean; invoices: Invoice[] }> => {
+export const getGrnInvoiceRows = async (request: GrnInvoiceRowsRequest): Promise<{ success: boolean; invoices: Invoice[]; source?: DataSource }> => {
   const params = {
     p_limit: GRN_INVOICE_LIMIT,
     p_offset: 0,
@@ -493,7 +529,7 @@ export const getGrnInvoiceRows = async (request: GrnInvoiceRowsRequest): Promise
       ? await getInvoicesList(params)
       : await getAssignedCustomerInvoices(request.assignedCustomerIds ?? [], params);
     if (!result.success || !result.data) return { success: false, invoices: [] };
-    return { success: true, invoices: result.data.invoices.filter(invoice => invoice.grn?.id === request.grnId) };
+    return { success: true, invoices: result.data.invoices.filter(invoice => invoice.grn?.id === request.grnId), ...('source' in result && result.source ? { source: result.source } : {}) };
   } catch {
     return { success: false, invoices: [] };
   }

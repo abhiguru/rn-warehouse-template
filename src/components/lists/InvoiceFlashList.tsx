@@ -18,7 +18,7 @@
  */
 
 import { createLogger } from '@/utils/logger';
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useLayoutEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { ActivityIndicator } from 'react-native-paper';
@@ -44,6 +44,8 @@ import { MemoizedInvoiceItem } from '@/components/list-items';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -168,6 +170,11 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   const [loadedAt, setLoadedAt] = useState(() => Date.now());
   const isOffline = useIsOffline();
+  // The rows came from the phone copy (WH-348): the status bar tells their time, and "New invoices" needs a connection.
+  const [fromPhoneCopy, setFromPhoneCopy] = useState(false);
+  /** Asks for the first page again (a list whose source changed between two pages). */
+  const restartRef = useRef<() => void>(() => undefined);
+  const needsConnection = useNeedsConnectionV3() && isWarehouseRole;
   // While the keyboard is up the list area ends at its top (WH-261), so the no-match state is centred above it.
   const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   /** The request the rows on screen answer, so a failed refresh of it keeps them and a failed new filter does not. */
@@ -223,6 +230,12 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         : await getAssignedCustomerInvoices(assignedCustomerIds, { ...params, customerNames: assignedCustomerNames, p_fresh: fresh });
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
 
+      // The next page would come from somewhere else than the first (phone copy or server): ask for the first again,
+      // with no error (WH-299, one source per screen).
+      if ('copyRestart' in result && result.copyRestart) {
+        restartRef.current();
+        return;
+      }
       if (!result.success || !result.data) throw new Error(result.message || 'Failed to load invoices');
       const page = result.data.invoices ?? [];
       if (append) {
@@ -235,7 +248,10 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         setLoadError(false);
         setRefreshError(false);
         setLoadMoreFailed(false);
-        setLoadedAt(Date.now());
+        // The phone copy's rows are as old as the copy: the status bar tells it, the list shows no time of its own.
+        const source = 'source' in result ? result.source : undefined;
+        setLoadedAt(source ? Date.parse(source.asOf) : Date.now());
+        setFromPhoneCopy(Boolean(source));
         shownRequest.current = requestKey;
         // A new search, filter or sort starts from its first row.
         listRef.current?.scrollToOffset({ offset: 0, animated: false });
@@ -262,6 +278,9 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   // change as a return to the screen and load twice.
   const fetchInvoicesRef = useRef(fetchInvoices);
   fetchInvoicesRef.current = fetchInvoices;
+  useLayoutEffect(() => {
+    restartRef.current = () => { void fetchInvoicesRef.current(0, false); };
+  });
   // The list is mounted by its screen, so it starts focused; a blur says otherwise.
   const screenFocusedRef = useRef(true);
   const blurredRef = useRef(false);
@@ -410,7 +429,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
 
   // Offline with no failed refresh: the first heading (or, with no headings, the top of the list) says when the
   // cards were loaded (§14.9). A failed refresh says it in its strip instead.
-  const offlineUpdatedAt = isOffline && !refreshError ? loadedAt : undefined;
+  const offlineUpdatedAt = isOffline && !refreshError && !fromPhoneCopy ? loadedAt : undefined;
 
   const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Invoice>; index: number }) => {
     if (item.type === 'header') {
@@ -526,7 +545,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         emptyIcon="file-document-outline"
         emptyTitle={translate('lists.invoice.emptyTitle')}
         emptySubtitle={canCreateInvoice ? translate('lists.invoice.emptyCreator') : translate('lists.invoice.emptyViewer')}
-        showCreateButton={canCreateInvoice}
+        showCreateButton={canCreateInvoice && !needsConnection}
         createButtonLabel={translate('lists.invoice.create')}
         onCreatePress={handleCreateInvoice}
       />
@@ -537,6 +556,10 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
     <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.container, { marginBottom: keyboardLift }]}>
       {/* The header, search field and filter bar are shown in every state. */}
       <FilteredListHeader title={translate('lists.invoice.title')} config={INVOICE_FILTERS} filters={filters} loading={isLoading} onRefresh={handleRefresh} />
+      {/* The "+" is hidden while the phone is offline: its reason is a lasting fact about the list (Design 2.5, 2.11). */}
+      {needsConnection && canCreateInvoice ? (
+        <NeedsConnectionLine testID="invoices-new-needs-connection" text={translate('invoice.offline.newNeedsConnection')} />
+      ) : null}
       {content}
 
       {/* Print dialog and jobs sheet */}

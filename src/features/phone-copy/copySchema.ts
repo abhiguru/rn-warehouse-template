@@ -82,7 +82,7 @@ export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
   invoice: {
     columns: [col('customer_id'), col('gr_id'), col('deleted_at'), col('cancelled_at'),
       computed('inv_no_sk', row => documentNumberSortKey(typeof row.inv_no === 'number' ? String(row.inv_no) : textOf(row.inv_no))),
-      micros('inv_date_us', 'inv_date'), lower('customer_name_lc', 'customer_name'), lower('inv_no_lc', 'inv_no'),
+      micros('inv_date_us', 'inv_date'), lower('customer_name_lc', 'customer_name'), computed('inv_no_lc', row => `${textOf(row.inv_prefix) ?? ''}${typeof row.inv_no === 'number' ? String(row.inv_no) : textOf(row.inv_no) ?? ''}`.toLowerCase()),
       col('doc_type'), col('total')],
     indexes: ['customer_id', 'gr_id', 'inv_date_us', 'inv_no_sk'],
   },
@@ -101,10 +101,6 @@ export const RANK_SOURCES = {
   customer_name: { entity: 'goodsreceived', key: 'customer_name' },
   item_name: { entity: 'goodsreceived_trl', key: 'item_name' },
   package_mark: { entity: 'goodsreceived_trl', key: 'package_mark' },
-  invoice_customer_name: { entity: 'invoice', key: 'customer_name' },
-  customer_master_name: { entity: 'customers', key: 'name' },
-  item_master_name: { entity: 'items', key: 'name' },
-  user_name: { entity: 'user_profiles', key: 'name' },
 } as const satisfies Record<string, { entity: EntityName; key: string }>;
 export type RankKind = keyof typeof RANK_SOURCES;
 export const RANK_KINDS = Object.keys(RANK_SOURCES) as RankKind[];
