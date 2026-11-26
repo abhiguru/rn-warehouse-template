@@ -66,6 +66,7 @@ import { sourceColumnWidth, sourceText } from '@/components/dispatch-details/Dis
 import { getLanguage } from '@/i18n/language';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
+import { keepFailedPhotos } from '@/features/unsent/keepFailedPhotos';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
@@ -427,7 +428,27 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             if (result.dispatchId && result.failedPhotos && result.failedPhotos.length > 0) {
                 triggerWarning();
                 const failure = { dispatchId: result.dispatchId, failed: result.failedPhotos };
-                afterDialog.current = () => setPhotosNotUploaded(failure);
+                const dispatchNumber = header.disp_no;
+                const customerName = header.customer_name;
+                afterDialog.current = () => {
+                    // With the offline feature the photos are kept on the phone and sent later; the success dialog says so (Design 4.9).
+                    void keepFailedPhotos({
+                        doc: 'dispatch',
+                        recordId: failure.dispatchId,
+                        number: dispatchNumber,
+                        customer: customerName,
+                        photos: failure.failed.map(photo => ({ file: photo.image_url, role: 'dispatch' as const })),
+                    }).then(kept => {
+                        if (kept > 0) {
+                            // What stays on the phone is no longer this form's to retry.
+                            giveUpDispatchPhotos(failure.dispatchId, failure.failed);
+                            setSuccessDialogData(current => (current ? { ...current, messageAddition: tr('offline.photosKept', { count: kept }) } : current));
+                            setShowSuccessDialog(true);
+                        } else {
+                            setPhotosNotUploaded(failure);
+                        }
+                    });
+                };
                 return;
             }
             afterDialog.current = () => setShowSuccessDialog(true);

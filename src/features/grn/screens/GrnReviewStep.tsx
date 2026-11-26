@@ -126,6 +126,7 @@ import { getGrnItemRates, getItemsWithoutRate } from '@/services/item-pricing-se
 import type { ScrollViewRef } from '@/types/nativeRefs';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
+import { keepFailedPhotos } from '@/features/unsent/keepFailedPhotos';
 
 const log = createLogger('grn');
 
@@ -597,11 +598,50 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       showToast(photos.removalRefusal ?? tr('grn.review.photosNotRemoved', { count: photos.removalFailures }));
     }
     if (savedGrnId && photos && photos.failed.length > 0) {
-      triggerWarning();
-      setPhotosNotUploaded({ grnId: savedGrnId, failed: photos.failed });
+      const failed = photos.failed;
+      // With the offline feature the photos are kept on the phone and sent later; the success dialog says so (Design 4.9).
+      void keepFailedGrnPhotos(savedGrnId, failed).then(kept => {
+        if (kept === null) {
+          // Every photo that was still uploading went through meanwhile.
+          setShowSuccessDialog(true);
+          return;
+        }
+        if (kept > 0) {
+          setSuccessDialogData(current => (current ? { ...current, messageAddition: tr('offline.photosKept', { count: kept }) } : current));
+          setShowSuccessDialog(true);
+          return;
+        }
+        triggerWarning();
+        setPhotosNotUploaded({ grnId: savedGrnId, failed });
+      });
       return;
     }
     setShowSuccessDialog(true);
+  };
+
+  /** Keeps photos that did not upload; waits briefly for one still uploading so it is not sent twice. 0 when not kept, null when none is left to keep. */
+  const keepFailedGrnPhotos = async (savedGrnId: string, failed: FailedGRNPhoto[]): Promise<number | null> => {
+    const settled = await Promise.all(
+      failed.map(async photo => {
+        if (!photo.inFlight) return photo;
+        const wait = new Promise<null>(resolve => setTimeout(() => resolve(null), 10_000));
+        const outcome = await Promise.race([photo.inFlight.catch(() => ({ success: false })), wait]);
+        return outcome?.success === true ? null : photo;
+      })
+    );
+    const left = settled.filter((photo): photo is FailedGRNPhoto => photo !== null);
+    if (left.length === 0) return null;
+    return keepFailedPhotos({
+      doc: 'grn',
+      recordId: savedGrnId,
+      number: header.gr_no || '',
+      customer: header.customer_name,
+      photos: left.map(photo => ({
+        file: photo.image.imageUrl,
+        role: photo.imageType,
+        ...(photo.itemId ? { lineRef: photo.itemId } : {}),
+      })),
+    });
   };
 
   /**
