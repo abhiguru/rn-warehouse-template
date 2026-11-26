@@ -346,8 +346,8 @@ const GRNCardFiori = memo<GRNCardProps>(({
 
   // The same actions for the swipe and for a screen reader (style guide 13.6).
   const actions = [
-    onPrint ? { name: 'print', label: reasoned(translate('common.print')) } : null,
-    onEdit ? { name: 'edit', label: reasoned(translate('common.edit')) } : null,
+    onPrint ? { name: 'print', label: reasoned(translate('lists.grn.printLabel', { title })) } : null,
+    onEdit ? { name: 'edit', label: reasoned(translate('lists.grn.editLabel', { title })) } : null,
   ].filter((action): action is { name: string; label: string } => action !== null);
 
   const runAction = (name: string) => {

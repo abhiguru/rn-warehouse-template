@@ -499,7 +499,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
         accessibilityLabel={accessibilityDescription}
         accessibilityHint={translate(printable ? 'lists.dispatch.openHintActions' : 'lists.dispatch.openHint')}
         accessibilityActions={
-          printable ? [{ name: 'print', label: needsConnection ? needsConnectionLabel(translate('common.print')) : translate('common.print') }] : undefined
+          printable ? [{ name: 'print', label: needsConnection ? needsConnectionLabel(printLabel) : printLabel }] : undefined
         }
         onAccessibilityAction={printable ? () => { if (!needsConnection) onPrint?.(dispatch); } : undefined}
       >
