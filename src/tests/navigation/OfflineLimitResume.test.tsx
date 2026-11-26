@@ -177,14 +177,22 @@ const resumeOffline = async () => {
   await resume();
 };
 
+// The words past the offline limit (WH-351, design/offline-capture.md Part 11). Today's title stays for other causes.
+const AWAY_TITLE = 'Connect to continue';
+const AWAY_MESSAGE =
+  'This phone hasn\'t connected to your cold storage for over 30 days. Connect to the internet to sign in again.';
 const shownOnScreen = () => {
   expect(screen.getByText('New goods receipt')).toBeOnTheScreen();
+  expect(screen.queryByText(AWAY_TITLE, everything)).not.toBeOnTheScreen();
   expect(screen.queryByText('Couldn\'t load app settings', everything)).not.toBeOnTheScreen();
 };
 const shownClosed = () => {
-  expect(screen.getByRole('header', { name: 'Couldn\'t load app settings' })).toBeOnTheScreen();
-  expect(screen.getByText(/Check your connection and try again\.$/)).toBeOnTheScreen();
+  expect(screen.getByRole('header', { name: AWAY_TITLE })).toBeOnTheScreen();
+  // The whole text: nothing on the phone counts as unsent yet, so no sentence about kept entries follows.
+  expect(screen.getByText(AWAY_MESSAGE)).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: 'Try connecting again' })).toHaveTextContent('Try again');
   expect(screen.getByText('Try again')).toBeOnTheScreen();
+  expect(screen.queryByText('Couldn\'t load app settings', everything)).not.toBeOnTheScreen();
   expect(screen.queryByText('New goods receipt', everything)).not.toBeOnTheScreen();
 };
 const tryAgain = async () => {
