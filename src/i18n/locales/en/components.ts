@@ -48,6 +48,8 @@ export const components = {
     signInAgainTitle: 'Sign in again?',
     signInAgainMessage: 'The saved sign-in and the data on this phone will be removed. The data loads again after you sign in with your mobile number and OTP.',
     signInAgainKeepsUnsent: 'Entries not sent yet stay on this phone and are sent after you sign in.',
+    signInAgainFailedTitle: "Couldn't start signing in again",
+    signInAgainFailedMessage: 'Restart the phone, then tap Sign in again.',
   },
   errorBoundary: {
     title: 'Something went wrong',

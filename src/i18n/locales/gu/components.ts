@@ -51,6 +51,8 @@ export const components: Translation<typeof source> = {
     signInAgainTitle: 'ફરી લૉગિન કરવું છે?',
     signInAgainMessage: 'સાચવેલું લૉગિન અને આ ફોનમાંની માહિતી કાઢી નખાશે. મોબાઇલ નંબર અને OTP થી લૉગિન કર્યા પછી માહિતી ફરી લોડ થશે.',
     signInAgainKeepsUnsent: 'મોકલવાની બાકી એન્ટ્રી આ ફોનમાં રહેશે અને લૉગિન પછી મોકલાશે.',
+    signInAgainFailedTitle: 'ફરી લૉગિન શરૂ થઈ શક્યું નહીં',
+    signInAgainFailedMessage: 'ફોન બંધ કરીને ફરી ચાલુ કરો, પછી ફરી લૉગિન કરો પર ટૅપ કરો.',
   },
   errorBoundary: {
     title: 'કંઈક ખોટું થયું',

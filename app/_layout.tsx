@@ -435,7 +435,7 @@ export function NavigationStack({ screenBackground }: { screenBackground: string
 }
 
 // Themed content component that uses Redux state for theme
-function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: () => void }) {
+function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: (centralUnreadable: boolean) => void }) {
   const dispatch = useAppDispatch();
   const [authCheckSettled, setAuthCheckSettled] = useState(false);
   // Brand and mode from the Settings choice (falls back to the system mode).
@@ -462,6 +462,14 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: () => voi
     let facilitySignedIn = false;
     let centralUnreadable = false;
     let facilityUnreadable = false;
+    // One start counts as one failed try (WH-363), however many of the two stores failed.
+    let reported = false;
+    const reportUnreadable = () => {
+      if (reported) return;
+      reported = true;
+      // Told whether the central sign-in could not be read with no facility session to show instead (WH-361).
+      onSessionUnreadable(centralUnreadable && !facilitySignedIn);
+    };
     void Promise.all([
       dispatch(initializeAuth())
         .unwrap()
@@ -474,7 +482,6 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: () => voi
         // signed out, the load-error screen takes their place (WH-360).
         .catch((error: unknown) => {
           if (error === SESSION_STORE_UNREADABLE) facilityUnreadable = true;
-          if (mounted && error === SESSION_STORE_UNREADABLE) onSessionUnreadable();
         }),
       // With central login the guard also needs to know whether the person is
       // signed in at the association: read that stored session too (no network).
@@ -489,7 +496,8 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: () => voi
       if (!mounted) return;
       // With no facility session the guard would show central sign-in, and an unread store does not say that
       // nobody is signed in there: the load-error screen takes the screens' place (WH-361).
-      if (centralUnreadable && !facilitySignedIn) onSessionUnreadable();
+      if (facilityUnreadable) reportUnreadable();
+      if (centralUnreadable && !facilitySignedIn) reportUnreadable();
       else setAuthCheckSettled(true);
       // The stores answered: the count of failed tries (WH-363) goes, and "Sign in again" with it.
       if (!centralUnreadable && !facilityUnreadable) void resetStoreUnreadableTries();
@@ -609,6 +617,7 @@ function BootstrapApp() {
   // change re-runs the bootstrap, which clears this flag.
   const [changingServer, setChangingServer] = useState(false);
   const bootstrapRun = useRef(0);
+  const centralUnreadableRef = useRef(false);
   // True while the app's own screens are mounted: no splash and no full-screen state in their place.
   const appOpen = useRef(false);
   useEffect(() => {
@@ -637,7 +646,9 @@ function BootstrapApp() {
 
   // The restore could not read a stored session, after retries (WH-360, WH-361): nothing is signed out or erased, and
   // "Try again" runs the start, and with it the restore, again. Stable, so the restore is not run again by a render.
-  const closeForUnreadableSession = useCallback(() => {
+  const closeForUnreadableSession = useCallback((centralUnreadable: boolean) => {
+    // "Sign in again" removes the central sign-in too when that is what could not be read.
+    centralUnreadableRef.current = centralUnreadable;
     setPastOfflineLimit(false);
     setStoreUnreadable(true);
     setSignInAgainOffered(false);
@@ -881,7 +892,11 @@ function BootstrapApp() {
   // "Sign in again" (WH-363), after the person confirmed: the saved sign-in and the phone copy go, the facility stays
   // selected and listed, and its own sign-in (mobile number and code) comes next. A removal that fails changes nothing.
   const signInAgain = async () => {
-    const outcome = await endSessionKeepingFacility(store.dispatch);
+    const outcome = await endSessionKeepingFacility(store.dispatch, { centralUnreadable: centralUnreadableRef.current });
+    if (outcome === 'failed') {
+      showAlert(translate('components.configError.signInAgainFailedTitle'), translate('components.configError.signInAgainFailedMessage'));
+      return;
+    }
     if (outcome !== 'ready') return;
     await resetStoreUnreadableTries();
     await bootstrapApp();

@@ -15,11 +15,15 @@ import { queryClient } from '@/lib/queryClient';
 import { beginOperatorSwitch, endOperatorSwitch } from '@/config/supabaseConfig';
 import { setCentralState } from '@/config/centralState';
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import { signOutCentral } from '@/config/centralSession';
 import { eraseCopy } from '@/features/phone-copy/copyDb';
 
 export type SignInAgainOutcome = 'ready' | 'busy' | 'failed';
 
-export async function endSessionKeepingFacility(dispatch: AppDispatch): Promise<SignInAgainOutcome> {
+export async function endSessionKeepingFacility(
+  dispatch: AppDispatch,
+  options: { centralUnreadable?: boolean } = {}
+): Promise<SignInAgainOutcome> {
   if (queryClient.isMutating() > 0) return 'busy';
   if (!beginOperatorSwitch()) return 'busy';
   try {
@@ -29,6 +33,9 @@ export async function endSessionKeepingFacility(dispatch: AppDispatch): Promise<
     // The copy's file and key go whatever the other clears did; `eraseCopy` never throws.
     await eraseCopy();
     if (ended?.localCleared === false) return 'failed';
+    // The start could not read the central sign-in either (WH-361): with no facility session it would show "Couldn't
+    // start the app" again after the restart, so it goes too and the person signs in centrally.
+    if (options.centralUnreadable && !(await signOutCentral())) return 'failed';
     setCentralState({ autoOpenSpent: true, facilitySmsOrigin: facility.origin, pendingLink: null });
     return 'ready';
   } catch {
