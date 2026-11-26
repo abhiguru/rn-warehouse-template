@@ -91,12 +91,14 @@ const EXPO_FETCH_FAILED = 'fetch failed: ';
 /**
  * True for a failure where the server gave no answer: a lost connection (React Native's fetch TypeError, Expo's fetch
  * FetchError), a request the app gave up waiting for, or an abort. False for anything the server answered, whatever
- * its status or code.
+ * its status or code, and for a failure marked `answered`: one raised after the answer began, such as a body that
+ * could not be read, which fails with the same errors as a lost connection (discoverOperator marks them).
  */
 export function isNoAnswer(error: unknown): boolean {
   if (error instanceof RequestTimeoutError) return true;
   if (typeof error !== 'object' || error === null) return false;
-  const fields = error as { name?: unknown; noAnswer?: unknown; status?: unknown; message?: unknown };
+  const fields = error as { name?: unknown; noAnswer?: unknown; answered?: unknown; status?: unknown; message?: unknown };
+  if (fields.answered === true) return false;
   if (fields.noAnswer === true) return true;
   if (fields.status !== undefined) return false;
   if (error instanceof TypeError) return true;

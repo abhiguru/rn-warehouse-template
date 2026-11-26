@@ -168,6 +168,8 @@ export async function discoverOperator(input: string): Promise<{ server: Operato
   const origin = parseOperatorOrigin(input);
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  // True once the server's answer has begun: nothing that fails afterwards is "no answer" (offlineStart.ts).
+  let answered = false;
   const config = await Promise.race([
     (async () => {
       // The public address first; the warehouse network address when it fails (src/config/lanTransport.ts).
@@ -176,19 +178,26 @@ export async function discoverOperator(input: string): Promise<{ server: Operato
         { signal: controller.signal, redirect: 'error' },
         { read: true }
       );
-      // React Native follows redirects whatever `redirect` says. Where the
-      // final address is known, an answer from another origin is named as such.
-      // (An answer over the warehouse network is read as the address it stands for.)
-      if (response.url && !toCanonicalUrl(response.url).startsWith(`${origin}/`))
-        throw new Error(t('errors.server.discoveryRedirected'));
-      if (!response.ok) throw await discoveryHttpError(response);
-      return validateOperatorDiscovery(await response.json(), origin);
+      answered = true;
+      try {
+        // React Native follows redirects whatever `redirect` says. Where the
+        // final address is known, an answer from another origin is named as such.
+        // (An answer over the warehouse network is read as the address it stands for.)
+        if (response.url && !toCanonicalUrl(response.url).startsWith(`${origin}/`))
+          throw new Error(t('errors.server.discoveryRedirected'));
+        if (!response.ok) throw await discoveryHttpError(response);
+        return validateOperatorDiscovery(await response.json(), origin);
+      } catch (error) {
+        // The error itself is kept (its class and code choose the screen); it is only marked.
+        throw typeof error === 'object' && error !== null ? Object.assign(error, { answered: true }) : error;
+      }
     })(),
     new Promise<never>((_, reject) => {
       timeout = setTimeout(() => {
+        // Marked so an offline start can tell no answer in time from an answer whose body did not arrive in time
+        // (src/config/offlineStart.ts). Rejected first, so the caller hears this and not the abort it causes.
+        reject(Object.assign(new Error(t('errors.server.discoveryTimedOut')), answered ? { answered } : { noAnswer: true }));
         controller.abort();
-        // No answer in time: marked so an offline start can tell it from an answer (src/config/offlineStart.ts).
-        reject(Object.assign(new Error(t('errors.server.discoveryTimedOut')), { noAnswer: true }));
       }, 15000);
     }),
   ]).finally(() => clearTimeout(timeout));
