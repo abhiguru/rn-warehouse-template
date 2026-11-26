@@ -86,6 +86,7 @@ import { beginNewBill, newBillIsCurrent, newBillToken, releaseNewBill } from '@/
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
 import { UnsentDetailsStrip } from '@/features/unsent/UnsentMarkers';
+import { useQuickChange } from '@/features/quick-change/useQuickChange';
 
 const log = createLogger('grn');
 const makeStyles = (t: ThemeTokens) => ({
@@ -128,6 +129,7 @@ const GRN_PAGE_KINDS: readonly EntityName[] = [
 function GRNDetailScreen() {
   const { id, tab } = useLocalSearchParams<{ id: string; tab?: string | string[] }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
+  const quickChange = useQuickChange();
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -989,6 +991,20 @@ function GRNDetailScreen() {
               loading={loading}
               onViewItemImages={handleViewItemImages}
               onViewItemDispatches={handleViewItemDispatches}
+              grnNumber={grn.gr_no}
+              onQuickChange={
+                quickChange.available
+                  ? (item) =>
+                      quickChange.open({
+                        lotId: String(item.id),
+                        grnId: String(grn.id),
+                        grnNumber: formatIdentifier(grn.gr_no),
+                        customer: grn.customer_details?.name ?? null,
+                        itemName: item.item_name ?? '',
+                        shown: { rack: item.rack ?? null, package_mark: item.package_mark ?? null },
+                      })
+                  : undefined
+              }
             />
           )}
 
@@ -1066,6 +1082,7 @@ function GRNDetailScreen() {
         placeholder={tr('grn.details.printPlaceholder', { example: 'Z0797' })}
       />
 
+      {quickChange.sheet}
     </>
   );
 }

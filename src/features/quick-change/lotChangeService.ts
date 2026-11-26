@@ -7,6 +7,7 @@
 import { t } from '@/i18n';
 import { normalizeDigits } from '@/i18n/language';
 import { changedLotFields, isLotChangeBody, LOT_FIELD_LABELS, LOT_FIELDS, type FieldChange, type LotChangeBody, type LotField } from '@/features/unsent/lotChangeKind';
+import { sendNow } from '@/features/unsent/sendEngine';
 import { deleteItem, enqueue, mergeInto } from '@/features/unsent/unsentQueue';
 import { itemById, itemsOfScope, type ItemRow } from '@/features/unsent/unsentRows';
 import { getSessionCacheScope } from '@/utils/cacheManager';
@@ -136,7 +137,11 @@ export async function saveLotChange(input: SaveLotChangeInput): Promise<SaveLotC
         },
         whatOf(input.grnNumber, fields)
       );
-      if (merged) return { id: own.id, requestKey: own.request_key, merged: true };
+      if (merged) {
+        // A merge is not a save of a new item: ask the engine to send, as a save does.
+        void sendNow('saved');
+        return { id: own.id, requestKey: own.request_key, merged: true };
+      }
     }
   }
 

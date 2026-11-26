@@ -91,6 +91,15 @@ export const offline: Translation<typeof source> = {
     title: '{{name}} ની એન્ટ્રી રોકેલી યાદીમાં મૂકશો?',
     message: 'પછી સુપરવાઇઝર કે એડમિન ત્યાં દરેક સ્વીકારી કે નકારી શકશે.',
   },
+  quickChange: {
+    action: 'રેક કે માર્કો બદલો',
+    title: 'રેક કે માર્કો બદલો',
+    actionLabel: '{{item}}, આવક પાવતી {{grn}} નો રેક કે માર્કો બદલો',
+    saved: 'સાચવ્યું',
+    savedOnPhone: 'આ ફોનમાં સાચવ્યું. ફરી જોડાશો ત્યારે મોકલાશે.',
+    refused: 'સાચવી શકાયું નથી: {{reason}}',
+    refusedUnknown: 'સાચવી શકાયું નથી. સર્વરે આ ફેરફાર સ્વીકાર્યો નથી.',
+  },
   duration: {
     hoursMinutes: '{{hours}} કલાક {{minutes}} મિનિટ',
     hours: '{{hours}} કલાક',

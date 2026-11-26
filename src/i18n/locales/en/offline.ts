@@ -88,6 +88,15 @@ export const offline = {
     title: "Move {{name}}'s items to the holding list?",
     message: 'A supervisor or administrator can then accept or reject each one there.',
   },
+  quickChange: {
+    action: 'Change rack or mark',
+    title: 'Change rack or mark',
+    actionLabel: 'Change rack or mark of {{item}}, GRN {{grn}}',
+    saved: 'Saved',
+    savedOnPhone: 'Saved on this phone. It will be sent when you reconnect.',
+    refused: "Couldn't save: {{reason}}",
+    refusedUnknown: "Couldn't save. The server refused this change.",
+  },
   duration: {
     hoursMinutes: '{{hours}} h {{minutes}} min',
     hours: '{{hours}} h',

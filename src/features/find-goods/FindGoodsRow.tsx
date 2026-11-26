@@ -5,7 +5,8 @@
 import React, { memo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
-import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
+import { markerText, UnsentFootnote, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
+import { QuickChangeButton } from '@/features/quick-change/QuickChangeButton';
 import { HighlightedText } from '@/features/filters/components/HighlightedText';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate, formatIdentifier } from '@/i18n';
@@ -14,6 +15,9 @@ import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNItem } from '@/services/grn-service';
 import { formatCardDate, formatNumber } from '@/utils/formatters';
 import { getStatusColors, getStockBadgeLabel, getStockValueLevel, STOCK_VALUE_ICONS } from '@/utils/stockStatus';
+
+/** The stock box's side; the quick-change button lines up with the text beside it. */
+const STOCK_BOX = 40;
 
 const makeStyles = (t: ThemeTokens) => ({
   row: {
@@ -28,8 +32,8 @@ const makeStyles = (t: ThemeTokens) => ({
   pressed: { backgroundColor: t.surface.cardPressed },
   divider: { height: 1, marginLeft: space.lg, backgroundColor: t.border.divider },
   stockBox: {
-    width: 40,
-    height: 40,
+    width: STOCK_BOX,
+    height: STOCK_BOX,
     borderRadius: radius.card,
     borderWidth: 1,
     alignItems: 'center' as const,
@@ -50,6 +54,7 @@ const makeStyles = (t: ThemeTokens) => ({
   stockValue: { ...typography.headline, fontVariant: ['tabular-nums' as const], textAlign: 'right' as const },
   stockLabel: { ...typography.caption2, color: t.text.secondary, textAlign: 'right' as const },
   chevron: { alignSelf: 'center' as const },
+  quickChange: { alignItems: 'flex-start' as const, paddingLeft: space.lg + STOCK_BOX + space.md, paddingBottom: space.sm, backgroundColor: t.surface.card },
 });
 
 /** "rack B-3" in a sentence: the first letter of the shared text, lower case. */
@@ -62,9 +67,11 @@ export interface FindGoodsRowProps {
   onPress: (item: GRNItem) => void;
   /** Draws the line under the row. */
   divider: boolean;
+  /** Opens the quick change of this lot's rack and mark (WH-302); absent = no button. */
+  onQuickChange?: (item: GRNItem) => void;
 }
 
-export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, divider }: FindGoodsRowProps) {
+export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, divider, onQuickChange }: FindGoodsRowProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const lotId = String(item.grn_item_id);
@@ -78,7 +85,8 @@ export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, d
   const colors = getStatusColors(level, t);
   const empty = stock <= 0;
 
-  const overlay = getUnsentOverlay();
+  const overlay = useUnsentOverlay();
+  const unsentMarker = overlay.marker('lot', lotId);
   const lessUnsent = overlay.lessUnsent(lotId);
   const lessHeld = overlay.lessHeld(lotId);
   const lessUnsentText = lessUnsent > 0 ? translate('findGoods.lessNotSent', { count: lessUnsent }) : null;
@@ -98,6 +106,7 @@ export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, d
     lessUnsentText,
     lessOthersText,
     lessHeldText,
+    unsentMarker ? markerText(unsentMarker) : null,
   ]
     .filter(Boolean)
     .join(', ');
@@ -144,6 +153,7 @@ export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, d
           {lessUnsentText ? <Text style={styles.footnote} testID={`lot-less-unsent-${lotId}`}>{lessUnsentText}</Text> : null}
           {lessOthersText ? <Text style={styles.footnote} testID={`lot-less-others-${lotId}`}>{lessOthersText}</Text> : null}
           {lessHeldText ? <Text style={styles.footnote} testID={`lot-less-held-${lotId}`}>{lessHeldText}</Text> : null}
+          <UnsentFootnote inline marker={unsentMarker} testID={`find-goods-row-unsent-${lotId}`} />
         </View>
 
         <View style={styles.stack}>
@@ -170,6 +180,11 @@ export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, d
           <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         </View>
       </Pressable>
+      {onQuickChange ? (
+        <View style={styles.quickChange}>
+          <QuickChangeButton item={item.item_name ?? ''} grn={item.gr_no} onPress={() => onQuickChange(item)} testID={`find-goods-quick-change-${lotId}`} />
+        </View>
+      ) : null}
       {divider ? <View style={styles.divider} /> : null}
     </View>
   );

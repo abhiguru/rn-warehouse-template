@@ -19,6 +19,7 @@ import { t as translate } from '@/i18n';
 import type { GRNItem } from '@/services/grn-service';
 import { iconSize, layout, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { useQuickChange } from '@/features/quick-change/useQuickChange';
 import { FindGoodsRow } from './FindGoodsRow';
 import { findGoods, FIND_GOODS_PAGE } from './findGoodsService';
 import { useFindGoodsState } from './findGoodsGate';
@@ -83,6 +84,8 @@ export function FindGoodsScreen({ switcher }: FindGoodsScreenProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const gate = useFindGoodsState();
+  const quickChange = useQuickChange();
+  const openLotSheet = quickChange.open;
   const { text } = useFindGoodsSession();
   const query = text.trim();
   const words = useMemo(() => searchWords(query), [query]);
@@ -195,6 +198,20 @@ export function FindGoodsScreen({ switcher }: FindGoodsScreenProps) {
     router.push(`/grn-details/${item.id}`);
   }, []);
 
+  const openQuickChange = useCallback(
+    (item: GRNItem) => {
+      openLotSheet({
+        lotId: String(item.grn_item_id),
+        grnId: String(item.id),
+        grnNumber: String(item.gr_no ?? ''),
+        customer: item.customer_name ?? null,
+        itemName: item.item_name ?? '',
+        shown: { rack: item.rack ?? null, package_mark: item.package_mark ?? null },
+      });
+    },
+    [openLotSheet]
+  );
+
   const retry = useCallback(() => {
     setOutcome(null);
     setRetries(count => count + 1);
@@ -263,9 +280,15 @@ export function FindGoodsScreen({ switcher }: FindGoodsScreenProps) {
             data={answer.rows}
             keyExtractor={(item: GRNItem) => String(item.grn_item_id)}
             renderItem={({ item, index }: { item: GRNItem; index: number }) => (
-              <FindGoodsRow item={item} words={words} onPress={openGrn} divider={index < answer.rows.length - 1} />
+              <FindGoodsRow
+                item={item}
+                words={words}
+                onPress={openGrn}
+                divider={index < answer.rows.length - 1}
+                onQuickChange={quickChange.available ? openQuickChange : undefined}
+              />
             )}
-            extraData={words}
+            extraData={[words, quickChange.available]}
             onEndReached={() => void loadMore()}
             onEndReachedThreshold={0.5}
             keyboardShouldPersistTaps="handled"
@@ -313,6 +336,7 @@ export function FindGoodsScreen({ switcher }: FindGoodsScreenProps) {
         minLength={1}
       />
       {content}
+      {quickChange.sheet}
     </View>
   );
 }

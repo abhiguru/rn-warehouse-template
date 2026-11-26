@@ -42,6 +42,7 @@ import {
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
 import { UnsentLotLines } from '@/features/unsent/UnsentMarkers';
+import { QuickChangeButton } from '@/features/quick-change/QuickChangeButton';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend RPC types
@@ -74,6 +75,10 @@ interface GRNItemsTabProps {
   loading?: boolean;
   onViewItemImages?: (item: GRNItem) => void;
   onViewItemDispatches?: (item: GRNItem) => void;
+  /** Opens the quick change of this lot's rack and mark (WH-302); absent = no button. */
+  onQuickChange?: (item: GRNItem) => void;
+  /** The GRN's number, for the button's screen-reader label. */
+  grnNumber?: string | number | null;
 }
 
 /** Number column width at font scale 1: room for "12,500" and the heading "Received". */
@@ -104,6 +109,11 @@ const makeStyles = (t: ThemeTokens) => ({
     // The text lines up with the details above.
     marginLeft: iconSize.md,
     borderRadius: radius.button,
+  },
+  quickChange: {
+    alignSelf: 'flex-start' as const,
+    // The text lines up with the details above.
+    marginLeft: iconSize.md,
   },
   actionPressed: {
     backgroundColor: t.brand.subtle,
@@ -176,6 +186,8 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
   items,
   loading = false,
   onViewItemDispatches,
+  onQuickChange,
+  grnNumber,
 }) => {
   const styles = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
@@ -311,6 +323,11 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
           <View style={own.detailLine}>
             <Icon name="package-variant-closed" size={iconSize.sm} color={t.icon.secondary} style={own.detailIcon} />
             <Text style={styles.secondary}>{tr('grn.detailsTable.packaging', { packaging: item.packaging })}</Text>
+          </View>
+        ) : null}
+        {onQuickChange ? (
+          <View style={own.quickChange}>
+            <QuickChangeButton item={item.item_name ?? ''} grn={grnNumber} onPress={() => onQuickChange(item)} testID={`grn-lot-quick-change-${item.id}`} />
           </View>
         ) : null}
         {dispatched > 0 && onViewItemDispatches ? (
