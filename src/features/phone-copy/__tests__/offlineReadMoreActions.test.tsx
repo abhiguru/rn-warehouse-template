@@ -144,7 +144,7 @@ const SERVER = { origin: 'https://warehouse.example.test', instanceId: 'instance
 const NEEDS = 'This needs a connection. It will load when you reconnect.';
 
 /** The `numbering` feed body for admin and supervisor (contract 14.4): an object keyed by document type, no `document_type` inside. */
-const NUMBERING_BODY = Object.fromEntries((['grn', 'dispatch', 'other'] as const).map(type => [type, {
+const NUMBERING_BODY = Object.fromEntries((['grn', 'dispatch', 'invoice'] as const).map(type => [type, {
   scheme: 'sequence', prefix: `${type.slice(0, 1).toUpperCase()}-`, width: 4, start: 1, first_letter: null, per_letter: null,
   check: true, fy_reset: false, server_issues: false, updated_at: '2026-11-01T05:00:00+00:00', updated_by: 'Asha Fictional',
 }]));
@@ -352,8 +352,7 @@ const EDITORS: Editor[] = [
   { name: 'GST details', Screen: GstDetailsScreen, ready: 'gst-details-gstin', shows: /24AAAAA0000A1Z5/, line: 'gst-details-bottom-bar-needs-connection',
     disabled: ['gst-details-gstin', 'gst-details-address', 'gst-details-legal-name', 'gst-details-sac-storage', 'gst-details-sac-labour'], save: /^Save.*, needs a connection$/ },
   { name: 'Document numbering', Screen: DocumentNumberingScreen, ready: 'numbering-row-grn', shows: /G-/, line: 'numbering-needs-connection',
-    // The third key is `other` in the feed; which row it becomes on screen is not settled, so only the first two are checked.
-    disabled: ['numbering-row-grn', 'numbering-row-dispatch'], save: null },
+    disabled: ['numbering-row-grn', 'numbering-row-dispatch', 'numbering-row-invoice'], save: null },
   { name: 'Charging', Screen: ChargingScreen, ready: 'charging-row-step', shows: /15/, line: 'charging-needs-connection',
     disabled: ['charging-row-step', 'charging-row-minimum', 'charging-row-days', 'charging-row-round'], save: null },
 ];
