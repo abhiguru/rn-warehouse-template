@@ -25,7 +25,7 @@ import type {
   RpcSupervisorDetails,
 } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { copyCarriesFormat3, readVia } from '@/features/phone-copy/readRoute';
 import { readDispatchDetails } from '@/features/phone-copy/reads/dispatchDetails';
 import { keepPhoto, photoFile } from '@/features/phone-copy/photoStore';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
@@ -163,7 +163,7 @@ export const getDispatchDetails = async (dispatchId: string): Promise<DispatchDe
       }
       const dispatch = value.dispatch as unknown as DispatchDetailsWithImages;
       if (dispatch.images?.length) dispatch.processed_images = await processDispatchImages(dispatch.images, true);
-      return { success: true, data: { dispatch }, message: t('errors.dispatch.detailsFetched'), source, needsServer: value.needsServer };
+      return { success: true, data: { dispatch }, message: t('errors.dispatch.detailsFetched'), source, needsServer: copyCarriesFormat3() ? undefined : value.needsServer };
     }
 
     // Get authenticated client with JWT tokens

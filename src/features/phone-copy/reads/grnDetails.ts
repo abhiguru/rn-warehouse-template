@@ -3,6 +3,7 @@
  * the server's `data`, key for key, except the rates (Product's PR1: the copy has no rates; the section says it needs a
  * connection). Its text is the baseline function with migrations 137, 165, 174 and 191, as installed on temp1.
  */
+import { COPY_FORMAT_V3 } from '../copySchema';
 import { enCompare, parseTimestampUs } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
 import { getUnsentOverlay, netStock } from '../unsentOverlay';
@@ -16,6 +17,29 @@ const photo = (p: Row): Row => ({
   file_size: pick(p, 'file_size'), mime_type: pick(p, 'mime_type'), display_order: pick(p, 'display_order'),
   uploaded_by: pick(p, 'uploaded_by'), created_at: pick(p, 'created_at'),
 });
+
+/**
+ * The GRN's own rates, as the server's `rates` lists them (administrators and supervisors; staff get an empty list):
+ * the stored figures, ordered by item name, lower weight and id (WH-348). A copy of format 2 holds none.
+ */
+async function ratesOf(q: CopyReader, grnId: string, archived: boolean): Promise<Row[]> {
+  if (q.role === 'staff') return [];
+  const found = await q.all<{ row: string; item_name: string | null }>(
+    'SELECT r.row AS row, i.name AS item_name FROM grn_rates r LEFT JOIN items i ON i.id = json_extract(r.row, \'$.item_id\') WHERE r.gr_id = ?',
+    [grnId]
+  );
+  return found
+    .map(record => ({ rate: parseRow(record.row), name: record.item_name }))
+    .sort((a, b) =>
+      enCompare(a.name, b.name) ||
+      compareNullsLast(numberOf(a.rate.weight_min), numberOf(b.rate.weight_min), compareNumbers) ||
+      compareText(String(a.rate.id), String(b.rate.id)))
+    .map(({ rate, name }) => ({
+      id: rate.id, item_id: pick(rate, 'item_id'), item_name: name, price_type: pick(rate, 'price_type'), weight_min: pick(rate, 'weight_min'),
+      weight_max: pick(rate, 'weight_max'), unit_price: pick(rate, 'unit_price'), labour_rate: pick(rate, 'labour_rate'),
+      tax_percent: pick(rate, 'tax_percent'), archived,
+    }));
+}
 
 const labelOf = (inv: Row): string => `${textOf(inv.inv_prefix) ?? ''}${String(inv.inv_no)}`;
 
@@ -90,6 +114,8 @@ export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnD
     out_of_stock: gOver.out_of_stock ?? false,
     pricing_mode: pick(g, 'pricing_mode'),
     duration_mode: pick(g, 'duration_mode'),
+    // A copy of format 2 holds no rates: the key is left out and the service says they need the server (WH-299).
+    ...(q.format >= COPY_FORMAT_V3 ? { rates: await ratesOf(q, grnId, gOver.invoiced === true) } : {}),
     created_at: pick(g, 'created_at'),
     updated_at: pick(g, 'updated_at'),
     header_images: header,

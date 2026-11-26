@@ -20,7 +20,7 @@ import type {
 import { t } from '@/i18n';
 import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { copyCarriesFormat3, readVia } from '@/features/phone-copy/readRoute';
 import { rememberServerLotValues } from '@/features/quick-change/confirmedLotValues';
 import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
 import { readGrnDetails, readItemDispatches } from '@/features/phone-copy/reads/grnDetails';
@@ -269,7 +269,7 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
       const header: RpcImageInfo[] = grn.header_images ?? [];
       for (const item of grn.items ?? []) item.processed_images = [];
       await processImagesForDisplay(grn, header, true);
-      return { success: true, data: { grn: grn as unknown as RpcGrnDetails }, message: t('errors.grn.detailsFetched'), source, needsServer: value.needsServer };
+      return { success: true, data: { grn: grn as unknown as RpcGrnDetails }, message: t('errors.grn.detailsFetched'), source, needsServer: copyCarriesFormat3() ? undefined : value.needsServer };
     }
 
     // Get authenticated client with JWT tokens

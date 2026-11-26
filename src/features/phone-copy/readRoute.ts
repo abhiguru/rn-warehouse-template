@@ -10,7 +10,7 @@ import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger } from '@/utils/logger';
 import { currentCopy } from './copyDb';
 import type { SqlValue } from './copyDriver';
-import { READ_FORMAT, type RankKind } from './copySchema';
+import { COPY_FORMAT_V3, READ_FORMAT, type RankKind } from './copySchema';
 import { ensureRanks } from './reads/textRank';
 import { CopyReadError, type DataSource } from './sourced';
 import { isCopyOffline } from './syncEngine';
@@ -33,6 +33,8 @@ export interface CopyReader {
   readonly asOf: string;
   readonly phase: CopyPhase;
   readonly copyId: string;
+  /** The feed format of this copy: from 3 it carries the rates and invoice amounts (WH-348). */
+  readonly format: number;
   /** The signed-in person's role: what the server's function would ask `warehouse_security.active_role()`. */
   readonly role: 'admin' | 'supervisor' | 'staff';
 }
@@ -101,7 +103,12 @@ export function copyRoute(need: CopyNeed): 'copy' | 'server' {
   return phase === 'stage2' && needsStage1Only(need) && isCopyOffline() ? 'copy' : 'server';
 }
 
-const copyRoleOf = (role: unknown): CopyReader['role'] | null =>
+/** True when the copy in use is of format 3 or newer: the rates and invoice amounts are on the phone (WH-348). */
+export function copyCarriesFormat3(): boolean {
+  return (getSyncSnapshot().format ?? 0) >= COPY_FORMAT_V3;
+}
+
+const copyRoleOf =(role: unknown): CopyReader['role'] | null =>
   role === 'admin' || role === 'supervisor' || role === 'staff' ? role : null;
 
 const isPhase = (value: string | undefined): value is CopyPhase =>
@@ -130,6 +137,7 @@ async function readCopy<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<
       asOf,
       phase,
       copyId,
+      format: getSyncSnapshot().format ?? 0,
       role,
     };
     result = { answer: { value: await fromCopy(reader), source: { kind: 'copy', asOf } }, copyId };

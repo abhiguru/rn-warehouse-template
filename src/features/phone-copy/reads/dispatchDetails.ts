@@ -5,6 +5,7 @@
  * temp1. A line that a live imported invoice takes as billed is not known to the phone (`imported_billed_dispatches` is
  * not in the feed): it shows no invoice.
  */
+import { COPY_FORMAT_V3 } from '../copySchema';
 import type { CopyReader } from '../readRoute';
 import { getUnsentOverlay, netStock } from '../unsentOverlay';
 import { customerDetails, itemDetailsById, supervisorDetails } from './documentParts';
@@ -56,6 +57,8 @@ export async function readDispatchDetails(q: CopyReader, dispatchId: string): Pr
     if (!invoiceOf.has(String(t.disp_trl_id))) invoiceOf.set(String(t.disp_trl_id), { t, inv: parseRow(record.irow) });
   }
 
+  // From format 3 the copy carries the invoice figures; before it they stay on the server (WH-299, PR1).
+  const amounts = q.format >= COPY_FORMAT_V3;
   const items_ = lines.map(line => {
     const lot = lots.get(String(line.gr_trl_id)) ?? null;
     const grn = grns.get(String(line.gr_id)) ?? null;
@@ -77,11 +80,14 @@ export async function readDispatchDetails(q: CopyReader, dispatchId: string): Pr
           }
         : null,
       item_details: lot ? (items.get(String(lot.item_id)) ?? null) : null,
-      // No charge, tax, labour rate or total: they stay on the server (PR1).
+      // The charge, tax, labour rate and total are the server's stored figures, copied as they are (WH-348, decision 4). A
+      // copy of format 2 is told by the service to keep WH-299's line in their place.
       invoice_details: billed
         ? {
             invoice_trl_id: billed.t.id, invoice_id: billed.t.invoice_id, duration: pick(billed.t, 'duration'), no_of_days: pick(billed.t, 'no_of_days'),
+            ...(amounts ? { charge: pick(billed.t, 'charge'), tax: pick(billed.t, 'tax'), labour_rate: pick(billed.t, 'labour_rate') } : {}),
             invoice_no: pick(billed.inv, 'inv_no'), invoice_label: labelOf(billed.inv), invoice_date: pick(billed.inv, 'inv_date'),
+            ...(amounts ? { total: pick(billed.inv, 'total') } : {}),
           }
         : null,
     };
