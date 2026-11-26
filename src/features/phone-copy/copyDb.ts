@@ -65,8 +65,9 @@ function isUnreadableFile(error: unknown): boolean {
 
 /** A new, empty copy for `scope` with a new key. */
 async function createCopy(scope: string): Promise<CopyDriver> {
-  await deleteCopyFile(COPY_FILE);
+  // The new key is written first: when secure storage refuses it, this throws and the old file and key are untouched.
   const key = await makeCopyKey(scope);
+  await deleteCopyFile(COPY_FILE);
   const db = await openExpoDriver(COPY_FILE, key.keyHex);
   try {
     await writeEmptyCopy(db, scope);
@@ -134,7 +135,8 @@ export function currentCopy(): CopyDriver | null {
  */
 export function replaceWithEmptyCopy(scope: string): Promise<CopyDriver> {
   return inTurn(async () => {
-    await removeFiles();
+    // The old copy goes only once a new key is stored (createCopy), so a failed key write leaves it as it was.
+    await closeHandle();
     const db = await createCopy(scope);
     holder.handle = db;
     holder.scope = scope;
