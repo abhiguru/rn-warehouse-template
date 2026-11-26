@@ -40,6 +40,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { animateExpand } from '@/utils/layoutMotion';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
+import { markerText, UnsentFootnote, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
 import {
   CUT_LINE,
   crowded,
@@ -472,6 +473,9 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     onToggle?.(dispatchId);
   }, [reduceMotion, onToggle, dispatchId]);
 
+  // A change of this dispatch that this phone has not sent (WH-301, Design 2.2).
+  const unsentMarker = useUnsentOverlay().marker('dispatch', String(dispatchId));
+
   // One combined label for the row (guide §11.3)
   const accessibilityDescription = [
     translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) }),
@@ -482,6 +486,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     formatSpokenDate(dispatch.disp_date),
     statusConfig.label,
     matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
+    unsentMarker === null ? null : markerText(unsentMarker),
   ].filter(Boolean).join(', ');
 
   const printable = canPrint && !!onPrint;
@@ -552,6 +557,8 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
           <DispatchLinesTable items={dispatch.items!} words={words} rowKey={String(dispatchId)} testID={`dispatch-lines-${dispatchId}`} onViewGRN={onViewGRN} />
         </View>
       )}
+
+      <UnsentFootnote marker={unsentMarker} testID={`dispatch-row-unsent-${dispatchId}`} />
 
       {/* Expand/Collapse Button */}
       {hasItems && (

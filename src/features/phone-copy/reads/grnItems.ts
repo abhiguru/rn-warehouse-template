@@ -158,6 +158,9 @@ export function listRow(record: LineRecord): GRNItem {
   const pick = (from: Record<string, unknown>, key: string) => from[key] ?? null;
   const overlay = getUnsentOverlay();
   const stock = netStock(overlay, record.lot_id, typeof t.stock === 'number' ? t.stock : null);
+  // What this phone changed on the lot and has not sent replaces the copy's value (WH-302; Design 2.2).
+  const changed = overlay.lot(record.lot_id);
+  const lotValue = (key: string): unknown => (changed !== null && key in changed ? changed[key] : pick(t, key));
   return {
     id: g.id,
     gr_no: pick(g, 'gr_no'),
@@ -176,8 +179,8 @@ export function listRow(record: LineRecord): GRNItem {
     qty: pick(t, 'qty'),
     stock: typeof t.stock === 'number' ? stock : pick(t, 'stock'),
     weight: pick(t, 'weight'),
-    rack: pick(t, 'rack'),
-    package_mark: pick(t, 'package_mark'),
+    rack: lotValue('rack'),
+    package_mark: lotValue('package_mark'),
     trl_img_url: pick(t, 'trl_img_url'),
   } as unknown as GRNItem;
 }

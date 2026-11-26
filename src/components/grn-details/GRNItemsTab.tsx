@@ -41,6 +41,7 @@ import {
 } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
+import { UnsentLotLines } from '@/features/unsent/UnsentMarkers';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend RPC types
@@ -220,6 +221,7 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
                 {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
                 {stacked ? <Text style={styles.secondary}>{nb(tr('grn.stock.receivedCount', { quantity: formatNumber(item.qty) }))}</Text> : null}
                 {tag ? <StatusTag status={tag.status} label={tag.label} icon={tag.icon} style={own.tag} /> : null}
+                <UnsentLotLines lotId={String(item.id)} />
               </>
             );
           },

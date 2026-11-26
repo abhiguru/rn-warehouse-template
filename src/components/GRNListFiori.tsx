@@ -92,6 +92,7 @@ import { formatSectionDate, formatNumber, formatCount, formatCardDate, formatWei
 import { Fab } from '@/components/ui/Fab';
 import { t as translate, formatIdentifier } from '@/i18n';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
+import { markerText, UnsentFootnote, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
 const logger = createLogger('GRNListFiori');
 
 /** Receipts on the first page and on each later one. A facility that pages lines gets 20, then 80 lines. */
@@ -323,6 +324,9 @@ const GRNCardFiori = memo<GRNCardProps>(({
   // Edit and Print need the server: with no connection they are disabled and say why (WH-299, Design 2.5).
   const needsConnection = useNeedsConnection();
   const reasoned = (label: string) => (needsConnection ? needsConnectionLabel(label) : label);
+  // A change of this receipt or of one of its lots that this phone has not sent: "Not sent yet" or "Sending…" (WH-301, Design 2.2).
+  const overlay = useUnsentOverlay();
+  const unsentMarker = overlay.marker('grn', group.grnId) ?? group.items.map(item => overlay.marker('lot', String(item.grn_item_id))).find(marker => marker !== null) ?? null;
 
   // Totals of the receipt: bags received, bags in stock and the weight received
   // (bags received x kg each, as the old card summed it). The collapsed card shows
@@ -429,6 +433,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
             group.invoiceState === 'partly_invoiced' ? invoiceStateLabel('partly_invoiced') : null,
             filteredNote,
             matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
+            unsentMarker === null ? null : markerText(unsentMarker),
           ].filter(Boolean).join(', ')}
           accessibilityHint={translate(actions.length > 0 ? 'lists.grn.openHintActions' : 'lists.grn.openHint')}
           accessibilityActions={actions.length > 0 ? actions : undefined}
@@ -503,6 +508,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
             <Text style={styles.weightText} maxFontSizeMultiplier={1.3} {...singleLineText()}>{weightText}</Text>
           </View>
         </Pressable>
+        <UnsentFootnote marker={unsentMarker} testID={`grn-card-unsent-${group.grnId}`} />
 
         {/* The receipt's lines */}
         {expanded && group.items.length > 0 && (

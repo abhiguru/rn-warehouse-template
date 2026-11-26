@@ -85,6 +85,7 @@ import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { beginNewBill, newBillIsCurrent, newBillToken, releaseNewBill } from '@/features/invoice/utils/startNewBill';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
+import { UnsentDetailsStrip } from '@/features/unsent/UnsentMarkers';
 
 const log = createLogger('grn');
 const makeStyles = (t: ThemeTokens) => ({
@@ -941,6 +942,7 @@ function GRNDetailScreen() {
           customer_name={grn.customer_details?.name}
           imported={grn.imported === true}
         />
+        <UnsentDetailsStrip kind="grn" id={String(id)} lotIds={items.map(item => String(item.id))} testID="grn-details-unsent-strip" />
 
         {/* Tab Navigator */}
         <GRNTabNavigator

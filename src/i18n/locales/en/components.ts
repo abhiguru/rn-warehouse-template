@@ -504,6 +504,13 @@ export const components = {
     screenNeedsConnection: 'This needs a connection. It will load when you reconnect.',
     photoNeedsConnection: 'Photo needs a connection',
     lessOtherPerson: "Less {{count}} in another person's dispatches not sent yet",
+    // An unsent change on a row, on a details page, and the deductions under a lot's stock (Design 2.2 to 2.4).
+    notSent: 'Not sent yet',
+    sending: 'Sending…',
+    changesNotSent: 'Your changes are not sent yet: {{fields}}.',
+    changesSending: 'Sending your changes…',
+    lessNotSent: 'Less {{count}} in dispatches not sent yet',
+    lessHeld: 'Less {{count}} in held dispatches',
   },
   offline: {
     message: "You're offline. Actions that need the server will work again when you reconnect.",
