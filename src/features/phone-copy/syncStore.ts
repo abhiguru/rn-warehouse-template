@@ -25,6 +25,12 @@ export interface SyncSnapshot {
    * what happens next has not begun. The bar is then empty (Design 1.5); `phase` says nothing about the phone.
    */
   pending?: boolean;
+  /** The open copy has been read at least once. While `pending` and not this, the bar may say it is still opening. */
+  copyOpen?: boolean;
+  /** While `pending`: an attempt to open the copy failed and none has succeeded since. */
+  openFailed?: boolean;
+  /** A run is trying again after such a failure: "Try again" is disabled. */
+  openRetrying?: boolean;
 }
 
 const INITIAL: SyncSnapshot = {

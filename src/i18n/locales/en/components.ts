@@ -479,6 +479,9 @@ export const components = {
     },
     storageLow: 'Phone storage is almost full. Free some space so records can be kept.',
     retryLabel: 'Try updating again',
+    opening: 'Opening the records on this phone…',
+    openFailed: "Couldn't open the records on this phone.",
+    openRetryLabel: 'Try opening again',
   },
   offline: {
     message: "You're offline. Actions that need the server will work again when you reconnect.",

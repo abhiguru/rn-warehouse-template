@@ -158,7 +158,14 @@ async function write(run: Run, work: (tx: CopyDriver) => Promise<void>): Promise
 // ---------- published state ----------
 
 function publish(patch: Partial<SyncSnapshot>): void {
-  updateSyncSnapshot(patch);
+  // The first real state ends a failed open; until then the bar keeps saying so.
+  const endsFailedOpen = patch.pending === false && getSyncSnapshot().openFailed === true;
+  updateSyncSnapshot(endsFailedOpen ? { ...patch, openFailed: false } : patch);
+}
+
+/** An attempt to open the copy failed while the bar still waits for it (Design 1.5). */
+function noteOpenFailed(epoch: number): void {
+  if (epoch === engine.epoch && getSyncSnapshot().pending) publish({ openFailed: true });
 }
 
 function setCurrent(on: boolean): void {
@@ -192,7 +199,7 @@ const isReadablePhase = (phase: CopyPhase): boolean => phase === 'stage2' || pha
 async function publishFromMeta(db: CopyDriver, offline: boolean): Promise<void> {
   const phase = await phaseOf(db);
   const format = Number(await meta(db, 'format'));
-  const patch: Partial<SyncSnapshot> = { phase, asOf: await meta(db, 'as_of') };
+  const patch: Partial<SyncSnapshot> = { phase, asOf: await meta(db, 'as_of'), copyOpen: true };
   if (phase !== 'empty' && SYNC_FORMATS.includes(format) && getSyncSnapshot().feature !== 'off') patch.feature = 'on';
   if (isReadablePhase(phase) || offline) patch.pending = false;
   publish(patch);
@@ -519,6 +526,7 @@ async function runOnce(): Promise<SyncOutcome> {
     if (epoch === engine.epoch && getSyncSnapshot().pending) await publishFromMeta(db, offline);
   } catch {
     logger.warn('The copy could not be opened');
+    noteOpenFailed(epoch);
     publish({ lastRunFailed: true });
     return 'failed';
   }
@@ -560,6 +568,17 @@ async function runOnce(): Promise<SyncOutcome> {
   }
 }
 
+/** One run; after a failed open it is marked as the retry for as long as it lasts. */
+async function runMarkingRetry(): Promise<SyncOutcome> {
+  if (!getSyncSnapshot().openFailed) return runOnce();
+  publish({ openRetrying: true });
+  try {
+    return await runOnce();
+  } finally {
+    if (getSyncSnapshot().openRetrying) publish({ openRetrying: false });
+  }
+}
+
 // ---------- schedule (contract 6.6) ----------
 
 function clearScheduleTimer(): void {
@@ -596,12 +615,14 @@ export async function startPhoneCopy(): Promise<void> {
   if (!scope) return;
   engine.started = true;
   engine.halted = false;
+  const epoch = engine.epoch;
   try {
     const db = await openCopy(scope);
     await publishFromMeta(db, await readOffline());
   } catch {
     // The run that follows tries again (and again after it, as after any failed run).
     logger.warn('The copy could not be opened');
+    noteOpenFailed(epoch);
   }
 }
 
@@ -632,7 +653,7 @@ export async function syncNow(trigger: SyncTrigger): Promise<SyncOutcome> {
   if (trigger === 'retry' || trigger === 'reconnect') engine.backoff = 0;
   clearScheduleTimer();
   const epoch = engine.epoch;
-  const running = runOnce();
+  const running = runMarkingRetry();
   engine.run = running;
   let outcome: SyncOutcome;
   try {

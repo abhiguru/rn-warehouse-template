@@ -29,10 +29,10 @@ export interface StatusBarInput {
 export type StatusBarRow = 1 | 2 | 3 | 4 | 5 | 7;
 export type OfflineStatusKey =
   | 'upToDate' | 'updating' | 'offline' | 'updateFailed' | 'firstLoad' | 'olderLoading' | 'olderPaused' | 'notReady'
-  | 'storageLow';
+  | 'storageLow' | 'opening' | 'openFailed';
 export type StatusBarIcon =
   | 'check-circle-outline' | 'sync' | 'cloud-off-outline' | 'cloud-refresh-outline' | 'cloud-download-outline'
-  | 'clock-alert-outline' | 'harddisk';
+  | 'clock-alert-outline' | 'harddisk' | 'cloud-alert-outline';
 
 export interface StatusBarView {
   /** The line-1 row of Design 1.5. */
@@ -49,6 +49,21 @@ export interface StatusBarView {
   line2: { key: 'unsent' | 'sending' | 'unsentLimit'; count: number; time?: number } | null;
   action: 'retry' | null;
   actionDisabled: boolean;
+}
+
+/** What the bar draws: a row of 1.5, or one of the two states before the copy is opened. */
+export type StatusBarContent = Pick<StatusBarView, 'tone' | 'icon' | 'line1' | 'line2' | 'action' | 'actionDisabled'>;
+
+/** Before the copy is opened (Design 1.5): still opening after the empty wait, or an attempt has failed. */
+export function deriveOpeningBar(input: { failed: boolean; retrying: boolean }): StatusBarContent {
+  return {
+    tone: 'neutral',
+    icon: input.failed ? 'cloud-alert-outline' : 'sync',
+    line1: [{ key: input.failed ? 'openFailed' : 'opening' }],
+    line2: null,
+    action: input.failed ? 'retry' : null,
+    actionDisabled: input.retrying,
+  };
 }
 
 const timed = (key: OfflineStatusKey, asOf: number | null): { key: OfflineStatusKey; time?: number } =>

@@ -8,7 +8,8 @@
  * separate stop. The text wraps and is never cut off. It slides in only when it first appears.
  *
  * Until the phone knows the copy's state (`pending`) the bar is empty at its one-line height: no icon, no words,
- * no screen-reader stop and no announcement (Design 1.5).
+ * no screen-reader stop and no announcement. A copy still not open after 5 s, or an attempt to open it that failed,
+ * is said instead (Design 1.5).
  */
 import React from 'react';
 import { Animated, Text, useWindowDimensions, View } from 'react-native';
@@ -19,13 +20,15 @@ import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePhoneCopyStatus } from '@/hooks/usePhoneCopyStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { syncNow } from '@/features/phone-copy/syncEngine';
-import { deriveStatusBar, type StatusBarView } from '@/features/phone-copy/statusBarState';
+import { deriveOpeningBar, deriveStatusBar, type StatusBarContent } from '@/features/phone-copy/statusBarState';
 import { iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { formatLoadedAt } from '@/utils/formatters';
 
 /** Distance the bar slides in from, when it first appears. */
 const HIDDEN_OFFSET = -space.giant;
+/** How long the bar stays empty while the copy is not open. */
+const OPENING_QUIET_MS = 5_000;
 
 const makeStyles = (t: ThemeTokens) => ({
   frame: {
@@ -59,13 +62,13 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-function lineOneText(view: StatusBarView): string {
+function lineOneText(view: StatusBarContent): string {
   return view.line1
     .map(part => tr(`components.offlineStatus.${part.key}`, part.time === undefined ? undefined : { time: formatLoadedAt(part.time) }))
     .join(' ');
 }
 
-function lineTwoText(view: StatusBarView): string | null {
+function lineTwoText(view: StatusBarContent): string | null {
   const line = view.line2;
   if (!line) return null;
   return tr(`components.offlineStatus.${line.key}`, {
@@ -89,8 +92,21 @@ export function OfflineStatusBar() {
     return () => animation.stop();
   }, [translateY]);
 
+  const pending = snapshot.pending === true;
+  const awaitingOpen = pending && snapshot.copyOpen !== true;
+  const [openingSlow, setOpeningSlow] = React.useState(false);
+  React.useEffect(() => {
+    if (!awaitingOpen) return undefined;
+    const timer = setTimeout(() => setOpeningSlow(true), OPENING_QUIET_MS);
+    return () => {
+      clearTimeout(timer);
+      setOpeningSlow(false);
+    };
+  }, [awaitingOpen]);
+
   const asOf = snapshot.asOf ? Date.parse(snapshot.asOf) : NaN;
-  const view = deriveStatusBar({
+  const openFailed = pending && snapshot.openFailed === true;
+  const row = deriveStatusBar({
     phase: snapshot.phase,
     loading: snapshot.running !== null,
     offline,
@@ -102,8 +118,13 @@ export function OfflineStatusBar() {
     unsent: null,
     running: snapshot.running !== null,
   });
-  const pending = snapshot.pending === true;
-  const critical = !pending && view.tone === 'critical';
+  const opening =
+    openFailed || (awaitingOpen && openingSlow)
+      ? deriveOpeningBar({ failed: openFailed, retrying: snapshot.openRetrying === true })
+      : null;
+  const view: StatusBarContent = opening ?? row;
+  const empty = pending && opening === null;
+  const critical = !empty && view.tone === 'critical';
   const colors = critical ? tokens.status.critical : tokens.status.neutral;
   const line1 = lineOneText(view);
   const line2 = lineTwoText(view);
@@ -125,11 +146,11 @@ export function OfflineStatusBar() {
       <View
         testID="offline-status-bar"
         style={[styles.status, { backgroundColor: colors.background, paddingTop: insets.top + space.sm }]}
-        accessible={!pending}
-        accessibilityLabel={pending ? undefined : label}
-        accessibilityLiveRegion={pending ? 'none' : 'polite'}
+        accessible={!empty}
+        accessibilityLabel={empty ? undefined : label}
+        accessibilityLiveRegion={empty ? 'none' : 'polite'}
       >
-        {pending ? (
+        {empty ? (
           // The height of one line of the bar, so nothing below moves when the first state arrives.
           <View style={{ height: Math.max(iconSize.md, typography.footnote.lineHeight * fontScale) }} />
         ) : (
@@ -148,7 +169,7 @@ export function OfflineStatusBar() {
           </>
         )}
       </View>
-      {!pending && view.action === 'retry' ? (
+      {!empty && view.action === 'retry' ? (
         <View style={[styles.actionSlot, { paddingTop: insets.top }]}>
           <Button
             testID="offline-status-bar-retry"
@@ -156,7 +177,7 @@ export function OfflineStatusBar() {
             size="auto"
             style={styles.action}
             disabled={view.actionDisabled}
-            accessibilityLabel={tr('components.offlineStatus.retryLabel')}
+            accessibilityLabel={tr(openFailed ? 'components.offlineStatus.openRetryLabel' : 'components.offlineStatus.retryLabel')}
             onPress={() => {
               if (!view.actionDisabled) void syncNow('retry');
             }}
