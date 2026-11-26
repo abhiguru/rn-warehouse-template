@@ -46,6 +46,34 @@ export async function readItemList(q: CopyReader, request: ItemListRequest): Pro
   return { items: rows.slice(offset, offset + request.limit).map(itemOf), total_count: rows.length, limit: request.limit, offset: request.offset };
 }
 
+/**
+ * `get_items_without_rate` for the Review step's "No rate yet" strip (contract section 17): the ids of the lines whose item the
+ * server says has no rate of the GRN's pricing mode for any customer (`rate_cover` "none"). It looks up no rate: it compares a
+ * line's weight with the bound the server gave. null (no strip) when the copy cannot tell: an edit (the GRN's own rates count),
+ * an item whose cover is unknown (`null` or absent) or a weight above the covered `up_to`.
+ */
+export async function readItemsWithoutRate(
+  q: CopyReader,
+  lines: readonly { itemId: string; weight: number }[],
+  pricingMode: 'monthly' | 'one_time',
+  grnId?: string | null
+): Promise<string[] | null> {
+  if (grnId) return null;
+  const without = new Map<string, string | null>();
+  for (const { itemId, weight } of lines) {
+    const found = await q.get<{ row: string }>('SELECT row FROM items WHERE id = ?', [itemId]);
+    const cover = found ? parseRow(found.row).rate_cover : undefined;
+    const state = typeof cover === 'object' && cover !== null ? (cover as Row)[pricingMode] : undefined;
+    if (state === 'none') {
+      without.set(itemId, found ? textOf(parseRow(found.row).name) : null);
+    } else {
+      const upTo = typeof state === 'object' && state !== null ? (state as Row).up_to : undefined;
+      if (typeof upTo !== 'number' || weight > upTo) return null;
+    }
+  }
+  return [...without.entries()].sort((a, b) => enCompare(a[1], b[1]) || compareText(a[0], b[0])).map(([id]) => id);
+}
+
 /** The active items by name then id, as the items table is read for the rates screens (`id, name, packaging, description`). */
 export async function readActiveItems(q: CopyReader): Promise<Row[]> {
   const rows = parseRows(await q.all<{ row: string }>('SELECT row FROM items WHERE active = 1'));

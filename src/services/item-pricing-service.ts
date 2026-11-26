@@ -5,7 +5,7 @@ import { getAuthenticatedClient } from '../config/supabaseConfig';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { readVia } from '@/features/phone-copy/readRoute';
 import { readGrnItemRates } from '@/features/phone-copy/reads/grnRates';
-import { readActiveItems } from '@/features/phone-copy/reads/items';
+import { readActiveItems, readItemsWithoutRate } from '@/features/phone-copy/reads/items';
 import { readItemStoragePrices, readStandardRate } from '@/features/phone-copy/reads/itemRates';
 import { readPriceHistory } from '@/features/phone-copy/reads/priceHistory';
 import type {
@@ -942,6 +942,10 @@ export const getItemsWithoutRate = async (
 ): Promise<string[] | null> => {
   if (!customerId || lines.length === 0) return [];
   try {
+    // The phone copy answers when it can (WH-348, contract 17): each item's cover state, compared with the weights; null
+    // (no strip) when it cannot tell, whatever the connection.
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readItemsWithoutRate(q, lines, pricingMode, grnId));
+    if (copy) return copy.value;
     const client = await getAuthenticatedClient();
     const { data, error } = await withTimeout(
       Promise.resolve(client.rpc('get_items_without_rate', {
