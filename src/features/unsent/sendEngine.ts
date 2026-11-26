@@ -9,7 +9,7 @@
  * meanwhile. Offline, a customer account and another person's session send nothing.
  */
 import { File } from 'expo-file-system';
-import { isCopyOffline, subscribeCopyOffline } from '@/features/phone-copy/syncEngine';
+import { isCopyOffline, subscribeCopyOffline, subscribeSyncRunEnd, syncNow } from '@/features/phone-copy/syncEngine';
 import { businessDate } from '@/features/phone-copy/pgCompat';
 import { ROLE_RECHECK_BACKOFF_MS } from '@/config/roleRecheck';
 import { onSessionChange } from '@/config/sessionLifecycle';
@@ -43,6 +43,8 @@ const engine = {
   retryTimer: null as ReturnType<typeof setTimeout> | null,
   retryStep: 0,
   started: false,
+  /** Something was sent since the last sync was asked for. */
+  sentAny: false,
   /** Items being sent now, or whose answer is being asked about. */
   active: new Set<string>(),
   /** Aborts the questions about a lost answer when the session ends. */
@@ -133,6 +135,7 @@ async function markMissingPhotos(row: ItemRow): Promise<void> {
 async function apply(row: ItemRow, outcome: SendOutcome, before: ItemRow): Promise<void> {
   switch (outcome.kind) {
     case 'sent':
+      engine.sentAny = true;
       await updateItem(row.id, { state: 'sent', result: JSON.stringify(outcome.result ?? null), sent_day: businessDate(Date.now()), last_error: null });
       for (const photo of await photosOf(row.id)) removePhotoFile(photo.file);
       return;
@@ -351,6 +354,11 @@ export function sendNow(reason: SendTrigger): Promise<void> {
     } finally {
       engine.running = null;
     }
+    // What was sent changes the numbers and stock the copy holds: ask for a sync (C298 6.6).
+    if (engine.sentAny) {
+      engine.sentAny = false;
+      void syncNow('after-send');
+    }
   })();
   engine.running = run;
   return run;
@@ -363,6 +371,7 @@ export function startSendEngine(): void {
   subscribeCopyOffline(() => {
     if (!isCopyOffline()) void sendNow('reconnect');
   });
+  subscribeSyncRunEnd(() => void sendNow('sync'));
   onSessionChange(() => {
     engine.abort.abort();
     engine.abort = new AbortController();

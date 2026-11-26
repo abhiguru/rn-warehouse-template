@@ -113,6 +113,8 @@ const engine = {
   offline: false,
   /** Screens that follow the connection; each removes itself on unmount. */
   offlineListeners: new Set<() => void>(),
+  /** Listeners told when a sync run ended well (the unsent work is sent again then). */
+  runEndListeners: new Set<() => void>(),
   backoff: 0,
   timer: null as ReturnType<typeof setTimeout> | null,
   currentTimer: null as ReturnType<typeof setTimeout> | null,
@@ -734,6 +736,7 @@ export async function syncNow(trigger: SyncTrigger): Promise<SyncOutcome> {
     if (engine.run === running) engine.run = null;
   }
   if (epoch !== engine.epoch) return outcome;
+  if (outcome === 'done') for (const listener of [...engine.runEndListeners]) listener();
   if (engine.again && outcome !== 'off' && outcome !== 'stopped') {
     engine.again = false;
     void syncNow('interval');
@@ -776,6 +779,14 @@ export function setCopyOffline(offline: boolean): void {
 /** The connection as the engine was last told (WH-299: the read route uses it, with no second NetInfo listener). */
 export function isCopyOffline(): boolean {
   return engine.offline;
+}
+
+/** Told after each sync run that ended well (WH-301: the 'sync' trigger of the send engine). */
+export function subscribeSyncRunEnd(listener: () => void): () => void {
+  engine.runEndListeners.add(listener);
+  return () => {
+    engine.runEndListeners.delete(listener);
+  };
 }
 
 export function subscribeCopyOffline(listener: () => void): () => void {

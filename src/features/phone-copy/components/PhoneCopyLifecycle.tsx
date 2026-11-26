@@ -18,6 +18,8 @@ import { getSessionCacheScope } from '@/utils/cacheManager';
 import { getLanStatus } from '@/config/lanTransport';
 import { getNetInfoGeneration, subscribeNetInfoGeneration } from '@/config/netInfoGeneration';
 import { isOfflineState } from '@/config/netOffline';
+import { initUnsent } from '@/features/unsent/unsentStore';
+import { sendNow } from '@/features/unsent/sendEngine';
 import { eraseCopy } from '../copyDb';
 import { setCopyForeground, setCopyOffline, setSyncSchedule, startPhoneCopy, stopPhoneCopy, syncNow } from '../syncEngine';
 
@@ -30,6 +32,9 @@ export function PhoneCopyLifecycle() {
 
     const begin = async () => {
       await startPhoneCopy();
+      // The unsent work is opened with the copy and sent at once when the person is connected (contract 4, triggers).
+      await initUnsent();
+      void sendNow('open');
       if (live && enabled && foreground) await syncNow('open');
     };
 
@@ -73,7 +78,12 @@ export function PhoneCopyLifecycle() {
       foreground = active;
       setCopyForeground(active);
       if (!enabled) return;
-      if (active) void startPhoneCopy().then(() => (live && foreground ? syncNow('foreground') : undefined));
+      if (active) {
+        void startPhoneCopy().then(() => {
+          void sendNow('foreground');
+          return live && foreground ? syncNow('foreground') : undefined;
+        });
+      }
       else void stopPhoneCopy();
     };
 
