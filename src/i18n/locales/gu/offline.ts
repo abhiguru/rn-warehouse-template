@@ -11,6 +11,7 @@ export const offline: Translation<typeof source> = {
     sendingNow: 'મોકલાઈ રહ્યું છે…',
     sectionUnfinished: 'અધૂરું',
     sectionUnsent: 'હજુ મોકલવાનું બાકી',
+    sectionHeld: 'રોકેલું',
     sectionSent: 'આજે મોકલેલું',
     whatNewGrn: 'નવી આવક પાવતી',
     whatNewGrnNumber: 'નવી આવક પાવતી {{number}}',
@@ -26,6 +27,8 @@ export const offline: Translation<typeof source> = {
     stateSaved: 'ફોનમાં સાચવેલું',
     stateSending: 'મોકલાઈ રહ્યું છે…',
     stateSent: 'મોકલાઈ ગયું',
+    stateHeld: 'રોકેલું',
+    dependsOnRefused: 'મોકલી નથી: તે પહેલાંનો ફેરફાર રોકાયો છે.',
     stateWaiting: 'આવક પાવતીની રાહ',
     emptyTitle: 'મોકલવાનું કંઈ બાકી નથી',
     emptyText: 'આ ફોનમાં નોંધેલું બધું મોકલાઈ ગયું છે.',
@@ -68,6 +71,11 @@ export const offline: Translation<typeof source> = {
   moveHolding: {
     title: '{{name}} ની એન્ટ્રી રોકેલી યાદીમાં મૂકશો?',
     message: 'પછી સુપરવાઇઝર કે એડમિન ત્યાં દરેક સ્વીકારી કે નકારી શકશે.',
+  },
+  duration: {
+    hoursMinutes: '{{hours}} કલાક {{minutes}} મિનિટ',
+    hours: '{{hours}} કલાક',
+    minutes: '{{minutes}} મિનિટ',
   },
   barHint: 'મોકલવાની બાકી એન્ટ્રી ખોલે છે',
   unfinishedWillGo: {

@@ -36,9 +36,13 @@ export interface UnsentRowView {
   what: string;
   customer: string | null;
   recordedAt: number;
-  /** "Not sent yet" or "Sent today" (Design 4.2). */
-  section: 'unsent' | 'sent';
+  /** "Not sent yet", "Held" (refused, with what depends on it) or "Sent today" (Design 4.2, 4.6). */
+  section: 'unsent' | 'held' | 'sent';
   tag: 'refused' | null;
+  /** The item this one waits for or follows, if any. */
+  dependsOn: string | null;
+  /** Why a held item was not sent: the server's reason, or `dependsOnRefused:<id>` for what follows a refused item. */
+  reason: string | null;
   /** The number the server gave, once sent. */
   result: unknown;
   /** The number of the record the item is about (a GRN's number, for its photos), as an identifier. */
@@ -134,7 +138,9 @@ export async function listItems(): Promise<UnsentRowView[]> {
       what: row.what,
       customer: row.customer,
       recordedAt: row.recorded_at,
-      section: row.state === 'sent' ? ('sent' as const) : ('unsent' as const),
+      section: row.state === 'sent' ? ('sent' as const) : row.state === 'refused' ? ('held' as const) : ('unsent' as const),
+      dependsOn: row.depends_on,
+      reason: row.last_error,
       tag: row.state === 'refused' ? ('refused' as const) : null,
       result: row.result === null ? null : (JSON.parse(row.result) as unknown),
       targetNumber: targetNumberOf(row.target_ref),

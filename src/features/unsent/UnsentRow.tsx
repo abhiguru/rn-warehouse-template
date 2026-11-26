@@ -47,13 +47,15 @@ const TAG_STATUS: Record<UnsentListRow['tag'], StatusKind> = {
   sending: 'informative',
   sent: 'positive',
   waiting: 'neutral',
+  held: 'critical',
 };
 
-const TAG_TEXT: Record<UnsentListRow['tag'], 'stateSaved' | 'stateSending' | 'stateSent' | 'stateWaiting'> = {
+const TAG_TEXT: Record<UnsentListRow['tag'], 'stateSaved' | 'stateSending' | 'stateSent' | 'stateWaiting' | 'stateHeld'> = {
   saved: 'stateSaved',
   sending: 'stateSending',
   sent: 'stateSent',
   waiting: 'stateWaiting',
+  held: 'stateHeld',
 };
 
 export interface UnsentRowProps {
@@ -73,7 +75,7 @@ export const UnsentRow = memo(function UnsentRow({ row, divider, onOpen, onDelet
   // "Sent · GRN 312": the number is an identifier, so it keeps 0-9.
   const tagLabel = row.sentNumber === null ? tagText : `${tagText} · ${formatIdentifier(row.sentNumber)}`;
   const recorded = tr('offline.unsent.recordedAt', { time: formatLoadedAt(row.recordedAt) });
-  const label = [row.title, row.customer, recorded, tagLabel].filter(Boolean).join(', ');
+  const label = [row.title, row.customer, recorded, tagLabel, row.reason].filter(Boolean).join(', ');
 
   const content = (
     <Pressable
@@ -92,6 +94,11 @@ export const UnsentRow = memo(function UnsentRow({ row, divider, onOpen, onDelet
         <Text style={styles.title}>{row.title}</Text>
         {row.customer ? <Text style={styles.subtitle}>{row.customer}</Text> : null}
         <Text style={styles.footnote}>{recorded}</Text>
+        {row.reason ? (
+          <Text testID={`unsent-row-reason-${row.id}`} style={styles.footnote}>
+            {row.reason}
+          </Text>
+        ) : null}
         {row.photoMissing ? (
           <Text testID={`unsent-row-photo-missing-${row.id}`} style={styles.footnote}>
             {tr('offline.unsent.photoMissing')}

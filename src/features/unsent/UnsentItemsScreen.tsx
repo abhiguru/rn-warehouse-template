@@ -37,16 +37,22 @@ const makeStyles = (t: ThemeTokens) => ({
 
 type Entry = { type: 'header'; key: string; testID: string; title: string; count: number } | { type: 'row'; key: string; row: UnsentListRow; divider: boolean };
 
+const SECTION_TITLES = {
+  unsent: 'offline.unsent.sectionUnsent',
+  held: 'offline.unsent.sectionHeld',
+  sent: 'offline.unsent.sectionSent',
+} as const;
+
 function entriesOf(rows: UnsentListRow[]): Entry[] {
   const out: Entry[] = [];
-  for (const section of ['unsent', 'sent'] as const) {
+  for (const section of ['unsent', 'held', 'sent'] as const) {
     const own = rows.filter(row => row.section === section);
     if (own.length === 0) continue;
     out.push({
       type: 'header',
       key: `header-${section}`,
       testID: `unsent-section-${section}`,
-      title: tr(section === 'unsent' ? 'offline.unsent.sectionUnsent' : 'offline.unsent.sectionSent'),
+      title: tr(SECTION_TITLES[section]),
       count: own.length,
     });
     own.forEach((row, index) => out.push({ type: 'row', key: row.id, row, divider: index < own.length - 1 }));

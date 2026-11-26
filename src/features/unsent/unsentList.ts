@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr } from '@/i18n';
+import { DEPENDS_ON_REFUSED } from './sendEngine';
 import { listItems, photosOfItem, type UnsentRowView } from './unsentQueue';
 import { getLastSentAt, type ItemState } from './unsentRows';
 import { subscribeUnsent } from './unsentStore';
@@ -15,7 +16,7 @@ const logger = createLogger('[unsent-list]');
 export interface UnsentListRow {
   id: string;
   state: ItemState;
-  section: 'unsent' | 'sent';
+  section: 'unsent' | 'held' | 'sent';
   /** The row's title in the person's language, and the customer. */
   title: string;
   customer: string | null;
@@ -25,7 +26,9 @@ export interface UnsentListRow {
   /** A photo file of this item is gone from the phone (the record was sent without it). */
   photoMissing: boolean;
   /** The tag shown at the right. */
-  tag: 'saved' | 'sending' | 'sent' | 'waiting';
+  tag: 'saved' | 'sending' | 'sent' | 'waiting' | 'held';
+  /** Under "Held": why it was not sent (the footnote); null when nothing is known. */
+  reason: string | null;
   /** The record a tap opens, when it exists. */
   target: { grnId?: string; dispatchId?: string };
 }
@@ -63,10 +66,20 @@ function tagOf(state: ItemState): UnsentListRow['tag'] {
       return 'sent';
     case 'waiting':
       return 'waiting';
-    case 'saved':
     case 'refused':
+      return 'held';
+    case 'saved':
       return 'saved';
   }
+}
+
+/**
+ * The footnote of a held item: what follows a refused item says so in its own words, never the refused item's reason
+ * (Design 4.6); a refused item shows the reason the server gave.
+ */
+function heldReason(reason: string | null): string | null {
+  if (reason === null) return null;
+  return reason.startsWith(DEPENDS_ON_REFUSED) ? tr('offline.unsent.dependsOnRefused') : reason;
 }
 
 export async function loadUnsentList(): Promise<{ rows: UnsentListRow[]; lastSentAt: number | null }> {
@@ -84,13 +97,24 @@ export async function loadUnsentList(): Promise<{ rows: UnsentListRow[]; lastSen
       sentNumber: view.section === 'sent' ? numberOf(view.result) : null,
       photoMissing,
       tag: tagOf(view.state),
+      reason: view.section === 'held' ? heldReason(view.reason) : null,
       target: view.target,
     });
   }
-  // "Not sent yet" oldest first (the order they are sent); "Sent today" newest first.
+  // "Not sent yet" oldest first (the order they are sent); "Held": each refused item with what follows it directly under
+  // it; "Sent today" newest first.
   const unsent = rows.filter(row => row.section === 'unsent');
+  const heldIds = new Set(views.filter(view => view.section === 'held').map(view => view.id));
+  const roots = views.filter(view => view.section === 'held' && !(view.dependsOn !== null && heldIds.has(view.dependsOn)));
+  const held: UnsentListRow[] = [];
+  const place = (id: string) => {
+    const row = rows.find(own => own.id === id);
+    if (row) held.push(row);
+    for (const view of views) if (view.section === 'held' && view.dependsOn === id) place(view.id);
+  };
+  for (const root of roots) place(root.id);
   const sent = rows.filter(row => row.section === 'sent').reverse();
-  return { rows: [...unsent, ...sent], lastSentAt: await getLastSentAt() };
+  return { rows: [...unsent, ...held, ...sent], lastSentAt: await getLastSentAt() };
 }
 
 /** The list as a hook: loaded again on every change of the store. */

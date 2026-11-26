@@ -8,6 +8,7 @@ export const offline = {
     sendingNow: 'Sending…',
     sectionUnfinished: 'Not finished',
     sectionUnsent: 'Not sent yet',
+    sectionHeld: 'Held',
     sectionSent: 'Sent today',
     whatNewGrn: 'New GRN',
     whatNewGrnNumber: 'New GRN {{number}}',
@@ -23,6 +24,8 @@ export const offline = {
     stateSaved: 'Saved on phone',
     stateSending: 'Sending…',
     stateSent: 'Sent',
+    stateHeld: 'Held',
+    dependsOnRefused: 'Not sent: the change before it was refused.',
     stateWaiting: 'Waiting for its GRN',
     emptyTitle: 'Nothing to send',
     emptyText: 'Everything recorded on this phone has been sent.',
@@ -65,6 +68,11 @@ export const offline = {
   moveHolding: {
     title: "Move {{name}}'s items to the holding list?",
     message: 'A supervisor or administrator can then accept or reject each one there.',
+  },
+  duration: {
+    hoursMinutes: '{{hours}} h {{minutes}} min',
+    hours: '{{hours}} h',
+    minutes: '{{minutes}} min',
   },
   barHint: 'Opens Unsent items',
   unfinishedWillGo: {
