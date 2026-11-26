@@ -62,7 +62,7 @@ interface Condition {
   sql: string[];
   params: SqlValue[];
 }
-interface Conditions {
+export interface Conditions {
   /** On the receipt, `g`. */
   grn: Condition;
   /** On the lot, `t` (and its search row, `ls`). */
@@ -84,7 +84,7 @@ function microsOf(time: string): number {
   return value;
 }
 
-function conditionsOf(params: GRNListParams): Conditions {
+export function conditionsOf(params: GRNListParams): Conditions {
   const grn: Condition = { sql: [], params: [] };
   const lot: Condition = { sql: [], params: [] };
   const filters = params.p_filters ?? {};
@@ -121,10 +121,10 @@ function conditionsOf(params: GRNListParams): Conditions {
   return { grn, lot, searches: terms.length > 0, selective: terms.length > 0 || Boolean(filters.item_ids?.length) };
 }
 
-const where = (sql: readonly string[]): string => (sql.length ? `WHERE ${sql.join(' AND ')}` : '');
+export const where = (sql: readonly string[]): string => (sql.length ? `WHERE ${sql.join(' AND ')}` : '');
 const searchJoin = (c: Conditions): string => (c.searches ? 'JOIN lot_search ls ON ls.lot_id = t.id' : '');
 /** Every lot line that passes, with its receipt. */
-const linesFrom = (c: Conditions): string =>
+export const linesFrom = (c: Conditions): string =>
   `FROM goodsreceived g JOIN goodsreceived_trl t ON t.gr_id = g.id ${searchJoin(c)}`;
 
 function orderOf(params: GRNListParams): { by: string; joins: string; ranks: RankKind[] } {
@@ -140,19 +140,19 @@ function orderOf(params: GRNListParams): { by: string; joins: string; ranks: Ran
   return { by: `${spec.sql} ${direction}${nulls}, rn.rank`, joins: joins.join(' '), ranks };
 }
 
-interface LineRecord {
+export interface LineRecord {
   grn_row: string;
   lot_row: string;
   lot_id: string;
   invoice_state: string | null;
 }
-const LINE_COLUMNS = 'g.row AS grn_row, t.row AS lot_row, t.id AS lot_id, lk.invoice_state AS invoice_state';
-const LOCK_JOIN = 'LEFT JOIN grn_lock lk ON lk.id = g.id';
+export const LINE_COLUMNS = 'g.row AS grn_row, t.row AS lot_row, t.id AS lot_id, lk.invoice_state AS invoice_state';
+export const LOCK_JOIN = 'LEFT JOIN grn_lock lk ON lk.id = g.id';
 
 const parseRow = (text: string): Record<string, unknown> => JSON.parse(text) as Record<string, unknown>;
 
 /** One row as the server function builds it. */
-function listRow(record: LineRecord): GRNItem {
+export function listRow(record: LineRecord): GRNItem {
   const g = parseRow(record.grn_row);
   const t = parseRow(record.lot_row);
   const pick = (from: Record<string, unknown>, key: string) => from[key] ?? null;
@@ -217,7 +217,7 @@ async function pageByReceipt(q: CopyReader, params: GRNListParams, c: Conditions
   return records.sort((a, b) => (position.get(a.gr_id) ?? 0) - (position.get(b.gr_id) ?? 0)).map(listRow);
 }
 
-interface Totals {
+export interface Totals {
   lines: number;
   receipts: number;
   total_qty: number;
@@ -229,7 +229,7 @@ const MAX_KEPT_TOTALS = 4;
 const keptTotals = new Map<string, Totals>();
 registerSessionScoped('copy-grn-totals', () => keptTotals.clear());
 
-async function totalsOf(q: CopyReader, params: GRNListParams, c: Conditions, offset: number): Promise<Totals> {
+export async function totalsOf(q: CopyReader, params: GRNListParams, c: Conditions, offset: number): Promise<Totals> {
   const written = (await q.get<{ n: number }>('SELECT total_changes() AS n'))?.n ?? 0;
   // The same request whatever its page (JSON leaves the undefined ones out).
   const request: GRNListParams = { ...params, p_limit: undefined, p_offset: undefined };

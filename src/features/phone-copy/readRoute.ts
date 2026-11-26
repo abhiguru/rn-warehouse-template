@@ -76,13 +76,23 @@ function signedInRole(): unknown {
 }
 
 /**
+ * A warehouse role, on a facility with the feature, over a copy that is not of an older format. A copy that has not
+ * begun its first load (no format yet) is eligible: what it holds is a question of its phase.
+ */
+export function copyEligible(): boolean {
+  if (!hasCapability('sync') || !isCopyRole(signedInRole())) return false;
+  const { feature, format } = getSyncSnapshot();
+  return feature !== 'off' && (format === undefined || format >= READ_FORMAT);
+}
+
+/**
  * 'copy' only for a warehouse role, on a facility with the feature, over a copy of format 2 that is complete, or that
  * holds what the read needs while the phone is offline and the older records have not arrived.
  */
 export function copyRoute(need: CopyNeed): 'copy' | 'server' {
-  if (!hasCapability('sync') || !isCopyRole(signedInRole())) return 'server';
-  const { feature, phase, format } = getSyncSnapshot();
-  if (feature === 'off' || format === undefined || format < READ_FORMAT) return 'server';
+  if (!copyEligible()) return 'server';
+  const { phase, format } = getSyncSnapshot();
+  if (format === undefined) return 'server';
   if (phase === 'ready') return 'copy';
   return phase === 'stage2' && need === 'stage1' && isCopyOffline() ? 'copy' : 'server';
 }
@@ -122,6 +132,24 @@ async function readCopy<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<
   });
   if (!result) throw new CopyReadError();
   return result;
+}
+
+/**
+ * A read that has no server path (Find goods, WH-300): the copy in its second stage or complete, whatever the
+ * connection. `not-ready`: no copy of this session, or one that does not hold the records yet when the transaction
+ * starts. `failed`: any other error, logged once by its name.
+ */
+export async function readCopyOnly<T>(
+  fromCopy: (q: CopyReader) => Promise<T>
+): Promise<{ kind: 'answer'; answer: CopyAnswer<T> } | { kind: 'not-ready' } | { kind: 'failed' }> {
+  try {
+    return { kind: 'answer', answer: (await readCopy('stage1', fromCopy)).answer };
+  } catch (error) {
+    if (error instanceof CopyReadError) return { kind: 'not-ready' };
+    // The error's name only: a database message can quote a row.
+    logger.warn('A read of the copy without a server path failed', error instanceof Error ? error.name : 'unknown');
+    return { kind: 'failed' };
+  }
 }
 
 export function readVia<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<T>): Promise<CopyAnswer<T> | null>;

@@ -17,9 +17,14 @@ export interface UnsentOverlay {
   lessUnsent(lotId: string): number;
   /** Bags of the lot in held dispatches. */
   lessHeld(lotId: string): number;
+  /** Lot id to the bags taken off it (`lessUnsent` plus `lessHeld`), only the lots above 0 (WH-300). */
+  deductions(): ReadonlyMap<string, number>;
 }
 
-const NOTHING: UnsentOverlay = { grn: () => null, lot: () => null, dispatch: () => null, lessUnsent: () => 0, lessHeld: () => 0 };
+const NOTHING: UnsentOverlay = { grn: () => null, lot: () => null, dispatch: () => null, lessUnsent: () => 0,
+  lessHeld: () => 0,
+  deductions: () => new Map(),
+};
 
 export function getUnsentOverlay(): UnsentOverlay {
   return NOTHING;
