@@ -11,6 +11,7 @@ import GRNListFiori from '../GRNListFiori';
 import { MemoizedDispatchItem } from '../list-items/MemoizedDispatchItem';
 import type { Dispatch } from '@/services/dispatch-service';
 import { GRNImagesTab } from '../grn-details/GRNImagesTab';
+import { DispatchImagesTab } from '../dispatch-details/DispatchImagesTab';
 import { getGRNListPage } from '@/services/grn-service';
 import { router } from 'expo-router';
 import { setCopyOffline } from '@/features/phone-copy/syncEngine';
@@ -151,5 +152,33 @@ describe('Dispatch card, screen-reader Print action', () => {
     expect(actions().find(a => a.name === 'print')?.label).toBe('Print Dispatch 42');
     await run();
     expect(onPrint).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Kept photo, per-photo delete', () => {
+  const grnPhoto = [{ id: 'p1', image_url: 'file:///kept/p1.jpg', category: 'header' as const }];
+  const dispatchPhoto = [{ id: 'q1', image_url: 'file:///kept/q1.jpg' }];
+  const cases = [
+    ['GRN Images', 'Delete GRN photo', (onDelete: jest.Mock) => <GRNImagesTab images={grnPhoto} onDeleteImage={onDelete} />],
+    ['dispatch Images', 'Delete dispatch photo 1 of 1', (onDelete: jest.Mock) => <DispatchImagesTab images={dispatchPhoto} onDelete={onDelete} />],
+  ] as const;
+
+  it.each(cases)('offline, %s: delete is disabled, says it needs a connection, and deletes nothing', async (_n, label, ui) => {
+    const onDelete = jest.fn();
+    await render(ui(onDelete));
+    await goOffline();
+    const del = screen.getByRole('button', { name: `${label}, needs a connection` });
+    expect(del).toBeDisabled();
+    await userEvent.press(del);
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it.each(cases)('online, %s: delete stays enabled and deletes', async (_n, label, ui) => {
+    const onDelete = jest.fn();
+    await render(ui(onDelete));
+    const del = screen.getByRole('button', { name: label });
+    expect(del).toBeEnabled();
+    await userEvent.press(del);
+    expect(onDelete).toHaveBeenCalledTimes(1);
   });
 });
