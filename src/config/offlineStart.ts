@@ -12,9 +12,10 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { PublicConfig } from '@/services/configService';
-import { RequestTimeoutError } from './supabaseConfig';
-import type { OperatorServer } from './operatorServer';
-import { getSessionGeneration } from './sessionLifecycle';
+import { getCurrentConfig, getStoredToken, RequestTimeoutError } from './supabaseConfig';
+import { getActiveOperatorServer, type OperatorServer } from './operatorServer';
+import { getSessionGeneration, onCredentialsSettled } from './sessionLifecycle';
+import { registerSessionScoped } from './sessionScopedRegistry';
 
 const STORAGE_KEY = 'offline_start_v1';
 
@@ -60,6 +61,30 @@ export async function readOfflineStart(server: Pick<OperatorServer, 'origin' | '
   }
 }
 
+// The config last adopted in this run, in memory only. The kept record is erased with each session (sign-out,
+// session teardown), and a person may sign in again at the same facility with no further facility check.
+let adopted: { server: Pick<OperatorServer, 'origin' | 'instanceId'>; config: PublicConfig } | null = null;
+
+/** Keeps the record again for a new session of the facility whose config is in use. Never throws. */
+async function keepForNewSession(): Promise<void> {
+  const generation = getSessionGeneration();
+  try {
+    const kept = adopted;
+    if (!kept || !(await getStoredToken()).authToken) return;
+    const active = getActiveOperatorServer();
+    if (active?.origin !== kept.server.origin || active.instanceId !== kept.server.instanceId) return;
+    // Keys replaced since: the next facility check keeps the current ones.
+    if (getCurrentConfig().anonKey !== kept.config.anonKey) return;
+    // A session that ended meanwhile keeps nothing: its teardown erases the record.
+    if (generation !== getSessionGeneration()) return;
+    await rememberOfflineStart(kept.server, kept.config);
+  } catch {
+    // Not kept: the next facility check keeps it.
+  }
+}
+
+onCredentialsSettled(() => void keepForNewSession());
+
 /**
  * Where the app adopts a facility's public config (every verified start, opening a facility from My facilities, an SMS
  * sign-in to it, pairing a local facility, break-glass sign-in): keeps it for an offline start while the facility has
@@ -68,11 +93,13 @@ export async function readOfflineStart(server: Pick<OperatorServer, 'origin' | '
 export async function keepOfflineStart(server: Pick<OperatorServer, 'origin' | 'instanceId'>, config: PublicConfig): Promise<void> {
   // A config without capabilities (an older server) has no feature: no record.
   const capabilities = (config as { capabilities?: Record<string, unknown> | null }).capabilities;
-  if (capabilities?.sync === true) await rememberOfflineStart(server, config);
+  const offered = capabilities?.sync === true;
+  adopted = offered ? { server, config } : null;
+  if (offered) await rememberOfflineStart(server, config);
   else await forgetOfflineStart();
 }
 
-/** Never throws. */
+/** Erases the kept record: with the phone copy at the end of a session, and when the feature is off. Never throws. */
 export async function forgetOfflineStart(): Promise<void> {
   try {
     await AsyncStorage.removeItem(STORAGE_KEY);
@@ -80,6 +107,9 @@ export async function forgetOfflineStart(): Promise<void> {
     // Nothing kept is harmless: the next verified start writes it again.
   }
 }
+
+// Erased with the phone copy when a session ends: sign-out, forced sign-out, leaving the facility (WH-346).
+registerSessionScoped('offline-start', () => forgetOfflineStart());
 
 /**
  * Expo's fetch (installed as the global fetch since SDK 57) rejects only when no answer came, with its FetchError,
