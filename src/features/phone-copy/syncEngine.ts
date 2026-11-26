@@ -17,8 +17,9 @@ import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger } from '@/utils/logger';
 import { applyChanges, finishReload, stageRows, writeRows } from './applyBatch';
 import { compareChecksums } from './checksums';
-import { eraseCopyFiles, openCopy, replaceWithEmptyCopy, setBeforeErase } from './copyDb';
+import { CopyKeyUnreadableError, eraseCopyFiles, openCopy, replaceWithEmptyCopy, setBeforeErase } from './copyDb';
 import type { CopyDriver } from './copyDriver';
+import { recordCopyKeyReadTry, resetCopyKeyReadTries } from './copyKeyReadTries';
 import {
   ALL_ENTITIES, LAST_STAGE_ONE_ENTITY, SYNC_FORMATS, createIndexes, isEntityName, rebuildAllSearch, type EntityName,
 } from './copySchema';
@@ -537,6 +538,28 @@ async function openForRun(scope: string, epoch: number, offline: boolean): Promi
   }
 }
 
+/**
+ * The copy's key could not be read (WH-365). After 3 failed reads in a row, one of them after a fresh start, and only
+ * online, a new key is written and then the old file goes (replaceWithEmptyCopy), and the copy loads again with the
+ * bar's first-load state. The sign-in, the facility and unsent work are not touched. Null: nothing replaced.
+ */
+async function replaceForUnreadableKey(scope: string, epoch: number, offline: boolean): Promise<CopyDriver | null> {
+  const due = await recordCopyKeyReadTry();
+  if (!due || offline || epoch !== engine.epoch) return null;
+  try {
+    const db = await replaceWithEmptyCopy(scope);
+    await resetCopyKeyReadTries();
+    if (epoch === engine.epoch) {
+      publish({ pending: true, openFailed: false });
+      await publishFromMeta(db, false);
+    }
+    return db;
+  } catch {
+    // The new key could not be written: the old file and key are as they were, and the next run counts again.
+    return null;
+  }
+}
+
 async function runOnce(): Promise<SyncOutcome> {
   const epoch = engine.epoch;
   const scope = await getSessionCacheScope();
@@ -550,14 +573,19 @@ async function runOnce(): Promise<SyncOutcome> {
     // The session could not be read just now (secure storage): nothing is decided, and the run is tried again.
     if (!scope) throw new SyncFailedError('session not read');
     db = await openForRun(scope, epoch, offline);
-  } catch {
+  } catch (error) {
     logger.warn('The copy could not be opened');
-    noteOpenFailed(epoch);
-    publish({ lastRunFailed: true });
-    return 'failed';
+    const replaced = scope && error instanceof CopyKeyUnreadableError ? await replaceForUnreadableKey(scope, epoch, offline) : null;
+    if (!replaced) {
+      noteOpenFailed(epoch);
+      publish({ lastRunFailed: true });
+      return 'failed';
+    }
+    db = replaced;
   }
   if (epoch !== engine.epoch) return 'stopped';
   if (offline) return 'offline';
+  if (!scope) return 'failed';
   const run: Run = { epoch, scope, stop: engine.stop.promise, db, reloadedAll: false };
   try {
     await work(run);

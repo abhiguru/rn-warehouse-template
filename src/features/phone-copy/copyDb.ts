@@ -9,6 +9,7 @@ import { createLogger } from '@/utils/logger';
 import { COPY_FILE, deleteCopyFile, openExpoDriver, type CopyDriver } from './copyDriver';
 import { forgetCopyKey, loadCopyKey, makeCopyKey, type CopyKey } from './copyKey';
 import { SCHEMA_VERSION, createSchema } from './copySchema';
+import { resetCopyKeyReadTries } from './copyKeyReadTries';
 import { resetSyncSnapshot } from './syncStore';
 
 const logger = createLogger('[phone-copy]');
@@ -20,6 +21,14 @@ const holder = {
   /** Stops the sync engine and waits for its local transaction before an erase (set by syncEngine.ts). */
   beforeErase: null as null | (() => Promise<void>),
 };
+
+/** Secure storage could not be read for the copy's key (WH-365): the engine counts it, and nothing is erased for it. */
+export class CopyKeyUnreadableError extends Error {
+  constructor() {
+    super('The key of the phone copy could not be read');
+    this.name = 'CopyKeyUnreadableError';
+  }
+}
 
 /** Runs one open or erase at a time. */
 function inTurn<T>(task: () => Promise<T>): Promise<T> {
@@ -115,7 +124,14 @@ export function openCopy(scope: string): Promise<CopyDriver> {
   return inTurn(async () => {
     if (holder.handle && holder.scope === scope) return holder.handle;
     await closeHandle();
-    const key = await loadCopyKey();
+    let key: CopyKey | null;
+    try {
+      key = await loadCopyKey();
+    } catch {
+      throw new CopyKeyUnreadableError();
+    }
+    // Secure storage answered: the count of failed key reads (WH-365) goes.
+    void resetCopyKeyReadTries();
     let db = key?.scope === scope ? await openExisting(key, scope) : null;
     db ??= await createCopy(scope);
     holder.handle = db;
