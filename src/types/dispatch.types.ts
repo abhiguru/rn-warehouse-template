@@ -553,6 +553,8 @@ export interface RecentDispatchedOrder {
 export interface RecentDispatchedOrdersResponse {
   success: boolean;
   error?: string;
+  /** Set when the phone copy answered (WH-328); absent for the server's answer. */
+  source?: { kind: 'copy'; asOf: string };
   data?: {
     total_count: number;
     has_more: boolean;

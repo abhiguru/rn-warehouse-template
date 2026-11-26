@@ -32,7 +32,7 @@ import {
 } from './syncApi';
 import { getSyncSnapshot, resetSyncSnapshot, updateSyncSnapshot, type CopyPhase, type SyncSnapshot } from './syncStore';
 
-export type SyncTrigger = 'open' | 'foreground' | 'reconnect' | 'interval' | 'pull-to-refresh' | 'after-send' | 'retry' | 'checksum';
+export type SyncTrigger = 'open' | 'foreground' | 'reconnect' | 'interval' | 'pull-to-refresh' | 'after-send' | 'retry' | 'checksum' | 'orders';
 export type SyncOutcome = 'done' | 'offline' | 'failed' | 'busy-queued' | 'off' | 'stopped';
 
 const logger = createLogger('[phone-copy]');
@@ -237,7 +237,8 @@ async function clearData(tx: CopyDriver): Promise<void> {
 async function startLoad(run: Run): Promise<void> {
   const start = await getSyncStart(run.stop);
   if (!SYNC_FORMATS.includes(start.format) || !start.entities.every(isEntityName)) throw new FeatureOffError();
-  const entities: EntityName[] = start.entities;
+  // A name listed twice would send the page cursor round in a circle: each entity is loaded once, at its first place.
+  const entities: EntityName[] = [...new Set(start.entities)];
   const boundary = entities.indexOf(LAST_STAGE_ONE_ENTITY);
   const stageOne = boundary < 0 ? entities : entities.slice(0, boundary + 1);
   await write(run, async tx => {
@@ -384,7 +385,7 @@ async function reloadAll(run: Run, reason: string): Promise<void> {
     publish({ running: 'reload' });
     const start = await getSyncStart(run.stop);
     if (!SYNC_FORMATS.includes(start.format) || !start.entities.every(isEntityName)) throw new FeatureOffError();
-    const entities: EntityName[] = start.entities;
+    const entities: EntityName[] = [...new Set(start.entities)];
     const pending: PendingReload = {
       whole: true, entities, position: start.position, copy: start.copy, format: start.format, asOf: start.asOf,
       cursor: entities.length ? { entity: entities[0], after: null } : null,

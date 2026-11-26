@@ -1,5 +1,6 @@
 // Order System Type Definitions
 // Using "Order" terminology in frontend while mapping to "cart" in backend
+import type { DataSource } from '@/features/phone-copy/sourced';
 import type { ServerRefusal } from '@/utils/serverRefusal';
 
 export interface Customer {
@@ -112,6 +113,10 @@ export interface OrderServiceResponse<T = any> {
   serverMessage?: string;
   /** The change got no answer and may have been applied (RPCResult.lostAnswer, owner rule D22). Absent otherwise. */
   lostAnswer?: boolean;
+  /** Set when the phone copy answered (WH-328); absent for the server's answer. */
+  source?: DataSource;
+  /** A later page whose source is no longer the first page's: the list asks for its first page again (WH-299). */
+  copyRestart?: boolean;
   /**
    * The rule the server refused by (wave B: `reason` and the values that go with it, see src/utils/serverRefusal.ts).
    * A screen switches on `refusal.reason` and never reads the server's English. Absent for an old server and for a

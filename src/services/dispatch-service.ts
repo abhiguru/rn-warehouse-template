@@ -20,6 +20,8 @@ import { rpcRefusal } from '@/utils/rpcRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
 import { readVia } from '@/features/phone-copy/readRoute';
 import { readDispatchList } from '@/features/phone-copy/reads/dispatchList';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { readRecentDispatchedOrders } from '@/features/phone-copy/reads/recentOrderDispatches';
 import type { DataSource } from '@/features/phone-copy/sourced';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
@@ -1230,6 +1232,12 @@ export const getRecentDispatchedOrders = async (
   try {
     if (__DEV__) {
       console.log('[DispatchService] Fetching recent dispatched orders:', { limit, offset });
+    }
+
+    // The phone copy answers when it can (WH-328).
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readRecentDispatchedOrders(q, limit, offset));
+    if (copy) {
+      return { success: true, source: copy.source, data: copy.value as unknown as NonNullable<RecentDispatchedOrdersResponse['data']> };
     }
 
     const authenticatedClient = await getAuthenticatedClient();
