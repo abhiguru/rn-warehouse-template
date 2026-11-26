@@ -47,6 +47,8 @@ import {
   signedInPhone, startWithNoConnection,
 } from '@/tests/helpers/offlineRoleServer';
 
+/** The connection dropped after the request went out (not "host not found": that one never left the phone). */
+const droppedAnswer = () => new Error('fetch failed: java.net.SocketException: Connection reset');
 const REFUSED = /identity verification required/i;
 const ABORTED = /abort/i;
 /** The longest a write may wait before it is sent (Product accepted 25 s, below every screen's own limit). */
@@ -474,6 +476,44 @@ describe('the rate and sensor services, whose screens give up after 30 seconds',
     });
   });
 
+  describe('a rate undo whose answer was lost', () => {
+    const RATES = '/rest/v1/rpc/get_item_storage_prices';
+    const UNDO = '/rest/v1/rpc/undo_rate_change';
+    const undo = () => undoRateChange({ itemId: 'item-1', customerId: null, priceType: 'monthly', startsOn: '2027-01-01' });
+    const ratesOf = (rows: { effective_from: string; effective_to: string | null }[]) => () => ({
+      success: true,
+      data: rows.map((row, i) => ({ id: `rate-${i}`, item_id: 'item-1', customer_id: null, price_type: 'monthly', ...row })),
+      pagination: { total_count: rows.length, limit: 500, offset: 0, has_more: false },
+    });
+
+    it('sent, answer lost, and the server applied it: read back as done, not failed (WH-359)', async () => {
+      // The undo leaves the phone and the connection drops before the answer; the read-back finds no rate starting that day.
+      answers[UNDO] = () => { throw droppedAnswer(); };
+      answers[RATES] = ratesOf([{ effective_from: '2026-06-01', effective_to: null }]);
+
+      const result = watch(undo());
+      await flush();
+      await wait(1_000);
+
+      expect(sentTo(UNDO)).toHaveLength(1);
+      expect(count(RATES)).toBeGreaterThan(0);
+      expect(result.done).toBe(true);
+      expect(result.value).toMatchObject({ success: true });
+    });
+
+    it('sent, answer lost, and the rate is still there: not confirmed, not success', async () => {
+      answers[UNDO] = () => { throw droppedAnswer(); };
+      answers[RATES] = ratesOf([{ effective_from: '2027-01-01', effective_to: null }]);
+
+      const result = watch(undo());
+      await flush();
+      await wait(1_000);
+
+      expect(sentTo(UNDO)).toHaveLength(1);
+      expect(result.value).toMatchObject({ success: false, outcomeUnknown: true });
+    });
+  });
+
   const CHECK = '/rest/v1/rpc/get_submission_result';
   const KEYED: [string, string, (signal: AbortSignal) => Promise<{ success: boolean }>][] = [
     ['a rate change with a request key', '/rest/v1/rpc/replace_item_rates',
@@ -483,24 +523,29 @@ describe('the rate and sensor services, whose screens give up after 30 seconds',
   ];
 
   describe.each(KEYED)('%s', (_name, path, save) => {
-    it('is not reported failed while it is still to be sent: it asks, sends once when released, and succeeds', async () => {
+    // WH-367 (Product, 2026-11-26): a keyed save held and given up is stopped like every other held write: never sent, and
+    // said not saved. "Couldn't confirm" is only for a save that was sent and whose answer was lost.
+    it('held and given up by the screen at 30 seconds: never sent, "couldn\'t save" and not "couldn\'t confirm" (WH-367)', async () => {
       answers[CHECK] = () => ({ found: false });
       const { answerReread } = await heldBySlowReread();
-      const result = watch(save(new AbortController().signal));
+      const controller = new AbortController();
+      const result = watch(save(controller.signal));
       await flush();
-      await wait(LIMIT + 1_000);
-      expect(count(CHECK)).toBe(1);
-      expect(result.done).toBe(false);
-      expect(sentTo(path)).toHaveLength(0);
+      await wait(30_000);
+      controller.abort();
+      await flush();
+      expect(result.done).toBe(true);
+      expect(result.value).toMatchObject({ success: false });
+      expect(result.value).not.toHaveProperty('outcomeUnknown', true);
+      expect((result.value as { message?: string }).message).toMatch(/couldn't save/i);
+      expect((result.value as { message?: string }).message).not.toMatch(/couldn't confirm/i);
 
       await answerReread();
-
-      expect(result.value).toMatchObject({ success: true });
       await wait(10 * 60_000);
-      expect(sentTo(path)).toHaveLength(1);
+      expect(sentTo(path)).toHaveLength(0);
     });
 
-    it('given up by leaving the screen after the refusal: never sent', async () => {
+    it('given up by leaving the screen after the refusal: never sent, and "couldn\'t save" (WH-367)', async () => {
       answers[CHECK] = () => ({ found: false });
       const { answerReread } = await heldBySlowReread();
       const controller = new AbortController();
@@ -508,7 +553,9 @@ describe('the rate and sensor services, whose screens give up after 30 seconds',
       await flush();
       controller.abort();
       await wait(LIMIT);
-      expect(result.value).toMatchObject({ success: false, outcomeUnknown: true });
+      expect(result.value).toMatchObject({ success: false });
+      expect(result.value).not.toHaveProperty('outcomeUnknown', true);
+      expect((result.value as { message?: string }).message).toMatch(/couldn't save/i);
 
       await answerReread();
       await wait(10 * 60_000);
