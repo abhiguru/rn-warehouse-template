@@ -14,6 +14,8 @@ import type { Customer } from '@/types/customer.types';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
 import { stateDisplayName } from '@/features/gst/indianStates';
 import { t as tr } from '@/i18n';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 
 type Row = { label: string; value: string | undefined | null; layout?: 'inline' | 'stacked' };
 
@@ -27,6 +29,8 @@ export function CustomerOverviewTab({ customer: shown, busy, onToggleActive }: C
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const insets = useSafeAreaInsets();
+  // Deactivate and Activate need the server (WH-348, Design 2.5): disabled offline, one line says why.
+  const needsConnection = useNeedsConnectionV3();
 
   const sections: { title: string; rows: Row[] }[] = [
     {
@@ -99,12 +103,17 @@ export function CustomerOverviewTab({ customer: shown, busy, onToggleActive }: C
         </View>
       ))}
       <View style={styles.footer}>
+        {needsConnection ? (
+          <NeedsConnectionLine testID="customer-details-actions-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        ) : null}
         <Button
           type="tertiary"
           variant={shown.active ? 'negative' : 'tint'}
           onPress={onToggleActive}
           loading={busy}
-          disabled={busy}
+          disabled={busy || needsConnection}
+          testID={shown.active ? 'customer-details-deactivate' : 'customer-details-restore'}
+          accessibilityLabel={needsConnection ? needsConnectionLabel(tr(shown.active ? 'customers.list.deactivateCustomer' : 'customers.page.activate')) : undefined}
         >
           {tr(shown.active ? 'customers.list.deactivateCustomer' : 'customers.page.activate')}
         </Button>
