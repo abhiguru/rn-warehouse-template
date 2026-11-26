@@ -45,6 +45,7 @@ import { exportHeaderActions } from '@/features/reports/reportActions';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
+import { STOCK_REPORT_KINDS } from '@/features/reports/reportCopyKinds';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -155,6 +156,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const filters = useReportFilters(STOCK_SUMMARY_CUSTOMERS);
   const { view } = filters.request;
   const query = useReportQuery<AllStockSummaryData>({
+    copyKinds: STOCK_REPORT_KINDS,
     key: [REPORT_ID, 'customers'],
     fetch: () => getAllStockSummary(),
     fallbackError: tr('reports.stockSummary.loadError'),
@@ -186,6 +188,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.stockSummary')}
       subtitle={tr('reports.shared.allCustomers')}
       actions={actions}
@@ -330,6 +333,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const filters = useReportFilters(STOCK_SUMMARY_CUSTOMER, { scope: customerId });
   const { view } = filters.request;
   const query = useReportQuery<StockSummaryData>({
+    copyKinds: STOCK_REPORT_KINDS,
     key: [REPORT_ID, 'customer', customerId],
     fetch: () => getCustomerStockSummary(customerId),
     fallbackError: tr('reports.stockSummary.loadError'),
@@ -455,6 +459,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.stockSummary')}
       subtitle={subtitle}
       actions={actions}

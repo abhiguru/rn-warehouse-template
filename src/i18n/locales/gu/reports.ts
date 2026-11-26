@@ -47,6 +47,8 @@ export const reports: Translation<typeof source> = {
     noStockForCustomerDescription: 'આ વેપારીના માલની આવક થશે એટલે સ્ટોક અહીં દેખાશે.',
     customerIdRequired: 'વેપારી પસંદ કરવો જરૂરી છે',
     facilityLabel: 'કોલ્ડ સ્ટોરેજ: {{name}}',
+    reportActionsNeedConnection: 'શેર અને PDF માટે કનેક્શન જોઈએ.',
+    actionNeedsConnection: '{{label}}, કનેક્શન જોઈએ',
   },
   scaffold: {
     updated: 'છેલ્લે અપડેટ થયું: {{time}}',

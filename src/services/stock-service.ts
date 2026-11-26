@@ -23,6 +23,8 @@ import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { getActiveOperatorServer } from '@/config/operatorServer';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readItemStock } from '@/features/phone-copy/reads/reports/itemStock';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('StockService');
@@ -777,20 +779,21 @@ export class StockService {
   > {
     const { customerId, searchQuery, limit = 50, offset = 0, sortBy, sortOrder } = options;
 
-    // M3 Fix: Using executeRPC wrapper for standardized error handling
-    interface RawItemData {
-      items: Array<{
-        item_id: string;
-        item_name: string;
-        packaging?: string;
-        total_qty: number;
-        total_stock: number;
-        grn_count: number;
-      }>;
-      total_count: number;
-      summary?: unknown;
+    // The phone copy answers when it can (WH-299); a later page whose source changed is told to start again.
+    const copy = await readVia(
+      'all',
+      q => readItemStock(q, { customerId: customerId || null, searchQuery: searchQuery || null, limit, offset, sortBy, sortOrder }),
+      { key: JSON.stringify([customerId ?? null, searchQuery ?? null, sortBy ?? null, sortOrder ?? null]), page: offset > 0 ? 1 : 0 }
+    );
+    if (copy && 'restart' in copy) {
+      return { success: false, message: t('errors.stock.itemWiseFailed'), copyRestart: true };
+    }
+    if (copy) {
+      const answer = shapeItemList((copy.value as { data: RawItemData }).data, offset, limit, true);
+      return { ...answer, source: copy.source };
     }
 
+    // M3 Fix: Using executeRPC wrapper for standardized error handling
     const baseParams = {
       p_customer_id: customerId || null,
       p_search_query: searchQuery || null,
@@ -850,37 +853,63 @@ export class StockService {
       };
     }
 
-    // Keep snake_case from raw response to match ItemWiseStockItem interface
-    const rawData = result.data as RawItemData;
-    const items = (rawData.items || []).map(
-      (item: RawItemData['items'][0]) => ({
-        item_id: item.item_id,
-        item_name: item.item_name,
-        packaging: item.packaging || undefined,
-        total_qty: item.total_qty,
-        total_stock: item.total_stock,
-        grn_count: item.grn_count,
-      })
-    );
-
-    const totalCount = rawData.total_count || 0;
-
-    return {
-      success: true,
-      message: t('errors.stock.itemWiseRetrieved'),
-      data: {
-        items,
-        pagination: {
-          totalCount,
-          hasMore: offset + items.length < totalCount,
-          limit,
-          offset,
-        },
-        summary: readItemStockSummary(rawData.summary),
-        sortApplied,
-      },
-    };
+    return shapeItemList(result.data as RawItemData, offset, limit, sortApplied);
   }
+}
+
+interface RawItemData {
+  items: Array<{
+    item_id: string;
+    item_name: string;
+    packaging?: string;
+    total_qty: number;
+    total_stock: number;
+    grn_count: number;
+  }>;
+  total_count: number;
+  summary?: unknown;
+}
+
+/** The item list as the screens read it, from the function's own answer (the server's or the phone copy's). */
+function shapeItemList(
+  rawData: RawItemData,
+  offset: number,
+  limit: number,
+  sortApplied: boolean
+): StockServiceResponse<{
+  items: Array<{ item_id: string; item_name: string; packaging?: string; total_qty: number; total_stock: number; grn_count: number }>;
+  pagination: { totalCount: number; hasMore: boolean; limit: number; offset: number };
+  summary?: ItemStockSummary;
+  sortApplied?: boolean;
+}> {
+  const items = (rawData.items || []).map(
+    (item: RawItemData['items'][0]) => ({
+      item_id: item.item_id,
+      item_name: item.item_name,
+      packaging: item.packaging || undefined,
+      total_qty: item.total_qty,
+      total_stock: item.total_stock,
+      grn_count: item.grn_count,
+    })
+  );
+
+  const totalCount = rawData.total_count || 0;
+
+  return {
+    success: true,
+    message: t('errors.stock.itemWiseRetrieved'),
+    data: {
+      items,
+      pagination: {
+        totalCount,
+        hasMore: offset + items.length < totalCount,
+        limit,
+        offset,
+      },
+      summary: readItemStockSummary(rawData.summary),
+      sortApplied,
+    },
+  };
 }
 
 export default StockService;

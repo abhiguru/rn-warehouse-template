@@ -72,6 +72,7 @@ import { exportHeaderActions } from '@/features/reports/reportActions';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
+import { STOCK_REPORT_KINDS } from '@/features/reports/reportCopyKinds';
 import { useReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
@@ -241,6 +242,7 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
     fallbackError: tr('reports.itemStockSummary.loadError'),
     // A searched list is never shown from the phone, and would push other reports' answers out.
     persist: !searchQuery,
+    copyKinds: STOCK_REPORT_KINDS,
   });
 
   // With a search typed, the figures are those of every item (§14.10): the newest first page without
@@ -289,7 +291,12 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
 
   const more = useReportQuery<ItemPage>({
     key: [...listKey, nextOffset ?? 'none'],
-    fetch: () => askPage(nextOffset ?? 0),
+    fetch: async () => {
+      const answer = await askPage(nextOffset ?? 0);
+      // The pages after the first were answered from somewhere else than the first (phone copy or server): start over.
+      if (answer.copyRestart) void reload(0);
+      return answer;
+    },
     // The footer already says "Couldn't load more items."; this is what to do.
     fallbackError: tr('common.checkConnection'),
     enabled: nextOffset !== null,
@@ -457,6 +464,7 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.itemStockSummary')}
       subtitle={subtitle}
       actions={actions}

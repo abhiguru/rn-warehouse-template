@@ -6,6 +6,8 @@
  */
 
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readAllStockSummary, readCustomerStockSummary } from '@/features/phone-copy/reads/reports/stockSummary';
 import { t } from '@/i18n';
 import { createLogger } from '@/utils/logger';
 import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
@@ -69,14 +71,12 @@ export async function getCustomerStockSummary(
   }
 
   try {
-    const client = await getAuthenticatedClient();
-
-    const rpcParams = { p_customer_uuid: customerId };
-
-    const { data, error } = await client.rpc(
-      'get_customer_stock_summary',
-      rpcParams
-    );
+    // The phone copy answers when it can (WH-299), in the function's own shape.
+    const copy = await readVia('all', q => readCustomerStockSummary(q, customerId));
+    const source = copy?.source;
+    const { data, error } = copy
+      ? { data: copy.value as unknown, error: null }
+      : await (await getAuthenticatedClient()).rpc('get_customer_stock_summary', { p_customer_uuid: customerId });
 
     if (error) {
       logger.error('[StockSummary] RPC error:', error.message);
@@ -145,6 +145,7 @@ export async function getCustomerStockSummary(
       success: true,
       data: { summary, items, out_of_stock_items: outOfStockItems },
       message: t('reports.stockSummary.service.retrieved'),
+      ...(source ? { source } : {}),
     };
   } catch (error) {
     logger.error('[StockSummary] Unexpected error:', error);
@@ -164,9 +165,11 @@ export async function getCustomerStockSummary(
  */
 export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
   try {
-    const client = await getAuthenticatedClient();
-
-    const { data, error } = await client.rpc('get_all_stock_summary');
+    const copy = await readVia('all', readAllStockSummary);
+    const source = copy?.source;
+    const { data, error } = copy
+      ? { data: copy.value as unknown, error: null }
+      : await (await getAuthenticatedClient()).rpc('get_all_stock_summary');
 
     if (error) {
       logger.error('[AllStockSummary] RPC error:', error.message);
@@ -216,6 +219,7 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
       success: true,
       data: { summary, customers },
       message: t('reports.stockSummary.service.retrievedAll'),
+      ...(source ? { source } : {}),
     };
   } catch (error) {
     logger.error('[AllStockSummary] Unexpected error:', error);

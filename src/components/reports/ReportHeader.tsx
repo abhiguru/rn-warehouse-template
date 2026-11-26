@@ -30,6 +30,8 @@ export interface ReportHeaderAction {
   onPress: () => void;
   /** Shows a spinner instead of the icon and ignores presses */
   busy?: boolean;
+  /** Cannot be used now (it needs a connection); the label then says why. */
+  disabled?: boolean;
 }
 
 interface ReportHeaderProps {
@@ -169,10 +171,10 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
               key={action.label}
               style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
               onPress={action.onPress}
-              disabled={action.busy}
+              disabled={action.busy === true || action.disabled === true}
               accessibilityLabel={action.label}
               accessibilityRole="button"
-              accessibilityState={{ busy: !!action.busy, disabled: !!action.busy }}
+              accessibilityState={{ busy: !!action.busy, disabled: !!action.busy || !!action.disabled }}
             >
               {action.busy ? (
                 <ActivityIndicator size="small" color={t.brand.tint} />

@@ -6,6 +6,8 @@
  */
 
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readAllStockAging, readCustomerStockAging } from '@/features/phone-copy/reads/reports/stockAging';
 import { t } from '@/i18n';
 import { createLogger } from '@/utils/logger';
 import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
@@ -83,8 +85,6 @@ export async function getCustomerStockAging(
   }
 
   try {
-    const client = await getAuthenticatedClient();
-
     // Build RPC params
     const rpcParams: Record<string, unknown> = {
       p_customer_uuid: params.customerId,
@@ -95,10 +95,12 @@ export async function getCustomerStockAging(
       rpcParams.p_aging_buckets = params.agingBuckets;
     }
 
-    const { data, error } = await client.rpc(
-      'get_stock_aging_report',
-      rpcParams
-    );
+    // The phone copy answers when it can (WH-299), in the function's own shape.
+    const copy = await readVia('all', q => readCustomerStockAging(q, params.customerId, params.agingBuckets));
+    const source = copy?.source;
+    const { data, error } = copy
+      ? { data: copy.value as unknown, error: null }
+      : await (await getAuthenticatedClient()).rpc('get_stock_aging_report', rpcParams);
 
     if (error) {
       logger.error('[StockAging] RPC error:', error.message);
@@ -189,6 +191,7 @@ export async function getCustomerStockAging(
       success: true,
       data: { summary, by_bucket: byBucket, items },
       message: t('reports.stockAging.service.retrieved'),
+      ...(source ? { source } : {}),
     };
   } catch (error) {
     logger.error('[StockAging] Unexpected error:', error);
@@ -215,8 +218,6 @@ export async function getAllStockAging(
   params?: AllStockAgingParams
 ): Promise<AllStockAgingResponse> {
   try {
-    const client = await getAuthenticatedClient();
-
     // Build RPC params - pass null for customer to get all customers
     const rpcParams: Record<string, unknown> = {
       p_customer_uuid: null,
@@ -227,10 +228,11 @@ export async function getAllStockAging(
       rpcParams.p_aging_buckets = params.agingBuckets;
     }
 
-    const { data, error } = await client.rpc(
-      'get_stock_aging_report',
-      rpcParams
-    );
+    const copy = await readVia('all', q => readAllStockAging(q, params?.agingBuckets));
+    const source = copy?.source;
+    const { data, error } = copy
+      ? { data: copy.value as unknown, error: null }
+      : await (await getAuthenticatedClient()).rpc('get_stock_aging_report', rpcParams);
 
     if (error) {
       logger.error('[AllStockAging] RPC error:', error.message);
@@ -306,6 +308,7 @@ export async function getAllStockAging(
       success: true,
       data: { summary, by_bucket: byBucket, by_customer: byCustomer },
       message: t('reports.stockAging.service.retrievedAll'),
+      ...(source ? { source } : {}),
     };
   } catch (error) {
     logger.error('[AllStockAging] Unexpected error:', error);

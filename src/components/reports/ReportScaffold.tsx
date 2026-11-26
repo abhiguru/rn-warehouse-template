@@ -27,6 +27,7 @@ import { ListSearchField } from '@/features/filters/components/ListSearchField';
 import type { CountableFilterList } from '@/features/filters/configs';
 import type { useListFilters } from '@/features/filters/useListFilters';
 import type { ReportQuery } from '@/features/reports/useReportQuery';
+import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -66,7 +67,12 @@ interface ReportScaffoldBaseProps<T> {
 
   /** The state of the report's data. `isKeptCopy` adds "Saved copy, refreshing…" to the status line while it is asked again. */
   query: Pick<ReportQuery<unknown>, 'phase' | 'isRefreshing' | 'isFetching' | 'error' | 'refresh' | 'retry' | 'updatedAt'> &
-    Partial<Pick<ReportQuery<unknown>, 'isKeptCopy'>>;
+    Partial<Pick<ReportQuery<unknown>, 'isKeptCopy' | 'fromPhoneCopy' | 'quiet'>>;
+  /**
+   * The report's id (reportRegistry): names the line under the header that says sharing needs a connection, when the
+   * report is read from the phone copy with no connection (WH-299, Design offline-capture.md 2.10, DS3).
+   */
+  reportId?: string;
 
   /** The figures over the rows. They describe the whole result, not the rows a search leaves. */
   kpis?: KPIItem[];
@@ -112,6 +118,12 @@ export type ReportScaffoldProps<T> = ReportScaffoldBaseProps<T> & ReportScaffold
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
+  needsConnection: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.sm,
+  },
   stale: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -143,6 +155,7 @@ function ReportScaffoldInner<T>({
   subtitle,
   onBack,
   actions,
+  reportId,
   filters,
   searchIsServerSide = false,
   query,
@@ -165,13 +178,31 @@ function ReportScaffoldInner<T>({
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const { phase, error, retry, refresh, isRefreshing, isFetching, updatedAt } = query;
+  const { phase, error, retry, refresh, isRefreshing, isFetching } = query;
+  // The phone copy's time is the status bar's: a report read from it shows none of its own.
+  const fromPhoneCopy = Boolean(query.fromPhoneCopy);
+  const updatedAt = fromPhoneCopy ? undefined : query.updatedAt;
+  // Sharing needs the server: with no connection the icons stay, disabled, and one line under the header says why.
+  const offline = useCopyOffline();
+  const sharingNeedsConnection = fromPhoneCopy && offline && Boolean(actions?.length);
+  const headerActions = useMemo(
+    () =>
+      sharingNeedsConnection
+        ? actions?.map(action => ({ ...action, disabled: true, label: tr('reports.shared.actionNeedsConnection', { label: action.label }) }))
+        : actions,
+    [actions, sharingNeedsConnection]
+  );
   // The last row clears the system navigation bar (three-button Android, iOS home indicator).
   const listContentStyle = useMemo(() => ({ paddingBottom: space.xxl + insets.bottom }), [insets.bottom]);
 
   const head = (
     <>
-      <ReportHeader title={title} subtitle={subtitle} onBack={onBack} actions={actions} />
+      <ReportHeader title={title} subtitle={subtitle} onBack={onBack} actions={headerActions} />
+      {sharingNeedsConnection ? (
+        <Text style={styles.needsConnection} testID={reportId ? `${reportId}-header-needs-connection` : undefined}>
+          {tr('reports.shared.reportActionsNeedConnection')}
+        </Text>
+      ) : null}
       {filters?.config.search ? (
         <ListSearchField
           // Per customer for one customer's report: its recent searches are not another's (SR-06).
@@ -270,7 +301,7 @@ function ReportScaffoldInner<T>({
   );
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} {...query.quiet?.touchHandlers}>
       {head}
       <FlashList
         data={rows as T[]}
@@ -303,6 +334,7 @@ function ReportScaffoldInner<T>({
         onEndReached={onEndReached}
         onEndReachedThreshold={0.5}
         showsVerticalScrollIndicator={false}
+        {...query.quiet?.scrollHandlers}
       />
     </View>
   );

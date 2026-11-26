@@ -1,3 +1,4 @@
+import type { DataSource } from '@/features/phone-copy/sourced';
 /**
  * Standardized Service Types
  *
@@ -82,6 +83,8 @@ export interface ServiceResponse<T = unknown> {
   message?: string;
   error?: string;
   errorCode?: string;
+  /** Present when the phone copy answered (WH-299); absent means the server did. */
+  source?: DataSource;
 }
 
 /**
