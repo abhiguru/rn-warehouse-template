@@ -8,6 +8,8 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import GRNListFiori from '../GRNListFiori';
+import { MemoizedDispatchItem } from '../list-items/MemoizedDispatchItem';
+import type { Dispatch } from '@/services/dispatch-service';
 import { GRNImagesTab } from '../grn-details/GRNImagesTab';
 import { getGRNListPage } from '@/services/grn-service';
 import { router } from 'expo-router';
@@ -111,15 +113,43 @@ describe('GRN list card, screen-reader Edit action', () => {
   it('offline: Edit says it needs a connection and does not open the editor', async () => {
     await open();
     await goOffline();
-    expect(actions().find(a => a.name === 'edit')?.label).toBe('Edit, needs a connection');
+    expect(actions().find(a => a.name === 'edit')?.label).toBe('Edit GRN A0001, needs a connection');
     await run('edit');
     expect(router.push).not.toHaveBeenCalledWith(expect.stringContaining('grn-edit'));
   });
 
   it('online: Edit is plain and opens the editor', async () => {
     await open();
-    expect(actions().find(a => a.name === 'edit')?.label).toBe('Edit');
+    expect(actions().find(a => a.name === 'edit')?.label).toBe('Edit GRN A0001');
     await run('edit');
     expect(router.push).toHaveBeenCalledWith('/grn-edit/g1/step1');
+  });
+});
+
+describe('Dispatch card, screen-reader Print action', () => {
+  const dispatch = {
+    dispatch_id: 'd1', disp_no: '42', disp_date: '2026-10-09', customer_name: 'Fictional Traders', total_qty: 120, total_items: 1,
+    registration: 'GJ01AB1234',
+    items: [{ grn_item_id: 'g1', item_name: 'Fictional Gur', rack: 'B-14', package_mark: 'PM', weight: 50, gr_no: '311', grn_qty: 200, disp_qty: 100 }],
+  } as unknown as Dispatch;
+  const onPrint = jest.fn();
+  const open = () => render(<MemoizedDispatchItem dispatch={dispatch} onPress={jest.fn()} canPrint onPrint={onPrint} />);
+  const card = () => screen.root!.queryAll(node => Array.isArray(node.props.accessibilityActions) && node.props.accessibilityActions.some((a: { name: string }) => a.name === 'print'))[0];
+  const actions = () => card().props.accessibilityActions as { name: string; label: string }[];
+  const run = () => fireEvent(card(), 'accessibilityAction', { nativeEvent: { actionName: 'print' } });
+
+  it('offline: Print says it needs a connection and prints nothing', async () => {
+    await open();
+    await goOffline();
+    expect(actions().find(a => a.name === 'print')?.label).toBe('Print Dispatch 42, needs a connection');
+    await run();
+    expect(onPrint).not.toHaveBeenCalled();
+  });
+
+  it('online: Print is plain and prints', async () => {
+    await open();
+    expect(actions().find(a => a.name === 'print')?.label).toBe('Print Dispatch 42');
+    await run();
+    expect(onPrint).toHaveBeenCalledTimes(1);
   });
 });
