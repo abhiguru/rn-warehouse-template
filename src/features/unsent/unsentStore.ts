@@ -8,6 +8,7 @@ import { getActiveOperatorServer } from '@/config/operatorServer';
 import { onSessionChange } from '@/config/sessionLifecycle';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger, loggableError } from '@/utils/logger';
+import './lotChangeKind';
 import './photosKind';
 import { startSendEngine } from './sendEngine';
 import { getUnsentDb } from './unsentDb';

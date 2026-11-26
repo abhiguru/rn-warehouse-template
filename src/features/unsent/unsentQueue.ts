@@ -103,9 +103,10 @@ export async function enqueue(input: EnqueueInput): Promise<{ id: string; reques
 
 /**
  * Changes the body of an item that has not been tried yet. False once it has been (`attempts > 0`): its request is frozen
- * and the change becomes a new item that depends on it (the caller's).
+ * and the change becomes a new item that depends on it (the caller's). `what` is the row's new title, when the change makes
+ * the old one wrong (WH-302); without it the title stays.
  */
-export async function mergeInto(id: string, patch: (body: unknown) => unknown): Promise<boolean> {
+export async function mergeInto(id: string, patch: (body: unknown) => unknown, what?: string): Promise<boolean> {
   const scope = await ownScope();
   const db = await getUnsentDb();
   let merged = false;
@@ -113,7 +114,10 @@ export async function mergeInto(id: string, patch: (body: unknown) => unknown): 
     const [row] = await tx.all<ItemRow>('SELECT * FROM items WHERE id = ? AND scope = ?', [id, scope]);
     if (!row || row.attempts > 0 || row.state !== 'saved') return;
     const next = patch(JSON.parse(row.body) as unknown);
-    const done = await tx.run('UPDATE items SET body = ? WHERE id = ? AND attempts = 0 AND state = ?', [JSON.stringify(next), id, 'saved']);
+    const done =
+      what === undefined
+        ? await tx.run('UPDATE items SET body = ? WHERE id = ? AND attempts = 0 AND state = ?', [JSON.stringify(next), id, 'saved'])
+        : await tx.run('UPDATE items SET body = ?, what = ? WHERE id = ? AND attempts = 0 AND state = ?', [JSON.stringify(next), what, id, 'saved']);
     merged = done.changes > 0;
   });
   if (merged) await announceUnsentChange();

@@ -16,8 +16,14 @@
  */
 import { getActiveOperatorServer } from './operatorServer';
 
-type ServerIdentity = { origin: string; instanceId: string };
-export type BackendRelease = { backendRelease: string | null; schemaHead: string | null };
+interface ServerIdentity {
+  origin: string;
+  instanceId: string;
+}
+export interface BackendRelease {
+  backendRelease: string | null;
+  schemaHead: string | null;
+}
 
 /** Features the app can do without, and the number of the migration that introduced each. */
 const INTRODUCED_BY_MIGRATION = {
@@ -59,6 +65,8 @@ const INTRODUCED_BY_MIGRATION = {
   accountantPack: 204,
   /** `can_make_bills`, the GST_DETAILS_REQUIRED refusal of a new bill and `bills_allowed` in get_gst_details (WH-205; 206 is the number the migration takes at assembly). */
   billsNeedGst: 206,
+  /** `set_lot_rack_and_mark`: the quick change of a lot's rack and mark (WH-302; topic "lot rack and mark change", provisional number: written at assembly, BATCH.md). */
+  lotQuickChange: 209,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 
@@ -96,7 +104,7 @@ export function setFacilityRelease(server: ServerIdentity, config: { backendRele
 /** The active server's release as last told; both null when nothing is known for it. */
 export function getFacilityRelease(): BackendRelease {
   const active = getActiveOperatorServer();
-  return (active && byServer.get(keyOf(active))) || { backendRelease: null, schemaHead: null };
+  return (active ? byServer.get(keyOf(active)) : undefined) ?? { backendRelease: null, schemaHead: null };
 }
 
 /**
