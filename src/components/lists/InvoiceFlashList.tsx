@@ -46,6 +46,9 @@ import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
 import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { useQuietReread, type QuietReread } from '@/features/phone-copy/useQuietReread';
+import type { EntityName } from '@/features/phone-copy/copySchema';
+import { syncNow } from '@/features/phone-copy/syncEngine';
 import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -80,6 +83,13 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { FAB_CLEARANCE } from '@/components/ui/Fab';
 
 const logger = createLogger('InvoiceList');
+const PAGE_SIZE = 20;
+/** The most rows one read of the list may ask for (the server's own limit). */
+const MAX_READ = 200;
+/** The records of the phone copy the list's rows are made of (WH-348). */
+const LIST_KINDS: ReadonlySet<EntityName> = new Set<EntityName>(['invoice', 'invoice_trl', 'payments', 'customers', 'goodsreceived']);
+/** What of the rows shows on screen: a re-read that gives the same replaces nothing. */
+const shownOf = (rows: readonly Invoice[], hasMore: boolean) => JSON.stringify([rows, hasMore]);
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -172,6 +182,10 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const isOffline = useIsOffline();
   // The rows came from the phone copy (WH-348): the status bar tells their time, and "New invoices" needs a connection.
   const [fromPhoneCopy, setFromPhoneCopy] = useState(false);
+  // A quiet re-read keeps the rows in view where they are; a list asked for anew starts at the top, as ever.
+  const [anchored, setAnchored] = useState(false);
+  /** Grows when a list that kept its place is replaced by one asked for anew, so it starts with no place to keep. */
+  const [listEpoch, setListEpoch] = useState(0);
   /** Asks for the first page again (a list whose source changed between two pages). */
   const restartRef = useRef<() => void>(() => undefined);
   const needsConnection = useNeedsConnectionV3() && isWarehouseRole;
@@ -213,11 +227,85 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       setLoadError(true);
     }
   }, []);
+  // What a quiet re-read looks at when it comes to be done, as of the latest render.
+  const shownRows = useRef({ invoices, hasMore, count: 0 });
+  const phoneCopyShown = useRef(fromPhoneCopy);
+  const anchoredRef = useRef(anchored);
+  const busy = useRef(true);
+  useLayoutEffect(() => {
+    shownRows.current = { invoices, hasMore, count: currentOffset };
+    phoneCopyShown.current = fromPhoneCopy;
+    anchoredRef.current = anchored;
+    busy.current = isLoading || isRefreshing || isLoadingMore;
+  });
+  /** Resolved when the list has been told to keep its place. */
+  const onAnchored = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!anchored) return;
+    onAnchored.current?.();
+    onAnchored.current = null;
+  }, [anchored]);
+
+  // The same request again, from the top, for as many rows as are loaded, with nothing on screen saying so (C299 §11.1).
+  const readQuietly = async () => {
+    const asked = latestRequest.current;
+    const loaded = shownRows.current.count;
+    const target = Math.max(PAGE_SIZE, loaded);
+    const rows: Invoice[] = [];
+    let more = true;
+    let asOf: string | null = null;
+    while (rows.length < target && more) {
+      const want = Math.min(MAX_READ, target - rows.length);
+      const result = await getInvoicesList({ ...request, p_limit: want, p_offset: rows.length });
+      // A load that began meanwhile replaces the rows itself; a failure leaves them as they are.
+      if (asked !== latestRequest.current || !result.success || result.copyRestart || !result.source) return;
+      asOf = result.source.asOf;
+      rows.push(...result.data.invoices);
+      more = result.data.pagination.has_more;
+      if (!result.data.invoices.length) break;
+    }
+    if (shownOf(rows, more) === shownOf(shownRows.current.invoices, shownRows.current.hasMore)) return;
+    // First the list is told to keep its place, then the rows are replaced.
+    if (!anchoredRef.current) {
+      await new Promise<void>(resolve => {
+        onAnchored.current = resolve;
+        setAnchored(true);
+      });
+      if (asked !== latestRequest.current) return;
+    }
+    // A finger came down, or more rows arrived, since the read: read again later.
+    if (!quiet.atRest() || loaded !== shownRows.current.count) {
+      quiet.markDue();
+      return;
+    }
+    setInvoices(rows);
+    setHasMore(more);
+    setCurrentOffset(rows.length);
+    setRefreshError(false);
+    setLoadMoreFailed(false);
+    if (asOf) setLoadedAt(Date.parse(asOf));
+  };
+  const quiet: QuietReread = useQuietReread({
+    kinds: LIST_KINDS,
+    active: () => phoneCopyShown.current && isWarehouseRole,
+    idle: () => !busy.current,
+    read: readQuietly,
+  });
+  const quietRef = useRef<QuietReread | null>(null);
+  useLayoutEffect(() => {
+    quietRef.current = quiet;
+  });
+  useEffect(() => {
+    if (!isLoading && !isRefreshing && !isLoadingMore) quiet.settle();
+  }, [isLoading, isRefreshing, isLoadingMore, quiet]);
+
   // `fresh`: pull to refresh and a return to the screen read the server again;
   // a customer account's next page, sort and search use the history kept for it.
   const fetchInvoices = useCallback(async (offset: number = 0, append: boolean = false, fresh: boolean = false) => {
     const requestId = append ? latestRequest.current : ++latestRequest.current;
     const requestKey = JSON.stringify(request);
+    // A load of the whole list brings what a sync changed.
+    if (!append) quietRef.current?.clear();
     try {
       if (append) setIsLoadingMore(true);
       else setIsLoading(true);
@@ -254,6 +342,10 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         setFromPhoneCopy(Boolean(source));
         shownRequest.current = requestKey;
         // A new search, filter or sort starts from its first row.
+        if (anchoredRef.current) {
+          setAnchored(false);
+          setListEpoch(epoch => epoch + 1);
+        }
         listRef.current?.scrollToOffset({ offset: 0, animated: false });
       }
       setHasMore(result.data.pagination.has_more);
@@ -313,13 +405,17 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         const fresh = !changedWhileHiddenRef.current;
         blurredRef.current = false;
         changedWhileHiddenRef.current = false;
-        fetchInvoicesRef.current(0, false, fresh);
+        // Rows of the phone copy are read again quietly, keeping their place (C299 §11.1).
+        if (phoneCopyShown.current && fresh) quiet.markDue();
+        else void fetchInvoicesRef.current(0, false, fresh);
       }
+      quiet.setFocused(true);
       return () => {
         screenFocusedRef.current = false;
         blurredRef.current = true;
+        quiet.setFocused(false);
       };
-    }, [])
+    }, [quiet])
   );
 
   // ============================================================================
@@ -328,9 +424,16 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    // The offset stays until the answer sets it: a failed refresh keeps the rows, and the offset after them.
-    fetchInvoices(0, false, true);
-  }, [fetchInvoices]);
+    if (!fromPhoneCopy) {
+      // The offset stays until the answer sets it: a failed refresh keeps the rows, and the offset after them.
+      void fetchInvoices(0, false, true);
+      return;
+    }
+    // Rows of the phone copy: bring the copy up to date, then read it (a sync that cannot run changes nothing).
+    void syncNow('pull-to-refresh')
+      .catch(() => undefined)
+      .then(() => fetchInvoicesRef.current(0, false, true));
+  }, [fetchInvoices, fromPhoneCopy]);
 
   const handleLoadMore = useCallback(() => {
     if (!isLoadingMore && hasMore && !isLoading) {
@@ -502,11 +605,15 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
             testID="invoice-stale-strip"
           />
         ) : null}
+      <View style={styles.listHold} {...quiet.touchHandlers}>
       <FlashList
+        key={listEpoch}
         ref={listRef}
         data={flattenedData}
-        // Re-sorted lists must not stay anchored on the row that was on top before.
-        maintainVisibleContentPosition={{ disabled: true }}
+        // Re-sorted lists must not stay anchored on the row that was on top before. Only a quiet re-read keeps the
+        // rows in view where they are.
+        maintainVisibleContentPosition={{ disabled: !anchored }}
+        {...quiet.scrollHandlers}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
@@ -527,6 +634,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         ListFooterComponent={ListFooter}
         showsVerticalScrollIndicator={false}
       />
+      </View>
       </>
     );
   } else if (showsLoadError) {
@@ -590,6 +698,7 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     backgroundColor: t.background.base,
   },
+  listHold: { flex: 1 },
   listContent: {
     paddingTop: space.sm,
     // Room for the floating create button on the tab screen
