@@ -241,3 +241,50 @@ describe('DQ2: the unsent file cannot be read', () => {
     expect(phone.store.getUnsentSummary().limitReached).toBe(true);
   });
 });
+
+describe('G4b: the unreadable file, in the summary (contract section 1, section 2.1a)', () => {
+  it('getUnsentSummary says unreadable, with no count and the limit reached; a readable file says it is not', async () => {
+    const first = await start();
+    await first.queue.enqueue(waits);
+    expect(first.store.getUnsentSummary().unreadable).toBe(false);
+    for (let i = 0; i < 40; i += 1) require('@/tests/phoneCopy/fakeExpoSqlite').failStatement(/./, new Error('database disk image is malformed'));
+    const phone = await bootUnsent();
+    await phone.store.initUnsent();
+    expect(phone.store.getUnsentSummary()).toMatchObject({ unreadable: true, count: 0, limitReached: true });
+    expect(phone.gate.accountActionAllowed()).toEqual({ ok: false, count: null });
+  });
+});
+
+describe("G4f: another person's unsent dispatch (PQ4b)", () => {
+  // ASSUMED: section 2.1 does not give `OverlayPart`; here a kind's overlay answers the bags it takes off a lot as `{ lessUnsent: { [lotId]: bags } }`.
+  const dispatchKind = { lane: 'record' as const, send: async () => ({ kind: 'transient' as const }), overlay: () => ({ lessUnsent: { 'lot-1': 12 } }) };
+
+  it("is deducted as lessOthersUnsent and in deductions(), and is not this person's own unsent", async () => {
+    const first = await bootUnsent();
+    first.kinds.registerSendKind('testDispatch', dispatchKind as never);
+    await first.store.initUnsent();
+    await first.queue.enqueue({ kind: 'testDispatch', body: {}, what: 'Dispatch for Bina Fictional Stores' });
+    const { env } = require('@/tests/phoneCopy/phoneEnv') as typeof import('@/tests/phoneCopy/phoneEnv');
+    env.subject = 'user-2';
+    const phone = await restart();
+    phone.kinds.registerSendKind('testDispatch', dispatchKind as never);
+    const { getUnsentOverlay } = require('@/features/phone-copy/unsentOverlay') as { getUnsentOverlay(): { lessOthersUnsent(l: string): number; lessUnsent(l: string): number; deductions(): ReadonlyMap<string, number>; lot(l: string): unknown } };
+    const overlay = getUnsentOverlay();
+    expect(overlay.lessOthersUnsent('lot-1')).toBe(12);
+    expect(overlay.lessUnsent('lot-1')).toBe(0);
+    expect(overlay.deductions().get('lot-1')).toBe(12);
+    expect(overlay.lot('lot-1')).toBeNull();
+  });
+
+  it("the person's own dispatch is lessUnsent, not lessOthersUnsent, and still in deductions()", async () => {
+    const phone = await bootUnsent();
+    phone.kinds.registerSendKind('testDispatch', dispatchKind as never);
+    await phone.store.initUnsent();
+    await phone.queue.enqueue({ kind: 'testDispatch', body: {}, what: 'Dispatch for Bina Fictional Stores' });
+    const { getUnsentOverlay } = require('@/features/phone-copy/unsentOverlay') as { getUnsentOverlay(): { lessOthersUnsent(l: string): number; lessUnsent(l: string): number; deductions(): ReadonlyMap<string, number> } };
+    const overlay = getUnsentOverlay();
+    expect(overlay.lessUnsent('lot-1')).toBe(12);
+    expect(overlay.lessOthersUnsent('lot-1')).toBe(0);
+    expect(overlay.deductions().get('lot-1')).toBe(12);
+  });
+});
