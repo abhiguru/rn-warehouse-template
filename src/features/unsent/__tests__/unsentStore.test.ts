@@ -223,3 +223,20 @@ describe('S6: sent rows', () => {
     }
   });
 });
+
+describe('S7: the file is not encrypted (owner, 2026-11-26)', () => {
+  it('uses no key: nothing is written to secure storage and no PRAGMA key is sent for it', async () => {
+    const { statementLog } = require('@/tests/phoneCopy/fakeExpoSqlite') as typeof import('@/tests/phoneCopy/fakeExpoSqlite');
+    await phoneWith(record());
+    expect(env.secureWrites).toEqual([]);
+    expect(statementLog().filter(sql => /PRAGMA\s+key/i.test(sql))).toEqual([]);
+  });
+
+  it('keeps photos in the app-private documents folder, under unsent-work/photos/', async () => {
+    const { phone } = await phoneWith();
+    await phone.queue.enqueue({ ...record(), photos: [{ file: addPhoto('a.jpg'), role: 'goods' }] });
+    expect(keptPhotoFiles()).toHaveLength(1);
+    expect(keptPhotoFiles()[0].startsWith('file:///phone/documents/unsent-work/photos/')).toBe(true);
+    expect(unsentFileNames()).toHaveLength(1);
+  });
+});
