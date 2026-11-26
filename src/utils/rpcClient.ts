@@ -47,6 +47,16 @@ export class TimeoutError extends Error {
 }
 
 /**
+ * `request` made cancellable by `signal`, where it can be (a PostgREST request builder has `abortSignal`; a plain
+ * promise does not). A change a screen gives up on is aborted with it, so one still waiting in the app is never sent
+ * (WH-359). One that has left the phone may still be applied: ask the server before saying it was not.
+ */
+export function cancellableBy<T>(request: PromiseLike<T>, signal: AbortSignal): PromiseLike<T> {
+  const builder = request as PromiseLike<T> & { abortSignal?: (signal: AbortSignal) => PromiseLike<T> };
+  return typeof builder.abortSignal === 'function' ? builder.abortSignal(signal) : request;
+}
+
+/**
  * The timer is cleared as soon as the promise settles. `onTimeout` runs when
  * the time is up, before the rejection, so the caller can abort what it has
  * stopped waiting for.

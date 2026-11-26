@@ -31,7 +31,7 @@ import { unwrapArrayResponse } from '@/utils/responseUtils';
 import { hasMoreItems } from '@/utils/paginationUtils';
 import { PAGINATION } from '@/config/cacheConfig';
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
-import { withTimeout } from '@/utils/rpcClient';
+import { cancellableBy, withTimeout } from '@/utils/rpcClient';
 import { t } from '@/i18n';
 import type { RpcGrnItemRate, RpcGrnItemRates } from '@/types/rpc-canonical.types';
 import { formatDate, toCalendarDay } from '@/utils/formatters';
@@ -307,6 +307,15 @@ const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
 
 const RPC_TIMEOUT_MS = 30000;
 
+/**
+ * A rate change, given up after 30 s: the request is then aborted, so one still waiting in the app (behind the role
+ * re-read or the facility check) is never sent afterwards (WH-359).
+ */
+function timedChange<T>(request: PromiseLike<T>, context: string): Promise<T> {
+  const attempt = new AbortController();
+  return withTimeout(Promise.resolve(cancellableBy(request, attempt.signal)), RPC_TIMEOUT_MS, context, () => attempt.abort());
+}
+
 /** The code and the app's own text for an RPC that failed outright (missing function, no right, anything else). */
 const mapRateError = (
   error: { code?: unknown; message?: unknown },
@@ -398,8 +407,8 @@ const replaceResultFromResponse = (raw: unknown, input: ReplaceRatesInput): Repl
 const sendReplaceItemRates = async (input: ReplaceRatesInput, withKey: boolean): Promise<ReplaceRatesResult> => {
   try {
     const client = await getAuthenticatedClient();
-    const { data, error, status } = await withTimeout(
-      Promise.resolve(client.rpc('replace_item_rates', {
+    const { data, error, status } = await timedChange(
+      client.rpc('replace_item_rates', {
         p_item_id: input.item_id,
         p_customer_id: input.customer_id,
         p_price_type: input.price_type,
@@ -412,8 +421,7 @@ const sendReplaceItemRates = async (input: ReplaceRatesInput, withKey: boolean):
         ...(input.seen_rows ? { p_seen_rows: input.seen_rows } : {}),
         // The request key of the save: the server stores a keyed save's answer, so a repeat is answered, not written again.
         ...(withKey && input.request_key ? { p_request_key: input.request_key } : {}),
-      })),
-      RPC_TIMEOUT_MS,
+      }),
       'Rate change'
     );
 
@@ -515,27 +523,22 @@ export const setStandardRate = (tiers: StandardTier[], options: SetStandardRateO
     signal: options.signal,
   });
 
-/**
- * Undo the change that starts on `startsOn` for one scope (backend migration 76): the rows
- * starting that day are removed and the rows that ended the day before run on again. Used by
- * "Cancel new rate" and "Undo stop". A failure carries `errorCode` and the app's own `message`.
- */
-export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRateChangeResult> => {
+/** One send of `undoRateChange`. A failure carries `errorCode` and the app's own `message`. */
+const sendUndoRateChange = async (input: UndoRateChangeInput): Promise<UndoRateChangeResult> => {
   const failure = (errorCode: RateErrorCode, message: string): UndoRateChangeResult => ({ success: false, errorCode, message });
   // The request may have reached the server and its answer did not come back: the rates are read again by the caller.
   const unknown = (): UndoRateChangeResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.error.undoUnconfirmed'), outcomeUnknown: true });
   try {
     const client = await getAuthenticatedClient();
-    const { data, error, status } = await withTimeout(
-      Promise.resolve(client.rpc('undo_rate_change', {
+    const { data, error, status } = await timedChange(
+      client.rpc('undo_rate_change', {
         p_item_id: input.itemId,
         p_customer_id: input.customerId,
         p_price_type: input.priceType,
         p_starts_on: input.startsOn,
         // Every row of the scope the screen loaded (ended and planned too): the server answers STALE_RATES when another phone changed the scope since.
         ...(input.seenRows ? { p_seen_rows: input.seenRows } : {}),
-      })),
-      RPC_TIMEOUT_MS,
+      }),
       'Rate change'
     );
 
@@ -582,6 +585,34 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
     if (isLostAnswer(err)) return unknown();
     return failure('UNKNOWN', t('pricing.error.generic'));
   }
+};
+
+/**
+ * True when the scope's rates now are as the undo leaves them: none starts on `startsOn` and none ends the day before.
+ * False also when they could not be read.
+ */
+async function isUndone(input: UndoRateChangeInput): Promise<boolean> {
+  try {
+    const startsOn = input.startsOn.slice(0, 10);
+    const dayBefore = addDays(startsOn, -1);
+    return (await listItemRates(input.itemId))
+      .filter(row => row.customer_id === input.customerId && row.price_type === input.priceType)
+      .every(row => row.effective_from.slice(0, 10) !== startsOn && row.effective_to?.slice(0, 10) !== dayBefore);
+  } catch (error) {
+    itemPricingLogger.warn('The check for a lost rate undo failed:', error);
+    return false;
+  }
+}
+
+/**
+ * Undo the change that starts on `startsOn` for one scope (backend migration 76): the rows
+ * starting that day are removed and the rows that ended the day before run on again. Used by
+ * "Cancel new rate" and "Undo stop". The call takes no request key, so when its answer is lost the rates are read before
+ * anything is said (WH-359): undone is a success, anything else stays "could not be confirmed".
+ */
+export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRateChangeResult> => {
+  const result = await sendUndoRateChange(input);
+  return result.outcomeUnknown && (await isUndone(input)) ? { success: true } : result;
 };
 
 // ---------------------------------------------------------------------------
@@ -754,16 +785,15 @@ const sendSetStandardRate = async (tiers: StandardTier[], options: SetStandardRa
   const unconfirmed = (): SetStandardRateResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.standard.error.unconfirmed'), outcomeUnknown: true });
   try {
     const client = await getAuthenticatedClient();
-    const { data, error, status } = await withTimeout(
-      Promise.resolve(client.rpc('set_standard_rate', {
+    const { data, error, status } = await timedChange(
+      client.rpc('set_standard_rate', {
         p_tiers: tiers,
         // The version the draft was built from, as the exact string the server sent (never through a Date: it would cut the microseconds).
         ...(options.expectedUpdatedAt !== undefined ? { p_expected_updated_at: options.expectedUpdatedAt } : {}),
         ...(options.dryRun ? { p_dry_run: true } : {}),
         // The save's request key: a repeat of the same save is answered from the stored result, not written again.
         ...(withKey && options.requestKey && !options.dryRun ? { p_request_key: options.requestKey } : {}),
-      })),
-      RPC_TIMEOUT_MS,
+      }),
       'Standard rate'
     );
 
