@@ -14,6 +14,11 @@ export const nav = {
     orders: 'Orders',
     queue: 'Queue',
   },
+  // The GRN | Find goods switch on the GRN tab
+  grnView: {
+    grn: 'GRN',
+    findGoods: 'Find goods',
+  },
   // Stack screen titles
   screens: {
     signIn: 'Sign in',

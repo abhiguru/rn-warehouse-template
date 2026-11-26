@@ -566,9 +566,11 @@ GRNCardFiori.displayName = 'GRNCardFiori';
 interface GRNListFioriProps {
   /** Open the list showing this range of GRN numbers (print-range links). Replaces any filters. */
   initialNumberRange?: { from?: string; to?: string };
+  /** Shown between the title and the search field (the GRN | Find goods switch). */
+  subHeader?: React.ReactNode;
 }
 
-const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
+const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange, subHeader }) => {
   const { userProfile } = useAppSelector((state) => state.auth);
   const styles = useThemedStyles(makeGRNListStyles);
   const t = useTokens();
@@ -1101,7 +1103,9 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange }) => {
       onRefresh={onRefresh}
       busy={loading && !refreshing && data !== null}
       expand={{ expanded: open.all, onToggle: handleToggleAll, nounPlural: 'GRNs', disabled: !hasRows }}
-    />
+    >
+      {subHeader}
+    </FilteredListHeader>
   );
 
   let content: React.ReactNode;

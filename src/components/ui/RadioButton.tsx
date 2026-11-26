@@ -63,6 +63,10 @@ export interface SegmentedControlProps {
   style?: StyleProp<ViewStyle>;
   /** Less padding in each segment, and a label that shrinks a little rather than end in "…" (a document number). */
   dense?: boolean;
+  /** For tests: the control's id; each segment is `${testID}-${value}`. */
+  testID?: string;
+  /** What each segment is to a screen reader: a radio (a choice in a form) or a tab (a second view of a screen). */
+  segmentRole?: 'radio' | 'tab';
 }
 
 export const SegmentedControl: React.FC<SegmentedControlProps> = ({
@@ -76,6 +80,8 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
   hapticFeedback = true,
   style,
   dense = false,
+  testID,
+  segmentRole = 'radio',
 }) => {
   const [pressedIndex, setPressedIndex] = useState<number | null>(null);
   const styles = useThemedStyles(makeStyles);
@@ -101,8 +107,9 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
         stacked && styles.segmentedContainerStacked,
         style,
       ]}
-      accessibilityRole="radiogroup"
+      accessibilityRole={segmentRole === 'tab' ? 'tablist' : 'radiogroup'}
       accessibilityLabel={accessibilityLabel ?? label}
+      testID={testID}
     >
       {label && (
         <Text
@@ -142,7 +149,8 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
               onPressIn={() => setPressedIndex(index)}
               onPressOut={() => setPressedIndex(null)}
               disabled={isOptionDisabled}
-              accessibilityRole="radio"
+              accessibilityRole={segmentRole}
+              testID={testID ? `${testID}-${option.value}` : undefined}
               accessibilityState={{
                 selected: isSelected,
                 disabled: isOptionDisabled,

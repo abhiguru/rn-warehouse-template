@@ -23,6 +23,7 @@ import { sensors } from './sensors';
 import { errors } from './errors';
 import { validation } from './validation';
 import { components } from './components';
+import { findGoods } from './findGoods';
 
 /** Every English text of the app, by area. */
 export const en = {
@@ -51,4 +52,5 @@ export const en = {
   errors,
   validation,
   components,
+  findGoods,
 };

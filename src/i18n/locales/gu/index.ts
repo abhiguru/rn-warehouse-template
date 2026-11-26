@@ -25,6 +25,7 @@ import { sensors } from './sensors';
 import { errors } from './errors';
 import { validation } from './validation';
 import { components } from './components';
+import { findGoods } from './findGoods';
 
 /** Every Gujarati text of the app. An extra key is a compile error; a missing key falls back to English (see types.ts). */
 const guTexts: Translation<typeof en> = {
@@ -53,6 +54,7 @@ const guTexts: Translation<typeof en> = {
   errors,
   validation,
   components,
+  findGoods,
 };
 
 /** Exposed as complete, so code and tests read it as before; `t` falls back to English for a missing key. */

@@ -16,6 +16,10 @@ export const nav: Translation<typeof source> = {
     orders: 'ઑર્ડર',
     queue: 'કતાર',
   },
+  grnView: {
+    grn: 'આવક',
+    findGoods: 'માલ શોધો',
+  },
   screens: {
     signIn: 'લૉગિન કરો',
     enterCode: 'OTP લખો',
