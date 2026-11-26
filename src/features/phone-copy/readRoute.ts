@@ -19,7 +19,9 @@ import { getSyncSnapshot, type CopyPhase } from './syncStore';
 const logger = createLogger('[phone-copy]');
 
 /** What a read needs: only the first stage's records (GRNs, lots, customers, items, ...), or every record. */
-export type CopyNeed = 'stage1' | 'all';
+export type CopyNeed = 'stage1' | 'all' | { stage: 'all'; format: number };
+
+const needsStage1Only = (need: CopyNeed): boolean => need === 'stage1';
 
 /** A read-only view of the open copy, one per `readVia` call; every statement sees the same records. */
 export interface CopyReader {
@@ -93,8 +95,10 @@ export function copyRoute(need: CopyNeed): 'copy' | 'server' {
   if (!copyEligible()) return 'server';
   const { phase, format } = getSyncSnapshot();
   if (format === undefined) return 'server';
+  // A read that needs a newer format stays on the server over an older copy (WH-348, contract section 2).
+  if (typeof need === 'object' && format < need.format) return 'server';
   if (phase === 'ready') return 'copy';
-  return phase === 'stage2' && need === 'stage1' && isCopyOffline() ? 'copy' : 'server';
+  return phase === 'stage2' && needsStage1Only(need) && isCopyOffline() ? 'copy' : 'server';
 }
 
 const copyRoleOf = (role: unknown): CopyReader['role'] | null =>
@@ -117,7 +121,7 @@ async function readCopy<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<
     const copyId = meta.get('copy');
     const asOf = meta.get('as_of');
     // The copy may have been replaced since the route was decided.
-    const holds = phase === 'ready' || (need === 'stage1' && phase === 'stage2');
+    const holds = phase === 'ready' || (needsStage1Only(need) && phase === 'stage2');
     if (meta.get('scope') !== scope || !copyId || !asOf || !isPhase(phase) || !holds) throw new CopyReadError();
     const reader: CopyReader = {
       all: (sql, params) => tx.all(sql, params),

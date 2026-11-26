@@ -8,16 +8,18 @@ import { documentNumberSortKey } from '@/utils/documentNumber';
 import type { CopyDriver, SqlValue } from './copyDriver';
 import { mobileDigits, mobileKey, parseTimestampUs } from './pgCompat';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 /** The payload formats of the change-log feed this build reads. */
-export const SYNC_FORMATS: readonly number[] = [1, 2];
+export const SYNC_FORMATS: readonly number[] = [1, 2, 3];
 /** The format from which the screens may read the copy: it carries what their rows need (WH-299, section 6). */
 export const READ_FORMAT = 2;
+/** The format from which the WH-348 screens (invoices, rates, users, settings) read the copy; the one constant (contract section 2). */
+export const COPY_FORMAT_V3 = 3;
 
 export type EntityName =
   | 'customers' | 'items' | 'settings' | 'people' | 'goodsreceived' | 'goodsreceived_trl' | 'grn_images'
   | 'dispatch' | 'dispatch_trl' | 'dispatch_images' | 'invoice' | 'invoice_trl' | 'grn_lock' | 'user_profiles'
-  | 'users_customers_new';
+  | 'users_customers_new' | 'grn_rates' | 'item_storage_prices' | 'standard_rate_tiers' | 'item_price_history' | 'payments';
 
 /**
  * A column copied out of the row: `from` are the row keys tried in order; `lower` keeps it lower-cased for search;
@@ -54,7 +56,7 @@ export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
   },
   settings: { columns: [], indexes: [] },
   people: { columns: [], indexes: [] },
-  user_profiles: { columns: [], indexes: [] },
+  user_profiles: { columns: [lower('name_lc', 'name'), col('role'), col('active')], indexes: [] },
   users_customers_new: { columns: [], indexes: [] },
   goodsreceived: {
     columns: [col('gr_no'), col('date'), col('customer_id'), col('deleted_at'), lower('gr_no_lc', 'gr_no'),
@@ -77,9 +79,20 @@ export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
   },
   dispatch_trl: { columns: [col('disp_id'), col('gr_id'), col('gr_trl_id'), col('disp_qty')], indexes: ['disp_id', 'gr_trl_id', 'gr_id'] },
   dispatch_images: { columns: [col('dispatch_id')], indexes: ['dispatch_id'] },
-  invoice: { columns: [col('customer_id'), col('gr_id'), col('deleted_at'), col('cancelled_at')], indexes: ['customer_id', 'gr_id'] },
-  invoice_trl: { columns: [col('invoice_id'), col('disp_trl_id')], indexes: ['invoice_id', 'disp_trl_id'] },
+  invoice: {
+    columns: [col('customer_id'), col('gr_id'), col('deleted_at'), col('cancelled_at'),
+      computed('inv_no_sk', row => documentNumberSortKey(typeof row.inv_no === 'number' ? String(row.inv_no) : textOf(row.inv_no))),
+      micros('inv_date_us', 'inv_date'), lower('customer_name_lc', 'customer_name'), lower('inv_no_lc', 'inv_no'),
+      col('doc_type'), col('total')],
+    indexes: ['customer_id', 'gr_id', 'inv_date_us', 'inv_no_sk'],
+  },
+  invoice_trl: { columns: [col('invoice_id'), col('disp_trl_id'), col('storage_amount')], indexes: ['invoice_id', 'disp_trl_id'] },
   grn_lock: { columns: [col('invoice_state')], indexes: [] },
+  grn_rates: { columns: [col('gr_id')], indexes: ['gr_id'] },
+  item_storage_prices: { columns: [col('item_id'), col('customer_id'), micros('effective_from_us', 'effective_from')], indexes: ['item_id', 'customer_id'] },
+  standard_rate_tiers: { columns: [], indexes: [] },
+  item_price_history: { columns: [col('item_id'), micros('changed_at_us', 'changed_at')], indexes: ['item_id'] },
+  payments: { columns: [col('invoice_id'), col('paid_on'), micros('payment_date_us', 'payment_date'), col('payment_no')], indexes: ['invoice_id'] },
 };
 
 /** The texts a read sorts in the server's en_US order: where each comes from (reads/textRank.ts, `text_rank`). */
@@ -88,6 +101,10 @@ export const RANK_SOURCES = {
   customer_name: { entity: 'goodsreceived', key: 'customer_name' },
   item_name: { entity: 'goodsreceived_trl', key: 'item_name' },
   package_mark: { entity: 'goodsreceived_trl', key: 'package_mark' },
+  invoice_customer_name: { entity: 'invoice', key: 'customer_name' },
+  customer_master_name: { entity: 'customers', key: 'name' },
+  item_master_name: { entity: 'items', key: 'name' },
+  user_name: { entity: 'user_profiles', key: 'name' },
 } as const satisfies Record<string, { entity: EntityName; key: string }>;
 export type RankKind = keyof typeof RANK_SOURCES;
 export const RANK_KINDS = Object.keys(RANK_SOURCES) as RankKind[];

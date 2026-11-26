@@ -51,6 +51,7 @@ export async function deleteWithCascade(tx: CopyDriver, entity: EntityName, id: 
     await tx.run('DELETE FROM goodsreceived_trl WHERE gr_id = ?', [id]);
     await tx.run('DELETE FROM grn_images WHERE grn_id = ?', [id]);
     await tx.run('DELETE FROM grn_lock WHERE id = ?', [id]);
+    await tx.run('DELETE FROM grn_rates WHERE gr_id = ?', [id]);
   } else if (entity === 'goodsreceived_trl') {
     await tx.run('DELETE FROM lot_search WHERE lot_id = ?', [id]);
   } else if (entity === 'dispatch') {
@@ -59,6 +60,7 @@ export async function deleteWithCascade(tx: CopyDriver, entity: EntityName, id: 
     await tx.run('DELETE FROM dispatch_images WHERE dispatch_id = ?', [id]);
   } else if (entity === 'invoice') {
     await tx.run('DELETE FROM invoice_trl WHERE invoice_id = ?', [id]);
+    await tx.run('DELETE FROM payments WHERE invoice_id = ?', [id]);
   }
   await tx.run(`DELETE FROM ${entity} WHERE id = ?`, [id]);
 }
