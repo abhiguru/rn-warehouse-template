@@ -187,7 +187,7 @@ describe('DS1: a section that needs the server', () => {
     await tab(/overview/i);
     const line = await screen.findByTestId('grn-details-section-needs-connection-rates');
     expect(line).toHaveTextContent(NEEDS);
-    expect(screen.getByText('Rates')).toBeOnTheScreen();
+    expect(screen.getByText('RATES')).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
     expect(screen.queryByTestId('grn-item-rates-loading')).not.toBeOnTheScreen();
     expect(serverCalls).toEqual([]);

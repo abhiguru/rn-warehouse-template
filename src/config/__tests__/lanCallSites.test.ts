@@ -123,7 +123,8 @@ describe('the places the host is rewritten', () => {
   });
 
   it('the share download is the only native download', () => {
-    expect(filesWith(/\.downloadFileAsync\(/)).toEqual(['src/utils/shareDocument.ts']);
+    // photoStore keeps a viewed photo from a link its two callers got from viaCurrentPath (grn- and dispatch-detail-service).
+    expect(filesWith(/\.downloadFileAsync\(/)).toEqual(['src/features/phone-copy/photoStore.ts', 'src/utils/shareDocument.ts']);
     expect(filesWith(/\bnoteNativeReadFailed\(/)).toEqual([]);
   });
 
@@ -170,6 +171,7 @@ describe('the places the host is rewritten', () => {
     expect(linesWith(/\bXMLHttpRequest\b/, bare)).toEqual([]);
     expect(linesWith(/\bfrom\s*'expo\/fetch'|require\('expo\/fetch'\)/)).toEqual([]);
     expect(linesWith(/\b(?:uploadAsync|createUploadTask|createDownloadResumable|downloadAsync|downloadFileAsync)\b/, bare)).toEqual([
+      'src/features/phone-copy/photoStore.ts: const file = await File.downloadFileAsync(signedUrl, target);', // a link both callers took from viaCurrentPath
       'src/utils/shareDocument.ts: File.downloadFileAsync(url, file, {', // rewritten by viaCurrentPath above
     ]);
     // expo-image downloads what it is given: only the preload helper calls prefetch, with links moved to the path in use.
