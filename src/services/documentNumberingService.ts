@@ -9,6 +9,9 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { backendHasFeature } from '@/config/backendFeatures';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readDocumentNumbering } from '@/features/phone-copy/reads/settings';
 import { t, type TranslationKey } from '@/i18n';
 import { refusalOf, REFUSAL } from '@/utils/serverRefusal';
 import { AppError } from '@/utils/appError';
@@ -196,6 +199,12 @@ const asRule = (row: unknown): NumberingRule | null => {
 
 /** The three rules in the order GRN, dispatch, invoice. */
 export async function getDocumentNumbering(): Promise<NumberingRule[]> {
+  // The phone copy answers when it can (WH-348); a copy with no such row, or a role the server refuses, asks the server.
+  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readDocumentNumbering(q));
+  const copied = copy?.value && isRecord(copy.value) && Array.isArray(copy.value.rules)
+    ? copy.value.rules.map(asRule).filter((rule): rule is NumberingRule => rule !== null)
+    : [];
+  if (copied.length > 0) return copied;
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
   const { data, error } = await client.rpc('get_document_numbering');

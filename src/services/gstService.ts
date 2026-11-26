@@ -5,6 +5,9 @@
  * Every figure here is the server's. The app never works out tax, a split or a document type.
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readGstDetails } from '@/features/phone-copy/reads/settings';
 import { t, formatIdentifier } from '@/i18n';
 import { formatDate } from '@/utils/formatters';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
@@ -75,6 +78,10 @@ function readDetails(value: unknown): GstDetails | null {
 
 /** The details the server holds. Throws in the app's own words when they cannot be read. */
 export async function getGstDetails(): Promise<GstDetails> {
+  // The phone copy answers when it can (WH-348); a copy with no such row, or a role the server refuses, asks the server.
+  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readGstDetails(q));
+  const copied = copy?.value ? readDetails(copy.value) : null;
+  if (copied) return copied;
   const result = await executeRPC<unknown>(getAuthenticatedClient, 'get_gst_details', undefined, {
     context: 'GstService.getGstDetails',
     errorMessage: t('gst.settings.loadFailed'),

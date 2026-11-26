@@ -7,6 +7,9 @@
 import { router } from 'expo-router';
 import { backendHasFeature } from '@/config/backendFeatures';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readBillsAllowed } from '@/features/phone-copy/reads/settings';
 import { normalizeRole } from '@/config/roles';
 import { t } from '@/i18n';
 import { createLogger } from '@/utils/logger';
@@ -23,6 +26,9 @@ export type BillsAllowed = 'allowed' | 'refused' | 'unknown';
 export async function canMakeBills(): Promise<BillsAllowed> {
   if (!backendHasFeature('billsNeedGst')) return 'unknown';
   try {
+    // The phone copy answers when it can (WH-348), so a new bill is refused offline as it is online.
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readBillsAllowed(q));
+    if (copy && typeof copy.value === 'boolean') return copy.value ? 'allowed' : 'refused';
     const client = await getAuthenticatedClient();
     const { data, error } = await client.rpc('can_make_bills');
     if (error || !data || data.success !== true) {
