@@ -130,7 +130,7 @@ import { CENTRAL_SECURE_KEYS } from '@/config/centralSession';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { deleteCopyFile } from '@/features/phone-copy/copyDriver';
 import { FACILITY } from '@/tests/helpers/offlineRoleServer';
-import { setCentralState } from '@/config/centralState';
+import { getCentralState, setCentralState } from '@/config/centralState';
 import * as TriesModule from '@/config/storeUnreadableTries';
 
 /** A restart of the app, as far as the try count is concerned (see the mock below). */
@@ -252,7 +252,7 @@ beforeEach(async () => {
   undeletable = () => false;
   jest.mocked(deleteCopyFile).mockClear();
   installStore();
-  setCentralState({ status: 'unknown', user: null, autoOpenSpent: false, pendingLink: null }); // nothing in memory: a new process
+  setCentralState({ status: 'unknown', user: null, autoOpenSpent: false, pendingLink: null, reopenOrigin: null }); // nothing in memory: a new process
   restartRun(); // each test starts as a newly started app
 });
 afterEach(async () => {
@@ -397,6 +397,25 @@ describe('"Sign in again" (WH-363)', () => {
     expect(screen.queryByRole('header', { name: TITLE, ...everything })).not.toBeOnTheScreen();
     expect(await triesLeft()).toBe(0);
     expect(store.getState().auth.userProfile).toBeNull();
+    // WH-366: the person signs in centrally again, and this facility is the one that opens.
+    expect(getCentralState().reopenOrigin).toBe(FACILITY.origin);
+  });
+
+  it('with only the facility sign-in unreadable, the central sign-in is kept and no facility is marked to open again (WH-366)', async () => {
+    savedSignIns({ noFacility: false });
+    failed.facility = true;
+    await seedTries(2);
+    await coldStart();
+    expect(screen.getByRole('button', { name: 'Sign in again' })).toBeOnTheScreen();
+
+    await user.press(screen.getByRole('button', { name: 'Sign in again' }));
+    await wait(1_000); // the dialog takes presses a moment after it appears
+    await user.press(screen.getAllByRole('button', { name: 'Sign in again' }).at(-1)!);
+    await waitSteps(15_000);
+
+    for (const key of FACILITY_SESSION_KEYS) expect(secure.has(key)).toBe(false);
+    expect(secure.has(CENTRAL_SECURE_KEYS.REFRESH_TOKEN)).toBe(true);
+    expect(getCentralState().reopenOrigin).toBeNull();
   });
 
   it('the same removal with a facility sign-in that cannot be read: the facility session goes too', async () => {
