@@ -647,6 +647,13 @@ function BootstrapApp() {
         // server runs it again first, and "update the app" or "being upgraded" then apply as on a normal start.
         initializeSupabase(result.config.supabaseUrl, result.config.anonKey);
         operatorResumeGate.suspend();
+        // Lists asked while the gate was shut failed with the identity error and the query library never asks again
+        // by itself (NetInfo is not fed to it). When the real check first passes, the failed ones ask again.
+        const stopWatching = operatorResumeGate.onVerified(() => {
+          stopWatching();
+          void queryClient.refetchQueries({ type: 'active', predicate: query => query.state.status === 'error' });
+          void queryClient.invalidateQueries({ type: 'inactive', predicate: query => query.state.status === 'error' });
+        });
         if (run === bootstrapRun.current) { setConfigError(null); setIsReady(true); }
         return;
       }

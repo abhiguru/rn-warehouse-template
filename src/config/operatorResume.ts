@@ -6,6 +6,7 @@ export function createOperatorResumeGate() {
   let verifier: ((isCurrent: () => boolean) => Promise<boolean>) | undefined;
   let pending: { epoch: number; promise: Promise<boolean> } | undefined;
   const listeners = new Set<() => void>();
+  const verifiedListeners = new Set<() => void>();
   return {
     installVerifier(value: (isCurrent: () => boolean) => Promise<boolean>) {
       verifier = value;
@@ -24,6 +25,16 @@ export function createOperatorResumeGate() {
         listeners.delete(listener);
       };
     },
+    /**
+     * Told each time a verification passes and opens the gate (the installed verifier answered true for the current
+     * epoch). Never on a refusal or for a superseded run; nothing else opens the gate.
+     */
+    onVerified(listener: () => void) {
+      verifiedListeners.add(listener);
+      return () => {
+        verifiedListeners.delete(listener);
+      };
+    },
     isVerified: () => !required,
     async ensureVerified(): Promise<boolean> {
       if (!required) return true;
@@ -37,7 +48,10 @@ export function createOperatorResumeGate() {
           .then(() => (run === epoch ? verify(() => run === epoch) : false))
           .then(verified => {
             if (run !== epoch) return false;
-            if (verified) required = false;
+            if (verified) {
+              required = false;
+              for (const listener of [...verifiedListeners]) listener();
+            }
             return verified;
           })
           .finally(() => {
