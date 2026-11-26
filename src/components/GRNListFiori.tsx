@@ -30,6 +30,7 @@ import {
   GRNListResponse,
 } from '@/services/grn-service';
 import { syncNow } from '@/features/phone-copy/syncEngine';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useOlderRecordsAbsent } from '@/features/phone-copy/useOlderRecordsAbsent';
 import { useQuietReread, type QuietReread } from '@/features/phone-copy/useQuietReread';
 import type { EntityName } from '@/features/phone-copy/copySchema';
@@ -318,6 +319,9 @@ const GRNCardFiori = memo<GRNCardProps>(({
   const reduceMotion = useReducedMotion();
   const matched = hiddenMatches(group, words);
   const swipeableRef = useRef<SwipeableMethods>(null);
+  // Edit and Print need the server: with no connection they are disabled and say why (WH-299, Design 2.5).
+  const needsConnection = useNeedsConnection();
+  const reasoned = (label: string) => (needsConnection ? needsConnectionLabel(label) : label);
 
   // Totals of the receipt: bags received, bags in stock and the weight received
   // (bags received x kg each, as the old card summed it). The collapsed card shows
@@ -342,12 +346,13 @@ const GRNCardFiori = memo<GRNCardProps>(({
 
   // The same actions for the swipe and for a screen reader (style guide 13.6).
   const actions = [
-    onPrint ? { name: 'print', label: translate('common.print') } : null,
-    onEdit ? { name: 'edit', label: translate('common.edit') } : null,
+    onPrint ? { name: 'print', label: reasoned(translate('common.print')) } : null,
+    onEdit ? { name: 'edit', label: reasoned(translate('common.edit')) } : null,
   ].filter((action): action is { name: string; label: string } => action !== null);
 
   const runAction = (name: string) => {
     swipeableRef.current?.close();
+    if (needsConnection && (name === 'edit' || name === 'print')) return;
     if (name === 'view') onPress(group);
     else if (name === 'edit') onEdit?.(group);
     else if (name === 'print') onPrint?.(group);
@@ -357,10 +362,17 @@ const GRNCardFiori = memo<GRNCardProps>(({
     <View style={styles.swipeActions}>
       {onPrint && (
         <Pressable
-          style={({ pressed }) => [styles.swipeButton, styles.swipeSecondary, pressed && styles.swipeSecondaryPressed]}
+          style={({ pressed }) => [
+            styles.swipeButton,
+            styles.swipeSecondary,
+            pressed && !needsConnection && styles.swipeSecondaryPressed,
+            needsConnection && styles.swipeDisabled,
+          ]}
           onPress={() => runAction('print')}
+          disabled={needsConnection}
           accessibilityRole="button"
-          accessibilityLabel={translate('lists.grn.printLabel', { title })}
+          accessibilityLabel={reasoned(translate('lists.grn.printLabel', { title }))}
+          accessibilityState={{ disabled: needsConnection }}
         >
           <Icon name="printer-outline" size={iconSize.lg} color={t.icon.primary} />
           <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>{translate('common.print')}</Text>
@@ -377,10 +389,17 @@ const GRNCardFiori = memo<GRNCardProps>(({
       </Pressable>
       {onEdit && (
         <Pressable
-          style={({ pressed }) => [styles.swipeButton, styles.swipePrimary, pressed && styles.swipePrimaryPressed]}
+          style={({ pressed }) => [
+            styles.swipeButton,
+            styles.swipePrimary,
+            pressed && !needsConnection && styles.swipePrimaryPressed,
+            needsConnection && styles.swipeDisabled,
+          ]}
           onPress={() => runAction('edit')}
+          disabled={needsConnection}
           accessibilityRole="button"
-          accessibilityLabel={translate('lists.grn.editLabel', { title })}
+          accessibilityLabel={reasoned(translate('lists.grn.editLabel', { title }))}
+          accessibilityState={{ disabled: needsConnection }}
         >
           <Icon name="pencil-outline" size={iconSize.lg} color={t.brand.onFill} />
           <Text style={[styles.swipeText, styles.swipeTextOnFill]} maxFontSizeMultiplier={1.6}>{translate('common.edit')}</Text>

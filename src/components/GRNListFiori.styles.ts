@@ -272,6 +272,9 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.cardActive,
   },
 
+  swipeDisabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
   swipeSecondaryPressed: {
     backgroundColor: t.surface.cardPressed,
   },

@@ -7,6 +7,7 @@ import React, { useRef } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { needsConnectionLabel } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -18,6 +19,8 @@ interface PrintSwipeProps {
   label: string;
   /** The card's own vertical margin, so the action is as tall as the card. */
   cardMargin: number;
+  /** No connection: Print needs the server, so it is drawn disabled and its label says why (WH-299, Design 2.5). */
+  needsConnection?: boolean;
   children: React.ReactElement;
 }
 
@@ -40,6 +43,9 @@ const makeStyles = (t: ThemeTokens) => ({
   buttonPressed: {
     backgroundColor: t.surface.cardPressed,
   },
+  buttonDisabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
   text: {
     ...typography.caption1,
     fontWeight: fontWeight.semibold,
@@ -47,7 +53,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-export const PrintSwipe: React.FC<PrintSwipeProps> = ({ onPrint, label, cardMargin, children }) => {
+export const PrintSwipe: React.FC<PrintSwipeProps> = ({ onPrint, label, cardMargin, needsConnection = false, children }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const swipeableRef = useRef<SwipeableMethods>(null);
@@ -55,13 +61,15 @@ export const PrintSwipe: React.FC<PrintSwipeProps> = ({ onPrint, label, cardMarg
   const renderRightActions = () => (
     <View style={[styles.actions, { marginVertical: cardMargin }]}>
       <Pressable
-        style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+        style={({ pressed }) => [styles.button, pressed && !needsConnection && styles.buttonPressed, needsConnection && styles.buttonDisabled]}
+        disabled={needsConnection}
         onPress={() => {
           swipeableRef.current?.close();
           onPrint();
         }}
         accessibilityRole="button"
-        accessibilityLabel={label}
+        accessibilityLabel={needsConnection ? needsConnectionLabel(label) : label}
+        accessibilityState={{ disabled: needsConnection }}
       >
         <Icon name="printer-outline" size={iconSize.lg} color={t.icon.primary} />
         <Text style={styles.text} maxFontSizeMultiplier={1.6}>{translate('common.print')}</Text>

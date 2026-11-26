@@ -87,6 +87,9 @@ const makeStyles = (t: ThemeTokens) =>
       alignItems: 'center',
       borderRadius: radius.pill,
     },
+    navButtonDisabled: {
+      opacity: t.interaction.disabledOpacity,
+    },
     navButtonPressed: {
       backgroundColor: t.brand.subtle,
     },
@@ -169,7 +172,7 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
           {allActions.map(action => (
             <Pressable
               key={action.label}
-              style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+              style={({ pressed }) => [styles.navButton, pressed && !action.disabled && styles.navButtonPressed, action.disabled === true && styles.navButtonDisabled]}
               onPress={action.onPress}
               disabled={action.busy === true || action.disabled === true}
               accessibilityLabel={action.label}

@@ -24,6 +24,7 @@ import { getDispatchStatus } from '@/utils/dispatchStatus';
 import type { Dispatch } from '@/services/dispatch-service';
 import { PrintSwipe } from './PrintSwipe';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -484,6 +485,8 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   ].filter(Boolean).join(', ');
 
   const printable = canPrint && !!onPrint;
+  // Print goes to the server's printer: with no connection it is disabled and says why (WH-299, Design 2.5).
+  const needsConnection = useNeedsConnection();
   const printTitle = translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) });
   const printLabel = translate('lists.dispatch.printLabel', { title: printTitle });
 
@@ -495,8 +498,10 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
         accessibilityRole="button"
         accessibilityLabel={accessibilityDescription}
         accessibilityHint={translate(printable ? 'lists.dispatch.openHintActions' : 'lists.dispatch.openHint')}
-        accessibilityActions={printable ? [{ name: 'print', label: translate('common.print') }] : undefined}
-        onAccessibilityAction={printable ? () => onPrint?.(dispatch) : undefined}
+        accessibilityActions={
+          printable ? [{ name: 'print', label: needsConnection ? needsConnectionLabel(translate('common.print')) : translate('common.print') }] : undefined
+        }
+        onAccessibilityAction={printable ? () => { if (!needsConnection) onPrint?.(dispatch); } : undefined}
       >
         <View style={styles.objectCellRow}>
           {/* Object icon (left) */}
@@ -574,7 +579,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   if (!printable) return card;
   return (
     // One swipe state per dispatch: FlashList reuses this cell for another dispatch, which must not appear already swiped open.
-    <PrintSwipe key={String(dispatchId)} onPrint={() => onPrint?.(dispatch)} label={printLabel} cardMargin={space.sm}>
+    <PrintSwipe key={String(dispatchId)} onPrint={() => onPrint?.(dispatch)} label={printLabel} cardMargin={space.sm} needsConnection={needsConnection}>
       {card}
     </PrintSwipe>
   );

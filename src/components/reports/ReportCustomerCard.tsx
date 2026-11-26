@@ -26,6 +26,7 @@
 import React from 'react';
 import { View, Text, Pressable, ActivityIndicator, StyleSheet, useWindowDimensions } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   iconSize,
@@ -185,6 +186,9 @@ const makeStyles = (t: ThemeTokens) =>
     shareButtonStacked: {
       height: STACKED_SHARE_HEIGHT,
     },
+    shareButtonDisabled: {
+      opacity: t.interaction.disabledOpacity,
+    },
     shareButtonPressed: {
       backgroundColor: t.brand.subtle,
     },
@@ -243,6 +247,8 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   const t = useTokens();
   const { fontScale } = useWindowDimensions();
   const stacked = stacksCard(title, fontScale);
+  // Sharing needs the server: with no connection the button is disabled (the report's one line says why), WH-299.
+  const needsConnection = useNeedsConnection();
 
   // The word beside the figure: "unit" for 1, "units" otherwise, unless the screen names its own.
   const label = valueLabel ?? tr('reports.shared.units', { count: value });
@@ -304,12 +310,21 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
       <View style={stacked ? styles.shareBelow : styles.shareSlot}>
         <Pressable
           onPress={onShare}
-          style={({ pressed }) => [styles.shareButton, stacked && styles.shareButtonStacked, pressed && styles.shareButtonPressed]}
+          style={({ pressed }) => [
+            styles.shareButton,
+            stacked && styles.shareButtonStacked,
+            pressed && !needsConnection && styles.shareButtonPressed,
+            needsConnection && styles.shareButtonDisabled,
+          ]}
           hitSlop={stacked ? STACKED_SHARE_HIT_SLOP : undefined}
-          disabled={isSharing}
+          disabled={!!isSharing || needsConnection}
           accessibilityRole="button"
-          accessibilityLabel={tr('reports.components.sharePdfFor', { name: title })}
-          accessibilityState={{ busy: !!isSharing, disabled: !!isSharing }}
+          accessibilityLabel={
+            needsConnection
+              ? needsConnectionLabel(tr('reports.components.sharePdfFor', { name: title }))
+              : tr('reports.components.sharePdfFor', { name: title })
+          }
+          accessibilityState={{ busy: !!isSharing, disabled: !!isSharing || needsConnection }}
         >
           {isSharing ? (
             <ActivityIndicator size="small" color={t.brand.tint} />

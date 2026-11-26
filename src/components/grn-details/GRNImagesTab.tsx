@@ -11,6 +11,8 @@ import { View, Text, Pressable, FlatList, useWindowDimensions, ActivityIndicator
 import { Image } from 'expo-image';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useViaCurrentPath } from '@/hooks/useLanStatus';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -173,6 +175,8 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   uploadButtonPressed: { backgroundColor: t.brand.fillPressed },
   uploadButtonDisabled: { opacity: t.interaction.disabledOpacity },
+  addIconButtonDisabled: { opacity: t.interaction.disabledOpacity },
+  needsConnectionRow: { paddingHorizontal: space.lg, paddingTop: space.xs },
   uploadButtonText: { ...typography.callout, color: t.brand.onFill },
 });
 
@@ -381,6 +385,11 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  // Adding a photo needs the server: with no connection the button is disabled and one line says why (WH-299, 2.5).
+  const needsConnection = useNeedsConnection();
+  const addDisabled = isUploading || needsConnection;
+  const addLabel = isUploading ? tr('grn.images.uploadingLabel') : tr('grn.images.addImage');
+  const addA11yLabel = needsConnection ? needsConnectionLabel(addLabel) : addLabel;
   const [filter, setFilter] = useState<FilterType>('all');
 
   const headerCount = useMemo(() => images.filter(img => img.category === 'header').length, [images]);
@@ -406,15 +415,15 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isUploading ? tr('grn.images.uploadingLabel') : tr('grn.images.addImage')}
-            accessibilityState={{ disabled: isUploading, busy: isUploading }}
+            accessibilityLabel={addA11yLabel}
+            accessibilityState={{ disabled: addDisabled, busy: isUploading }}
             style={({ pressed }) => [
               styles.uploadButton,
               pressed && styles.uploadButtonPressed,
-              isUploading && styles.uploadButtonDisabled,
+              addDisabled && styles.uploadButtonDisabled,
             ]}
             onPress={onUpload}
-            disabled={isUploading}
+            disabled={addDisabled}
           >
             {isUploading ? (
               <ActivityIndicator size="small" color={t.brand.onFill} />
@@ -424,6 +433,9 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
             <Text style={styles.uploadButtonText}>{isUploading ? tr('grn.images.uploading') : tr('grn.images.addImage')}</Text>
           </Pressable>
         )}
+        {onUpload && needsConnection ? (
+          <NeedsConnectionLine testID="grn-images-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        ) : null}
       </View>
     );
   }
@@ -451,11 +463,11 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isUploading ? tr('grn.images.uploadingLabel') : tr('grn.images.addImage')}
-            accessibilityState={{ disabled: isUploading, busy: isUploading }}
-            style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed]}
+            accessibilityLabel={addA11yLabel}
+            accessibilityState={{ disabled: addDisabled, busy: isUploading }}
+            style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed, needsConnection && styles.addIconButtonDisabled]}
             onPress={onUpload}
-            disabled={isUploading}
+            disabled={addDisabled}
           >
             {isUploading ? (
               <ActivityIndicator size="small" color={t.brand.tint} />
@@ -465,6 +477,11 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
           </Pressable>
         )}
       </View>
+      {onUpload && needsConnection ? (
+        <View style={styles.needsConnectionRow}>
+          <NeedsConnectionLine testID="grn-images-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        </View>
+      ) : null}
 
       {/* Image Grid */}
       <FlatList

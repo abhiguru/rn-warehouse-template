@@ -19,6 +19,8 @@ import {
 import { Image } from 'expo-image';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useViaCurrentPath } from '@/hooks/useLanStatus';
 import {
@@ -238,6 +240,8 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.brand.onFill,
   },
+  addDisabled: { opacity: t.interaction.disabledOpacity },
+  needsConnectionRow: { paddingHorizontal: layout.marginCompact },
 });
 
 export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
@@ -252,6 +256,10 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
   const { width } = useWindowDimensions();
   const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
   const t = useTokens();
+  // Adding a photo needs the server: with no connection the button is disabled and one line says why (WH-299, 2.5).
+  const needsConnection = useNeedsConnection();
+  const addDisabled = isUploading || needsConnection;
+  const addA11yLabel = needsConnection ? needsConnectionLabel(tr('dispatch.photos.addLabel')) : tr('dispatch.photos.addLabel');
 
   if (images.length === 0) {
     return (
@@ -264,11 +272,11 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={tr('dispatch.photos.addLabel')}
-            accessibilityState={{ disabled: isUploading, busy: isUploading }}
-            style={({ pressed }) => [styles.uploadButton, pressed && styles.uploadButtonPressed]}
+            accessibilityLabel={addA11yLabel}
+            accessibilityState={{ disabled: addDisabled, busy: isUploading }}
+            style={({ pressed }) => [styles.uploadButton, pressed && styles.uploadButtonPressed, needsConnection && styles.addDisabled]}
             onPress={onUpload}
-            disabled={isUploading}
+            disabled={addDisabled}
           >
             {isUploading ? (
               <ActivityIndicator size="small" color={t.brand.onFill} />
@@ -278,6 +286,9 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
             <Text style={styles.uploadButtonText}>{isUploading ? tr('dispatch.photos.uploading') : tr('dispatch.photos.add')}</Text>
           </Pressable>
         )}
+        {onUpload && needsConnection ? (
+          <NeedsConnectionLine testID="dispatch-images-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        ) : null}
       </View>
     );
   }
@@ -339,11 +350,11 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={tr('dispatch.photos.addLabel')}
-            accessibilityState={{ disabled: isUploading, busy: isUploading }}
-            style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed]}
+            accessibilityLabel={addA11yLabel}
+            accessibilityState={{ disabled: addDisabled, busy: isUploading }}
+            style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed, needsConnection && styles.addDisabled]}
             onPress={onUpload}
-            disabled={isUploading}
+            disabled={addDisabled}
           >
             {isUploading ? (
               <ActivityIndicator size="small" color={t.brand.tint} />
@@ -354,6 +365,11 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
           </Pressable>
         )}
       </View>
+      {onUpload && needsConnection ? (
+        <View style={styles.needsConnectionRow}>
+          <NeedsConnectionLine testID="dispatch-images-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        </View>
+      ) : null}
 
       {/* Image Grid */}
       <FlatList
