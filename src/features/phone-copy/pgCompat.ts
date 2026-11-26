@@ -92,6 +92,19 @@ export function mobileKey(mobile: string | null | undefined): string {
 /** The one comparator of the copy's reads (section 7.3): the database's en_US order. */
 export const enCollator: Intl.Collator = new Intl.Collator('en', { ignorePunctuation: true });
 
+/**
+ * `uuid_extract_timestamp`: the moment inside a version 1 or version 7 uuid, in microseconds since 1970; null for any
+ * other version or text (the rows then sort after the ones that have one, as Postgres puts nulls last).
+ */
+export function uuidTimestampUs(id: string | null | undefined): number | null {
+  const parts = id ? /^([0-9a-f]{8})-([0-9a-f]{4})-([17])([0-9a-f]{3})-[0-9a-f]{4}-[0-9a-f]{12}$/i.exec(id) : null;
+  if (!parts) return null;
+  if (parts[3] === '7') return Number(BigInt(`0x${parts[1]}${parts[2]}`) * 1000n);
+  // Version 1: 100-nanosecond intervals since 1582-10-15.
+  const intervals = BigInt(`0x${parts[4]}${parts[2]}${parts[1]}`);
+  return Number((intervals - 122192928000000000n) / 10n);
+}
+
 /** en_US order, then code-unit order so it is the same on every run; a missing text comes last. */
 export function enCompare(a: string | null, b: string | null): number {
   if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;

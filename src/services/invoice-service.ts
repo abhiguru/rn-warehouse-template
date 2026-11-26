@@ -14,6 +14,7 @@ import { createLogger } from '@/utils/logger';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { readVia } from '@/features/phone-copy/readRoute';
+import { readInvoiceData, readInvoiceItemsDetailed, readInvoiceReasons } from '@/features/phone-copy/reads/invoiceDetails';
 import { readInvoicesList } from '@/features/phone-copy/reads/invoices';
 import type { DataSource } from '@/features/phone-copy/sourced';
 
@@ -679,10 +680,18 @@ const textOrNull = (value: unknown): string | null => (typeof value === 'string'
  */
 export const getInvoiceReasons = async (invoiceId: string): Promise<InvoiceReasons | null> => {
   try {
-    const client = await getAuthenticatedClient();
-    const { data, error } = await client.rpc('get_invoice_detail', { p_invoice_id: invoiceId });
-    if (error || !data?.success || !data.invoice) return null;
-    const h = data.invoice as Record<string, unknown>;
+    // The phone copy answers when it can (WH-348, contract 15): the reasons are keys of the invoice row.
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readInvoiceReasons(q, invoiceId));
+    let h: Record<string, unknown>;
+    if (copy) {
+      if (!copy.value) return null;
+      h = copy.value;
+    } else {
+      const client = await getAuthenticatedClient();
+      const { data, error } = await client.rpc('get_invoice_detail', { p_invoice_id: invoiceId });
+      if (error || !data?.success || !data.invoice) return null;
+      h = data.invoice as Record<string, unknown>;
+    }
     return {
       discountReason: textOrNull(h.discount_reason),
       discountSetByName: textOrNull(h.discount_set_by_name),
@@ -705,6 +714,8 @@ export interface InvoiceDetailsResponse {
     items: InvoiceItem[];
   };
   error?: string;
+  /** Set when the phone copy answered (WH-348): the screen shows no time of its own. */
+  source?: DataSource;
   /** The server answered "Invoice not found": the invoice is gone (deleted), not merely unreadable right now. */
   notFound?: boolean;
   /** The server answered "Access denied to this invoice": a customer whose access to it has ended. */
@@ -727,13 +738,19 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
     }
 
     invoiceServiceLogger.debug('Fetching invoice details for ID:', invoiceId);
+    // The phone copy answers when it can (WH-348, contract 15): the same `data` as `get_invoice_data`.
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readInvoiceData(q, invoiceId));
     const authenticatedClient = await getAuthenticatedClient();
     invoiceServiceLogger.debug('Got authenticated client, calling get_invoice_data RPC...');
 
     // Use get_invoice_data RPC which includes nested structure with dispatch details (disp_no, disp_date)
-    const { data, error } = await authenticatedClient.rpc('get_invoice_data', {
-      p_invoice_id: invoiceId
-    });
+    const { data, error } = copy?.value
+      ? { data: { success: true, data: copy.value }, error: null }
+      : copy
+        ? { data: { success: false, error: 'Invoice not found' }, error: null }
+        : await authenticatedClient.rpc('get_invoice_data', {
+          p_invoice_id: invoiceId
+        });
 
     invoiceServiceLogger.debug('RPC response:', {
       hasData: !!data,
@@ -774,7 +791,8 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
     return {
       success: true,
       data: data.data,
-      message: t('errors.invoice.detailsFetched')
+      message: t('errors.invoice.detailsFetched'),
+      ...(copy ? { source: copy.source } : {}),
     };
   } catch (error) {
     invoiceServiceLogger.error('Exception:', error);
@@ -832,6 +850,8 @@ export interface InvoiceItemsDetailedResponse {
     summary: InvoiceItemsSummary;
   };
   error?: string;
+  /** Set when the phone copy answered (WH-348). */
+  source?: DataSource;
 }
 
 // Type for raw RPC invoice item response
@@ -958,10 +978,16 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
     }
 
     invoiceServiceLogger.debug('Fetching invoice items for ID:', invoiceId);
+    // The phone copy answers when it can (WH-348, contract 15): the same `data` as `get_invoice_items_detailed`.
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readInvoiceItemsDetailed(q, invoiceId));
     const authenticatedClient = await getAuthenticatedClient();
-    const { data, error } = await authenticatedClient.rpc('get_invoice_items_detailed', {
-      p_invoice_id: invoiceId
-    });
+    const { data, error } = copy?.value
+      ? { data: { success: true, data: copy.value }, error: null }
+      : copy
+        ? { data: { success: false, error: 'Invoice not found' }, error: null }
+        : await authenticatedClient.rpc('get_invoice_items_detailed', {
+          p_invoice_id: invoiceId
+        });
 
     invoiceServiceLogger.debug('Invoice items RPC response:', {
       hasData: !!data,
@@ -1025,7 +1051,8 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
         ...data.data,
         items: Array.isArray(data.data?.items) ? data.data.items.map(mapDetailedInvoiceItem) : [],
       },
-      message: t('errors.invoice.itemsFetched')
+      message: t('errors.invoice.itemsFetched'),
+      ...(copy ? { source: copy.source } : {}),
     };
   } catch (error) {
     invoiceServiceLogger.error('Invoice Items Exception:', error);
