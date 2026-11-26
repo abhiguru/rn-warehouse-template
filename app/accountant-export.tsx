@@ -19,6 +19,8 @@ import { t as tr, type TranslationKey } from '@/i18n';
 import { LEDGER_KEYS, getAccountantLedgers, setAccountantLedgers, type LedgerKey, type LedgerNames } from '@/services/accountantExportService';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { showToast } from '@/utils/toast';
+import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import type { TextInputRef } from '@/types/nativeRefs';
 
 const NAME_MAX = 60;
@@ -40,6 +42,7 @@ const sameNames = (a: LedgerNames, b: LedgerNames) => LEDGER_KEYS.every(key => a
 
 export default function AccountantExportScreen() {
   const isFocused = useIsFocused();
+  const needsConnection = useNeedsConnectionV3();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const [stored, setStored] = useState<LedgerNames | null>(null);
@@ -129,6 +132,7 @@ export default function AccountantExportScreen() {
         }}
       />
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+      {needsConnection ? <ScreenNeedsConnection testID="accountant-export-needs-connection" /> : (
       <KeyboardAwareScrollView
         contentContainerStyle={{ paddingBottom: space.xl }}
         showsVerticalScrollIndicator={false}
@@ -175,7 +179,8 @@ export default function AccountantExportScreen() {
           </>
         ) : null}
       </KeyboardAwareScrollView>
-      {stored && draft ? (
+      )}
+      {stored && draft && !needsConnection ? (
         <FormSaveBar
           label={tr('settings.accountantExport.saveLabel')}
           onPress={() => void save()}

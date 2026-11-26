@@ -3,6 +3,9 @@ import type { users as source } from '../en/users';
 import type { Translation } from '../../types';
 
 export const users: Translation<typeof source> = {
+  offline: {
+    newNeedsConnection: 'નવા યુઝર માટે કનેક્શન જોઈએ.',
+  },
   role: {
     admin: 'એડમિન',
     supervisor: 'સુપરવાઇઝર',

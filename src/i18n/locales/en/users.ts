@@ -1,5 +1,9 @@
 /** English text: users. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const users = {
+  // The list's footnote while the phone is offline (WH-348, Design offline-capture.md 2.11).
+  offline: {
+    newNeedsConnection: 'New users need a connection.',
+  },
   // The stored role value is mapped through these, never capitalised (docs/I18N.md rule 9).
   role: {
     admin: 'Admin',

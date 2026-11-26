@@ -14,6 +14,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useAppSelector } from '@/store/hooks';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
 import { LANGUAGES, getLanguage, resolveLanguage, t, type AppLanguage, type LanguagePreference, type TranslationKey } from '@/i18n';
@@ -69,6 +70,7 @@ const brandName = (brand: Brand, language: AppLanguage): string =>
 
 const SettingsScreen: React.FC = () => {
   const { userProfile } = useAppSelector(state => state.auth);
+  const needsConnection = useNeedsConnectionV3();
   const capabilities = useFacilityCapabilities();
   // The space the phone copy takes, under Account (WH-298), for every role that has the copy.
   const copySpace = useCopySpaceText();
@@ -179,7 +181,8 @@ const SettingsScreen: React.FC = () => {
       (feature !== 'connectionHistory' || backendHasFeature('connectionHistory')) &&
       (feature !== 'rackPresets' || backendHasFeature('rackPresets'))
   );
-  const showsRequests = featureRows.includes('enrollmentReview');
+  // The count is read from the server: with no connection the row shows none (WH-348, Product PQ2).
+  const showsRequests = featureRows.includes('enrollmentReview') && !needsConnection;
   useFocusEffect(useCallback(() => {
     if (!showsRequests) { setWaitingRequests(null); return undefined; }
     let current = true;

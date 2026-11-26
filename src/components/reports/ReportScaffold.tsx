@@ -28,6 +28,8 @@ import type { CountableFilterList } from '@/features/filters/configs';
 import type { useListFilters } from '@/features/filters/useListFilters';
 import type { ReportQuery } from '@/features/reports/useReportQuery';
 import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
+import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -106,6 +108,11 @@ interface ReportScaffoldBaseProps<T> {
   empty: { icon: IconName; title: string; description?: string; action?: ReportEmptyAction };
   /** Title of the failure with nothing to show. The reason is shown under it. */
   errorTitle?: string;
+  /**
+   * A report that only the server can give (sensors, the temperature report): testID of the "needs a connection" state
+   * shown, with no "Try again", while the phone is offline over a copy of format 3 (WH-348, Design 2.5).
+   */
+  needsConnectionId?: string;
 }
 
 /** The search, filters, sort and period, and what the rows are for "No GRNs match ...": the noun is needed only with filters. */
@@ -174,8 +181,10 @@ function ReportScaffoldInner<T>({
   noun,
   empty,
   errorTitle,
+  needsConnectionId,
 }: ReportScaffoldProps<T>) {
   const t = useTokens();
+  const phoneNeedsConnection = useNeedsConnectionV3();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { phase, error, retry, refresh, isRefreshing, isFetching } = query;
@@ -232,6 +241,15 @@ function ReportScaffoldInner<T>({
     ),
     [isRefreshing, refresh, t]
   );
+
+  if (needsConnectionId && phoneNeedsConnection && (phase === 'loading' || phase === 'error')) {
+    return (
+      <View style={styles.container}>
+        {head}
+        <ScreenNeedsConnection testID={needsConnectionId} />
+      </View>
+    );
+  }
 
   if (phase === 'loading') {
     return (
@@ -304,7 +322,7 @@ function ReportScaffoldInner<T>({
     <View style={styles.container} {...query.quiet?.touchHandlers}>
       {head}
       <FlashList
-        data={rows as T[]}
+        data={rows}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getRowType}

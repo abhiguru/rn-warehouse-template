@@ -31,7 +31,7 @@ import { t as tr, type TranslationKey } from '@/i18n';
 import { generateTemperatureReportPDF, pdfRefusalText } from '@/services/pdf-service';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
-import { indiaDay, parseLocalISODate, todayInIST, toLocalISODate } from '@/utils/formatters';
+import { indiaDay, todayInIST, toLocalISODate } from '@/utils/formatters';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { nameFileNamePart } from '@/utils/invoiceLabel';
 
@@ -89,6 +89,7 @@ export default function TemperatureReportScreen() {
         keyExtractor={(sensor: ReportSensor) => sensor.id}
         empty={{ icon: 'thermometer', title: tr('reports.temperatureReport.noSensors') }}
         errorTitle={tr('reports.temperatureReport.errorTitle')}
+        needsConnectionId="temperature-report-needs-connection"
       />
     </View>
   );
@@ -157,13 +158,13 @@ function ReportForm({ deviceId, sensor }: { deviceId: string; sensor: ReportSens
           const { title, message } = pdfRefusalText(made.refusal);
           showAlert(title, message);
         } else {
-          showAlert(tr('reports.export.failedTitle'), made.error || tr('errors.pdf.generateFailed'));
+          showAlert(tr('reports.export.failedTitle'), made.error ?? tr('errors.pdf.generateFailed'));
         }
         return;
       }
       const filename = `Temperature report ${nameFileNamePart(sensor?.name)} ${fromDay} to ${toDay}`.replace(/\s+/g, ' ').trim() + '.pdf';
       const shared = await downloadAndSharePDF(made.pdfUrl, filename);
-      if (!shared.success) showAlert(tr('reports.export.shareFailedTitle'), shared.error || tr('errors.pdf.shareFailed'));
+      if (!shared.success) showAlert(tr('reports.export.shareFailedTitle'), shared.error ?? tr('errors.pdf.shareFailed'));
     } finally {
       sharingRef.current = false;
       setSharing(false);

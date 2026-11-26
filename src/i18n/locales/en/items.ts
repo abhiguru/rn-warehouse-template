@@ -43,6 +43,7 @@ export const items = {
   // Add, Save, Delete and Activate need a connection (nothing is sent while the phone is offline).
   offline: {
     connectToSave: "You're offline. Connect to save this item.",
+    newNeedsConnection: 'New items need a connection.',
   },
   // The item page (Items -> an item).
   page: {

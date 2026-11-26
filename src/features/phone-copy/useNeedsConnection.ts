@@ -5,6 +5,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { t } from '@/i18n';
+import { COPY_FORMAT_V3 } from './copySchema';
 import { isCopyOffline, subscribeCopyOffline } from './syncEngine';
 import { getSyncSnapshot, subscribeSync } from './syncStore';
 
@@ -15,6 +16,18 @@ export function useNeedsConnection(): boolean {
   const offline = useSyncExternalStore(subscribeCopyOffline, isCopyOffline, isCopyOffline);
   const on = useSyncExternalStore(subscribeSync, featureOn, featureOn);
   return offline && on;
+}
+
+const formatIsV3 = (): boolean => (getSyncSnapshot().format ?? 0) >= COPY_FORMAT_V3;
+
+/**
+ * `useNeedsConnection` for the screens WH-348 moves to the copy: only over a copy of format 3, so a copy of format 2 (or an
+ * older server) keeps today's screen with today's offline messages (contract section 9).
+ */
+export function useNeedsConnectionV3(): boolean {
+  const needs = useNeedsConnection();
+  const v3 = useSyncExternalStore(subscribeSync, formatIsV3, formatIsV3);
+  return needs && v3;
 }
 
 /** "<label>, needs a connection": the screen-reader label of a disabled action (Design 2.5 and 2.7). */

@@ -49,6 +49,7 @@ export const items: Translation<typeof source> = {
   offline: {
     // Draft for the owner's wording review (Items screens 2026-10-20).
     connectToSave: 'તમે ઑફલાઇન છો. આ આઇટમ સાચવવા ઇન્ટરનેટ જોડો.',
+    newNeedsConnection: 'નવી આઇટમ માટે કનેક્શન જોઈએ.',
   },
   // The item page (Items -> an item).
   page: {
