@@ -30,6 +30,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t } from '@/i18n';
@@ -86,6 +87,7 @@ export default function StandardRateScreen() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const offline = useIsOffline();
+  const needsConnection = useNeedsConnectionV3();
   const { rate, status, refresh, key, serverNeedsUpdate } = useStandardRate();
   const { height: windowHeight } = useWindowDimensions();
 
@@ -431,7 +433,8 @@ export default function StandardRateScreen() {
     );
   }
 
-  const helper = offline ? t('pricing.error.offline') : null;
+  // Over a copy of format 3 the bar says "Needs a connection" itself; the old line stays for the server route (contract 16.1).
+  const helper = offline && !needsConnection ? t('pricing.error.offline') : null;
   // Under the last tier: what lies above it (a bag heavier than the last "Up to" gets no standard rate).
   const lastUpTo = wholeKg(form.draft.bands[form.draft.bands.length - 1]?.upTo ?? '');
 
@@ -465,7 +468,7 @@ export default function StandardRateScreen() {
             />
           ) : strip ? <EditorStrip variant="critical" message={strip} testID="standard-error" /> : null}
           <Text style={styles.note} testID="standard-note">{t('pricing.standard.note')}</Text>
-          <BandsEditor draft={form.draft} ctx={form.ctx} errors={{ ...rentErrors(form.draft), ...errors }} onChange={setDraft} fields={fields} folding={folding} />
+          <BandsEditor draft={form.draft} ctx={form.ctx} errors={{ ...rentErrors(form.draft), ...errors }} onChange={setDraft} fields={fields} folding={folding} disabled={needsConnection} />
           {lastUpTo !== null ? <Text style={styles.note} testID="standard-last-tier-hint">{t('pricing.standard.lastTierHint', { kg: lastUpTo })}</Text> : null}
         </ScrollView>
 
@@ -476,6 +479,7 @@ export default function StandardRateScreen() {
           helper={helper}
           onPress={() => void submit()}
           disabled={saving || offline || unconfirmed}
+          needsConnectionTestID={needsConnection ? 'standard-rate-bottom-bar-needs-connection' : undefined}
           loading={saving}
           loadingText={t('pricing.edit.saving')}
           onLayout={(e: LayoutChangeEvent) => {
