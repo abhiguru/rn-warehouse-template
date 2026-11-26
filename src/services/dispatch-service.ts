@@ -18,6 +18,9 @@ import { isUnsettledFailure, serverText } from '@/utils/serverText';
 import { waitForServer } from '@/utils/lostAnswer';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readDispatchList } from '@/features/phone-copy/reads/dispatchList';
+import type { DataSource } from '@/features/phone-copy/sourced';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
 const DISPATCH_CACHE_PREFIX = CACHE_PREFIXES.DISPATCH_LIST;
@@ -208,6 +211,10 @@ export interface DispatchListResponseNew {
   errorCode?: string;
   /** True when the network failed and this is the list kept on the phone from an earlier load, not a fresh answer. */
   fromCache?: boolean;
+  /** Answered by the phone copy (WH-299); absent when the server answered. */
+  source?: DataSource;
+  /** A later page whose source is no longer the first page's: drop the pages and ask for the first again (WH-299). */
+  copyRestart?: boolean;
   /** With `fromCache`: when (ms since 1970) the kept list was stored, i.e. really loaded. */
   cachedAt?: number;
   data: {
@@ -415,6 +422,14 @@ export const getAllDispatchItems = async (
 };
 
 // New function using get_dispatch_list_with_items RPC with optional item details
+const emptyDispatchList = (limit: number, offset: number, sortOrder: string): DispatchListResponseNew['data'] => ({
+  dispatches: [],
+  pagination: { total_count: 0, limit, offset, has_more: false },
+  aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
+  filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: 'disp_date', sort_order: sortOrder },
+  user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 },
+});
+
 export const getDispatchListWithItems = async (
   params: GetDispatchListWithItemsParams & { offset?: number } = {}
 ): Promise<DispatchListResponseNew> => {
@@ -455,9 +470,6 @@ export const getDispatchListWithItems = async (
     // Convert offset-based pagination to page-based using standardized utility
     const p_page = offsetToPage(offset, p_limit);
 
-    // Get authenticated client with JWT tokens
-    const authenticatedClient = await getAuthenticatedClient();
-
     // Transform filter keys from camelCase (frontend) to snake_case (backend)
     const transformedFilters: Record<string, unknown> = {};
     const keyMap: Record<string, string> = {
@@ -473,6 +485,32 @@ export const getDispatchListWithItems = async (
         transformedFilters[keyMap[key] || key] = value;
       }
     }
+
+    // The phone copy answers when it can (WH-299): one source for all the pages of this request.
+    const request = { customerId: p_customer_id ?? null, filters: transformedFilters, sortBy: p_sort_by, sortOrder: p_sort_order, page: p_page, limit: p_limit, includeItems: p_include_items };
+    const copy = await readVia('all', q => readDispatchList(q, request), {
+      key: JSON.stringify({ ...request, page: undefined }),
+      page: p_page - 1,
+    });
+    if (copy && 'restart' in copy) {
+      return { success: false, message: t('errors.dispatch.fetchListFailed'), copyRestart: true, data: emptyDispatchList(p_limit, offset, p_sort_order) };
+    }
+    if (copy) {
+      const { value, source } = copy;
+      return {
+        success: true,
+        message: t('errors.dispatch.listRetrieved'),
+        source,
+        data: {
+          ...value,
+          dispatches: value.dispatches.map(row => mapBackendDispatch(row as unknown as BackendDispatchData)),
+          pagination: { total_count: value.total_count, limit: p_limit, offset, has_more: value.current_page < value.total_pages },
+        } as unknown as DispatchListResponseNew['data'],
+      };
+    }
+
+    // Get authenticated client with JWT tokens
+    const authenticatedClient = await getAuthenticatedClient();
 
     // Generate deduplication key for this request (PO9 fix)
     const dedupKey = generateRequestKey('getDispatchListWithItems', {

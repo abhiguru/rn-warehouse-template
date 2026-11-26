@@ -4,14 +4,15 @@
  * behaviour stays: this is false whatever the connection.
  */
 import { useSyncExternalStore } from 'react';
-import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { t } from '@/i18n';
+import { isCopyOffline, subscribeCopyOffline } from './syncEngine';
 import { getSyncSnapshot, subscribeSync } from './syncStore';
 
 const featureOn = (): boolean => getSyncSnapshot().feature === 'on';
 
+/** The engine's own offline flag (the app's connection check feeds it), so no screen needs a second listener. */
 export function useNeedsConnection(): boolean {
-  const offline = useIsOffline();
+  const offline = useSyncExternalStore(subscribeCopyOffline, isCopyOffline, isCopyOffline);
   const on = useSyncExternalStore(subscribeSync, featureOn, featureOn);
   return offline && on;
 }

@@ -45,6 +45,8 @@ export interface DispatchImageData {
   id: string;
   image_url: string;
   file_name?: string;
+  /** The photo is not on the phone and the server cannot be asked now: the tile is a frame (WH-299). */
+  needsConnection?: boolean;
 }
 
 interface DispatchImagesTabProps {
@@ -171,6 +173,13 @@ const makeStyles = (t: ThemeTokens) => ({
     width: '100%' as const,
     height: '100%' as const,
   },
+  frame: {
+    width: '100%' as const,
+    height: '100%' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.surface.cardActive,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center' as const,
@@ -208,6 +217,7 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
   },
   removeCirclePressed: { backgroundColor: t.destructive.fill },
+  frameText: { ...typography.caption2, color: t.text.secondary, textAlign: 'center' as const, marginTop: space.xs },
   uploadButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -272,7 +282,22 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
     );
   }
 
-  const renderImage = ({ item, index }: { item: DispatchImageData; index: number }) => (
+  const renderImage = ({ item, index }: { item: DispatchImageData; index: number }) =>
+    item.needsConnection ? (
+      // Nothing opens from the frame; it says why (Design offline-capture.md 2.5).
+      <View
+        style={[styles.imageWrapper, { width: imageSize, height: imageSize }]}
+        accessible
+        accessibilityLabel={`${tr('dispatch.photos.photoOf', { index: index + 1, total: images.length })}, ${tr('components.offlineRead.photoNeedsConnection')}`}
+      >
+        <View style={styles.frame} testID={`photo-needs-connection-${item.id}`}>
+          <Icon name="image-off-outline" size={iconSize.xl} color={t.icon.secondary} importantForAccessibility="no" />
+          <Text style={styles.frameText} maxFontSizeMultiplier={1.4}>
+            {tr('components.offlineRead.photoNeedsConnection')}
+          </Text>
+        </View>
+      </View>
+    ) : (
     <View style={[styles.imageWrapper, { width: imageSize, height: imageSize }]}>
       <Pressable
         style={({ pressed }) => [styles.image, pressed && styles.imageWrapperPressed]}
@@ -300,7 +325,7 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
         </Pressable>
       ) : null}
     </View>
-  );
+    );
 
   const countLabel = formatCount(images.length, 'photo');
 

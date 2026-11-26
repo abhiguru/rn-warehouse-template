@@ -64,6 +64,19 @@ import { serverText } from '@/utils/serverText';
 import { loadFailureText } from '@/utils/loadFailureText';
 import { photoAddFailure } from '@/utils/photoUploadError';
 import { invoiceFileName } from '@/utils/invoiceLabel';
+import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
+import type { EntityName } from '@/features/phone-copy/copySchema';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+
+/** The records this page reads from the phone copy: a sync that changed one of them reads the page again. */
+const DISPATCH_PAGE_KINDS: readonly EntityName[] = [
+  'dispatch', 'dispatch_trl', 'dispatch_images', 'goodsreceived', 'goodsreceived_trl', 'customers', 'items', 'invoice', 'invoice_trl',
+];
+
+/** A photo of the Images tab: it may be a frame, not a picture. */
+interface PhotoRef {
+  needsConnection?: boolean;
+}
 // ============================================================================
 // STYLES (docs/STYLE_GUIDE.md §14.2 object page)
 // ============================================================================
@@ -107,6 +120,10 @@ function DispatchDetailScreen() {
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageUploadRef = useRef(false);
+  // WH-299: the page was read from the phone copy, which has no invoice amounts; offline, every action needs the server.
+  const [amountsNeedServer, setAmountsNeedServer] = useState(false);
+  const fromCopyRef = useRef(false);
+  const needsConnection = useNeedsConnection();
   const [isDeletingImage, setIsDeletingImage] = useState(false);
   // A delete is running (the ref is read by the Back key and by a second tap, the state draws the button)
   const [isDeleting, setIsDeleting] = useState(false);
@@ -158,6 +175,8 @@ function DispatchDetailScreen() {
         return;
       }
 
+      fromCopyRef.current = result.source?.kind === 'copy';
+      setAmountsNeedServer(result.needsServer?.includes('invoiceAmounts') === true);
       if (result.success && result.data) {
         setData(result.data);
         setError(null);
@@ -219,6 +238,17 @@ function DispatchDetailScreen() {
         focusedRef.current = false;
       };
     }, [fetchDispatchDetails])
+  );
+
+  // A sync that changed what this page shows: read it again at once (WH-299, Product's PR9).
+  const fetchDetailsRef = useRef(fetchDispatchDetails);
+  fetchDetailsRef.current = fetchDispatchDetails;
+  useEffect(
+    () =>
+      subscribeCopyChanges(({ kinds }) => {
+        if (fromCopyRef.current && DISPATCH_PAGE_KINDS.some(kind => kinds.has(kind))) void fetchDetailsRef.current();
+      }),
+    []
   );
 
   // Handle GRN navigation
@@ -390,8 +420,12 @@ function DispatchDetailScreen() {
   };
 
   // Handle image press - open overlay
-  const handleImagePress = (images: DispatchImageData[], initialIndex: number) => {
-    const convertedImages: ImageData[] = images.map((img) => ({
+  const handleImagePress = (images: (DispatchImageData & PhotoRef)[], initialIndex: number) => {
+    // A photo that is not on the phone has nothing to open (WH-299).
+    const shown = images.filter(img => !img.needsConnection);
+    const tapped = images[initialIndex];
+    const startAt = Math.max(0, shown.indexOf(tapped));
+    const convertedImages: ImageData[] = shown.map((img) => ({
       id: img.id,
       imageUrl: img.image_url,
       fileName: img.file_name || 'image.jpg',
@@ -401,7 +435,7 @@ function DispatchDetailScreen() {
       uploadStatus: 'completed' as const,
     }));
     setOverlayImages(convertedImages);
-    setOverlayInitialIndex(initialIndex);
+    setOverlayInitialIndex(startAt);
     setOverlayVisible(true);
   };
 
@@ -551,10 +585,11 @@ function DispatchDetailScreen() {
   };
 
   // Prepare images for DispatchImagesTab (use processed_images with signed URLs)
-  const dispatchImages: DispatchImageData[] = (dispatch.processed_images || []).map((img: any) => ({
+  const dispatchImages: DispatchImageData[] = (dispatch.processed_images || []).map((img: { id: string; image_url: string; file_name?: string; needs_connection?: boolean }) => ({
     id: img.id,
     image_url: img.image_url,
     file_name: img.file_name,
+    needsConnection: img.needs_connection === true,
   }));
 
   return (
@@ -576,7 +611,12 @@ function DispatchDetailScreen() {
           // Edit is at the end of the header, so it can be reached from any tab.
           headerRight: () =>
             canUpdate && !isDeleted && dispatch.imported !== true ? (
-              <Button type="tertiary" onPress={handleEditDispatch} disabled={isDeleting || isCheckingDelete}>
+              <Button
+                type="tertiary"
+                onPress={handleEditDispatch}
+                disabled={isDeleting || isCheckingDelete || needsConnection}
+                accessibilityLabel={needsConnection ? needsConnectionLabel(tr('common.edit')) : undefined}
+              >
                 {tr('common.edit')}
               </Button>
             ) : null,
@@ -636,6 +676,7 @@ function DispatchDetailScreen() {
               onSharePDF={handleSharePDF}
               is_share_loading={isShareLoading}
               onPrint={canPrint ? handlePrint : undefined}
+              needs_connection={needsConnection}
             />
           )}
 
@@ -666,7 +707,7 @@ function DispatchDetailScreen() {
           )}
 
           {activeTab === 'invoices' && (
-            <DispatchInvoicesTab invoices={invoiceTable} onViewInvoice={handleViewInvoice} />
+            <DispatchInvoicesTab invoices={invoiceTable} onViewInvoice={handleViewInvoice} amountsNeedConnection={amountsNeedServer} />
           )}
         </View>
       </View>
