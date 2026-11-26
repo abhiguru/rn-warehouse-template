@@ -4,6 +4,7 @@
 import { getAuthenticatedClient } from '../config/supabaseConfig';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { readVia } from '@/features/phone-copy/readRoute';
+import { readStandardRate } from '@/features/phone-copy/reads/itemRates';
 import { readPriceHistory } from '@/features/phone-copy/reads/priceHistory';
 import type {
   ItemPricingFilters,
@@ -729,6 +730,11 @@ const toTiers = (raw: unknown): StandardTier[] =>
 
 /** The standard rate. Throws when the facility cannot be reached or refuses, like the other rate reads. */
 export const getStandardRate = async (): Promise<StandardRate> => {
+  // The phone copy answers when it can (WH-348); staff are refused online, so for them the server answers as today.
+  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readStandardRate(q));
+  if (copy) {
+    return { tiers: toTiers(copy.value.tiers), updatedAt: copy.value.updated_at, updatedByName: copy.value.updated_by_name };
+  }
   const client = await getAuthenticatedClient();
   const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_standard_rate')), RPC_TIMEOUT_MS, 'Standard rate');
   if (error) {
