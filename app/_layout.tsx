@@ -76,7 +76,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { OfflineStatusBar } from '@/components/OfflineStatusBar';
 import { PhoneCopyLifecycle } from '@/features/phone-copy/components/PhoneCopyLifecycle';
 import { useCopyFeatureOn, useCopySession, useEraseCopyForRole } from '@/hooks/usePhoneCopyStatus';
-import { BelowCopyBarContext, useBelowCopyBar } from '@/hooks/useBelowCopyBar';
+import { BelowCopyBarContext, WindowInsetsContext, useBelowCopyBar } from '@/hooks/useBelowCopyBar';
 import UpgradingBanner from '@/components/UpgradingBanner';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
 import BackendTooOldScreen from '@/components/BackendTooOldScreen';
@@ -312,7 +312,7 @@ const SplashScreen = () => (
  * While offline or upgrading, the banner at the top already pads for the status bar, so the
  * screens below it get a zero top inset; otherwise their headers would add a
  * second status-bar gap under the banner. Native views do not read that inset: under the
- * phone copy's bar they are told through BelowCopyBarContext.
+ * phone copy's bar they are told through BelowCopyBarContext; Modals read the window insets through WindowInsetsContext.
  */
 function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
@@ -320,14 +320,15 @@ function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
   const upgrading = useUpgrading();
   // The phone copy's status bar (WH-298) is always there while the feature is on, and pads for the status bar itself.
   const copyBar = useCopyFeatureOn();
-  const value = React.useMemo(
-    () => (isOffline || upgrading || copyBar ? { ...insets, top: 0 } : insets),
-    [insets, isOffline, upgrading, copyBar]
-  );
+  const padded = isOffline || upgrading || copyBar;
+  const value = React.useMemo(() => (padded ? { ...insets, top: 0 } : insets), [insets, padded]);
+  // A Modal covers the strip, the banner and the bar alike, so it reads the window's insets in each case (WH-347).
   return (
-    <BelowCopyBarContext.Provider value={copyBar ? insets : null}>
-      <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>
-    </BelowCopyBarContext.Provider>
+    <WindowInsetsContext.Provider value={padded ? insets : null}>
+      <BelowCopyBarContext.Provider value={copyBar ? insets : null}>
+        <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>
+      </BelowCopyBarContext.Provider>
+    </WindowInsetsContext.Provider>
   );
 }
 

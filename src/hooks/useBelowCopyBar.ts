@@ -15,6 +15,12 @@ import { useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-conte
 /** The window's own insets while below the bar; null elsewhere. */
 export const BelowCopyBarContext = createContext<EdgeInsets | null>(null);
 
+/**
+ * The window's own insets while the root gives the screens below a zero top inset for any reason: the phone copy's
+ * bar, the offline strip or the upgrading banner (WH-347). Null elsewhere.
+ */
+export const WindowInsetsContext = createContext<EdgeInsets | null>(null);
+
 export function useBelowCopyBar(): boolean {
   return useContext(BelowCopyBarContext) !== null;
 }
@@ -22,5 +28,5 @@ export function useBelowCopyBar(): boolean {
 /** The insets for a surface that covers the whole window (a Modal), from wherever it is declared. */
 export function useWindowInsets(): EdgeInsets {
   const insets = useSafeAreaInsets();
-  return useContext(BelowCopyBarContext) ?? insets;
+  return useContext(WindowInsetsContext) ?? insets;
 }
