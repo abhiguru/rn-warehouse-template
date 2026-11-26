@@ -35,6 +35,8 @@ import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import {
   fontWeight,
@@ -76,6 +78,8 @@ interface ListState {
   loadedSearch: string;
   /** When the rows on screen were loaded. */
   loadedAt: Date | null;
+  /** The rows came from the phone copy (WH-348): the status bar tells their time, the list shows none of its own. */
+  fromPhoneCopy?: boolean;
   /** A reload failed while rows were on screen: they are older than they look. */
   refreshFailed: boolean;
 }
@@ -110,6 +114,7 @@ export default function UsersScreen() {
   // While the keyboard is up the list area ends at its top (WH-239), so the no-match state is centred above it.
   const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   const isOffline = useIsOffline();
+  const needsConnection = useNeedsConnectionV3();
 
   const [state, setState] = useState<ListState>({
     data: [],
@@ -184,6 +189,7 @@ export default function UsersScreen() {
             error: false,
             loadedSearch: offset === 0 ? search : prev.loadedSearch,
             loadedAt: offset === 0 ? new Date() : prev.loadedAt,
+            fromPhoneCopy: offset === 0 ? Boolean(response.source) : prev.fromPhoneCopy,
             refreshFailed: offset === 0 ? false : prev.refreshFailed,
           }));
           // More rows on the server: keep loading them (CR-26), for this search only.
@@ -451,7 +457,11 @@ export default function UsersScreen() {
             testID="users-stale-strip"
           />
         ) : null}
-        {isOffline && !state.refreshFailed && state.loadedAt && state.data.length > 0 ? (
+        {/* New people register themselves with the server: its reason is a lasting fact about the list (Design 2.5, 2.11). */}
+        {needsConnection ? (
+          <NeedsConnectionLine testID="users-new-needs-connection" text={tr('users.offline.newNeedsConnection')} />
+        ) : null}
+        {isOffline && !state.refreshFailed && !state.fromPhoneCopy && state.loadedAt && state.data.length > 0 ? (
           <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="users-last-updated" />
         ) : null}
         <FlatList

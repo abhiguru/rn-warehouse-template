@@ -12,6 +12,10 @@
  */
 
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readUserDetails, readUsersList } from '@/features/phone-copy/reads/users';
+import type { DataSource } from '@/features/phone-copy/sourced';
 import {
   UserRole,
   UserListItem,
@@ -146,17 +150,26 @@ class AdminUserService {
     filters: UserFilters = {},
     limit: number = 20,
     offset: number = 0
-  ): Promise<{ success: boolean; data?: UserListResponse; error?: string; code?: UserFailureCode }> {
+  ): Promise<{ success: boolean; data?: UserListResponse; error?: string; code?: UserFailureCode; source?: DataSource }> {
     try {
+      // The phone copy answers when it can (WH-348): the same answer as `get_users_list`, one source for all the pages.
+      const request = { search: filters.search_query ?? '', roles: filters.roles ?? null, active: filters.active ?? null, limit, offset };
+      const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readUsersList(q, request), {
+        key: JSON.stringify({ ...request, offset: undefined }),
+        page: Math.floor(offset / Math.max(limit, 1)),
+      });
+      if (copy && 'restart' in copy) return { success: false, error: t('errors.user.fetchListFailed') };
 
       const client = await getAuthenticatedClient();
-      const { data, error } = await client.rpc('get_users_list', {
-        p_search_query: filters.search_query || '',
-        p_role_filter: filters.roles || null,
-        p_active_filter: filters.active ?? null,
-        p_limit: limit,
-        p_offset: offset,
-      });
+      const { data, error } = copy
+        ? { data: { success: true, ...copy.value }, error: null }
+        : await client.rpc('get_users_list', {
+          p_search_query: filters.search_query || '',
+          p_role_filter: filters.roles || null,
+          p_active_filter: filters.active ?? null,
+          p_limit: limit,
+          p_offset: offset,
+        });
 
       if (error) {
         log.error('getUsersList error', loggableError(error));
@@ -216,6 +229,7 @@ class AdminUserService {
 
       return {
         success: true,
+        ...(copy ? { source: copy.source } : {}),
         data: {
           users,
           pagination: responseData.pagination || {
@@ -246,13 +260,17 @@ class AdminUserService {
    */
   async getUserDetails(
     userId: string
-  ): Promise<{ success: boolean; data?: UserDetails; error?: string; code?: UserFailureCode }> {
+  ): Promise<{ success: boolean; data?: UserDetails; error?: string; code?: UserFailureCode; source?: DataSource }> {
     try {
+      // The phone copy answers when it can (WH-348): the same answer as `get_user_details`.
+      const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readUserDetails(q, userId));
 
       const client = await getAuthenticatedClient();
-      const { data, error } = await client.rpc('get_user_details', {
-        p_user_id: userId,
-      });
+      const { data, error } = copy
+        ? { data: copy.value.kind === 'found' ? { success: true, user: copy.value.user, assigned_customers: copy.value.assigned_customers } : { success: false, error_code: 'NOT_FOUND', message: 'User not found' }, error: null }
+        : await client.rpc('get_user_details', {
+          p_user_id: userId,
+        });
 
       if (error) {
         log.error('getUserDetails error', loggableError(error));
@@ -297,6 +315,7 @@ class AdminUserService {
 
       return {
         success: true,
+        ...(copy ? { source: copy.source } : {}),
         data: {
           id: user.id,
           auth_user_id: user.auth_user_id,
