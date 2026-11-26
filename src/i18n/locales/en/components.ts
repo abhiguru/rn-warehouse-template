@@ -493,6 +493,12 @@ export const components = {
     openFailed: "Couldn't open the records on this phone.",
     openRetryLabel: 'Try opening again',
   },
+  offlineRead: {
+    // Reading from the phone copy (WH-299; product/design/offline-capture.md 2.5 and 2.10).
+    needsConnection: 'Needs a connection',
+    screenNeedsConnection: 'This needs a connection. It will load when you reconnect.',
+    photoNeedsConnection: 'Photo needs a connection',
+  },
   offline: {
     message: "You're offline. Actions that need the server will work again when you reconnect.",
     // Shown instead of the line above when the warehouse network (not the internet) reached the server but

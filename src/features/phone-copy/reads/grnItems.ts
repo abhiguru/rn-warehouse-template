@@ -11,6 +11,7 @@ import type { SqlValue } from '../copyDriver';
 import type { RankKind } from '../copySchema';
 import { parseTimestampUs, pgSearchTerms } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
+import { getUnsentOverlay, netStock } from '../unsentOverlay';
 
 export interface GrnItemsPage {
   success: true;
@@ -155,6 +156,8 @@ function listRow(record: LineRecord): GRNItem {
   const g = parseRow(record.grn_row);
   const t = parseRow(record.lot_row);
   const pick = (from: Record<string, unknown>, key: string) => from[key] ?? null;
+  const overlay = getUnsentOverlay();
+  const stock = netStock(overlay, record.lot_id, typeof t.stock === 'number' ? t.stock : null);
   return {
     id: g.id,
     gr_no: pick(g, 'gr_no'),
@@ -171,7 +174,7 @@ function listRow(record: LineRecord): GRNItem {
     item_name: pick(t, 'item_name'),
     packaging: pick(t, 'packaging'),
     qty: pick(t, 'qty'),
-    stock: pick(t, 'stock'),
+    stock: typeof t.stock === 'number' ? stock : pick(t, 'stock'),
     weight: pick(t, 'weight'),
     rack: pick(t, 'rack'),
     package_mark: pick(t, 'package_mark'),

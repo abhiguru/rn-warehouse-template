@@ -492,6 +492,12 @@ export const components: Translation<typeof source> = {
     openFailed: 'આ ફોનની માહિતી ખોલી શકાઈ નથી.',
     openRetryLabel: 'ફરી ખોલવાનો પ્રયાસ કરો',
   },
+  offlineRead: {
+    // Draft, like the rest of Design's offline texts (WH-149).
+    needsConnection: 'કનેક્શન જોઈએ',
+    screenNeedsConnection: 'આ માટે કનેક્શન જોઈએ. ફરી જોડાશો ત્યારે લોડ થશે.',
+    photoNeedsConnection: 'ફોટો જોવા કનેક્શન જોઈએ',
+  },
   offline: {
     message: 'તમે ઑફલાઇન છો. સર્વરની જરૂર હોય તેવાં કામ ફરી કનેક્ટ થશો ત્યારે ચાલશે.',
     // Draft for the owner's wording review (warehouse network fallback, 2026-10-26).

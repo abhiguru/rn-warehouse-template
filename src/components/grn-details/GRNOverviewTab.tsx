@@ -17,6 +17,7 @@ import {
 } from '@/components/common/overview-tab';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { t as tr } from '@/i18n';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
 import { GrnItemRates } from '@/features/grn/rates/GrnItemRates';
 import type { RpcGrnRate } from '@/types/rpc-canonical.types';
 
@@ -58,6 +59,10 @@ interface GRNOverviewTabProps {
   is_print_loading?: boolean;
   /** Rates for this GRN only (backend migration 86). */
   rates?: RpcGrnRate[] | null;
+  /** The rates are not on the phone (WH-299): the section keeps its heading and says it needs a connection. */
+  ratesNeedConnection?: boolean;
+  /** The phone is offline and reads its copy: every action needs the server. */
+  needsConnection?: boolean;
   /** What the GRN's items are counted in (see sharedPackaging): the rates note says "per box" for boxes. */
   packaging?: string;
   /** What each lot (GRN item id) is counted in, for the Your-rate page. */
@@ -84,6 +89,8 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   onPrint,
   is_print_loading = false,
   rates,
+  ratesNeedConnection = false,
+  needsConnection = false,
   packaging,
   packagingByLot,
 }) => {
@@ -157,7 +164,14 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       )}
 
       {/* SECTION: RATES (the rate each item is invoiced at; the GRN-only rates on a server without migration 88) */}
+      {ratesNeedConnection ? (
+        <>
+          <SectionHeader title={tr('grn.rates.title')} inset={false} />
+          <NeedsConnectionLine testID="grn-details-section-needs-connection-rates" text={tr('components.offlineRead.screenNeedsConnection')} icon />
+        </>
+      ) : (
       <GrnItemRates grnId={grn_id} grnNumber={gr_no} customerId={customer_details?.id} customerName={customer_details?.name} canEdit={can_edit_rates ?? can_edit} imported={imported} fallbackRates={rates} packaging={packaging} packagingByLot={packagingByLot} />
+      )}
 
       {/* SECTION: NOTES */}
       {note && <NotesSection note={note} />}
@@ -179,6 +193,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
         // The GRN page asks its own, fuller question (the items leave stock; a GRN with dispatches or invoices can't be
         // deleted): the person is asked once, not twice.
         confirmDelete={false}
+        needsConnectionTestId={needsConnection ? 'grn-details-bottom-bar-needs-connection' : undefined}
       />
 
       {/* Bottom Spacing */}

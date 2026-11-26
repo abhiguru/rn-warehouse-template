@@ -77,8 +77,8 @@ export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
   },
   dispatch_trl: { columns: [col('disp_id'), col('gr_id'), col('gr_trl_id'), col('disp_qty')], indexes: ['disp_id', 'gr_trl_id', 'gr_id'] },
   dispatch_images: { columns: [col('dispatch_id')], indexes: ['dispatch_id'] },
-  invoice: { columns: [col('customer_id'), col('gr_id'), col('deleted_at')], indexes: ['customer_id', 'gr_id'] },
-  invoice_trl: { columns: [col('invoice_id')], indexes: ['invoice_id'] },
+  invoice: { columns: [col('customer_id'), col('gr_id'), col('deleted_at'), col('cancelled_at')], indexes: ['customer_id', 'gr_id'] },
+  invoice_trl: { columns: [col('invoice_id'), col('disp_trl_id')], indexes: ['invoice_id', 'disp_trl_id'] },
   grn_lock: { columns: [col('invoice_state')], indexes: [] },
 };
 

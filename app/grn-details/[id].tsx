@@ -64,6 +64,9 @@ import { parseOrderEffects, previewDeleteGrn, withOrderEffects } from '@/service
 import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
+import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
+import type { EntityName } from '@/features/phone-copy/copySchema';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUploadService';
 
 import { showAlert } from '@/utils/alert';
@@ -108,6 +111,17 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
   },
 });
+
+/** A photo of either list (the Images tab's or an item's): it may be a frame, not a picture. */
+interface PhotoRef {
+  needsConnection?: boolean;
+  needs_connection?: boolean;
+}
+
+/** The records this page reads from the phone copy: a sync that changed one of them reads the page again. */
+const GRN_PAGE_KINDS: readonly EntityName[] = [
+  'goodsreceived', 'goodsreceived_trl', 'grn_images', 'grn_lock', 'dispatch', 'dispatch_trl', 'customers', 'items', 'invoice', 'invoice_trl',
+];
 
 function GRNDetailScreen() {
   const { id, tab } = useLocalSearchParams<{ id: string; tab?: string | string[] }>();
@@ -173,6 +187,10 @@ function GRNDetailScreen() {
   // The GRN's preview and the suggested number are being read for "Create invoice": the button shows its spinner.
   const [preparingInvoice, setPreparingInvoice] = useState(false);
   const canPrint = useCanPrint();
+  // WH-299: the page was read from the phone copy, which has no rates; offline, every action needs the server.
+  const [ratesNeedServer, setRatesNeedServer] = useState(false);
+  const fromCopyRef = useRef(false);
+  const needsConnection = useNeedsConnection();
 
   // Check edit permissions
   useEffect(() => {
@@ -193,10 +211,13 @@ function GRNDetailScreen() {
   };
 
   // Handle image press
-  const handleImagePress = (images: any[], initialIndex: number = 0) => {
-    const convertedImages = convertToImageData(images);
+  const handleImagePress = (images: PhotoRef[], initialIndex: number = 0) => {
+    // A photo that is not on the phone has nothing to open (WH-299).
+    const shown = images.filter(img => !img.needsConnection && !img.needs_connection);
+    const tapped = images[initialIndex];
+    const convertedImages = convertToImageData(shown as ProcessedImage[]);
     setOverlayImages(convertedImages);
-    setOverlayInitialIndex(initialIndex);
+    setOverlayInitialIndex(Math.max(0, shown.indexOf(tapped)));
     setOverlayVisible(true);
   };
 
@@ -301,6 +322,8 @@ function GRNDetailScreen() {
         return;
       }
 
+      fromCopyRef.current = result.source?.kind === 'copy';
+      setRatesNeedServer(result.needsServer?.includes('rates') === true);
       if (result.success && result.data) {
         setData(result.data);
         setError(null);
@@ -419,6 +442,14 @@ function GRNDetailScreen() {
   const focusedRef = useRef(true);
   const fetchGRNDetailsRef = useRef(fetchGRNDetails);
   fetchGRNDetailsRef.current = fetchGRNDetails;
+  // A sync that changed what this page shows: read it again at once (WH-299, Product's PR9).
+  useEffect(
+    () =>
+      subscribeCopyChanges(({ kinds }) => {
+        if (fromCopyRef.current && GRN_PAGE_KINDS.some(kind => kinds.has(kind))) void fetchGRNDetailsRef.current();
+      }),
+    []
+  );
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
@@ -835,6 +866,7 @@ function GRNDetailScreen() {
       image_url: img.image_url,
       file_name: img.file_name,
       category: 'header' as const,
+      needsConnection: img.needs_connection === true,
     })),
     ...items.flatMap((item) =>
       ((item as any).processed_images || []).map((img: ProcessedImage) => ({
@@ -843,6 +875,7 @@ function GRNDetailScreen() {
         file_name: img.file_name,
         category: 'item' as const,
         item_name: item.item_name,
+        needsConnection: img.needs_connection === true,
       }))
     ),
   ];
@@ -875,7 +908,12 @@ function GRNDetailScreen() {
           // Edit is at the end of the header, so it can be reached from any tab.
           headerRight: () =>
             canEdit && grn.imported !== true ? (
-              <Button type="tertiary" onPress={handleEditGRN} disabled={isDeleting || deleteChecking}>
+              <Button
+                type="tertiary"
+                onPress={handleEditGRN}
+                disabled={isDeleting || deleteChecking || needsConnection}
+                accessibilityLabel={needsConnection ? needsConnectionLabel(tr('common.edit')) : undefined}
+              >
                 {tr('common.edit')}
               </Button>
             ) : null,
@@ -920,6 +958,8 @@ function GRNDetailScreen() {
               registration={grn.registration}
               note={grn.note}
               rates={(grn as { rates?: RpcGrnRate[] }).rates}
+              ratesNeedConnection={ratesNeedServer}
+              needsConnection={needsConnection}
               packaging={sharedPackaging(items.map((item) => item.packaging))}
               packagingByLot={Object.fromEntries(items.map((item) => [item.id, item.packaging]))}
               pricing_mode={grn.pricing_mode}

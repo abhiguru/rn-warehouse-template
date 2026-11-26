@@ -34,6 +34,8 @@ export interface GRNImageData {
   file_name?: string;
   category: 'header' | 'item';
   item_name?: string;
+  /** The photo is not on the phone and the server cannot be asked now: the tile is a frame (WH-299). */
+  needsConnection?: boolean;
 }
 
 interface GRNImagesTabProps {
@@ -188,14 +190,53 @@ function deleteImageLabel(item: GRNImageData): string {
     : tr('grn.images.deletePhotoOfUnnamedItem');
 }
 
+/**
+ * A photo that is not on the phone while the server cannot be asked (WH-299; Design offline-capture.md 2.5): a frame that
+ * says so. Nothing opens from it.
+ */
+const NeedsConnectionTile: React.FC<{ item: GRNImageData; styles: Styles; t: ThemeTokens }> = ({ item, styles, t }) => {
+  const { width } = useWindowDimensions();
+  const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
+  const label = imageLabel(item);
+  return (
+    <View
+      style={[styles.imageWrapper, { width: imageSize, height: imageSize }]}
+      accessible
+      accessibilityLabel={`${label}, ${tr('components.offlineRead.photoNeedsConnection')}`}
+    >
+      <View style={styles.placeholder} testID={`photo-needs-connection-${item.id}`}>
+        <Icon name="image-off-outline" size={iconSize.xl} color={t.icon.secondary} importantForAccessibility="no" />
+        <Text style={styles.missingText} maxFontSizeMultiplier={1.4}>
+          {tr('components.offlineRead.photoNeedsConnection')}
+        </Text>
+      </View>
+    </View>
+  );
+};
+
 // Individual image tile with loading and error placeholders
-const ImageTile: React.FC<{
+interface ImageTileProps {
   item: GRNImageData;
   onPress: () => void;
   onDelete?: () => void;
   styles: Styles;
   t: ThemeTokens;
-}> = ({ item, onPress, onDelete, styles, t }) => {
+}
+
+/** A photo kept on the phone is a file here; any other link may need the warehouse network's path. */
+const ImageTile: React.FC<ImageTileProps> = props =>
+  props.item.image_url.startsWith('file:') ? (
+    <ImageTileView {...props} uri={props.item.image_url} />
+  ) : (
+    <RemoteImageTile {...props} />
+  );
+
+const RemoteImageTile: React.FC<ImageTileProps> = props => {
+  const uri = useViaCurrentPath(props.item.image_url);
+  return <ImageTileView {...props} uri={uri} />;
+};
+
+const ImageTileView: React.FC<ImageTileProps & { uri: string | undefined }> = ({ item, onPress, onDelete, styles, t, uri: imageUri }) => {
   const { width } = useWindowDimensions();
   const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
   const [isLoading, setIsLoading] = useState(true);
@@ -209,8 +250,6 @@ const ImageTile: React.FC<{
     onlineRef.current = online;
   }, [online]);
   const label = imageLabel(item);
-  const imageUri = useViaCurrentPath(item.image_url);
-
   return (
     <View style={[styles.imageWrapper, { width: imageSize, height: imageSize }]}>
       <Pressable
@@ -389,7 +428,10 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
     );
   }
 
-  const renderImage = ({ item, index }: { item: GRNImageData; index: number }) => (
+  const renderImage = ({ item, index }: { item: GRNImageData; index: number }) =>
+    item.needsConnection ? (
+      <NeedsConnectionTile item={item} styles={styles} t={t} />
+    ) : (
     <ImageTile
       item={item}
       onPress={() => onImagePress?.(filteredImages, index)}

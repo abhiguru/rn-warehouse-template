@@ -8,6 +8,7 @@
 import { createLogger } from '@/utils/logger';
 import { COPY_FILE, deleteCopyFile, openExpoDriver, type CopyDriver } from './copyDriver';
 import { forgetCopyKey, loadCopyKey, makeCopyKey, type CopyKey } from './copyKey';
+import { erasePhotoFolder } from './photoFolder';
 import { SCHEMA_VERSION, createSchema } from './copySchema';
 import { resetCopyKeyReadTries } from './copyKeyReadTries';
 import { resetSyncSnapshot } from './syncStore';
@@ -49,6 +50,8 @@ async function removeFiles(): Promise<void> {
   await closeHandle();
   await deleteCopyFile(COPY_FILE);
   await forgetCopyKey();
+  // The photos kept for this copy go with it.
+  await erasePhotoFolder();
 }
 
 async function metaValue(db: CopyDriver, key: string): Promise<string | null> {

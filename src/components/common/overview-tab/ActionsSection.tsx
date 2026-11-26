@@ -17,6 +17,8 @@ import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
 import type { DocumentEntity } from '@/i18n/entities';
 import type { IconName } from '@/types/icon.types';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel } from '@/features/phone-copy/useNeedsConnection';
 
 interface ActionsSectionProps {
   /** Which document the actions are for. Selects whole-sentence texts in both languages. */
@@ -68,6 +70,11 @@ interface ActionsSectionProps {
     busy?: boolean;
     busyLabel?: string;
   };
+  /**
+   * The phone is offline and reads its copy (WH-299): every action needs the server, so each is shown disabled with its
+   * reason in its screen-reader label, and one line above them says so once. The value is that line's testID.
+   */
+  needsConnectionTestId?: string;
 }
 
 export const ActionsSection: React.FC<ActionsSectionProps> = ({
@@ -89,6 +96,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   deleteLabel,
   deleteIcon = 'trash-can-outline',
   secondAction,
+  needsConnectionTestId,
 }) => {
   const colorStyles = useOverviewColors();
   const overviewStyles = useOverviewStyles();
@@ -101,7 +109,9 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   const showDeleteButton = resolvedCanDelete && onDelete && entityId;
   const showSecondAction = !!secondAction && !!entityId;
   // An invoice that is being deleted or cancelled is not edited, and neither action starts over the other.
-  const busyAny = isDeleting || !!secondAction?.busy;
+  const needsServer = needsConnectionTestId !== undefined;
+  const busyAny = isDeleting || !!secondAction?.busy || needsServer;
+  const labelled = (label: string) => (needsServer ? needsConnectionLabel(label) : label);
 
   // Don't render if no actions available
   if (!showShareButton && !showPrintButton && !showDeleteButton && !showSecondAction) {
@@ -145,6 +155,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
     <>
       <SectionHeader title={t('components.actions.title')} inset={false} />
       <View style={overviewStyles.actionsContainer}>
+        {needsServer ? <NeedsConnectionLine testID={needsConnectionTestId} text={t('components.offlineRead.needsConnection')} /> : null}
         {/* Share PDF Button - Secondary Tint */}
         {showShareButton && (
           <Pressable
@@ -152,13 +163,13 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               overviewStyles.secondaryTintButton,
               colorStyles.secondaryTintButton,
               pressed && colorStyles.secondaryTintButtonPressed,
-              isShareLoading && overviewStyles.buttonDisabled,
+              (isShareLoading || needsServer) && overviewStyles.buttonDisabled,
             ]}
             onPress={onSharePDF}
-            disabled={isShareLoading}
+            disabled={isShareLoading || needsServer}
             accessibilityRole="button"
-            accessibilityLabel={t('components.sharePdf')}
-            accessibilityState={{ disabled: isShareLoading, busy: isShareLoading }}
+            accessibilityLabel={labelled(t('components.sharePdf'))}
+            accessibilityState={{ disabled: isShareLoading || needsServer, busy: isShareLoading }}
           >
             {isShareLoading ? (
               <ActivityIndicator size="small" color={colorStyles.iconBrand} />
@@ -178,13 +189,13 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               overviewStyles.secondaryTintButton,
               colorStyles.secondaryTintButton,
               pressed && colorStyles.secondaryTintButtonPressed,
-              isPrintLoading && overviewStyles.buttonDisabled,
+              (isPrintLoading || needsServer) && overviewStyles.buttonDisabled,
             ]}
             onPress={onPrint}
-            disabled={isPrintLoading}
+            disabled={isPrintLoading || needsServer}
             accessibilityRole="button"
-            accessibilityLabel={labels.print}
-            accessibilityState={{ disabled: isPrintLoading, busy: isPrintLoading }}
+            accessibilityLabel={labelled(labels.print)}
+            accessibilityState={{ disabled: isPrintLoading || needsServer, busy: isPrintLoading }}
           >
             {isPrintLoading ? (
               <ActivityIndicator size="small" color={colorStyles.iconBrand} />
@@ -209,7 +220,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             onPress={secondAction.onPress}
             disabled={busyAny}
             accessibilityRole="button"
-            accessibilityLabel={secondAction.label}
+            accessibilityLabel={labelled(secondAction.label)}
             accessibilityState={{ disabled: busyAny, busy: !!secondAction.busy }}
           >
             {secondAction.busy ? (
@@ -235,7 +246,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             onPress={handleDeletePress}
             disabled={busyAny}
             accessibilityRole="button"
-            accessibilityLabel={deleteLabel ?? labels.delete}
+            accessibilityLabel={labelled(deleteLabel ?? labels.delete)}
             accessibilityState={{ disabled: busyAny, busy: isDeleting }}
           >
             {isDeleting ? (
