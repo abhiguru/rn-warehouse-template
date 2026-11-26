@@ -430,7 +430,7 @@ const sendReplaceItemRates = async (input: ReplaceRatesInput, withKey: boolean):
       handleGlobalAuthError(error);
       const mapped = mapRateError(error, 'replace_item_rates');
       // An error with no database code is the connection failing: the save may have gone through.
-      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return outcomeUnknown();
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code && isLostAnswer(withHttpStatus(error, status))) return outcomeUnknown();
       return rateFailure(mapped.code, mapped.message);
     }
 
@@ -804,7 +804,7 @@ const sendSetStandardRate = async (tiers: StandardTier[], options: SetStandardRa
       const mapped = mapRateError(error, 'set_standard_rate');
       if (mapped.code === 'SERVER_NEEDS_UPDATE') return { success: false, errorCode: mapped.code, message: t('pricing.standard.error.serverNeedsUpdateSave') };
       // An error with no database code is the connection failing: the save may have gone through (a dry run writes nothing).
-      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return options.dryRun ? { success: false, errorCode: 'UNKNOWN', message: transportText(error, { write: false }) ?? t('pricing.error.generic') } : unconfirmed();
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code && isLostAnswer(withHttpStatus(error, status))) return options.dryRun ? { success: false, errorCode: 'UNKNOWN', message: transportText(error, { write: false }) ?? t('pricing.error.generic') } : unconfirmed();
       return { success: false, errorCode: mapped.code, message: mapped.message };
     }
 
