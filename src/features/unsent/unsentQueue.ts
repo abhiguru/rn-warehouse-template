@@ -9,6 +9,7 @@ import { getSessionCacheScope } from '@/utils/cacheManager';
 import { getUnsentDb } from './unsentDb';
 import { allItems, announceUnsentChange, deleteItems, insertItem, itemById, itemsOfScope, photosOf, UNSENT_STATES, type ItemRow, type ItemState } from './unsentRows';
 import { currentPersonName } from './unsentRole';
+import { sendNow } from './sendEngine';
 import { persistWorkClock, workNow } from './workClock';
 
 export interface TargetRef {
@@ -74,6 +75,8 @@ export async function enqueue(input: EnqueueInput): Promise<{ id: string; reques
   });
   // The clock is written with every save: a kill right after must not lose the time before it.
   await persistWorkClock(db).catch(() => undefined);
+  // Sent at once while reachable (contract section 4); a pass that finds nothing to do ends at once.
+  void sendNow('saved');
   return { id, requestKey };
 }
 

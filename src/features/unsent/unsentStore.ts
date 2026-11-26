@@ -7,6 +7,8 @@ import { useSyncExternalStore } from 'react';
 import { onSessionChange } from '@/config/sessionLifecycle';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger, loggableError } from '@/utils/logger';
+import './photosKind';
+import { startSendEngine } from './sendEngine';
 import { getUnsentDb } from './unsentDb';
 import { allItems, onUnsentChange, UNSENT_STATES, type ItemRow } from './unsentRows';
 import { cannotSendUnsent } from './unsentRole';
@@ -131,6 +133,7 @@ export function refreshUnsent(): Promise<void> {
 export async function initUnsent(): Promise<void> {
   if (!state.started) {
     state.started = true;
+    startSendEngine();
     onUnsentChange(refreshUnsent);
     onSessionChange(() => {
       state.scope = null;

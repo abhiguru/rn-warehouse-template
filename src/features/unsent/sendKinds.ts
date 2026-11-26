@@ -13,6 +13,8 @@ export type SendOutcome =
   | { kind: 'stop' };
 
 export interface SendContext {
+  /** The queue item being sent (a kind with files reads its rows). */
+  itemId: string;
   /** The item's permanent request ID; the same on every resend. */
   requestKey: string;
   /** The `result` of each item this one depended on, by that item's id. */
