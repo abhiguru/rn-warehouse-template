@@ -33,7 +33,7 @@ import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 import { noteRequestNetworkFailure } from './netReachability';
 import { noteExpiredTokenRenewal } from './sessionRenewal';
 import { parseSessionEnd, SESSION_ENDS_AT_KEY, storeSessionEnd } from './sessionEnd';
-import { awaitRoleRecheck, isRoleRecheckPending } from './roleRecheck';
+import { awaitRoleRecheck, isRoleRecheckPending, WRITE_HOLD_LIMIT_MS } from './roleRecheck';
 import { isOfflineLimitPassed, isStoredTime, type ConfirmationTimes } from './offlineLimit';
 import { forgetLanKey, LAN_KEY_STORE_KEY, parseLanKey, storeLanKey } from './lanKey';
 
@@ -113,6 +113,47 @@ export async function awaitIdentityGate(generation: number): Promise<void> {
   if (!operatorResumeGate.isVerified() && !(await operatorResumeGate.ensureVerified()))
     throw new Error('Warehouse identity verification required');
   if (generation !== getSessionGeneration()) throw new Error('Session changed');
+}
+
+const isWriteHeld = (generation: number): boolean =>
+  isRoleRecheckPending(generation) || !operatorResumeGate.isVerified();
+
+/**
+ * What a write waits for before it may leave the phone: the role re-read (./roleRecheck.ts) and the foreground
+ * facility check. The wait ends, and the write is never sent, when the caller aborts the request or after
+ * `WRITE_HOLD_LIMIT_MS`, so a write a screen has given up on is not sent later (WH-352). The checks themselves run on.
+ */
+async function awaitWriteClearance(generation: number, signal: AbortSignal | null | undefined): Promise<void> {
+  if (signal?.aborted) throw abortedRead();
+  const since = Date.now();
+  const refusal = () => new Error('Warehouse identity verification required');
+  let over = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const givenUp = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(refusal()), WRITE_HOLD_LIMIT_MS);
+    // Under Node (tests) a waiting write must not keep the process alive.
+    (timer as { unref?: () => void }).unref?.();
+    onAbort = () => reject(abortedRead());
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+  // Both are asked again after each wait: a check made meanwhile may have marked the role unconfirmed again.
+  const cleared = async () => {
+    while (!over && isWriteHeld(generation)) {
+      if (isRoleRecheckPending(generation)) await awaitRoleRecheck(generation);
+      else await awaitIdentityGate(generation);
+    }
+  };
+  try {
+    await Promise.race([cleared(), givenUp]);
+  } finally {
+    over = true;
+    clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
+  }
+  if (signal?.aborted) throw abortedRead();
+  // By the clock as well: timers stand still while the app is in the background.
+  if (Date.now() - since >= WRITE_HOLD_LIMIT_MS) throw refusal();
 }
 
 // The gateway answers a request whose apikey it does not know with a 401 whose body is one of the
@@ -215,14 +256,11 @@ async function gatedFetch(
   init: RequestInit | undefined,
   { generation, mutation, honorSwitch, afterUpgradeWait, afterRateLimitWait }: GatedFetchOptions
 ): Promise<Response> {
-  // After an offline start no write leaves the phone until the person's role has been read again (WH-346,
-  // ./roleRecheck.ts). Every write to the facility passes here. Reads, the token refresh and sign-out
-  // (`honorSwitch` false) are not held: that read depends on them.
-  if (mutation && honorSwitch && isRoleRecheckPending(generation) && !isReadRequest(input, init)) {
-    await awaitRoleRecheck(generation);
-    // A caller that gave up while this waited: its write is not sent late.
-    if (init?.signal?.aborted) throw abortedRead();
-  }
+  // While the person's role is unconfirmed no write leaves the phone until it has been read again (WH-346,
+  // ./roleRecheck.ts). Every write to the facility passes here, and none is sent after its wait was given up
+  // (WH-352). Reads, the token refresh and sign-out (`honorSwitch` false) are not held: that read depends on them.
+  if (mutation && honorSwitch && isWriteHeld(generation) && !isReadRequest(input, init))
+    await awaitWriteClearance(generation, init?.signal);
   // A verified identity is the common case; keep it synchronous so a server
   // switch sees this request registered before the first await.
   if (!operatorResumeGate.isVerified()) await awaitIdentityGate(generation);

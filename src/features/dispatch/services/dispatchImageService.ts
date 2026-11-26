@@ -20,6 +20,7 @@ import { serverText } from '@/utils/serverText';
 import { createLimiter } from '@/utils/concurrency';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { heldWriteCouldOutlive } from '@/config/roleRecheck';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
 import { logPhotoFailure, photoUploadFailureText } from '@/utils/photoUploadError';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -663,6 +664,8 @@ export const uploadDeferredDispatchImages = async (
     // The client above belongs to this session: a job still queued after it ends must not run with it.
     const sessionGeneration = getSessionGeneration();
 
+    // When this call stops waiting and reports what has not arrived as not uploaded.
+    const waitEnds = Date.now() + waitMs;
     // A few at a time; each file is held from the start, also while it waits.
     const attempts = deferredImages.map(async (image): Promise<{ success: boolean; error?: string }> => {
       // An upload from an earlier try may still be running: its result counts.
@@ -680,6 +683,8 @@ export const uploadDeferredDispatchImages = async (
         result = await dispatchPhotoUploadSlots(async () => {
           // Given up while it waited for a place, or the session ended meanwhile: not started.
           if (dispatchPhotosGivenUp.has(key) || sessionGeneration !== getSessionGeneration()) return { success: false, error: t('dispatch.photos.deferredFailed') };
+          // Writes are held and this photo's could go out after it was reported as not uploaded (WH-352): not started.
+          if (heldWriteCouldOutlive(waitEnds)) return { success: false, error: t('dispatch.photos.deferredFailed') };
           return uploadSingleDeferredImage(supabase, realDispatchId, image);
         });
         if (result.success) dispatchPhotosUploaded.add(key);

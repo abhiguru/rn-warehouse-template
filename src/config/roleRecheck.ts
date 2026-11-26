@@ -6,13 +6,22 @@
  *
  * A held write asks for the read now and goes on only when it succeeds; otherwise it is refused with the identity
  * gate's own signal, so the app behaves as for any unconfirmed session (nothing was sent). A failed read is also
- * repeated on its own, after the waits below, until it succeeds or the session ends.
+ * repeated on its own, after the waits below, until it succeeds or the session ends. No write waits longer than
+ * `WRITE_HOLD_LIMIT_MS` (WH-352).
  */
 import { getSessionGeneration } from './sessionLifecycle';
 import { registerSessionScoped } from './sessionScopedRegistry';
 
 /** The waits between failed reads; the last one repeats. The same steps as the phone copy's sync. */
 export const ROLE_RECHECK_BACKOFF_MS = [5_000, 15_000, 30_000, 60_000] as const;
+
+/**
+ * The longest a write waits in the app before it may be sent (WH-352): for this read, and for the foreground facility
+ * check. After it the write is refused and never sent. It is below every time limit after which a screen reports a
+ * write as failed without aborting it (the shortest is 30 s), so nothing a screen gave up on goes out later. A caller
+ * with a shorter limit aborts its request, which ends the wait at once.
+ */
+export const WRITE_HOLD_LIMIT_MS = 25_000;
 
 interface Hold {
   /** The session generation whose writes are held. */
@@ -82,6 +91,13 @@ export function holdWritesForRoleRecheck(generation: number, reread: () => Promi
 }
 
 export const isRoleRecheckPending = (generation = getSessionGeneration()): boolean => hold?.generation === generation;
+
+/**
+ * True when a write started now could still be waiting for this read at `deadline` (epoch milliseconds). For work
+ * queued behind other work, whose caller reports it as failed at `deadline`: it is then not started at all.
+ */
+export const heldWriteCouldOutlive = (deadline: number): boolean =>
+  isRoleRecheckPending() && Date.now() + WRITE_HOLD_LIMIT_MS > deadline;
 
 /** The server has just answered: the read is asked now and the waits start over. */
 export function retryRoleRecheckNow(): void {

@@ -24,6 +24,7 @@ import { serverText } from '@/utils/serverText';
 import { logPhotoFailure } from '@/utils/photoUploadError';
 import { createLogger, loggableError } from '@/utils/logger';
 import { createLimiter } from '@/utils/concurrency';
+import { heldWriteCouldOutlive } from '@/config/roleRecheck';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
 import { photoUploadFailureText } from '@/utils/photoUploadError';
 import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
@@ -871,6 +872,9 @@ export const uploadGRNPhotos = async (
     };
   }
 
+  // When this call stops waiting and reports the rest.
+  const waitEnds = Date.now() + waitMs;
+
   /** One photo: its whole upload runs in a shared place, its file is held until it ends. */
   const upload = async (photo: PendingGRNPhoto): Promise<{ success: boolean; error?: string }> => {
     const file = photo.image.imageUrl;
@@ -879,9 +883,11 @@ export const uploadGRNPhotos = async (
     const releaseHold = holdLocalPhoto(file);
     let result: { success: boolean; error?: string } = { success: false, error: t('grn.photos.uploadFailed') };
     try {
-      result = await grnPhotoUploadSlots(() =>
-        uploadSingleDeferredImage(supabase, realGrnId, photo.image, photo.imageType, photo.itemId)
-      );
+      result = await grnPhotoUploadSlots(async () => {
+        // Writes are held and this photo's could go out after this save's wait has ended (WH-352): not started.
+        if (heldWriteCouldOutlive(waitEnds)) return { success: false, error: t('grn.photos.uploadFailed') };
+        return uploadSingleDeferredImage(supabase, realGrnId, photo.image, photo.imageType, photo.itemId);
+      });
     } catch (error) {
       log.error('Photo upload ended unexpectedly', loggableError(error));
     } finally {
