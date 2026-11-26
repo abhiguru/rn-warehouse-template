@@ -2206,8 +2206,11 @@ async function confirmCachedProfile(accessToken: string, generation: number): Pr
 // for this token's person and session is then read whatever its 24 hour age, and nothing is asked of the server,
 // for up to 30 days since the server last confirmed that person (WH-349, src/config/offlineLimit.ts). Past that
 // the read gives nothing and the copy is kept. The token itself is never sent: every request first renews it
-// (acquireValidSession), and a refusal signs out.
-export const getCachedUserProfile = async (options: { allowExpired?: boolean } = {}) => {
+// (acquireValidSession), and a refusal signs out. `onLimitPassed` is told the kept role when that limit, and no
+// other cause, is why the read gives nothing (WH-351).
+export const getCachedUserProfile = async (
+  options: { allowExpired?: boolean; onLimitPassed?: (role: unknown) => void } = {}
+) => {
   const allowExpired = options.allowExpired === true;
   const generation = getSessionGeneration();
   try {
@@ -2226,7 +2229,10 @@ export const getCachedUserProfile = async (options: { allowExpired?: boolean } =
         const seen = entry.seenAt ?? 0;
         return (seen === 0 || isStoredTime(seen)) && now > seen ? { ...entry, seenAt: now } : null;
       });
-      return !passed && generation === getSessionGeneration() ? (kept.profile as UserProfile) : null;
+      if (generation !== getSessionGeneration()) return null;
+      if (!passed) return kept.profile as UserProfile;
+      options.onLimitPassed?.((kept.profile as { role?: unknown } | null | undefined)?.role);
+      return null;
     }
     if (cached) {
       const parsed: CachedProfile = JSON.parse(cached);

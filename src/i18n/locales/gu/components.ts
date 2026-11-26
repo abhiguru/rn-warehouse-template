@@ -39,6 +39,10 @@ export const components: Translation<typeof source> = {
     changeServerLabel: 'કોલ્ડ સ્ટોરેજનું સર્વર બદલો',
     backToFacilitiesLabel: 'મારાં કોલ્ડ સ્ટોરેજ પર પાછા જાઓ',
     footer: 'આવું વારંવાર થાય તો તમારા કોલ્ડ સ્ટોરેજનો સંપર્ક કરો.',
+    offlineTooLongTitle: 'આગળ વધવા ઇન્ટરનેટ જોડો',
+    offlineTooLongMessage: 'આ ફોન ૩૦ દિવસથી વધુ સમયથી તમારા કોલ્ડ સ્ટોરેજ સાથે જોડાયો નથી. ફરી લૉગિન કરવા ઇન્ટરનેટ જોડો.',
+    offlineTooLongKept: 'મોકલવાની બાકી એન્ટ્રી આ ફોનમાં સાચવેલી છે.',
+    offlineTooLongRetryLabel: 'ફરી જોડાવાનો પ્રયાસ કરો',
   },
   errorBoundary: {
     title: 'કંઈક ખોટું થયું',

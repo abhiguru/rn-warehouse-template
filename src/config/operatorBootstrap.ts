@@ -15,6 +15,7 @@ import {
   isNoAnswer,
   keepOfflineStart,
   markOfflineStarted,
+  markPastOfflineLimit,
   readOfflineStart,
 } from './offlineStart';
 
@@ -32,17 +33,22 @@ type BootstrapResult =
  * src/config/offlineLimit.ts) in a role that has the phone copy. The client is set up from the kept config first, because the cached
  * profile is filed under the facility's address. Null otherwise: the facility still needs the server.
  * 'profile-refused' also needs the server: the person is signed in at a facility with the feature, but the kept profile
- * gives nothing (past the idle limit, no stored time, the clock set back, or no readable profile for this session).
+ * gives nothing (no readable profile for this session). 'past-limit' is the same, for a role with the phone copy
+ * whose kept profile is past the idle limit, has no stored time, or meets a clock set back (WH-351).
  */
-async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfig | 'profile-refused' | null> {
+async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfig | 'profile-refused' | 'past-limit' | null> {
   const config = await readOfflineStart(selected);
   if (!config || !hasSyncCapability(config)) return null;
   const token = await getStoredToken();
   if (!token.authToken) return null;
   initializeSupabase(config.supabaseUrl, config.anonKey);
   // Customer accounts never open offline (Product's P5): their screens keep today's behaviour.
-  const profile = (await getCachedUserProfile({ allowExpired: true })) as { role?: unknown } | null;
-  if (!profile) return 'profile-refused';
+  let pastLimitRole: unknown;
+  const profile = (await getCachedUserProfile({
+    allowExpired: true,
+    onLimitPassed: role => { pastLimitRole = role; },
+  })) as { role?: unknown } | null;
+  if (!profile) return isCopyRole(pastLimitRole) ? 'past-limit' : 'profile-refused';
   return isCopyRole(profile.role) ? config : null;
 }
 
@@ -77,9 +83,12 @@ export async function verifySelectedOperator(
       const generation = getSessionGeneration();
       const config = await offlineStartConfig(selected);
       if (!isCurrent()) return { kind: 'superseded' };
-      if (config === 'profile-refused') {
+      if (config === 'profile-refused' || config === 'past-limit') {
         // A session that ended or was replaced during the read says nothing about the one now open.
-        if (generation === getSessionGeneration()) onOfflineRefused?.(error);
+        if (generation === getSessionGeneration()) {
+          if (config === 'past-limit') markPastOfflineLimit(error);
+          onOfflineRefused?.(error);
+        }
       } else if (config) {
         setFacilityCapabilities(selected, config.capabilities);
         markOfflineStarted();

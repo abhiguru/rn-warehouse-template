@@ -33,6 +33,10 @@ export interface ConfigErrorScreenProps {
   toFacilities?: boolean;
   /** The facility answered that its server is being updated: its own title and text, no technical detail, no footer. */
   upgrading?: boolean;
+  /** The phone was away past the offline limit (WH-351): its own title, text and "Try again" screen-reader label. */
+  offlineTooLong?: boolean;
+  /** With `offlineTooLong`: this phone holds unsent entries, so the text also says they are kept. */
+  unsentKept?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -82,6 +86,8 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
   onChangeServer,
   toFacilities = false,
   upgrading = false,
+  offlineTooLong = false,
+  unsentKept = false,
 }) => {
   const [isRetrying, setIsRetrying] = useState(false);
   const styles = useThemedStyles(makeStyles);
@@ -100,6 +106,20 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
     }
   };
 
+  const copy = () => {
+    if (upgrading) return { title: tr('components.upgrading.title'), message: tr('components.upgrading.message') };
+    if (!offlineTooLong) return { title: tr('components.configError.title'), message: tr('components.configError.message') };
+    const message = tr('components.configError.offlineTooLongMessage');
+    return {
+      title: tr('components.configError.offlineTooLongTitle'),
+      message: unsentKept ? `${message} ${tr('components.configError.offlineTooLongKept')}` : message,
+    };
+  };
+  const { title, message } = copy();
+  const retryLabel = offlineTooLong
+    ? tr('components.configError.offlineTooLongRetryLabel')
+    : tr('components.configError.retryLabel');
+
   return (
     <SafeAreaView style={styles.screen}>
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
@@ -115,12 +135,10 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
           />
 
           <Text style={styles.title} accessibilityRole="header">
-            {upgrading ? tr('components.upgrading.title') : tr('components.configError.title')}
+            {title}
           </Text>
 
-          <Text style={styles.message}>
-            {upgrading ? tr('components.upgrading.message') : tr('components.configError.message')}
-          </Text>
+          <Text style={styles.message}>{message}</Text>
 
           {__DEV__ && error && !upgrading ? (
             <View style={styles.devStrip}>
@@ -142,7 +160,7 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
               loading={isRetrying}
               loadingLabel={tr('components.configError.tryingAgain')}
               onPress={handleRetry}
-              accessibilityLabel={isRetrying ? tr('components.configError.retrying') : tr('components.configError.retryLabel')}
+              accessibilityLabel={isRetrying ? tr('components.configError.retrying') : retryLabel}
             />
 
             {/* Opens the selection screen only; nothing is signed out until the

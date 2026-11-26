@@ -136,6 +136,20 @@ export function isNoAnswer(error: unknown): boolean {
   return fields.name === 'TimeoutError' || fields.name === 'AbortError';
 }
 
+// The failures of a facility check after which the kept profile was refused for its age alone (WH-351). Marked on
+// the failure itself, so a start and a return to the front read it the same way.
+const pastLimitFailures = new WeakSet<object>();
+
+/** No answer, and the kept profile is past the offline limit (src/config/offlineLimit.ts). */
+export function markPastOfflineLimit(failure: unknown): void {
+  if (typeof failure === 'object' && failure !== null) pastLimitFailures.add(failure);
+}
+
+/** True for a failure marked so: the screen then says that the phone was away too long. */
+export function isPastOfflineLimit(failure: unknown): boolean {
+  return typeof failure === 'object' && failure !== null && pastLimitFailures.has(failure);
+}
+
 // In memory only: a new run starts online until its facility check says otherwise.
 const startState = {
   offline: false,

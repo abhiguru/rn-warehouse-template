@@ -112,7 +112,7 @@ import { installConnectionHistory, readConnectionSession } from '@/config/connec
 import { startDailyLanCheck } from '@/config/lanCheck';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
-import { isCopyRole, markRoleUnconfirmed } from '@/config/offlineStart';
+import { isCopyRole, isPastOfflineLimit, markRoleUnconfirmed } from '@/config/offlineStart';
 import { createResumeLifecycle } from '@/config/resumeLifecycle';
 import { isNativeHandoffActive } from '@/config/nativeHandoff';
 import { hasActiveOperatorMutation, invalidateStoredTokenCache } from '@/config/supabaseConfig';
@@ -556,6 +556,8 @@ function BootstrapApp() {
   const [isReady, setIsReady] = useState(false);
   const [needsSelection, setNeedsSelection] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  // With `configError`: the kept profile is past the offline limit, so the screen says the phone was away too long (WH-351).
+  const [pastOfflineLimit, setPastOfflineLimit] = useState(false);
   // The facility answered the cold start with `upgrading`: its own full-screen state, not a load error.
   const [serverUpgrading, setServerUpgrading] = useState(false);
   // The selected facility needs a newer app: its own screen, not a connection error. Set by the facility check
@@ -586,6 +588,7 @@ function BootstrapApp() {
     dropAllAlerts();
     setServerUpgrading(false);
     setChangingServer(false);
+    setPastOfflineLimit(isPastOfflineLimit(error));
     setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
   };
 
@@ -644,6 +647,7 @@ function BootstrapApp() {
     // A retry must leave the prior error state before starting. Otherwise a
     // successful refresh completes behind the still-mounted error screen.
     setConfigError(null);
+    setPastOfflineLimit(false);
     setServerUpgrading(false);
     clearAppTooOld();
     clearBackendTooOld();
@@ -752,6 +756,7 @@ function BootstrapApp() {
         return;
       }
       if (run === bootstrapRun.current) {
+        setPastOfflineLimit(isPastOfflineLimit(error));
         setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
         setIsReady(true);
       }
@@ -816,6 +821,8 @@ function BootstrapApp() {
       <ConfigErrorScreen
         error={configError}
         upgrading={serverUpgrading}
+        // `unsentKept` is not passed: the app stores no unsent work yet (WH-301 adds it).
+        offlineTooLong={pastOfflineLimit}
         onRetry={bootstrapApp}
         toFacilities={centralLogin}
         onChangeServer={

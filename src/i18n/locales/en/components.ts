@@ -36,6 +36,10 @@ export const components = {
     changeServerLabel: 'Change warehouse server',
     backToFacilitiesLabel: 'Back to My facilities',
     footer: 'If this keeps happening, contact your facility.',
+    offlineTooLongTitle: 'Connect to continue',
+    offlineTooLongMessage: "This phone hasn't connected to your cold storage for over 30 days. Connect to the internet to sign in again.",
+    offlineTooLongKept: 'Entries not sent yet are kept on this phone.',
+    offlineTooLongRetryLabel: 'Try connecting again',
   },
   errorBoundary: {
     title: 'Something went wrong',
