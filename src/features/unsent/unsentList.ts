@@ -91,7 +91,7 @@ function tagOf(state: ItemState): UnsentListRow['tag'] {
  */
 function heldReason(reason: string | null): string | null {
   if (reason === null) return null;
-  return reason.startsWith(DEPENDS_ON_REFUSED) ? tr('offline.unsent.dependsOnRefused') : tr('offline.unsent.refusedGeneric');
+  return reason === DEPENDS_ON_REFUSED ? tr('offline.unsent.dependsOnRefused') : tr('offline.unsent.refusedGeneric');
 }
 
 export async function loadUnsentList(): Promise<{ rows: UnsentListRow[]; lastSentAt: number | null }> {

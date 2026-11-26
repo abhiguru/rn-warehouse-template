@@ -41,7 +41,7 @@ export interface UnsentRowView {
   tag: 'refused' | null;
   /** The item this one waits for or follows, if any. */
   dependsOn: string | null;
-  /** Why a held item was not sent: the server's reason, or `dependsOnRefused:<id>` for what follows a refused item. */
+  /** Why a held item was not sent: the server's reason, or `dependsOnRefused` for what follows a refused item. */
   reason: string | null;
   /** The number the server gave, once sent. */
   result: unknown;
