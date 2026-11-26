@@ -51,8 +51,19 @@ const numberOf = (value: unknown): string | null => {
 async function titleOf(row: UnsentRowView): Promise<{ title: string; photoMissing: boolean }> {
   if (row.kind !== 'photos') return { title: row.what, photoMissing: false };
   const photos = await photosOfItem(row.id);
+  const count = photos.length;
+  const dispatch = row.photoDoc === 'dispatch';
+  const number = row.targetNumber;
+  // A document with no number yet (a new one not sent) is "the new GRN" or "the new dispatch" (Design 4.10).
+  const key = number
+    ? dispatch
+      ? 'offline.unsent.whatPhotosDispatch'
+      : 'offline.unsent.whatPhotos'
+    : dispatch
+      ? 'offline.unsent.whatPhotosNewDispatch'
+      : 'offline.unsent.whatPhotosNewGrn';
   return {
-    title: tr('offline.unsent.whatPhotos', { count: photos.length, number: row.targetNumber ?? '' }),
+    title: tr(key, { count, number: number ?? '' }),
     photoMissing: photos.some(photo => photo.missing === 1),
   };
 }
@@ -75,11 +86,12 @@ function tagOf(state: ItemState): UnsentListRow['tag'] {
 
 /**
  * The footnote of a held item: what follows a refused item says so in its own words, never the refused item's reason
- * (Design 4.6); a refused item shows the reason the server gave.
+ * (Design 4.6). A refused item never shows the server's raw text: its words are `refusedGeneric` (Design 4.10; 7.5's
+ * sentences need the values of the refusal and have no Gujarati yet, so none is a known reason here).
  */
 function heldReason(reason: string | null): string | null {
   if (reason === null) return null;
-  return reason.startsWith(DEPENDS_ON_REFUSED) ? tr('offline.unsent.dependsOnRefused') : reason;
+  return reason.startsWith(DEPENDS_ON_REFUSED) ? tr('offline.unsent.dependsOnRefused') : tr('offline.unsent.refusedGeneric');
 }
 
 export async function loadUnsentList(): Promise<{ rows: UnsentListRow[]; lastSentAt: number | null }> {

@@ -16,6 +16,10 @@ export const offline = {
     whatNewDispatchNumber: 'New dispatch {{number}}',
     whatChange: 'GRN {{number}}: {{fields}} changed',
     whatPhotos: { one: '1 photo for GRN {{number}}', other: '{{count}} photos for GRN {{number}}' },
+    whatPhotosDispatch: { one: '1 photo for dispatch {{number}}', other: '{{count}} photos for dispatch {{number}}' },
+    whatPhotosNewGrn: { one: '1 photo for the new GRN', other: '{{count}} photos for the new GRN' },
+    whatPhotosNewDispatch: { one: '1 photo for the new dispatch', other: '{{count}} photos for the new dispatch' },
+    refusedGeneric: 'The server refused this. A supervisor will look at it.',
     whatFormGrn: 'GRN form',
     whatFormDispatch: 'Dispatch form',
     whatFormEdit: 'Changes to GRN {{number}}',
@@ -57,7 +61,10 @@ export const offline = {
     leaveTitle: "Can't leave this facility yet",
     switchTitle: "Can't switch facility yet",
     deleteAccountTitle: "Can't delete your account yet",
-    message: '{{count}} items recorded on this phone are not sent yet. Send them first, then try again.',
+    message: {
+      one: '1 item recorded on this phone is not sent yet. Send it first, then try again.',
+      other: '{{count}} items recorded on this phone are not sent yet. Send them first, then try again.',
+    },
   },
   delete: {
     title: 'Delete this unsent item?',

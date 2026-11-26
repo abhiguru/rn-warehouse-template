@@ -49,6 +49,19 @@ export interface UnsentRowView {
   targetNumber: string | null;
   /** The record the item is about, when it already exists on the server (a tap opens it). */
   target: { grnId?: string; dispatchId?: string };
+  /** Which kind of document a photos item is for (its body's `doc`), or null for any other item. */
+  photoDoc: 'grn' | 'dispatch' | null;
+}
+
+function photoDocOf(kind: string, raw: string): UnsentRowView['photoDoc'] {
+  if (kind !== 'photos') return null;
+  try {
+    const body: unknown = JSON.parse(raw);
+    if (typeof body === 'object' && body !== null && 'doc' in body) return body.doc === 'dispatch' ? 'dispatch' : 'grn';
+  } catch {
+    return 'grn';
+  }
+  return 'grn';
 }
 
 async function ownScope(): Promise<string> {
@@ -145,6 +158,7 @@ export async function listItems(): Promise<UnsentRowView[]> {
       result: row.result === null ? null : (JSON.parse(row.result) as unknown),
       targetNumber: targetNumberOf(row.target_ref),
       target: targetOf(row.target_ref),
+      photoDoc: photoDocOf(row.kind, row.body),
     }));
 }
 

@@ -19,6 +19,10 @@ export const offline: Translation<typeof source> = {
     whatNewDispatchNumber: 'નવી જાવક {{number}}',
     whatChange: 'આવક પાવતી {{number}}: {{fields}} બદલ્યું',
     whatPhotos: { one: 'આવક પાવતી {{number}} ના ૧ ફોટો', other: 'આવક પાવતી {{number}} ના {{count}} ફોટો' },
+    whatPhotosDispatch: { one: 'જાવક {{number}} ના ૧ ફોટો', other: 'જાવક {{number}} ના {{count}} ફોટો' },
+    whatPhotosNewGrn: { one: 'નવી આવક પાવતીના ૧ ફોટો', other: 'નવી આવક પાવતીના {{count}} ફોટો' },
+    whatPhotosNewDispatch: { one: 'નવી જાવકના ૧ ફોટો', other: 'નવી જાવકના {{count}} ફોટો' },
+    refusedGeneric: 'સર્વરે આ સ્વીકાર્યું નથી. સુપરવાઇઝર તે જોશે.',
     whatFormGrn: 'આવક પાવતી ફોર્મ',
     whatFormDispatch: 'જાવક ફોર્મ',
     whatFormEdit: 'આવક પાવતી {{number}} માં ફેરફાર',
@@ -55,12 +59,15 @@ export const offline: Translation<typeof source> = {
     startAgain: 'ફરી શરૂ કરો',
   },
   refuse: {
-    subtitle: { one: '૧ એન્ટ્રી મોકલવાની બાકી છે. પહેલાં મોકલો.', other: '{{count}} એન્ટ્રી મોકલવાની બાકી છે. પહેલાં મોકલો.' },
+    subtitle: { one: '૧ એન્ટ્રી હજુ મોકલવાની બાકી છે. પહેલાં મોકલો.', other: '{{count}} એન્ટ્રી મોકલવાની બાકી છે. પહેલાં મોકલો.' },
     signOutTitle: 'હજુ લૉગઆઉટ થઈ શકે નહીં',
     leaveTitle: 'હજુ આ કોલ્ડ સ્ટોરેજ છોડી શકાય નહીં',
     switchTitle: 'હજુ કોલ્ડ સ્ટોરેજ બદલી શકાય નહીં',
     deleteAccountTitle: 'હજુ તમારું એકાઉન્ટ ડિલીટ થઈ શકે નહીં',
-    message: 'આ ફોનમાં નોંધેલી {{count}} એન્ટ્રી હજુ મોકલવાની બાકી છે. પહેલાં મોકલો, પછી ફરી પ્રયાસ કરો.',
+    message: {
+      one: 'આ ફોનમાં નોંધેલી ૧ એન્ટ્રી હજુ મોકલવાની બાકી છે. પહેલાં મોકલો, પછી ફરી પ્રયાસ કરો.',
+      other: 'આ ફોનમાં નોંધેલી {{count}} એન્ટ્રી હજુ મોકલવાની બાકી છે. પહેલાં મોકલો, પછી ફરી પ્રયાસ કરો.',
+    },
   },
   delete: {
     title: 'આ બાકી એન્ટ્રી ડિલીટ કરશો?',
