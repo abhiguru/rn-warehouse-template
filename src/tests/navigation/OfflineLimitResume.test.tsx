@@ -478,20 +478,40 @@ describe('a late or superseded check does nothing', () => {
     shownClosed();
   });
 
-  it('a sign-in that replaces the session while the kept profile is read closes nothing', async () => {
-    await openApp();
-    await phoneDate(CONFIRMED + 31 * DAY);
+  /** The first read of the kept profile from now on is answered only when the test says so. */
+  const slowProfileRead = () => {
     const slow = deferred();
-    let reading = false;
+    const state = { reading: false, open: slow.open };
     jest.mocked(SecureStore.getItemAsync).mockImplementation(async key => {
-      if (key === PROFILE_KEY && !reading) {
-        reading = true;
+      if (key === PROFILE_KEY && !state.reading) {
+        state.reading = true;
         await slow.promise;
       }
       return secure.get(key) ?? null;
     });
+    return state;
+  };
+
+  it('going to the back again while the kept profile is read closes nothing', async () => {
+    await openApp();
+    await phoneDate(CONFIRMED + 31 * DAY);
+    const slow = slowProfileRead();
     await resumeOffline();
-    expect(reading).toBe(true);
+    expect(slow.reading).toBe(true);
+
+    await goBack();
+    await act(async () => { slow.open(); });
+    await wait();
+
+    shownOnScreen();
+  });
+
+  it('a sign-in that replaces the session while the kept profile is read closes nothing', async () => {
+    await openApp();
+    await phoneDate(CONFIRMED + 31 * DAY);
+    const slow = slowProfileRead();
+    await resumeOffline();
+    expect(slow.reading).toBe(true);
 
     await act(async () => {
       await storeTokens(jwt('user-asha', 'session-new'), 'e'.repeat(64), Date.now() + HOUR);
