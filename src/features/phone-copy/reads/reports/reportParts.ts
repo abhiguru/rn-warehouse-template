@@ -7,6 +7,9 @@ import { businessDate, businessDayStart, enCompare } from '@/features/phone-copy
 export type Row = Record<string, unknown>;
 export const parseRow = (text: string): Row => JSON.parse(text) as Row;
 export const textOf = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+/** A text or number as text; null for anything else. */
+export const scalarText = (value: unknown): string | null =>
+  typeof value === 'string' ? value : typeof value === 'number' ? String(value) : null;
 export const numberOf = (value: unknown): number => (typeof value === 'number' ? value : 0);
 
 /** The day ('YYYY-MM-DD') a stored time falls on in India, as `warehouse_security.business_date`; null for none. */

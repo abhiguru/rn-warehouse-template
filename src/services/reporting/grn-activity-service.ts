@@ -18,6 +18,8 @@ import type {
   CustomerGRNSummary,
 } from '@/types/report.types';
 
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readAllGrnActivity, readCustomerGrnActivity } from '@/features/phone-copy/reads/reports/grnActivity';
 import { t } from '@/i18n';
 import { getDateDaysAgo, getToday } from './reportDates';
 import { createLogger } from '@/utils/logger';
@@ -78,8 +80,6 @@ export async function getCustomerGRNActivity(
   }
 
   try {
-    const client = await getAuthenticatedClient();
-
     // Calculate date range
     const toDate = params.toDate ?? getToday();
     const fromDate = params.fromDate ?? getDateDaysAgo(params.daysBack ?? 10);
@@ -91,10 +91,12 @@ export async function getCustomerGRNActivity(
       p_to_date: toDate,
     };
 
-    const { data, error } = await client.rpc(
-      'get_customer_grn_activity',
-      rpcParams
-    );
+    // The phone copy answers when it can (WH-299), in the function's own shape.
+    const copy = await readVia('all', q => readCustomerGrnActivity(q, params.customerId, fromDate, toDate));
+    const source = copy?.source;
+    const { data, error } = copy
+      ? { data: copy.value as unknown, error: null }
+      : await (await getAuthenticatedClient()).rpc('get_customer_grn_activity', rpcParams);
 
     if (error) {
       logger.error('[GRNActivity] RPC error:', error.message);
@@ -179,6 +181,7 @@ export async function getCustomerGRNActivity(
       success: true,
       data: { summary, grns },
       message: t('reports.grnActivity.retrieved'),
+      ...(source ? { source } : {}),
     };
   } catch (error) {
     logger.error('[GRNActivity] Unexpected error:', error);
@@ -206,14 +209,16 @@ export async function getAllGRNActivity(
   params: AllGRNActivityParams
 ): Promise<AllGRNActivityResponse> {
   try {
-    const client = await getAuthenticatedClient();
-
     const rpcParams = {
       p_from_date: params.fromDate,
       p_to_date: params.toDate,
     };
 
-    const { data, error } = await client.rpc('get_all_grn_activity', rpcParams);
+    const copy = await readVia('all', q => readAllGrnActivity(q, params.fromDate, params.toDate));
+    const source = copy?.source;
+    const { data, error } = copy
+      ? { data: copy.value as unknown, error: null }
+      : await (await getAuthenticatedClient()).rpc('get_all_grn_activity', rpcParams);
 
     if (error) {
       logger.error('[AllGRNActivity] RPC error:', error.message);
@@ -266,6 +271,7 @@ export async function getAllGRNActivity(
       success: true,
       data: { summary, by_customer: byCustomer },
       message: t('reports.grnActivity.retrievedAll'),
+      ...(source ? { source } : {}),
     };
   } catch (error) {
     logger.error('[AllGRNActivity] Unexpected error:', error);

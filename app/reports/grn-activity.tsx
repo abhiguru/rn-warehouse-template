@@ -39,6 +39,7 @@ import { exportHeaderActions, longestPeriodAction } from '@/features/reports/rep
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
+import { GRN_ACTIVITY_KINDS } from '@/features/reports/reportCopyKinds';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -145,6 +146,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const filters = useReportFilters(GRN_ACTIVITY_CUSTOMERS);
   const { period, view } = filters.request;
   const query = useReportQuery<AllGRNActivityData>({
+    copyKinds: GRN_ACTIVITY_KINDS,
     key: [REPORT_ID, 'customers', period.from, period.to],
     fetch: () => getAllGRNActivity({ fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.grnActivity.loadError'),
@@ -176,6 +178,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.grnActivity')}
       subtitle={tr('reports.shared.allCustomers')}
       actions={actions}
@@ -261,6 +264,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const filters = useReportFilters(GRN_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period, view } = filters.request;
   const query = useReportQuery<GRNActivityData>({
+    copyKinds: GRN_ACTIVITY_KINDS,
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerGRNActivity({ customerId, fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.grnActivity.loadError'),
@@ -331,6 +335,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.grnActivity')}
       subtitle={customerName || undefined}
       actions={actions}
