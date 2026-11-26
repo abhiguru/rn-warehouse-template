@@ -57,18 +57,15 @@ async function sendLotChange(body: LotChangeBody, requestKey: string): Promise<S
 function overlayOf(body: LotChangeBody): OverlayPart {
   if (!isLotChangeBody(body)) return {};
   const values: Record<string, unknown> = {};
-  const fields: string[] = [];
+  const lotChanges: NonNullable<OverlayPart['lotChanges']> = [];
   for (const field of changedLotFields(body)) {
-    values[field] = body.changes[field]?.to ?? null;
-    fields.push(LOT_FIELD_LABELS[field]);
+    const change = body.changes[field];
+    if (!change) continue;
+    values[field] = change.to;
+    lotChanges.push({ lotId: body.lotId, grnId: body.grnId, field, label: LOT_FIELD_LABELS[field], from: change.from, to: change.to });
   }
-  if (fields.length === 0) return {};
-  return {
-    lot: { [body.lotId]: values },
-    // The GRN carries the marker (its card shows "Not sent yet"); its own fields do not change.
-    grn: { [body.grnId]: {} },
-    changedFields: [{ kind: 'grn', id: body.grnId, fields }],
-  };
+  // The marks of the lot and its GRN come from `lotChanges`: only a field that still differs from the server's value counts.
+  return lotChanges.length === 0 ? {} : { lot: { [body.lotId]: values }, lotChanges };
 }
 
 const lotChangeKind: SendKind = {

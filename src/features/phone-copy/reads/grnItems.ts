@@ -84,7 +84,35 @@ function microsOf(time: string): number {
   return value;
 }
 
-export function conditionsOf(params: GRNListParams): Conditions {
+/** Lot id to its overlaid rack (`r`) and mark (`m`), lower-cased as the copy's search columns are; null when there is none. */
+export function lotValuesParam(values: ReadonlyMap<string, Record<string, unknown>> | undefined): string | null {
+  if (!values || values.size === 0) return null;
+  const out: Record<string, { r?: string | null; m?: string | null }> = {};
+  const lower = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value.toLowerCase() : null);
+  for (const [lotId, fields] of values) {
+    const entry: { r?: string | null; m?: string | null } = {};
+    if ('rack' in fields) entry.r = lower(fields.rack);
+    if ('package_mark' in fields) entry.m = lower(fields.package_mark);
+    if ('r' in entry || 'm' in entry) out[lotId] = entry;
+  }
+  return Object.keys(out).length === 0 ? null : JSON.stringify(out);
+}
+
+/** The unsent entry of the lot `t` (a JSON object), or null. */
+const OWN_VALUES = '(SELECT value FROM json_each(?) WHERE key = t.id)';
+/** The lot's lower-cased mark or rack: the phone's unsent value when it has one (even blank), else the copy's. */
+const effective = (path: '$.m' | '$.r', column: string): string =>
+  `CASE WHEN json_type(${OWN_VALUES}, '${path}') IS NULL THEN ${column} ELSE json_extract(${OWN_VALUES}, '${path}') END`;
+/** The search row of a lot with an unsent value, built as the copy builds `lot_search.haystack`. */
+const OVERLAID_HAYSTACK = `(SELECT coalesce(g2.gr_no_lc, '') || char(31) || coalesce(g2.customer_name_lc, '') || char(31) || coalesce(t.item_name_lc, '') ||
+  char(31) || coalesce(${effective('$.m', 't.package_mark_lc')}, '') || char(31) || coalesce(${effective('$.r', 't.rack_lc')}, '') ||
+  char(31) || coalesce(g2.registration_lc, '') FROM goodsreceived g2 WHERE g2.id = t.gr_id)`;
+
+/**
+ * `lotValues` (the overlay's `lotValues()`) makes search and the mark filter match what a row shows: a lot with an unsent
+ * rack or mark is matched on that value and not the copy's (WH-302, Product PQ1). With none, the conditions are the server's.
+ */
+export function conditionsOf(params: GRNListParams, lotValues?: ReadonlyMap<string, Record<string, unknown>>): Conditions {
   const grn: Condition = { sql: [], params: [] };
   const lot: Condition = { sql: [], params: [] };
   const filters = params.p_filters ?? {};
@@ -108,15 +136,24 @@ export function conditionsOf(params: GRNListParams): Conditions {
   else if (filters.stock_status === 'low_stock') add(lot, 't.stock > 0 AND t.stock * 5 < t.qty');
   if (filters.weight_min !== undefined) add(lot, 't.weight >= ?', filters.weight_min);
   if (filters.weight_max !== undefined) add(lot, 't.weight <= ?', filters.weight_max);
+  const own = lotValuesParam(lotValues);
   const mark = trimSpaces(filters.package_mark ?? '');
-  if (mark) add(lot, 'instr(t.package_mark_lc, ?) > 0', mark.toLowerCase());
+  if (mark && own === null) add(lot, 'instr(t.package_mark_lc, ?) > 0', mark.toLowerCase());
+  else if (mark) add(lot, `instr(${effective('$.m', 't.package_mark_lc')}, ?) > 0`, own, own, mark.toLowerCase());
 
   const terms = pgSearchTerms(filters.search);
   for (const term of terms) {
     // No column holds the separator, so such a word matches nothing.
-    if (term.includes(UNIT_SEPARATOR)) add(lot, '0');
-    else if (Array.from(term).length >= 3) add(lot, 'ls.rowid IN (SELECT rowid FROM lot_fts WHERE lot_fts MATCH ?)', phrase(term));
-    else add(lot, 'instr(ls.haystack, ?) > 0', term);
+    if (term.includes(UNIT_SEPARATOR)) {
+      add(lot, '0');
+      continue;
+    }
+    const long = Array.from(term).length >= 3;
+    const copySql = long ? 'ls.rowid IN (SELECT rowid FROM lot_fts WHERE lot_fts MATCH ?)' : 'instr(ls.haystack, ?) > 0';
+    const copyParam = long ? phrase(term) : term;
+    if (own === null) add(lot, copySql, copyParam);
+    // A lot with an unsent value is matched on its overlaid search row; every other lot as the copy does.
+    else add(lot, `CASE WHEN json_type(${OWN_VALUES}) IS NULL THEN ${copySql} ELSE instr(${OVERLAID_HAYSTACK}, ?) > 0 END`, own, copyParam, own, own, own, own, term);
   }
   return { grn, lot, searches: terms.length > 0, selective: terms.length > 0 || Boolean(filters.item_ids?.length) };
 }
@@ -236,7 +273,7 @@ export async function totalsOf(q: CopyReader, params: GRNListParams, c: Conditio
   const written = (await q.get<{ n: number }>('SELECT total_changes() AS n'))?.n ?? 0;
   // The same request whatever its page (JSON leaves the undefined ones out).
   const request: GRNListParams = { ...params, p_limit: undefined, p_offset: undefined };
-  const key = JSON.stringify([q.copyId, q.asOf, written, request]);
+  const key = JSON.stringify([q.copyId, q.asOf, written, request, c.lot.params]);
   const kept = offset > 0 ? keptTotals.get(key) : undefined;
   if (kept) return kept;
   const totals = await q.get<Totals>(
@@ -262,7 +299,7 @@ export async function readGrnItems(q: CopyReader, params: GRNListParams): Promis
   if (params.p_filters?.invoiced !== undefined && q.phase !== 'ready') return { kind: 'invoice-waiting' };
   const limit = params.p_limit ?? PAGINATION.DEFAULT_LIMIT;
   const offset = params.p_offset ?? 0;
-  const c = conditionsOf(params);
+  const c = conditionsOf(params, getUnsentOverlay().lotValues?.());
   const rows = await (byReceipt ? pageByReceipt : pageByLine)(q, params, c, limit, offset);
   // After the ranks are up to date, so writing them does not make a first page's totals look old.
   const totals = await totalsOf(q, params, c, offset);

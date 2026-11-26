@@ -33,6 +33,11 @@ export interface OverlayPart {
   lot?: Record<string, Fields>;
   dispatch?: Record<string, Fields>;
   changedFields?: { kind: 'grn' | 'dispatch'; id: string; fields: string[] }[];
+  /**
+   * Changes of one field of one lot (WH-302). The marks of a lot and its GRN come from these, and only for a field whose
+   * last value still differs from the first `from` of the unsent items (Design 5.8 DQ5: a value put back shows nothing).
+   */
+  lotChanges?: { lotId: string; grnId: string; field: string; label: string; from: unknown; to: unknown }[];
   newDocuments?: NewDocRow[];
   /** Lines an unsent edit adds to a GRN (grn id to rows; a row's id is its `clientLineId`). */
   lotsAdded?: Record<string, Row[]>;
@@ -56,7 +61,7 @@ export interface UnsentOverlay {
   /** Lot id to the bags taken off it (all three above), only the lots above 0 (WH-300). */
   deductions(): ReadonlyMap<string, number>;
   /** Lot id to its overlaid fields, for the readers' search and filters (WH-302). */
-  lotValues(): ReadonlyMap<string, Fields>;
+  lotValues?(): ReadonlyMap<string, Fields>;
   /** "Not sent yet" or "Sending…" for a record this person changed and has not sent; null otherwise (Design 2.2, 2.3). */
   marker(kind: 'grn' | 'lot' | 'dispatch', id: string): 'notSent' | 'sending' | null;
   /** The field labels' locale keys of what this person changed on a GRN or dispatch and has not sent. */
@@ -119,7 +124,7 @@ const sameServer = (a: string, b: string): boolean => {
 /** The entities a part touches, for re-reading what shows them. */
 function entitiesOf(part: OverlayPart): EntityName[] {
   const out: EntityName[] = [];
-  if (part.grn || part.lotsAdded || part.lotsRemoved || part.newDocuments?.some(doc => doc.kind === 'grn')) out.push('goodsreceived');
+  if (part.grn || part.lotChanges || part.lotsAdded || part.lotsRemoved || part.newDocuments?.some(doc => doc.kind === 'grn')) out.push('goodsreceived');
   if (part.lot || part.lessUnsent || part.lotsAdded || part.lotsRemoved) out.push('goodsreceived_trl');
   if (part.dispatch || part.newDocuments?.some(doc => doc.kind === 'dispatch')) out.push('dispatch');
   if (part.lessUnsent) out.push('dispatch_trl');
@@ -154,6 +159,11 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
   const documents: NewDocRow[] = [];
   const added = new Map<string, Row[]>();
   const removed = new Map<string, string[]>();
+  const lotFields = new Map<string, { lotId: string; grnId: string; label: string; from: unknown; to: unknown; state: 'notSent' | 'sending' }>();
+  // One row, one marker: "not sent" wins over "sending" when two items change the same record.
+  const mark = (key: string, state: 'notSent' | 'sending') => {
+    if (markers.get(key) !== 'notSent') markers.set(key, state);
+  };
   for (const row of rows) {
     if (!sameServer(row.scope, scope)) continue;
     const mine = row.scope === scope;
@@ -177,19 +187,27 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
     add(own, part.lessUnsent);
     documents.push(...(part.newDocuments ?? []));
     const state = row.state === 'sending' ? 'sending' : 'notSent';
-    const mark = (key: string) => {
-      // One row, one marker: "not sent" wins over "sending" when two items change the same record.
-      if (markers.get(key) !== 'notSent') markers.set(key, state);
-    };
-    for (const id of Object.keys(part.grn ?? {})) mark(`grn:${id}`);
-    for (const id of Object.keys(part.lot ?? {})) mark(`lot:${id}`);
-    for (const id of Object.keys(part.dispatch ?? {})) mark(`dispatch:${id}`);
+    for (const id of Object.keys(part.grn ?? {})) mark(`grn:${id}`, state);
+    for (const id of Object.keys(part.lot ?? {})) if (!part.lotChanges) mark(`lot:${id}`, state);
+    for (const id of Object.keys(part.dispatch ?? {})) mark(`dispatch:${id}`, state);
+    for (const change of part.lotChanges ?? []) {
+      const key = `${change.lotId}:${change.field}`;
+      const seen = lotFields.get(key);
+      lotFields.set(key, { ...change, from: seen ? seen.from : change.from, state: seen?.state === 'notSent' ? 'notSent' : state });
+    }
     for (const entry of part.changedFields ?? []) {
       const key = `${entry.kind}:${entry.id}`;
       const set = changed.get(key) ?? new Set<string>();
       for (const field of entry.fields) set.add(field);
       changed.set(key, set);
     }
+  }
+  for (const entry of lotFields.values()) {
+    if ((entry.from ?? null) === (entry.to ?? null)) continue;
+    mark(`lot:${entry.lotId}`, entry.state);
+    mark(`grn:${entry.grnId}`, entry.state);
+    const key = `grn:${entry.grnId}`;
+    changed.set(key, (changed.get(key) ?? new Set<string>()).add(entry.label));
   }
   if (grns.size + lots.size + dispatches.size + own.size + others.size + documents.length + added.size + removed.size === 0) {
     return { overlay: NOTHING, touched };

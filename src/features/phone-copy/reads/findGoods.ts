@@ -22,7 +22,7 @@ export async function readFindGoods(q: CopyReader, req: { query: string; limit: 
   const { query, limit, offset } = req;
   if (pgSearchTerms(query).length === 0) return { data: [], total_count: 0, limit, offset };
   const params = { p_filters: { search: query } };
-  const c = conditionsOf(params);
+  const c = conditionsOf(params, getUnsentOverlay().lotValues?.());
   await q.rank(['gr_no']);
   // Lot id to the bags taken off it: the group a lot falls in follows the number shown.
   const deductions = JSON.stringify(Object.fromEntries(getUnsentOverlay().deductions()));

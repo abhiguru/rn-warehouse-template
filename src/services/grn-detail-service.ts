@@ -21,6 +21,7 @@ import { t } from '@/i18n';
 import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
 import { readVia } from '@/features/phone-copy/readRoute';
+import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
 import { readGrnDetails, readItemDispatches } from '@/features/phone-copy/reads/grnDetails';
 import { keepPhoto, photoFile } from '@/features/phone-copy/photoStore';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
@@ -337,8 +338,12 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
 
     // Initialize empty images arrays immediately for UI
     if (responseData.grn.items) {
+      const unsent = getUnsentOverlay();
       responseData.grn.items.forEach((item: RpcGrnItemFull & { processed_images?: ProcessedImage[] }) => {
         item.processed_images = [];
+        // A rack or mark this phone changed and has not sent shows, never the old value (WH-302, Product PQ3).
+        const changed = unsent.lot(item.id);
+        if (changed) Object.assign(item, changed);
       });
     }
 
