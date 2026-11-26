@@ -1,9 +1,15 @@
 /**
- * The short reason of a refused item (Design 7.5 and 7.9 DQ1, and 4.10's ruling of 2026-11-27): the server's answer gives a
+ * The short reason of a refused item (Design 7.5, 7.9 DQ1, 10.6 and 10.9, and 4.10's ruling of 2026-11-27): the server's answer gives a
  * code and no figures, so the footnote shows the reason's tag, never the server's raw text. The code-to-reason table is
  * product/tech/app-offline-holding-list.md section 2; a code with no row has no tag (`refusedGeneric` is shown).
  */
-export type RefusalFamily = 'stockShort' | 'noRate' | 'numberUsed' | 'numberFormat' | 'deleted' | 'locked' | 'dateRefused' | 'duplicate' | 'belowDispatched';
+export type RefusalFamily = 'stockShort' | 'noRate' | 'numberUsed' | 'numberFormat' | 'deleted' | 'locked' | 'dateRefused' | 'duplicate' | 'belowDispatched'
+  | 'seriesFull'
+  | 'numberRequired'
+  | 'numberNotExpected'
+  | 'customerInactive'
+  | 'requestKeyReused'
+  | 'notAllowed';
 
 const FAMILY_OF_CODE: Readonly<Record<string, RefusalFamily>> = {
   STOCK_SHORT: 'stockShort',
@@ -30,6 +36,12 @@ const FAMILY_OF_CODE: Readonly<Record<string, RefusalFamily>> = {
   GRN_CUSTOMER_LOCKED: 'locked',
   GRN_PRICING_MODE_LOCKED: 'locked',
   QTY_BELOW_DISPATCHED: 'belowDispatched',
+  SERIES_FULL: 'seriesFull',
+  NUMBER_REQUIRED: 'numberRequired',
+  NUMBER_NOT_EXPECTED: 'numberNotExpected',
+  CUSTOMER_INACTIVE: 'customerInactive',
+  REQUEST_KEY_REUSED: 'requestKeyReused',
+  '42501': 'notAllowed',
 };
 
 /** The family of a refusal code, or null when 7.5 has no row for it. */
