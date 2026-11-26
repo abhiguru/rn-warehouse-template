@@ -63,6 +63,8 @@ import { normalizeDigits, t as tr } from '@/i18n';
 import { serverText, transportText } from '@/utils/serverText';
 import { showToast } from '@/utils/toast';
 import { createLogger, loggableError } from '@/utils/logger';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 
 const log = createLogger('Customers');
 
@@ -83,6 +85,8 @@ interface ListState {
   refreshFailed: boolean;
   /** When the rows on the screen were loaded. */
   loadedAt: Date | null;
+  /** The rows came from the phone copy (WH-348): the status bar tells their time, the list shows none of its own. */
+  fromPhoneCopy?: boolean;
   /** Active and deactivated customers on the server (head counts); null until they were read. */
   counts: { active: number; inactive: number } | null;
   /** How many customers the server has in all; more than `data.length` when the list was capped. */
@@ -115,6 +119,7 @@ export default function CustomersScreen() {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const isOffline = useIsOffline();
+  const needsConnection = useNeedsConnectionV3();
   // While the keyboard is up the list area ends at its top (WH-239), so the no-match state is centred above it.
   const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   const flatListRef = useRef<FlatList<CustomerListItem>>(null);
@@ -171,6 +176,7 @@ export default function CustomersScreen() {
             error: false,
             refreshFailed: false,
             loadedAt: new Date(),
+            fromPhoneCopy: Boolean(response.source),
             counts: counts
               ? { active: counts.active - inactiveShift, inactive: counts.inactive + inactiveShift }
               : null,
@@ -497,12 +503,12 @@ export default function CustomersScreen() {
         emptyIcon="account-group-outline"
         emptyTitle={tr('customers.list.emptyTitle')}
         emptySubtitle={tr('customers.list.emptyMessage')}
-        showCreateButton
+        showCreateButton={!needsConnection}
         createButtonLabel={tr('customers.list.addCustomer')}
         onCreatePress={handleAddCustomer}
       />
     );
-  }, [state.loading, state.error, state.data.length, state.filters, search, searching, showOnlyDeactivated, applyDeactivatedFilter, fetchCustomers, handleAddCustomer]);
+  }, [needsConnection, state.loading, state.error, state.data.length, state.filters, search, searching, showOnlyDeactivated, applyDeactivatedFilter, fetchCustomers, handleAddCustomer]);
 
   return (
     <>
@@ -524,7 +530,7 @@ export default function CustomersScreen() {
               {tr('common.customers')}
             </Text>
           ),
-          headerRight: () => (
+          headerRight: () => needsConnection ? null : (
             <Pressable
               onPress={handleAddCustomer}
               style={styles.addButton}
@@ -570,7 +576,11 @@ export default function CustomersScreen() {
             />
           </View>
         ) : null}
-        {isOffline && !state.refreshFailed && state.loadedAt && state.data.length > 0 ? (
+        {/* The "+" is not offered offline: its reason is a lasting fact about the list (Design 2.5, 2.11). */}
+        {needsConnection ? (
+          <NeedsConnectionLine testID="customers-new-needs-connection" text={tr('customers.offline.newNeedsConnection')} />
+        ) : null}
+        {isOffline && !state.refreshFailed && !state.fromPhoneCopy && state.loadedAt && state.data.length > 0 ? (
           <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="customers-last-updated" />
         ) : null}
         <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.listWithRail, { marginBottom: keyboardLift }]}>

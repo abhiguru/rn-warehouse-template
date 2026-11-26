@@ -11,7 +11,9 @@
  */
 
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { readVia } from '@/features/phone-copy/readRoute';
+import { readCustomerById, readCustomerCounts, readCustomerList } from '@/features/phone-copy/reads/customers';
 import { readCustomerStates } from '@/features/phone-copy/reads/pickers';
 import {
   Customer,
@@ -37,6 +39,27 @@ const log = createLogger('customers');
 // =============================================================================
 // SERVICE CLASS
 // =============================================================================
+
+interface RpcCustomerRow {
+  id: string;
+  name: string;
+  mobile?: string;
+  city?: string;
+  email?: string;
+  address?: string;
+  active?: boolean;
+}
+const toListItem = (c: RpcCustomerRow): CustomerListItem => ({
+  id: c.id,
+  name: c.name,
+  mobile: c.mobile || '',
+  city: c.city,
+  email: c.email,
+  address: c.address,
+  active: c.active ?? true,
+});
+/** The reads WH-348 moves to the copy need a copy of format 3 (contract section 2). */
+const V3 = { stage: 'all', format: COPY_FORMAT_V3 } as const;
 
 class CustomerService {
   // ===========================================================================
@@ -175,6 +198,21 @@ class CustomerService {
         offset,
       });
 
+      // The phone copy answers when it can (WH-348): the same rows as the table read below.
+      const copy = await readVia(V3, q => readCustomerList(q, {
+        search: filters.search, active: filters.active, city: filters.city, sortBy: filters.sortBy ?? 'name',
+        sortOrder: filters.sortOrder ?? 'asc', limit, offset,
+      }));
+      if (copy) {
+        return {
+          success: true,
+          message: t('errors.customer.listFetched'),
+          source: copy.source,
+          data: (copy.value.rows as unknown as RpcCustomerRow[]).map(toListItem),
+          pagination: { total_count: copy.value.count, limit, offset, has_more: copy.value.count > offset + limit },
+        };
+      }
+
       const client = await getAuthenticatedClient();
 
       // Build query
@@ -223,26 +261,7 @@ class CustomerService {
         };
       }
 
-      interface RpcCustomerRow {
-        id: string;
-        name: string;
-        mobile?: string;
-        city?: string;
-        email?: string;
-        address?: string;
-        active?: boolean;
-      }
-      const customers: CustomerListItem[] = (data || []).map(
-        (c: RpcCustomerRow) => ({
-          id: c.id,
-          name: c.name,
-          mobile: c.mobile || '',
-          city: c.city,
-          email: c.email,
-          address: c.address,
-          active: c.active ?? true,
-        })
-      );
+      const customers: CustomerListItem[] = (data || []).map(toListItem);
 
       return {
         success: true,
@@ -273,6 +292,8 @@ class CustomerService {
    */
   async getCustomerCounts(): Promise<{ active: number; inactive: number } | null> {
     try {
+      const copy = await readVia(V3, q => readCustomerCounts(q));
+      if (copy) return copy.value;
       const client = await getAuthenticatedClient();
       const head = (active: boolean) =>
         client.from('customers').select('id', { count: 'exact', head: true }).eq('active', active);
@@ -309,12 +330,15 @@ class CustomerService {
         };
       }
 
+      const copy = await readVia(V3, q => readCustomerById(q, customerId));
+      if (copy && !copy.value) {
+        return { success: false, message: t('errors.customer.notFound'), error: 'NOT_FOUND', source: copy.source };
+      }
+
       const client = await getAuthenticatedClient();
-      const { data, error } = await client
-        .from('customers')
-        .select('*')
-        .eq('id', customerId)
-        .single();
+      const server = copy?.value ? null : await client.from('customers').select('*').eq('id', customerId).single();
+      const data = copy?.value ?? server?.data;
+      const error = server?.error;
 
       if (error) {
         handleGlobalAuthError(error);
