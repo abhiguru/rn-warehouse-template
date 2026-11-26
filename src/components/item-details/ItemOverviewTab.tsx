@@ -13,6 +13,8 @@ import type { Item } from '@/types/item.types';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { ItemGstTreatment } from '@/features/gst/ItemGstTreatment';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 
 type Row = { label: string; value: string | undefined | null };
 
@@ -26,6 +28,9 @@ interface ItemOverviewTabProps {
 export function ItemOverviewTab({ item, busy, onToggleActive, onDelete }: ItemOverviewTabProps) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
+  // Activate, Deactivate and Delete need the server (WH-348, Design 2.5): disabled offline, one line says why.
+  const needsConnection = useNeedsConnectionV3();
+  const toggleLabel = tr(item.active ? 'items.list.deactivateItem' : 'items.page.activate');
 
   const rows: Row[] = [
     { label: tr('items.form.itemName'), value: item.name },
@@ -54,10 +59,29 @@ export function ItemOverviewTab({ item, busy, onToggleActive, onDelete }: ItemOv
         <ItemGstTreatment itemId={item.id} />
       </View>
       <View style={styles.footer}>
-        <Button type="tertiary" variant={item.active ? 'negative' : 'tint'} onPress={onToggleActive} loading={busy} disabled={busy}>
-          {tr(item.active ? 'items.list.deactivateItem' : 'items.page.activate')}
+        {needsConnection ? (
+          <NeedsConnectionLine testID="item-details-actions-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        ) : null}
+        <Button
+          type="tertiary"
+          variant={item.active ? 'negative' : 'tint'}
+          onPress={onToggleActive}
+          loading={busy}
+          disabled={busy || needsConnection}
+          testID={item.active ? 'item-details-deactivate' : 'item-details-activate'}
+          accessibilityLabel={needsConnection ? needsConnectionLabel(toggleLabel) : undefined}
+        >
+          {toggleLabel}
         </Button>
-        <Button type="tertiary" variant="negative" leftIcon="trash-can-outline" onPress={onDelete} disabled={busy}>
+        <Button
+          type="tertiary"
+          variant="negative"
+          leftIcon="trash-can-outline"
+          onPress={onDelete}
+          disabled={busy || needsConnection}
+          testID="item-details-delete"
+          accessibilityLabel={needsConnection ? needsConnectionLabel(tr('items.delete.deleteItem')) : undefined}
+        >
           {tr('items.delete.deleteItem')}
         </Button>
       </View>

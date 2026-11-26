@@ -5,6 +5,8 @@
  * Used across item list, create/edit forms, and service layer.
  */
 
+import type { DataSource } from '@/features/phone-copy/sourced';
+
 // =============================================================================
 // ENTITY TYPES
 // =============================================================================
@@ -87,6 +89,8 @@ export interface ItemServiceResponse<T = Item> {
   success: boolean;
   message: string;
   data?: T;
+  /** Set when the phone copy answered (WH-348). */
+  source?: DataSource;
   error?: string;
   /** The failure's code (Postgres, PostgREST or the server's own), before any translation. */
   code?: string;
@@ -103,6 +107,8 @@ export interface ItemListResponse {
   success: boolean;
   message: string;
   data: ItemListItem[];
+  /** Set when the phone copy answered (WH-348): the screen shows no time of its own. */
+  source?: DataSource;
   pagination?: ItemPagination;
   /** The failure's code, as in ItemServiceResponse. */
   code?: string;
