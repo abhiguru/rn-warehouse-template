@@ -473,6 +473,7 @@ async function sendKeyedSave<R extends { success: boolean; outcomeUnknown?: bool
   let keyed = Boolean(key);
   let sentAt = Date.now();
   let result = await send(keyed);
+  let lost: R | null = null;
   if (keyed && result.errorCode === 'SERVER_NEEDS_UPDATE') {
     keyed = false;
     sentAt = Date.now();
@@ -490,9 +491,13 @@ async function sendKeyedSave<R extends { success: boolean; outcomeUnknown?: bool
       itemPricingLogger.warn('The check for a lost rate save failed:', error);
     }
     if (signal?.aborted) return result;
+    lost = result;
     sentAt = Date.now();
     result = await send(true);
   }
+  // An attempt was sent and its answer lost: a later resend that got no answer of the server's (refused before it was sent)
+  // does not make the change "not saved", the first attempt may have been applied (WH-368).
+  if (lost && !result.success && !result.outcomeUnknown && result.errorCode === 'UNKNOWN') return lost;
   return result;
 }
 
