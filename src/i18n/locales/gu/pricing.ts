@@ -176,10 +176,12 @@ export const pricing: Translation<typeof source> = {
     done: 'નવો દર રદ થયો.',
     failed: 'નવો દર રદ થઈ શક્યો નહીં. ફરી પ્રયાસ કરો.',
     failedTitle: 'નવો દર રદ થઈ શક્યો નહીં',
+    notConfirmedTitle: 'નવો દર રદ થયો કે નહીં તેની ખાતરી થઈ શકી નથી',
   },
   undo: {
     done: 'દર ચાલુ રહેશે.',
     failedTitle: 'બંધ કરેલો દર ફરી ચાલુ થઈ શક્યો નહીં',
+    notConfirmedTitle: 'બંધ કરેલો દર ફરી ચાલુ થયો કે નહીં તેની ખાતરી થઈ શકી નથી',
   },
   // The facility's standard rate (backend migration 85): what a new item gets.
   standard: {

@@ -137,6 +137,8 @@ export interface SensorUpdateResult {
   success: boolean;
   message?: string;
   code?: string;
+  /** The answer was lost and reading the sensor did not show the change: it may or may not have been saved. */
+  outcomeUnknown?: boolean;
 }
 
 const SAVE_TEXT = { write: true, form: true } as const;
@@ -179,9 +181,10 @@ export async function updateDevice(update: SensorUpdate): Promise<SensorUpdateRe
     if (error) {
       sensorLogger.error('RPC error:', error);
       // No answer, or a lost one: asked about before anything is said (WH-359).
-      if (isLostAnswer(error) && (await holdsUpdate(update))) return { success: true };
+      const lost = isLostAnswer(error);
+      if (lost && (await holdsUpdate(update))) return { success: true };
       const refusal: RpcRefusal = { text: error.message, code: error.code };
-      return { success: false, message: serverText(error, fallback, SAVE_TEXT), code: failureCode(refusal) };
+      return { success: false, message: serverText(error, fallback, SAVE_TEXT), code: failureCode(refusal), ...(lost ? { outcomeUnknown: true } : {}) };
     }
     const refusal = rpcRefusal(data);
     if (refusal) {
@@ -191,7 +194,8 @@ export async function updateDevice(update: SensorUpdate): Promise<SensorUpdateRe
     return { success: true };
   } catch (error) {
     sensorLogger.error('Exception:', error);
-    if (isLostAnswer(error) && (await holdsUpdate(update))) return { success: true };
-    return { success: false, message: serverText(error, fallback, SAVE_TEXT) };
+    const lost = isLostAnswer(error);
+    if (lost && (await holdsUpdate(update))) return { success: true };
+    return { success: false, message: serverText(error, fallback, SAVE_TEXT), ...(lost ? { outcomeUnknown: true } : {}) };
   }
 }

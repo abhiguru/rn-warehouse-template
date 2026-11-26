@@ -175,10 +175,12 @@ export const pricing = {
     done: 'New rate cancelled.',
     failed: "Couldn't cancel the new rate. Try again.",
     failedTitle: "Couldn't cancel the new rate",
+    notConfirmedTitle: "Couldn't confirm the new rate was cancelled",
   },
   undo: {
     done: 'The rate continues.',
     failedTitle: "Couldn't undo the stop",
+    notConfirmedTitle: "Couldn't confirm the stop was undone",
   },
   // The facility's standard rate (backend migration 85): what a new item gets.
   standard: {
