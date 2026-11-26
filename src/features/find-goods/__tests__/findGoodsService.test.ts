@@ -374,6 +374,20 @@ describe('F8: the copy cannot be read', () => {
   });
 });
 
+describe('F8: the copy is gone between the gate and the read (contract 14, T4)', () => {
+  it('answers not-ready, and logs nothing', async () => {
+    const w = await ready();
+    expect(gate().findGoodsState()).toBe('ready');
+    const copyDb = require('@/features/phone-copy/copyDb') as typeof import('@/features/phone-copy/copyDb');
+    jest.spyOn(copyDb, 'currentCopy').mockReturnValue(null);
+    const warn = jest.spyOn(console, 'warn');
+    warn.mockClear();
+    expect(await service().findGoods('peas', 0)).toEqual({ kind: 'not-ready' });
+    expect(warn).not.toHaveBeenCalled();
+    expect(w.serverCalls).toEqual([]);
+  });
+});
+
 describe('F9 (service half): the answer carries the copy it came from', () => {
   it('every page of one copy has the same copy id', async () => {
     await ready();

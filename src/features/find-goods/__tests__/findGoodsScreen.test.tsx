@@ -476,6 +476,9 @@ describe('S6: a row', () => {
     expect(screen.getByTestId('find-goods-row-l05')).not.toHaveTextContent(/Rack /);
     expect(screen.getByTestId('find-goods-row-l04')).not.toHaveTextContent(/Mark/);
     expect(screen.getByTestId('find-goods-row-l04')).toHaveTextContent(/Rack C-1/);
+    // Contract 14, T6a: the spoken label says it as the row does; a missing mark leaves out its part and comma.
+    expect(screen.getByTestId('find-goods-row-l05')).toHaveProp('accessibilityLabel', 'Rice, Bhavin Foods, No rack, mark back\\slash, GRN a3, 1 of 5 in stock');
+    expect(screen.getByTestId('find-goods-row-l04')).toHaveProp('accessibilityLabel', 'Beans, Bhavin Foods, rack C-1, GRN A10, 20 of 100 in stock');
   });
 
   it('Gujarati: "રેક નથી" for no rack', async () => {
