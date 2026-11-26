@@ -288,3 +288,35 @@ describe("G4f: another person's unsent dispatch (PQ4b)", () => {
     expect(overlay.deductions().get('lot-1')).toBe(12);
   });
 });
+
+describe('PQ5: waitingForAdmin in the summary (contract section 2.1b)', () => {
+  async function customerWithItems(count: number) {
+    const phone = await bootUnsent();
+    phone.kinds.registerSendKind('testRecord', rpcKind(phone, 'save_test'));
+    await phone.store.initUnsent();
+    jest.doMock('react-redux', () => ({ useSelector: () => undefined, useDispatch: () => () => undefined }));
+    const { store } = require('@/store') as typeof import('@/store');
+    const auth = require('@/store/slices/authSlice') as typeof import('@/store/slices/authSlice');
+    store.dispatch(auth.setUserProfile({ id: 'profile-1', role: 'customer', name: 'Asha Fictional' } as never));
+    for (let i = 0; i < count; i += 1) await phone.queue.enqueue(waits);
+    return phone;
+  }
+
+  it('counts the own items kept for an administrator: count 0, limit not reached, however old', async () => {
+    const phone = await customerWithItems(2);
+    await advance(3 * HOUR);
+    expect(phone.store.getUnsentSummary()).toMatchObject({ count: 0, limitReached: false, unreadable: false, waitingForAdmin: 2 });
+    expect(phone.gate.canStartWork()).toEqual({ ok: true });
+  });
+
+  it('still refuses the account actions: the items are unsent', async () => {
+    const phone = await customerWithItems(1);
+    expect(phone.gate.accountActionAllowed()).toEqual({ ok: false, count: 1 });
+  });
+
+  it('is 0 for a person who can send', async () => {
+    const phone = await start();
+    await phone.queue.enqueue(waits);
+    expect(phone.store.getUnsentSummary()).toMatchObject({ count: 1, waitingForAdmin: 0 });
+  });
+});

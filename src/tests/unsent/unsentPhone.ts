@@ -33,7 +33,7 @@ export interface EnqueueInput {
   customer?: string;
   photos?: { file: string; role: string; lineRef?: string }[];
 }
-export interface UnsentSummary { count: number; sendBy: number; limitReached: boolean; unreadable: boolean }
+export interface UnsentSummary { count: number; sendBy: number; limitReached: boolean; unreadable: boolean; waitingForAdmin: number }
 export type SendTrigger = 'open' | 'foreground' | 'reconnect' | 'saved' | 'send-now' | 'sync' | 'retry-timer';
 
 export interface UnsentModules {
