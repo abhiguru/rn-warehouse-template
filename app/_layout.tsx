@@ -115,6 +115,7 @@ import { operatorResumeGate } from '@/config/operatorResume';
 import {
   isCopyRole,
   isPastOfflineLimit,
+  isStoreUnreadable,
   markRoleUnconfirmed,
   onRoleUnconfirmed,
   SESSION_STORE_UNREADABLE,
@@ -586,6 +587,8 @@ function BootstrapApp() {
   const [configError, setConfigError] = useState<string | null>(null);
   // With `configError`: the kept profile is past the offline limit, so the screen says the phone was away too long (WH-351).
   const [pastOfflineLimit, setPastOfflineLimit] = useState(false);
+  // With `configError`: the phone's secure store stayed unreadable after the retries, so the screen says that (WH-362).
+  const [storeUnreadable, setStoreUnreadable] = useState(false);
   // The facility answered the cold start with `upgrading`: its own full-screen state, not a load error.
   const [serverUpgrading, setServerUpgrading] = useState(false);
   // The selected facility needs a newer app: its own screen, not a connection error. Set by the facility check
@@ -617,6 +620,7 @@ function BootstrapApp() {
     setServerUpgrading(false);
     setChangingServer(false);
     setPastOfflineLimit(isPastOfflineLimit(error));
+    setStoreUnreadable(isStoreUnreadable(error));
     setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
   };
 
@@ -624,6 +628,7 @@ function BootstrapApp() {
   // "Try again" runs the start, and with it the restore, again. Stable, so the restore is not run again by a render.
   const closeForUnreadableSession = useCallback(() => {
     setPastOfflineLimit(false);
+    setStoreUnreadable(true);
     setServerUpgrading(false);
     setConfigError(translate('errors.auth.initializeFailed'));
   }, []);
@@ -687,6 +692,7 @@ function BootstrapApp() {
     // successful refresh completes behind the still-mounted error screen.
     setConfigError(null);
     setPastOfflineLimit(false);
+    setStoreUnreadable(false);
     setServerUpgrading(false);
     clearAppTooOld();
     clearBackendTooOld();
@@ -796,6 +802,7 @@ function BootstrapApp() {
       }
       if (run === bootstrapRun.current) {
         setPastOfflineLimit(isPastOfflineLimit(error));
+        setStoreUnreadable(isStoreUnreadable(error));
         setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
         setIsReady(true);
       }
@@ -862,6 +869,7 @@ function BootstrapApp() {
         upgrading={serverUpgrading}
         // `unsentKept` is not passed: the app stores no unsent work yet (WH-301 adds it).
         offlineTooLong={pastOfflineLimit}
+        storeUnreadable={storeUnreadable}
         onRetry={bootstrapApp}
         toFacilities={centralLogin}
         onChangeServer={

@@ -43,6 +43,9 @@ export const components: Translation<typeof source> = {
     offlineTooLongMessage: 'આ ફોન ૩૦ દિવસથી વધુ સમયથી તમારા કોલ્ડ સ્ટોરેજ સાથે જોડાયો નથી. ફરી લૉગિન કરવા ઇન્ટરનેટ જોડો.',
     offlineTooLongKept: 'મોકલવાની બાકી એન્ટ્રી આ ફોનમાં સાચવેલી છે.',
     offlineTooLongRetryLabel: 'ફરી જોડાવાનો પ્રયાસ કરો',
+    storeUnreadableTitle: 'ઍપ શરૂ થઈ શકી નથી',
+    storeUnreadableMessage: 'આ ફોન ઍપનું સાચવેલું લૉગિન વાંચી શક્યો નથી. કંઈ કાઢી નાખ્યું નથી. ફરી પ્રયાસ કરો. વારંવાર થાય તો ફોન બંધ કરીને ફરી ચાલુ કરો.',
+    storeUnreadableRetryLabel: 'ઍપ ફરી શરૂ કરવાનો પ્રયાસ કરો',
   },
   errorBoundary: {
     title: 'કંઈક ખોટું થયું',

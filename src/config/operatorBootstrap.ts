@@ -16,6 +16,7 @@ import {
   keepOfflineStart,
   markOfflineStarted,
   markPastOfflineLimit,
+  markStoreUnreadable,
   readOfflineStart,
 } from './offlineStart';
 
@@ -37,21 +38,28 @@ type BootstrapResult =
  * 'past-limit' is the same, for a role with the phone copy whose kept profile is past the idle limit, has no stored
  * time, or meets a clock set back (WH-351).
  */
-async function offlineStartConfig(selected: OperatorServer): Promise<PublicConfig | 'profile-refused' | 'past-limit' | null> {
+async function offlineStartConfig(
+  selected: OperatorServer
+): Promise<PublicConfig | 'profile-refused' | 'store-unreadable' | 'past-limit' | null> {
   const config = await readOfflineStart(selected);
   if (!config || !hasSyncCapability(config)) return null;
   // A read that fails is tried again; only a store that stays unreadable says "cannot tell" (WH-357).
   const token = await getStoredToken({ retryUnreadable: true });
-  if (token.unreadable) return 'profile-refused';
+  if (token.unreadable) return 'store-unreadable';
   if (!token.authToken) return null;
   initializeSupabase(config.supabaseUrl, config.anonKey);
   // Customer accounts never open offline (Product's P5): their screens keep today's behaviour.
   let pastLimitRole: unknown;
+  let profileUnreadable = false;
   const profile = (await getCachedUserProfile({
     allowExpired: true,
     onLimitPassed: role => { pastLimitRole = role; },
+    onUnreadable: () => { profileUnreadable = true; },
   })) as { role?: unknown } | null;
-  if (!profile) return isCopyRole(pastLimitRole) ? 'past-limit' : 'profile-refused';
+  if (!profile) {
+    if (profileUnreadable) return 'store-unreadable';
+    return isCopyRole(pastLimitRole) ? 'past-limit' : 'profile-refused';
+  }
   return isCopyRole(profile.role) ? config : null;
 }
 
@@ -86,10 +94,11 @@ export async function verifySelectedOperator(
       const generation = getSessionGeneration();
       const config = await offlineStartConfig(selected);
       if (!isCurrent()) return { kind: 'superseded' };
-      if (config === 'profile-refused' || config === 'past-limit') {
+      if (config === 'profile-refused' || config === 'store-unreadable' || config === 'past-limit') {
         // A session that ended or was replaced during the read says nothing about the one now open.
         if (generation === getSessionGeneration()) {
           if (config === 'past-limit') markPastOfflineLimit(error);
+          if (config === 'store-unreadable') markStoreUnreadable(error);
           onOfflineRefused?.(error);
         }
       } else if (config) {

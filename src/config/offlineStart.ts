@@ -156,6 +156,20 @@ export function isPastOfflineLimit(failure: unknown): boolean {
   return typeof failure === 'object' && failure !== null && pastLimitFailures.has(failure);
 }
 
+// The failures of a facility check after which the app was refused only because the secure store stayed unreadable
+// after the retries (WH-362): the screen then says so, and not that the connection is at fault.
+const storeUnreadableFailures = new WeakSet<object>();
+
+/** No answer, and the saved sign-in could not be read after the retries. */
+export function markStoreUnreadable(failure: unknown): void {
+  if (typeof failure === 'object' && failure !== null) storeUnreadableFailures.add(failure);
+}
+
+/** True for a failure marked so. */
+export function isStoreUnreadable(failure: unknown): boolean {
+  return typeof failure === 'object' && failure !== null && storeUnreadableFailures.has(failure);
+}
+
 // In memory only: a new run starts online until its facility check says otherwise.
 const startState = {
   offline: false,

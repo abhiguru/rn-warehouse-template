@@ -23,7 +23,7 @@ const logger = createLogger('ConfigErrorScreen');
 export interface ConfigErrorScreenProps {
   /** Technical cause. Shown in development builds only; release builds log it. */
   error?: string;
-  onRetry?: () => void;
+  onRetry?: () => void | Promise<unknown>;
   /**
    * Open the server selection screen. The selected server's credentials stay
    * untouched until the operator confirms a change there.
@@ -37,6 +37,8 @@ export interface ConfigErrorScreenProps {
   offlineTooLong?: boolean;
   /** With `offlineTooLong`: this phone holds unsent entries, so the text also says they are kept. */
   unsentKept?: boolean;
+  /** The phone's secure store stayed unreadable (WH-362): its own title, text and label, "Try again" only, no connection hint. */
+  storeUnreadable?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -88,6 +90,7 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
   upgrading = false,
   offlineTooLong = false,
   unsentKept = false,
+  storeUnreadable = false,
 }) => {
   const [isRetrying, setIsRetrying] = useState(false);
   const styles = useThemedStyles(makeStyles);
@@ -108,6 +111,9 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
 
   const copy = () => {
     if (upgrading) return { title: tr('components.upgrading.title'), message: tr('components.upgrading.message') };
+    if (storeUnreadable) {
+      return { title: tr('components.configError.storeUnreadableTitle'), message: tr('components.configError.storeUnreadableMessage') };
+    }
     if (!offlineTooLong) return { title: tr('components.configError.title'), message: tr('components.configError.message') };
     const message = tr('components.configError.offlineTooLongMessage');
     return {
@@ -116,9 +122,12 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
     };
   };
   const { title, message } = copy();
-  const retryLabel = offlineTooLong
-    ? tr('components.configError.offlineTooLongRetryLabel')
-    : tr('components.configError.retryLabel');
+  const retryLabel = (() => {
+    if (storeUnreadable) return tr('components.configError.storeUnreadableRetryLabel');
+    return offlineTooLong ? tr('components.configError.offlineTooLongRetryLabel') : tr('components.configError.retryLabel');
+  })();
+  // An unreadable store is not mended by leaving the facility: "Try again" is the only action (Design 12.1).
+  const showSecondAction = Boolean(onChangeServer) && !storeUnreadable;
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -159,13 +168,13 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
               label={tr('common.retry')}
               loading={isRetrying}
               loadingLabel={tr('components.configError.tryingAgain')}
-              onPress={handleRetry}
+              onPress={() => void handleRetry()}
               accessibilityLabel={isRetrying ? tr('components.configError.retrying') : retryLabel}
             />
 
             {/* Opens the selection screen only; nothing is signed out until the
                 operator confirms a change there. */}
-            {onChangeServer && (
+            {showSecondAction && onChangeServer && (
               <StateActionButton
                 fullWidth
                 variant="secondary"

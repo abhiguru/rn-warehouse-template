@@ -40,6 +40,9 @@ export const components = {
     offlineTooLongMessage: "This phone hasn't connected to your cold storage for over 30 days. Connect to the internet to sign in again.",
     offlineTooLongKept: 'Entries not sent yet are kept on this phone.',
     offlineTooLongRetryLabel: 'Try connecting again',
+    storeUnreadableTitle: "Couldn't start the app",
+    storeUnreadableMessage: "This phone couldn't read the app's saved sign-in. Nothing has been deleted. Try again. If it keeps happening, restart the phone.",
+    storeUnreadableRetryLabel: 'Try starting the app again',
   },
   errorBoundary: {
     title: 'Something went wrong',
