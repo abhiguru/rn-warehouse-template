@@ -32,9 +32,9 @@ const lookups = () => server.calls.filter(c => c.name === 'get_submission_result
 const body = (n: number) => ({ lines: [{ item: 'Potato', bags: n }] });
 const input = (n: number, extra: Record<string, unknown> = {}) => ({ kind: 'testRecord', body: body(n), what: `GRN ${n} for Asha Fictional Traders`, ...extra });
 
-type Phone = ReturnType<typeof bootUnsent>;
+type Phone = Awaited<ReturnType<typeof bootUnsent>>;
 async function start(): Promise<Phone> {
-  const phone = bootUnsent();
+  const phone = await bootUnsent();
   phone.kinds.registerSendKind('testRecord', rpcKind(phone, SAVE));
   phone.kinds.registerSendKind('testPhoto', rpcKind(phone, 'save_photo', 'photo'));
   await phone.store.initUnsent();

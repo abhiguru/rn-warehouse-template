@@ -34,7 +34,7 @@ beforeEach(() => { resetEnv(); files.reset(); server.reset(); });
 afterEach(async () => { await eraseEverything(); });
 
 async function phoneWith(...saves: ReturnType<typeof record>[]) {
-  const phone = bootUnsent();
+  const phone = await bootUnsent();
   phone.kinds.registerSendKind('testRecord', { lane: 'record', send: async () => ({ kind: 'transient' }) });
   await phone.store.initUnsent();
   const made = [];
@@ -114,7 +114,7 @@ describe('S3: a file that cannot be read is never erased', () => {
   it('keeps the file, answers that work is blocked and the count unknown, and gives the work back once the file reads again', async () => {
     const { made } = await phoneWith(record());
     breakOpen();
-    const next = bootUnsent();
+    const next = await bootUnsent();
     await next.store.initUnsent();
     expect(unsentFileNames()).toHaveLength(1);
     expect(next.gate.accountActionAllowed()).toEqual({ ok: false, count: null });
@@ -129,7 +129,7 @@ describe('S3: a file that cannot be read is never erased', () => {
   it('does not run the erase of the copy over it, nor clearSessionScopedState', async () => {
     await phoneWith(record());
     breakOpen();
-    const next = bootUnsent();
+    const next = await bootUnsent();
     await next.store.initUnsent();
     const { clearSessionScopedState } = require('@/store/sessionScopedState') as typeof import('@/store/sessionScopedState');
     await clearSessionScopedState(jest.fn());
@@ -205,7 +205,7 @@ describe('S6: sent rows', () => {
   it('stay listed with their number through the day and leave on the next business day', async () => {
     jest.useFakeTimers({ now: new Date('2026-11-26T10:00:00+05:30') });
     try {
-      const phone = bootUnsent();
+      const phone = await bootUnsent();
       phone.kinds.registerSendKind('testRecord', { lane: 'record', send: async () => ({ kind: 'sent', result: { number: 'GRN 312' } }) });
       await phone.store.initUnsent();
       const { id } = await phone.queue.enqueue(record());

@@ -80,7 +80,11 @@ export const addPhoto = (name: string, bytes = 1200) => {
 /** The photo files the unsent store keeps. */
 export const keptPhotoFiles = () => [...files.held.keys()].filter(path => path.includes('unsent-work/'));
 
-export function bootUnsent(): { phone: Phone } & UnsentModules {
+const SERVER = { origin: 'https://warehouse.example.test', instanceId: 'instance-a', displayName: 'Fictional Cold Store', companyName: 'Fictional Cold Store' };
+export type UnsentPhone = { phone: Phone; setSyncCapability(on: boolean): void } & UnsentModules;
+
+/** A started phone. The facility has the offline feature (`capabilities.sync`) on unless the test says otherwise (criterion 14). */
+export async function bootUnsent({ sync = true }: { sync?: boolean } = {}): Promise<UnsentPhone> {
   const phone = bootPhone();
   jest.doMock('expo-file-system', () => fileSystemModule());
   const supabase = require('@/config/supabaseConfig') as Record<string, unknown>;
@@ -92,8 +96,14 @@ export function bootUnsent(): { phone: Phone } & UnsentModules {
   });
   supabase.getAuthenticatedClient = client;
   supabase.getSupabaseClient = client;
+  (require('@/config/lanTransport') as Record<string, unknown>).setLanContext = () => undefined;
+  await (require('@/config/operatorServer') as typeof import('@/config/operatorServer')).saveOperatorServer(SERVER);
+  const capabilities = require('@/config/facilityCapabilities') as typeof import('@/config/facilityCapabilities');
+  const setSyncCapability = (on: boolean) => capabilities.setFacilityCapabilities(SERVER, { sync: on });
+  setSyncCapability(sync);
   return {
     phone,
+    setSyncCapability,
     queue: require('@/features/unsent/unsentQueue'),
     store: require('@/features/unsent/unsentStore'),
     kinds: require('@/features/unsent/sendKinds'),
@@ -116,7 +126,7 @@ export const clearPlannedFailures = () => { ((globalThis as any).__fakePhoneFail
 
 /** A kill: `bootUnsent()` again, the phone's files stay. The store loads as at app open. */
 export async function restart() {
-  const next = bootUnsent();
+  const next = await bootUnsent();
   await next.store.initUnsent();
   return next;
 }

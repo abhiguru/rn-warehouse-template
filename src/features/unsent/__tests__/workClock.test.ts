@@ -30,7 +30,7 @@ const moveWall = (ms: number) => jest.setSystemTime(wall() + ms);
 
 type Unsent = Awaited<ReturnType<typeof restart>>;
 async function start(): Promise<Unsent> {
-  const phone = bootUnsent();
+  const phone = await bootUnsent();
   phone.kinds.registerSendKind('testRecord', { lane: 'record', send: async () => ({ kind: 'transient' }) });
   await phone.store.initUnsent();
   return phone;
