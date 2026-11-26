@@ -112,6 +112,12 @@ describe('Q1, Q2: the order', () => {
     expect(savedKeys()).toEqual([a.requestKey, later.requestKey]);
     expect(savedKeys()).not.toContain(dependant.requestKey);
     expect(await states()).toEqual(['refused', 'refused', 'sent']);
+    // The ruling of 2026-11-26 (contract, end of the file): the dependant says why in its own words, names what it follows, and is not unsent work.
+    const rows = await rawRows<{ last_error: string; depends_on: string }>('items', 'ORDER BY seq');
+    expect(rows[1]).toMatchObject({ last_error: 'dependsOnRefused', depends_on: a.id }); // ASSUMED column for the reason: last_error
+    expect(rows[0].last_error).toBe('Not enough stock');
+    expect(phone.store.getUnsentSummary().count).toBe(1);
+    expect(phone.gate.accountActionAllowed()).toEqual({ ok: false, count: 1 });
   });
 });
 
@@ -419,5 +425,22 @@ describe('Q11: whose items are sent', () => {
     expect(savedKeys().at(-1)).toBe(mine.requestKey);
     const rows = await rawRows<{ id: string; state: string }>('items');
     expect(rows.find(r => r.id === theirs.id)!.state).toBe('saved');
+  });
+});
+
+describe('a photo that could not be sent now', () => {
+  it('is tried once in the pass, not again at once: the retry timer asks again', async () => {
+    const phone = await start();
+    let calls = 0;
+    phone.kinds.registerSendKind('testPhoto', { lane: 'photo', send: async () => { calls += 1; return calls > 25 ? { kind: 'sent', result: {} } : { kind: 'transient' }; } });
+    await offline(phone);
+    const record = await phone.queue.enqueue(input(1));
+    await phone.queue.enqueue({ kind: 'testPhoto', body: {}, what: 'Photos of the GRN', dependsOn: record.id, photos: [{ file: addPhoto('a.jpg'), role: 'goods' }] });
+    server.answers[SAVE] = () => ok('GRN 1');
+    await online(phone);
+    await pass(phone, 'reconnect', 1000);
+    expect(calls).toBe(1);
+    await advance(5000);
+    expect(calls).toBe(2);
   });
 });

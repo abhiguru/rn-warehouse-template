@@ -158,6 +158,7 @@ describe('PQ2: waiting photos', () => {
   it('count in the bar and refuse the account actions (they are the only copy)', async () => {
     const phone = await start();
     phone.kinds.registerSendKind('photos', { lane: 'photo', send: async () => ({ kind: 'transient' }) });
+    phone.phone.engine.setCopyOffline(true); // nothing is sent while these wait (a photo answering transient is its own case in sendEngine.test.ts)
     await phone.queue.enqueue(photos(addPhoto('a.jpg')));
     expect(phone.store.getUnsentSummary().count).toBe(1);
     expect(phone.gate.accountActionAllowed()).toEqual({ ok: false, count: 1 });
@@ -166,6 +167,7 @@ describe('PQ2: waiting photos', () => {
   it('do not start the 2-hour clock: no limit however long they wait', async () => {
     const phone = await start();
     phone.kinds.registerSendKind('photos', { lane: 'photo', send: async () => ({ kind: 'transient' }) });
+    phone.phone.engine.setCopyOffline(true); // nothing is sent while these wait (a photo answering transient is its own case in sendEngine.test.ts)
     await phone.queue.enqueue(photos(addPhoto('a.jpg')));
     await advance(5 * HOUR);
     expect(phone.gate.canStartWork()).toEqual({ ok: true });
@@ -175,6 +177,7 @@ describe('PQ2: waiting photos', () => {
   it('a record saved after them is the one that starts the clock', async () => {
     const phone = await start();
     phone.kinds.registerSendKind('photos', { lane: 'photo', send: async () => ({ kind: 'transient' }) });
+    phone.phone.engine.setCopyOffline(true); // nothing is sent while these wait (a photo answering transient is its own case in sendEngine.test.ts)
     await phone.queue.enqueue(photos(addPhoto('a.jpg')));
     await advance(5 * HOUR);
     await phone.queue.enqueue(waits);

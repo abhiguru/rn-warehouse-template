@@ -17,6 +17,9 @@ import { expoSqliteModule, resetFakePhone } from './fakeExpoSqlite';
 export const SCOPE_ORIGIN = 'https://warehouse.example.test';
 export type SecureWrite = { key: string; value: string; options?: Record<string, unknown> };
 
+/** A test that needs its own expo-file-system stand-in (WH-301 photos) sets it BEFORE bootPhone; resetEnv clears it. */
+export const overrides = { fileSystem: null as null | (() => unknown) };
+
 export const env = {
   feed: createFakeFeed() as FakeFeed,
   subject: 'user-1',
@@ -33,6 +36,7 @@ const net = (connected: boolean) => ({ type: 'wifi', isConnected: connected, isI
 /** A brand-new phone, a brand-new server. Call in `beforeEach`. */
 export function resetEnv() {
   resetFakePhone();
+  overrides.fileSystem = null;
   env.feed = createFakeFeed();
   env.subject = 'user-1';
   env.freeBytes = 5_000_000_000;
@@ -111,7 +115,7 @@ export function bootPhone() {
   jest.resetModules();
   jest.doMock('expo-sqlite', mockFactories.sqlite, { virtual: true }); // main has no expo-sqlite until 4ab537c2
   jest.doMock('expo-secure-store', mockFactories.secureStore);
-  jest.doMock('expo-file-system', mockFactories.fileSystem);
+  jest.doMock('expo-file-system', overrides.fileSystem ?? mockFactories.fileSystem);
   jest.doMock('@/config/supabaseConfig', mockFactories.supabase);
   jest.doMock('@react-native-community/netinfo', mockFactories.netinfo);
   jest.doMock('@/config/lanTransport', mockFactories.lan);
