@@ -6,9 +6,12 @@
  *
  * One screen-reader stop that reads line 1 then line 2, a polite live region (never an alert); "Try again" is a
  * separate stop. The text wraps and is never cut off. It slides in only when it first appears.
+ *
+ * Until the phone knows the copy's state (`pending`) the bar is empty at its one-line height: no icon, no words,
+ * no screen-reader stop and no announcement (Design 1.5).
  */
 import React from 'react';
-import { Animated, Text, View } from 'react-native';
+import { Animated, Text, useWindowDimensions, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
@@ -77,6 +80,7 @@ export function OfflineStatusBar() {
   const insets = useSafeAreaInsets();
   const snapshot = usePhoneCopyStatus();
   const offline = useIsOffline();
+  const { fontScale } = useWindowDimensions();
   const [translateY] = React.useState(() => new Animated.Value(HIDDEN_OFFSET));
 
   React.useEffect(() => {
@@ -98,7 +102,8 @@ export function OfflineStatusBar() {
     unsent: null,
     running: snapshot.running !== null,
   });
-  const critical = view.tone === 'critical';
+  const pending = snapshot.pending === true;
+  const critical = !pending && view.tone === 'critical';
   const colors = critical ? tokens.status.critical : tokens.status.neutral;
   const line1 = lineOneText(view);
   const line2 = lineTwoText(view);
@@ -120,23 +125,30 @@ export function OfflineStatusBar() {
       <View
         testID="offline-status-bar"
         style={[styles.status, { backgroundColor: colors.background, paddingTop: insets.top + space.sm }]}
-        accessible
-        accessibilityLabel={label}
-        accessibilityLiveRegion="polite"
+        accessible={!pending}
+        accessibilityLabel={pending ? undefined : label}
+        accessibilityLiveRegion={pending ? 'none' : 'polite'}
       >
-        <Icon testID="offline-status-bar-icon" name={view.icon} size={iconSize.md} color={colors.text} importantForAccessibility="no" />
-        <View style={styles.texts}>
-          <Text testID="offline-status-bar-line1" style={styles.text}>
-            {line1}
-          </Text>
-          {line2 ? (
-            <Text testID="offline-status-bar-line2" style={styles.text}>
-              {line2}
-            </Text>
-          ) : null}
-        </View>
+        {pending ? (
+          // The height of one line of the bar, so nothing below moves when the first state arrives.
+          <View style={{ height: Math.max(iconSize.md, typography.footnote.lineHeight * fontScale) }} />
+        ) : (
+          <>
+            <Icon testID="offline-status-bar-icon" name={view.icon} size={iconSize.md} color={colors.text} importantForAccessibility="no" />
+            <View style={styles.texts}>
+              <Text testID="offline-status-bar-line1" style={styles.text}>
+                {line1}
+              </Text>
+              {line2 ? (
+                <Text testID="offline-status-bar-line2" style={styles.text}>
+                  {line2}
+                </Text>
+              ) : null}
+            </View>
+          </>
+        )}
       </View>
-      {view.action === 'retry' ? (
+      {!pending && view.action === 'retry' ? (
         <View style={[styles.actionSlot, { paddingTop: insets.top }]}>
           <Button
             testID="offline-status-bar-retry"

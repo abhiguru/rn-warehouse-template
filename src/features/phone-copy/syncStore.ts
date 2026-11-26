@@ -20,6 +20,11 @@ export interface SyncSnapshot {
   copyBytes: number | null;
   /** Free space on the phone when the size was read (Settings' note); absent until then. */
   freeBytes?: number | null;
+  /**
+   * The first real state is not known yet: the copy is not open, or it holds nothing usable and the run that says
+   * what happens next has not begun. The bar is then empty (Design 1.5); `phase` says nothing about the phone.
+   */
+  pending?: boolean;
 }
 
 const INITIAL: SyncSnapshot = {
@@ -31,6 +36,7 @@ const INITIAL: SyncSnapshot = {
   lastRunFailed: false,
   storageLow: false,
   copyBytes: null,
+  pending: true,
 };
 
 const store = { snapshot: INITIAL, listeners: new Set<() => void>() };

@@ -182,11 +182,19 @@ function noteStorage(db: CopyDriver, writeWorked: boolean): void {
   publish(patch);
 }
 
-async function publishFromMeta(db: CopyDriver): Promise<void> {
+/** Enough of the copy is on the phone to be read: the second stage of the first load, or all of it. */
+const isReadablePhase = (phase: CopyPhase): boolean => phase === 'stage2' || phase === 'ready';
+
+/**
+ * What the open copy holds. A readable copy, or any copy without a connection, is the bar's state at once; otherwise
+ * a load is about to run, and the bar waits for it (never "not ready" for the moment before it begins).
+ */
+async function publishFromMeta(db: CopyDriver, offline: boolean): Promise<void> {
   const phase = await phaseOf(db);
   const format = Number(await meta(db, 'format'));
   const patch: Partial<SyncSnapshot> = { phase, asOf: await meta(db, 'as_of') };
   if (phase !== 'empty' && SYNC_FORMATS.includes(format) && getSyncSnapshot().feature !== 'off') patch.feature = 'on';
+  if (isReadablePhase(phase) || offline) patch.pending = false;
   publish(patch);
   noteStorage(db, false);
 }
@@ -231,7 +239,7 @@ async function fetchPage(run: Run, cursor: Cursor): Promise<SyncPage> {
 }
 
 async function firstLoad(run: Run): Promise<void> {
-  publish({ running: 'first-load' });
+  publish({ running: 'first-load', pending: false });
   let phase = await phaseOf(run.db);
   if (phase === 'empty') {
     await startLoad(run);
@@ -451,7 +459,8 @@ async function work(run: Run): Promise<void> {
     engine.writeFailures = 0;
     await guard(run);
     run.db = await replaceWithEmptyCopy(run.scope);
-    publish({ phase: 'empty', asOf: null });
+    // Said together with the load that follows, so the bar never reads "not ready" in between.
+    publish({ phase: 'empty', asOf: null, current: false, running: 'first-load', pending: false });
   }
   for (let round = 0; ; round += 1) {
     if (round >= 4) throw new SyncFailedError('too many restarts');
@@ -501,32 +510,40 @@ async function runOnce(): Promise<SyncOutcome> {
   if (!scope || epoch !== engine.epoch) return 'stopped';
   const offline = await readOffline();
   setCopyOffline(offline);
-  if (offline) return 'offline';
+  // Offline the copy is still opened when the bar does not yet know what is on the phone.
+  if (offline && !getSyncSnapshot().pending) return 'offline';
   let db: CopyDriver;
   try {
     db = await openCopy(scope);
+    // The open at start failed, or left the state to this run.
+    if (epoch === engine.epoch && getSyncSnapshot().pending) await publishFromMeta(db, offline);
   } catch {
+    logger.warn('The copy could not be opened');
     publish({ lastRunFailed: true });
     return 'failed';
   }
   if (epoch !== engine.epoch) return 'stopped';
+  if (offline) return 'offline';
   const run: Run = { epoch, scope, stop: engine.stop.promise, db, reloadedAll: false };
   try {
     await work(run);
     engine.writeFailures = 0;
-    publish({ lastRunFailed: false, running: null });
+    publish({ lastRunFailed: false, running: null, pending: false });
     setCurrent(!engine.offline);
     noteStorage(run.db, true);
     return 'done';
   } catch (error) {
-    publish({ running: null });
-    if (error instanceof SyncStoppedError || epoch !== engine.epoch) return 'stopped';
+    if (error instanceof SyncStoppedError || epoch !== engine.epoch) {
+      publish({ running: null });
+      return 'stopped';
+    }
     if (error instanceof SyncUnsupportedError || error instanceof FeatureOffError) {
       if (error instanceof SyncUnsupportedError) noteRpcSupport('sync', false);
       logger.info('The server has no phone copy for this app: the feature is off');
       await turnOff();
       return 'off';
     }
+    publish({ running: null });
     if (error instanceof SyncSessionEndedError) {
       // Today's forced sign-out ends the session and erases the copy; nothing more is asked meanwhile.
       engine.halted = true;
@@ -538,7 +555,7 @@ async function runOnce(): Promise<SyncOutcome> {
       engine.writeFailures += 1;
       logger.error('A write to the phone copy failed', error instanceof Error ? error.name : 'unknown');
     }
-    publish({ lastRunFailed: true });
+    publish({ lastRunFailed: true, pending: false });
     return 'failed';
   }
 }
@@ -552,7 +569,9 @@ function clearScheduleTimer(): void {
 
 function scheduleAfter(outcome: SyncOutcome): void {
   clearScheduleTimer();
-  if (!engine.schedule || !engine.started || engine.halted || !engine.foreground || engine.offline) return;
+  if (!engine.schedule || !engine.started || engine.halted || !engine.foreground) return;
+  // Offline nothing is scheduled, except another try at a copy that could not be opened.
+  if (engine.offline && !getSyncSnapshot().pending) return;
   let wait: number | null = null;
   if (outcome === 'done') {
     engine.backoff = 0;
@@ -578,8 +597,10 @@ export async function startPhoneCopy(): Promise<void> {
   engine.started = true;
   engine.halted = false;
   try {
-    await publishFromMeta(await openCopy(scope));
+    const db = await openCopy(scope);
+    await publishFromMeta(db, await readOffline());
   } catch {
+    // The run that follows tries again (and again after it, as after any failed run).
     logger.warn('The copy could not be opened');
   }
 }
@@ -594,7 +615,8 @@ export async function stopPhoneCopy(): Promise<void> {
   clearScheduleTimer();
   const running = engine.run;
   if (running) await running.catch(() => undefined);
-  publish({ running: null });
+  // A load that was cut off is not "not ready" on the next return: the bar waits for the run that resumes it.
+  publish(isReadablePhase(getSyncSnapshot().phase) ? { running: null } : { running: null, pending: true });
   setCurrent(false);
 }
 
@@ -651,7 +673,7 @@ export function setCopyForeground(active: boolean): void {
 export function setCopyOffline(offline: boolean): void {
   engine.offline = offline;
   if (offline) {
-    clearScheduleTimer();
+    if (!getSyncSnapshot().pending) clearScheduleTimer();
     setCurrent(false);
   }
 }
