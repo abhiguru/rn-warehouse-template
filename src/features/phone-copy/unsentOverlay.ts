@@ -1,17 +1,16 @@
 /**
  * What this phone's unsent work changes on screen (WH-299's seam, built in WH-301; product/tech/app-offline-unsent-work.md
- * section 7 and 2.1b, 2.1c). The readers apply it last: what the phone has written replaces what the copy holds, and
- * stock is the copy's less what is dispatched but not sent and what is held. It is built from the unsent-work store, rebuilt
- * when the store changes, and read synchronously.
+ * section 7 and 2.1b, 2.1c). The readers apply it last: what the phone has written replaces what the copy holds. A lot's
+ * stock is the server's figure plus this phone's new GRN lines and Edit GRN quantity changes only; no unsent or held
+ * dispatch takes bags off it (WH-381: dispatches need a connection). It is built from the unsent-work store, rebuilt when
+ * the store changes, and read synchronously.
  *
  * - The signed-in person's own items (not sent, sending) give values and markers. A refused or held item gives none (the server
- *   refused it, so the screen shows the server's value; WH-304): its dispatch bags are "held" (`lessHeld`) instead, with the copy's
- *   held dispatches, each held item once. A sent item that changes fields
+ *   refused it, so the screen shows the server's value; WH-304). A sent item that changes fields
  *   keeps its values, with no marker, until the first sync run that ends after its send (the copy then has them).
- * - Another person's unsent dispatches on this phone take their bags off the stock (`lessOthersUnsent`) and show nothing else.
+ * - Another person's unsent items on this phone show nothing.
  * - Items of another facility are not read at all (Product PQ4a).
  */
-import { heldBagsByLot, heldCopyRows, subscribeHeldRows } from '@/features/holding/heldRows';
 import { getSendKind } from '@/features/unsent/sendKinds';
 import { currentUnsentScope, loadedUnsentRows, subscribeUnsent } from '@/features/unsent/unsentStore';
 import type { ItemRow } from '@/features/unsent/unsentRows';
@@ -48,7 +47,7 @@ export interface NewLotRow {
 
 /** What one item contributes (a kind's `overlay(body, state)`). */
 export interface OverlayPart {
-  /** Lot id to the bags this item takes off it. */
+  /** Ignored since WH-381 (no dispatch takes bags off a lot); goes with the offline new-dispatch kind. */
   lessUnsent?: Record<string, number>;
   grn?: Record<string, Fields>;
   lot?: Record<string, Fields>;
@@ -73,13 +72,13 @@ export interface UnsentOverlay {
   lot(lotId: string): Fields | null;
   /** Fields of a dispatch this phone has changed and not sent, or null. */
   dispatch(dispatchId: string): Fields | null;
-  /** Bags of the lot in this person's dispatches not sent yet. */
+  /** Always 0 since WH-381: no unsent dispatch takes bags off a lot. */
   lessUnsent(lotId: string): number;
-  /** Bags of the lot in held dispatches (WH-304; 0 until then). */
+  /** Always 0 since WH-381: no held dispatch takes bags off a lot. */
   lessHeld(lotId: string): number;
-  /** Bags of the lot in another person's dispatches not sent yet, on this phone (Product PQ4b). */
+  /** Always 0 since WH-381. */
   lessOthersUnsent?(lotId: string): number;
-  /** Lot id to the bags taken off it (all three above), only the lots above 0 (WH-300). */
+  /** Always empty since WH-381: no lot has bags taken off it. */
   deductions(): ReadonlyMap<string, number>;
   /** Lot id to its overlaid fields, for the readers' search and filters (WH-302). */
   lotValues?(): ReadonlyMap<string, Fields>;
@@ -153,20 +152,13 @@ const sameServer = (a: string, b: string): boolean => {
 function entitiesOf(part: OverlayPart): EntityName[] {
   const out: EntityName[] = [];
   if (part.grn || part.lotChanges || part.lotsAdded || part.lotsRemoved || part.newDocuments?.some(doc => doc.kind === 'grn')) out.push('goodsreceived');
-  if (part.lot || part.lessUnsent || part.lotsAdded || part.lotsRemoved) out.push('goodsreceived_trl');
-  if (part.dispatch || part.newDocuments?.some(doc => doc.kind === 'dispatch')) out.push('dispatch');
-  if (part.lessUnsent) out.push('dispatch_trl');
+  if (part.lot || part.lotsAdded || part.lotsRemoved) out.push('goodsreceived_trl');
   return out;
 }
 
 function mergeInto(target: Map<string, Fields>, source: Record<string, Fields> | undefined): void {
   if (!source) return;
   for (const [id, fields] of Object.entries(source)) target.set(id, { ...target.get(id), ...fields });
-}
-
-function add(target: Map<string, number>, source: Record<string, number> | undefined): void {
-  if (!source) return;
-  for (const [id, bags] of Object.entries(source)) if (bags > 0) target.set(id, (target.get(id) ?? 0) + bags);
 }
 
 /** The lots of the new GRNs in `documents` that were not refused. */
@@ -197,20 +189,10 @@ interface Built {
 
 function build(rows: readonly ItemRow[], scope: string | null): Built {
   const touched = new Set<EntityName>();
-  const copyHeld = heldBagsByLot();
-  if (copyHeld.size > 0) {
-    touched.add('goodsreceived_trl');
-    touched.add('dispatch_trl');
-  }
-  if (scope === null || (rows.length === 0 && copyHeld.size === 0)) return { overlay: NOTHING, touched };
-  const copyIds = new Set(heldCopyRows().map(row => row.id));
-  // Bags of this person's refused and held dispatches the copy does not hold yet (the copy's row, once it has it, counts them).
-  const fileHeld = new Map<string, number>();
+  if (scope === null || rows.length === 0) return { overlay: NOTHING, touched };
   const grns = new Map<string, Fields>();
   const lots = new Map<string, Fields>();
   const dispatches = new Map<string, Fields>();
-  const own = new Map<string, number>();
-  const others = new Map<string, number>();
   const markers = new Map<string, 'notSent' | 'sending'>();
   const changed = new Map<string, Set<string>>();
   const documents: NewDocRow[] = [];
@@ -226,9 +208,7 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
     if (!sameServer(row.scope, scope)) continue;
     const mine = row.scope === scope;
     if (mine && (row.state === 'refused' || row.state === 'held')) {
-      const part = partOf(row);
-      if (part.lessUnsent && !(row.held_id && copyIds.has(row.held_id))) add(fileHeld, part.lessUnsent);
-      for (const entity of entitiesOf(part)) touched.add(entity);
+      for (const entity of entitiesOf(partOf(row))) touched.add(entity);
       continue;
     }
     const unsent = row.state === 'saved' || row.state === 'sending' || row.state === 'refused' || row.state === 'waiting';
@@ -237,11 +217,8 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
     if (!unsent && !holding) continue;
     const part = partOf(row);
     for (const entity of entitiesOf(part)) touched.add(entity);
-    if (!mine) {
-      // Another person's items: their bags only; no values, no markers (contract 2.1b).
-      if (unsent) add(others, part.lessUnsent);
-      continue;
-    }
+    // Another person's items show nothing: no values, no markers (contract 2.1b).
+    if (!mine) continue;
     mergeInto(grns, part.grn);
     mergeInto(lots, part.lot);
     mergeInto(dispatches, part.dispatch);
@@ -253,7 +230,6 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
     // A new document is shown, with its number and no marker, until a sync run has ended after its send (WH-161).
     documents.push(...(part.newDocuments ?? []));
     if (!unsent) continue;
-    add(own, part.lessUnsent);
     for (const rowsAdded of Object.values(part.lotsAdded ?? {})) for (const lot of rowsAdded) mark(`lot:${String(lot.id)}`, row.state === 'sending' ? 'sending' : 'notSent');
     for (const ids of Object.values(part.lotsRemoved ?? {})) for (const lotId of ids) mark(`lot:${lotId}`, row.state === 'sending' ? 'sending' : 'notSent');
     const state = row.state === 'sending' ? 'sending' : 'notSent';
@@ -280,21 +256,17 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
     const key = `grn:${entry.grnId}`;
     changed.set(key, (changed.get(key) ?? new Set<string>()).add(entry.label));
   }
-  const heldTotal = new Map<string, number>(copyHeld);
-  add(heldTotal, Object.fromEntries(fileHeld));
-  if (grns.size + lots.size + dispatches.size + own.size + others.size + heldTotal.size + documents.length + added.size + removed.size + gone.size === 0) {
+  if (grns.size + lots.size + dispatches.size + documents.length + added.size + removed.size + gone.size === 0) {
     return { overlay: NOTHING, touched };
   }
-  const deductions = new Map<string, number>();
-  for (const source of [own, others, heldTotal]) for (const [id, bags] of source) deductions.set(id, (deductions.get(id) ?? 0) + bags);
   const overlay: UnsentOverlay = {
     grn: id => grns.get(id) ?? null,
     lot: id => lots.get(id) ?? null,
     dispatch: id => dispatches.get(id) ?? null,
-    lessUnsent: id => own.get(id) ?? 0,
-    lessHeld: id => heldTotal.get(id) ?? 0,
-    lessOthersUnsent: id => others.get(id) ?? 0,
-    deductions: () => deductions,
+    lessUnsent: () => 0,
+    lessHeld: () => 0,
+    lessOthersUnsent: () => 0,
+    deductions: () => EMPTY_NUMBERS,
     lotValues: () => lots,
     marker: (kind, id) => markers.get(`${kind}:${id}`) ?? null,
     changedFields: (kind, id) => [...(changed.get(`${kind}:${id}`) ?? [])],
@@ -308,11 +280,10 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
 }
 
 // The overlay is rebuilt when the store's rows change (a new array each load) or a sync run ends.
-const cache: { rows: readonly ItemRow[] | null; scope: string | null; syncEnd: number; held: readonly unknown[] | null; built: Built } = {
+const cache: { rows: readonly ItemRow[] | null; scope: string | null; syncEnd: number; built: Built } = {
   rows: null,
   scope: null,
   syncEnd: -1,
-  held: null,
   built: { overlay: NOTHING, touched: new Set() },
 };
 let installed = false;
@@ -320,16 +291,13 @@ registerSessionScoped('unsent-overlay-cache', () => {
   cache.rows = null;
   cache.scope = null;
   cache.syncEnd = -1;
-  cache.held = null;
   cache.built = { overlay: NOTHING, touched: new Set() };
 });
 
 function current(): Built {
   const rows = loadedUnsentRows();
   const scope = currentUnsentScope();
-  const held = heldCopyRows();
-  if (cache.rows !== rows || cache.scope !== scope || cache.syncEnd !== lastSyncEnd || cache.held !== held) {
-    cache.held = held;
+  if (cache.rows !== rows || cache.scope !== scope || cache.syncEnd !== lastSyncEnd) {
     cache.rows = rows;
     cache.scope = scope;
     cache.syncEnd = lastSyncEnd;
@@ -355,7 +323,6 @@ function install(): void {
     publish(before);
   };
   subscribeUnsent(changed);
-  subscribeHeldRows(changed);
   subscribeSyncRunEnd(() => {
     lastSyncEnd = Date.now();
     changed();
@@ -367,8 +334,3 @@ export function getUnsentOverlay(): UnsentOverlay {
   return current().overlay;
 }
 
-/** The stock a lot shows: the copy's less what is not sent and what is held. */
-export function netStock(overlay: UnsentOverlay, lotId: string, copyStock: number | null): number | null {
-  if (copyStock === null) return null;
-  return copyStock - overlay.lessUnsent(lotId) - overlay.lessHeld(lotId) - (overlay.lessOthersUnsent?.(lotId) ?? 0);
-}

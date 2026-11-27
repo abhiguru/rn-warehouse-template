@@ -1,8 +1,8 @@
 /**
  * A lot row as this phone shows it: the copy's row, this person's unsent changes over it, and its stock (WH-303). A quantity
- * change moves the stock by the same amount (contract section 3.6); what is dispatched but not sent comes off after that.
+ * change moves the stock by the same amount (contract section 3.6); nothing else comes off it (WH-381).
  */
-import { netStock, type UnsentOverlay } from '../unsentOverlay';
+import type { UnsentOverlay } from '../unsentOverlay';
 import { numberOf, type Row } from './rows';
 
 // An overlay that says nothing about added and removed lines (a stand-in in a test, an older seam) has none.
@@ -18,7 +18,7 @@ export function overlaidLot(lot: Row, overlay: UnsentOverlay): Row {
   const now = changes ? numberOf(changes.qty) : null;
   const stock = numberOf(lot.stock);
   const moved = stock === null ? null : stock + (was !== null && now !== null ? now - was : 0);
-  return { ...lot, ...changes, stock: netStock(overlay, id, moved) };
+  return { ...lot, ...changes, stock: moved };
 }
 
 /** The lots of a GRN as the phone shows them: the copy's lots less those an edit removed and sent, then the lines it adds. */

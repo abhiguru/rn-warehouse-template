@@ -318,7 +318,8 @@ export interface StockAgingItem {
   grn_date: string;
   aging_days: number;
   aging_bucket: string;
-  dispatch_info: StockAgingDispatchInfo;
+  /** Absent when the answer has none (offline, WH-381). */
+  dispatch_info?: StockAgingDispatchInfo;
 }
 
 /**

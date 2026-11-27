@@ -4,13 +4,13 @@
  * connection). Its text is the baseline function with migrations 137, 165, 174 and 191, as installed on temp1.
  */
 import { COPY_FORMAT_V3, COPY_FORMAT_V4 } from '../copySchema';
-import { enCompare, parseTimestampUs } from '../pgCompat';
+import { enCompare } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
-import { getUnsentOverlay, netStock } from '../unsentOverlay';
+import { getUnsentOverlay } from '../unsentOverlay';
 import { lotsOfGrn, removedLotIds } from './lotOverlay';
 import { readNewGrnDetails, unsentGrnById } from './newDocuments';
 import { customerDetails, itemDetailsById, supervisorDetails } from './documentParts';
-import { answerFor, compareNullsLast, compareNumbers, compareText, comparePhotos, distinctSorted, numberOf, parseRow, parseRows, pick, sumMoney, textOf, type Row } from './rows';
+import { answerFor, compareNullsLast, compareNumbers, compareText, comparePhotos, numberOf, parseRow, parseRows, pick, textOf, type Row } from './rows';
 
 export type GrnDetailsAnswer = { kind: 'found'; grn: Row; needsServer: ['rates'] } | { kind: 'not-found' };
 
@@ -44,27 +44,6 @@ async function ratesOf(q: CopyReader, grnId: string, archived: boolean): Promise
     }));
 }
 
-const labelOf = (inv: Row): string => `${textOf(inv.inv_prefix) ?? ''}${String(inv.inv_no)}`;
-
-/** Whether this GRN may be invoiced now (migration 174's rule), as far as the copy can tell. */
-async function canCreateInvoice(q: CopyReader, grn: Row, lockImported: boolean): Promise<boolean> {
-  // A customer account invoices nothing. Which lines an imported invoice takes as billed is not on the phone: such a GRN is never offered.
-  if (q.role === 'customer') return false;
-  if (grn.deleted_at !== null && grn.deleted_at !== undefined) return false;
-  if (lockImported) return false;
-  const free = await q.get<{ n: number }>(
-    `SELECT COUNT(*) AS n FROM dispatch_trl dt JOIN dispatch d ON d.id = dt.disp_id AND d.deleted_at IS NULL
-      WHERE dt.gr_id = ? AND NOT EXISTS (SELECT 1 FROM invoice_trl it JOIN invoice iv ON iv.id = it.invoice_id
-        WHERE it.disp_trl_id = dt.id AND iv.deleted_at IS NULL AND iv.cancelled_at IS NULL)`,
-    [String(grn.id)]
-  );
-  const hasFreeLine = (free?.n ?? 0) > 0;
-  const charging = await q.get<{ row: string }>("SELECT row FROM settings WHERE id = 'charging_rule'");
-  const onLeave = charging ? parseRow(charging.row).invoice_as_goods_leave === true : false;
-  if (onLeave) return hasFreeLine;
-  return hasFreeLine && grn.out_of_stock === true && grn.invoiced === false;
-}
-
 /** The GRN's unchecked replaced entries, newest first (`get_grn_details.replacements`). */
 async function replacementsOf(q: CopyReader, grnId: string): Promise<Row[]> {
   const found = await q.all<{ row: string }>('SELECT row FROM grn_replacements WHERE grn_id = ? ORDER BY sent_at_us DESC, id', [grnId]);
@@ -87,36 +66,16 @@ export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnD
   // A line the person removed and has not sent stays in its place, but the totals are without it (Design 6.x DQ4).
   const removedIds = new Set(removedLotIds(overlay, grnId));
   const counted = lots.filter(l => !removedIds.has(String(l.id)));
-  const lotIds = lots.map(l => String(l.id));
   const items = await itemDetailsById(q, [...new Set(lots.map(l => textOf(l.item_id)).filter((id): id is string => id !== null))]);
 
   const photos = parseRows(await q.all<{ row: string }>('SELECT row FROM grn_images WHERE grn_id = ?', [grnId]));
   const header = photos.filter(p => p.image_type === 'header').sort(comparePhotos).map(photo);
   const photosOf = (lotId: string) => photos.filter(p => p.image_type === 'item' && p.grn_item_id === lotId).sort(comparePhotos).map(photo);
 
-  const dispatched = lotIds.length
-    ? await q.all<{ disp_id: string; disp_qty: number | null; disp_no: string | null }>(
-        `SELECT dt.disp_id AS disp_id, dt.disp_qty AS disp_qty, json_extract(d.row, '$.disp_no') AS disp_no
-           FROM dispatch_trl dt JOIN dispatch d ON d.id = dt.disp_id
-          WHERE dt.gr_trl_id IN (SELECT value FROM json_each(?))`,
-        [JSON.stringify(lotIds)]
-      )
-    : [];
-  const totalDispatched = dispatched.reduce((sum, line) => sum + (line.disp_qty ?? 0), 0);
-
-  const invoiceRows = parseRows(await q.all<{ row: string }>('SELECT row FROM invoice WHERE gr_id = ? AND deleted_at IS NULL', [grnId]));
-  const live = invoiceRows.filter(inv => inv.cancelled_at === null || inv.cancelled_at === undefined);
-  const byInvoice = (a: Row, b: Row) =>
-    compareNullsLast(numberOf(a.inv_fin_year), numberOf(b.inv_fin_year), compareNumbers) ||
-    compareNullsLast(numberOf(a.inv_no), numberOf(b.inv_no), compareNumbers) || compareText(String(a.id), String(b.id));
-  live.sort(byInvoice);
-  const labelPairs = [...new Map(live.filter(inv => numberOf(inv.inv_no) !== null).map(inv => [`${String(inv.inv_no)}|${labelOf(inv)}`, inv])).values()]
-    .sort((a, b) => (numberOf(a.inv_no) ?? 0) - (numberOf(b.inv_no) ?? 0) || compareText(labelOf(a), labelOf(b)));
   const lock = q.role === 'customer' ? null : await q.get<{ row: string }>('SELECT row FROM grn_lock WHERE id = ?', [grnId]);
   const lockRow = lock ? parseRow(lock.row) : null;
 
   const weights = counted.reduce((sum, l) => sum + (numberOf(l.weight) ?? 0) * (numberOf(l.qty) ?? 0), 0);
-  const dispatchIds = new Set(dispatched.map(line => line.disp_id));
   const itemIdsOfLots = new Set(counted.map(l => textOf(l.item_id)).filter(id => id !== null));
   const grn: Row = {
     id: g.id,
@@ -152,63 +111,22 @@ export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnD
       total_qty: counted.reduce((sum, l) => sum + (numberOf(l.qty) ?? 0), 0),
       total_stock: counted.reduce((sum, l) => sum + (numberOf(l.stock) ?? 0), 0),
       total_weight: weights,
-      total_dispatched: totalDispatched,
+      // The bags that left each lot: what was received less what is left (no dispatch is on the phone, WH-381).
+      total_dispatched: counted.reduce((sum, l) => sum + Math.max(0, (numberOf(l.qty) ?? 0) - (numberOf(l.stock) ?? 0)), 0),
       has_out_of_stock: counted.some(l => (numberOf(l.stock) ?? 0) <= 0),
     },
+    // Invoices and dispatches are not on the phone (WH-381): the sections say they need a connection.
     invoices_summary: {
-      total_invoices: live.length,
+      total_invoices: 0,
       invoice_state: lockRow?.invoice_state ?? null,
-      can_create_invoice: await canCreateInvoice(q, g, lockRow?.imported === true),
-      invoices: live.map(inv => ({
-        id: inv.id, inv_no: pick(inv, 'inv_no'), inv_fin_year: pick(inv, 'inv_fin_year'), inv_prefix: pick(inv, 'inv_prefix'),
-        invoice_label: labelOf(inv), inv_date: pick(inv, 'inv_date'), total: pick(inv, 'total'),
-      } satisfies Row)),
-      cancelled_count: invoiceRows.length - live.length,
-      total_amount: sumMoney(live.map(inv => numberOf(inv.total) ?? 0)),
-      invoice_labels: labelPairs.map(labelOf),
-      invoice_numbers: [...new Set(live.map(inv => numberOf(inv.inv_no)).filter((n): n is number => n !== null))].sort(compareNumbers),
+      can_create_invoice: false,
+      invoices: [],
+      cancelled_count: 0,
+      total_amount: 0,
+      invoice_labels: [],
+      invoice_numbers: [],
     },
-    dispatches_summary: {
-      total_dispatches: dispatchIds.size,
-      dispatch_numbers: distinctSorted(dispatched.map(line => line.disp_no)),
-    },
+    dispatches_summary: { total_dispatches: 0, dispatch_numbers: [] },
   };
   return { kind: 'found', grn: answerFor(q.role, grn), needsServer: ['rates'] };
-}
-
-export type ItemDispatchesAnswer =
-  | { kind: 'found'; dispatches: Row[]; summary: { total_dispatches: number; total_dispatched_qty: number; remaining_stock: number | null } }
-  | { kind: 'not-found' };
-
-/** `get_grn_item_dispatches`: the dispatches that took from one lot, newest first. */
-export async function readItemDispatches(q: CopyReader, lotId: string): Promise<ItemDispatchesAnswer> {
-  const lot = await q.get<{ row: string }>('SELECT row FROM goodsreceived_trl WHERE id = ?', [lotId]);
-  if (!lot) return { kind: 'not-found' };
-  const l = parseRow(lot.row);
-  const lines = await q.all<{ id: string; disp_id: string; disp_qty: number | null; drow: string }>(
-    `SELECT dt.id AS id, dt.disp_id AS disp_id, dt.disp_qty AS disp_qty, d.row AS drow
-       FROM dispatch_trl dt JOIN dispatch d ON d.id = dt.disp_id WHERE dt.gr_trl_id = ?`,
-    [lotId]
-  );
-  const rows = lines.map(line => ({ line, d: parseRow(line.drow) }));
-  // Newest first; a dispatch with no date comes first, as Postgres sorts a descending column.
-  const dated = (d: Row): number | null => parseTimestampUs(textOf(d.disp_date));
-  rows.sort((a, b) => {
-    const [x, y] = [dated(a.d), dated(b.d)];
-    const byDate = x === null || y === null ? (x === y ? 0 : x === null ? -1 : 1) : y - x;
-    return byDate || enCompare(textOf(b.d.disp_no), textOf(a.d.disp_no)) || compareText(b.line.id, a.line.id);
-  });
-  const overlay = getUnsentOverlay();
-  return {
-    kind: 'found',
-    dispatches: rows.map(({ line, d }) => ({
-      id: line.id, dispatch_id: line.disp_id, disp_no: pick(d, 'disp_no'), disp_quantity: line.disp_qty, disp_date: pick(d, 'disp_date'),
-      customer_name: pick(d, 'customer_name'), registration: pick(d, 'registration'), supervisor_name: pick(d, 'supervisor_name'), note: pick(d, 'note'),
-    })),
-    summary: {
-      total_dispatches: lines.length,
-      total_dispatched_qty: lines.reduce((sum, line) => sum + (line.disp_qty ?? 0), 0),
-      remaining_stock: netStock(overlay, lotId, numberOf(l.stock)),
-    },
-  };
 }

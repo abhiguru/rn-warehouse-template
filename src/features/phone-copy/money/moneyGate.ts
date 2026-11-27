@@ -1,7 +1,7 @@
 /**
  * Whether the kept answers are in use (WH-305, contract 4): `moneyOn()` for Customer dues and Statement (administrator,
- * supervisor, and a customer account for its own statements, WH-306), `activityMoneyOn()` for Customer activity (staff too).
- * Both need a facility with the feature, a copy that is not of an older format than `MONEY_FORMAT` (for a customer account,
+ * supervisor, and a customer account for its own statements, WH-306), `activityMoneyOn()` for Customer activity (a customer
+ * account only since WH-381: a warehouse role's Customer activity needs a connection). Both build on `keptAnswersOn()` and need a facility with the feature, a copy that is not of an older format than `MONEY_FORMAT` (for a customer account,
  * also not older than `CUSTOMER_COPY_FORMAT`); otherwise every screen is as before (contract 8).
  */
 import { useSyncExternalStore } from 'react';
@@ -15,12 +15,15 @@ function formatOk(): boolean {
   return (getSyncSnapshot().format ?? 0) >= oldest;
 }
 
-/** Customer activity's kept answers: every role with a copy. */
-export const activityMoneyOn = (): boolean => copyEligible() && formatOk();
+/** The kept answers are in use: a role with a copy, of a format that has them. */
+const keptAnswersOn = (): boolean => copyEligible() && formatOk();
+
+/** Customer activity's kept answers: a customer account only (WH-381, Product Q1). */
+export const activityMoneyOn = (): boolean => keptAnswersOn() && signedInRole() === 'customer';
 
 /** Customer dues and Statement's kept answers: administrator, supervisor and a customer account (which has no dues screen). */
 export function moneyOn(): boolean {
-  if (!activityMoneyOn()) return false;
+  if (!keptAnswersOn()) return false;
   const role = signedInRole();
   return role === 'admin' || role === 'supervisor' || role === 'customer';
 }

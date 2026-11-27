@@ -24,17 +24,14 @@ export async function readFindGoods(q: CopyReader, req: { query: string; limit: 
   const params = { p_filters: { search: query } };
   const c = conditionsOf(params, getUnsentOverlay().lotValues?.());
   await q.rank(['gr_no']);
-  // Lot id to the bags taken off it: the group a lot falls in follows the number shown.
-  const deductions = JSON.stringify(Object.fromEntries(getUnsentOverlay().deductions()));
   const records = await q.all<LineRecord>(
     `SELECT ${LINE_COLUMNS} ${linesFrom(c)}
        LEFT JOIN text_rank rn ON rn.kind = 'gr_no' AND rn.value = g.gr_no
        ${LOCK_JOIN}
-       LEFT JOIN json_each(?) dd ON dd.key = t.id
        ${where([...c.grn.sql, ...c.lot.sql])}
-      ORDER BY CASE WHEN t.stock - COALESCE(dd.value, 0) > 0 THEN 0 ELSE 1 END, g.date_us DESC NULLS FIRST, rn.rank, t.id
+      ORDER BY CASE WHEN t.stock > 0 THEN 0 ELSE 1 END, g.date_us DESC NULLS FIRST, rn.rank, t.id
       LIMIT ? OFFSET ?`,
-    [deductions, ...c.grn.params, ...c.lot.params, limit, offset]
+    [...c.grn.params, ...c.lot.params, limit, offset]
   );
   // After the ranks are up to date, so writing them does not make a first page's count look old.
   const totals = await totalsOf(q, params, c, offset);

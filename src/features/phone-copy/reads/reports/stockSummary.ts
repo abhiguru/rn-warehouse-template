@@ -95,13 +95,7 @@ export async function readCustomerStockSummary(q: CopyReader, customerId: string
       ORDER BY date_us DESC, json_extract(row, '$.created_at') DESC LIMIT 1`,
     [customerId]
   );
-  const lastDispatch = await q.get<{ row: string }>(
-    `SELECT row FROM dispatch WHERE customer_id = ? AND deleted_at IS NULL
-      ORDER BY disp_date_us DESC, created_at_us DESC LIMIT 1`,
-    [customerId]
-  );
   const lastGrnRow = lastGrn ? parseRow(lastGrn.row) : null;
-  const lastDispatchRow = lastDispatch ? parseRow(lastDispatch.row) : null;
   // `MAX(date)` is the newest of all, which the first row of that order is.
   const unsent = unsentStockOf(customerId);
   const summary: Row = {
@@ -113,8 +107,9 @@ export async function readCustomerStockSummary(q: CopyReader, customerId: string
     grn_count_empty: empty?.n ?? 0,
     last_grn_date: lastGrnRow ? dayOf(lastGrnRow.date) : null,
     last_grn_no: lastGrnRow?.gr_no ?? null,
-    last_dispatch_date: lastDispatchRow ? dayOf(lastDispatchRow.disp_date) : null,
-    last_dispatch_no: lastDispatchRow?.disp_no ?? null,
+    // No dispatch is on the phone (WH-381); no screen draws these two offline.
+    last_dispatch_date: null,
+    last_dispatch_no: null,
     // The bags of this person's unsent new GRNs the figures above count (WH-161; 0 when none).
     ...(unsent.bags > 0 ? { includes_unsent: unsent.bags } : {}),
   };

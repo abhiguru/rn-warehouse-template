@@ -23,6 +23,7 @@ import type {
   AllStockAgingResponse,
   AllStockAgingData,
   AllStockAgingKPIs,
+  StockAgingDispatchInfo,
   CustomerAgingSummary,
 } from '@/types/report.types';
 
@@ -43,6 +44,21 @@ const EMPTY_RESPONSE: StockAgingData = {
   by_bucket: {},
   items: [],
 };
+
+/** The per-lot dispatch figures of a row, or nothing when the answer has none (offline, WH-381: never zeroes). */
+function dispatchInfoOf(item: { dispatch_info?: Partial<StockAgingDispatchInfo> | null }): { dispatch_info?: StockAgingDispatchInfo } {
+  const info = item.dispatch_info;
+  if (!info) return {};
+  return {
+    dispatch_info: {
+      total_dispatched: info.total_dispatched ?? 0,
+      dispatch_count: info.dispatch_count ?? 0,
+      last_dispatch_date: info.last_dispatch_date ?? null,
+      days_since_last_dispatch: info.days_since_last_dispatch ?? null,
+      avg_days_between_dispatches: info.avg_days_between_dispatches ?? null,
+    },
+  };
+}
 
 /**
  * Default empty response for all-customers error cases
@@ -179,15 +195,8 @@ export async function getCustomerStockAging(
         grn_date: item.grn_date,
         aging_days: item.aging_days ?? 0,
         aging_bucket: item.aging_bucket ?? '',
-        dispatch_info: {
-          total_dispatched: item.dispatch_info?.total_dispatched ?? 0,
-          dispatch_count: item.dispatch_info?.dispatch_count ?? 0,
-          last_dispatch_date: item.dispatch_info?.last_dispatch_date ?? null,
-          days_since_last_dispatch:
-            item.dispatch_info?.days_since_last_dispatch ?? null,
-          avg_days_between_dispatches:
-            item.dispatch_info?.avg_days_between_dispatches ?? null,
-        },
+        // Left out when the answer has none (the phone holds no dispatch, WH-381): never made up as zeroes.
+        ...dispatchInfoOf(item),
       })
     );
 

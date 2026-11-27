@@ -2,19 +2,8 @@
  * Small helpers the copy's readers share (WH-299): rows are the server's JSON, kept as text.
  */
 import { enCompare, parseTimestampUs } from '../pgCompat';
-import { getUnsentOverlay } from '../unsentOverlay';
 
 export type Row = Record<string, unknown>;
-
-/**
- * The stock a lot shows on every screen (spec step 10): the copy's figure less the bags this phone has in dispatches not
- * sent yet, in held dispatches and in other people's unsent ones (`getUnsentOverlay().deductions()`). The one function
- * the readers of lots and of order lines share, so a lot shows the same figure everywhere (WH-328, PQ3).
- */
-export function netLotStock(lotId: string | null, copyStock: number | null): number | null {
-  if (copyStock === null) return null;
-  return lotId === null ? copyStock : copyStock - (getUnsentOverlay().deductions().get(lotId) ?? 0);
-}
 
 export const parseRow = (text: string): Row => JSON.parse(text) as Row;
 export const parseRows = (records: readonly { row: string }[]): Row[] => records.map(r => parseRow(r.row));

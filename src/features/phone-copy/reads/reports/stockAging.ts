@@ -32,13 +32,6 @@ interface LotAge {
   bucket: string;
 }
 
-interface DispatchInfo {
-  total: number;
-  count: number;
-  lastText: string | null;
-  lastUs: number | null;
-}
-
 export async function readCustomerStockAging(q: CopyReader, customerId: string, requested: readonly number[] | undefined): Promise<Row> {
   const today = copyToday(q.asOf);
   const buckets = bucketsOf(requested);
@@ -47,46 +40,14 @@ export async function readCustomerStockAging(q: CopyReader, customerId: string, 
       WHERE g.customer_id = ? AND g.deleted_at IS NULL AND t.stock > 0`,
     [customerId]
   );
-  const lots: LotAge[] = found.map(record => {
+  const detailed: LotAge[] = found.map(record => {
     const grn = parseRow(record.grn_row);
     const days = daysBetween(dayOf(grn.date) ?? today, today);
     return { grn, lot: parseRow(record.lot_row), days, bucket: buckets.of(days) };
   });
 
-  // The dispatches of each lot, as the server groups them: the ones not deleted.
-  const sent = await q.all<{ lot_id: string; disp_id: string; disp_qty: number | null; disp_date: string | null; disp_date_us: number | null }>(
-    `SELECT dt.gr_trl_id AS lot_id, d.id AS disp_id, dt.disp_qty AS disp_qty, json_extract(d.row, '$.disp_date') AS disp_date,
-            d.disp_date_us AS disp_date_us
-       FROM dispatch_trl dt JOIN dispatch d ON d.id = dt.disp_id AND d.deleted_at IS NULL
-       JOIN goodsreceived_trl t ON t.id = dt.gr_trl_id JOIN goodsreceived g ON g.id = t.gr_id
-      WHERE g.customer_id = ? AND g.deleted_at IS NULL AND t.stock > 0`,
-    [customerId]
-  );
-  const infos = new Map<string, DispatchInfo & { dispatches: Set<string> }>();
-  for (const line of sent) {
-    const info = infos.get(line.lot_id) ?? { total: 0, count: 0, lastText: null, lastUs: null, dispatches: new Set<string>() };
-    info.total += line.disp_qty ?? 0;
-    info.dispatches.add(line.disp_id);
-    if (line.disp_date_us !== null && (info.lastUs === null || line.disp_date_us > info.lastUs)) {
-      info.lastUs = line.disp_date_us;
-      info.lastText = line.disp_date;
-    }
-    infos.set(line.lot_id, info);
-  }
-
-  const detailed = lots.map(entry => {
-    const info = infos.get(String(entry.lot.id));
-    const count = info?.dispatches.size ?? 0;
-    const lastDay = dayOf(info?.lastText);
-    const daysSince = lastDay === null ? null : daysBetween(lastDay, today);
-    const grnDay = dayOf(entry.grn.date);
-    const between = count > 0 && lastDay !== null && grnDay !== null ? Math.trunc(daysBetween(grnDay, lastDay) / count) : null;
-    return { ...entry, total: info?.total ?? 0, count, last: info?.lastText ?? null, daysSince, between };
-  });
-
   const total = detailed.length;
   const quantity = detailed.reduce((sum, entry) => sum + numberOf(entry.lot.stock), 0);
-  const betweens = detailed.map(entry => entry.between).filter((value): value is number => value !== null);
   const units = await q.get<{ units: number | null }>(
     `SELECT SUM(${weightUnits('t.stock')}) AS units FROM goodsreceived g JOIN goodsreceived_trl t ON t.gr_id = g.id
       WHERE g.customer_id = ? AND g.deleted_at IS NULL AND t.stock > 0`,
@@ -101,8 +62,9 @@ export async function readCustomerStockAging(q: CopyReader, customerId: string, 
     average_age_days: total ? roundedAverage(detailed.reduce((sum, entry) => sum + entry.days, 0), total) : 0,
     items_over_365_days: over.length,
     qty_over_365_days: over.reduce((sum, entry) => sum + numberOf(entry.lot.stock), 0),
-    avg_dispatch_velocity_days: betweens.length ? roundedAverage(betweens.reduce((sum, value) => sum + value, 0), betweens.length) : null,
-    items_no_recent_dispatch: detailed.filter(entry => (entry.daysSince !== null && entry.daysSince > 30) || entry.count === 0).length,
+    // No dispatch is on the phone (WH-381): the dispatch figures are not made up here, and the screen hides what it has none of.
+    avg_dispatch_velocity_days: null,
+    items_no_recent_dispatch: 0,
   };
 
   const byBucket: Record<string, Row> = {};
@@ -134,13 +96,6 @@ export async function readCustomerStockAging(q: CopyReader, customerId: string, 
     grn_date: entry.grn.date ?? null,
     aging_days: entry.days,
     aging_bucket: entry.bucket,
-    dispatch_info: {
-      total_dispatched: entry.total,
-      dispatch_count: entry.count,
-      last_dispatch_date: entry.last,
-      days_since_last_dispatch: entry.daysSince,
-      avg_days_between_dispatches: entry.between,
-    },
   }));
 
   return {
