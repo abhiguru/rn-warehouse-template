@@ -18,6 +18,8 @@ export type OwnFolder = 'unsent-work' | 'phone-copy-photos';
 const FORM_SCHEME = 'app-doc:///';
 const ADDRESS_IN_TEXT = /(?:app-doc|file):\/\/[^"\\]+/g;
 
+const RELATIVE_IN_TEXT = /unsent-work\/[^"\\]+/g;
+
 /** The current documents folder, with its closing slash. */
 function documentsUri(): string {
   const uri = Paths.document.uri;
@@ -80,6 +82,20 @@ export function formTextToStored(text: string): string {
     const stored = relativeOf(address, 'unsent-work');
     return stored === null ? address : `${FORM_SCHEME}${stored}`;
   });
+}
+
+/**
+ * Every file of the unsent-work folder a text names, as full current addresses: `app-doc:///...`, a legacy absolute address of
+ * any container, or a bare relative `unsent-work/...`. Used to find the files a saved form's text still uses (WH-301).
+ */
+export function ownFilesInText(text: string): string[] {
+  const found = new Set<string>();
+  const addresses = [...(text.match(ADDRESS_IN_TEXT) ?? []), ...(text.match(RELATIVE_IN_TEXT) ?? [])];
+  for (const address of addresses) {
+    const own = relativeOf(address, 'unsent-work');
+    if (own !== null) found.add(`${documentsUri()}${own}`);
+  }
+  return [...found];
 }
 
 /** A saved form's text with every `app-doc:///...` (and every legacy absolute own address) as a full current address. */

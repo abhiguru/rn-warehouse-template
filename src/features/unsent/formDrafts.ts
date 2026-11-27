@@ -8,8 +8,8 @@ import * as Crypto from 'expo-crypto';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { isAppOwnedFileUri } from '@/utils/localPhotoFiles';
 import { createLogger, loggableError } from '@/utils/logger';
-import { getUnsentDb, unsentPhotoDirectory } from './unsentDb';
-import { formTextFromStored, formTextToStored, fromStored, toStoredOrNull } from './storedPath';
+import { getUnsentDb, unsentPhotoDirectory, type UnsentDb } from './unsentDb';
+import { formTextFromStored, formTextToStored, fromStored, ownFilesInText, toStoredOrNull } from './storedPath';
 import { announceUnsentChange, removePhotoFile } from './unsentRows';
 
 const logger = createLogger('[unsent-forms]');
@@ -110,7 +110,10 @@ export async function saveFormDraft(input: { kind: FormKind; grnId?: string | nu
     if (!scope) return false;
     const copied = await keepPhotoFiles(JSON.stringify(input.state));
     // Nothing absolute is stored: the text names the copies as `app-doc:///...` and the column relative to the documents folder.
-    const kept = { text: formTextToStored(copied.text), files: copied.files, stored: JSON.stringify(storedFiles(copied.files)) };
+    const text = formTextToStored(copied.text);
+    // A file the text still names (a legacy address of an old container, say) stays listed and is never dropped below (WH-301).
+    const files = [...new Set([...copied.files, ...ownFilesInText(text)])];
+    const kept = { text, files, stored: JSON.stringify(storedFiles(files)) };
     const grnId = input.grnId ?? '';
     const now = input.at ?? Date.now();
     const db = await getUnsentDb();
@@ -149,15 +152,32 @@ export async function loadFormDraft(kind: FormKind, grnId?: string | null): Prom
     const scope = await ownScope();
     if (!scope) return null;
     const db = await getUnsentDb();
-    const [row] = await db.all<{ id: string; state: string; customer: string | null; started_at: number }>(
-      'SELECT id, state, customer, started_at FROM forms WHERE scope = ? AND kind = ? AND grn_id = ?',
+    const [row] = await db.all<{ id: string; state: string; photos: string | null; customer: string | null; started_at: number }>(
+      'SELECT id, state, photos, customer, started_at FROM forms WHERE scope = ? AND kind = ? AND grn_id = ?',
       [scope, kind, grnId ?? '']
     );
     if (!row) return null;
+    await listFilesTheStateNames(db, row);
     return { id: row.id, kind, grnId: grnId ?? null, state: JSON.parse(formTextFromStored(row.state)) as unknown, customer: row.customer, startedAt: row.started_at };
   } catch (error) {
     logger.warn('An unfinished form could not be read', loggableError(error));
     return null;
+  }
+}
+
+/**
+ * A form saved before WH-301 was fixed can name a photo in its text that its `photos` column does not list. The column is
+ * rebuilt from the text, so the next save keeps the file and its clean-up still finds it. Never throws.
+ */
+async function listFilesTheStateNames(db: UnsentDb, row: { id: string; state: string; photos: string | null }): Promise<void> {
+  try {
+    const listed = new Set(filesOfColumn(row.photos));
+    const named = ownFilesInText(row.state).filter(file => !listed.has(file));
+    if (named.length === 0) return;
+    const stored = JSON.stringify(storedFiles([...listed, ...named]));
+    await db.run('UPDATE forms SET photos = ? WHERE id = ?', [stored, row.id]);
+  } catch (error) {
+    logger.warn('The photo list of an unfinished form could not be rebuilt', loggableError(error));
   }
 }
 

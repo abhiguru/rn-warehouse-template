@@ -5,7 +5,7 @@
  */
 import { File } from 'expo-file-system';
 import { createLogger, loggableError } from '@/utils/logger';
-import { fileOfStored, formTextFromStored, formTextToStored, toStored } from './storedPath';
+import { fileOfStored, formTextFromStored, formTextToStored, ownFilesInText, toStored } from './storedPath';
 import { getUnsentDb, unsentPhotoDirectory, type SqlValue, type UnsentDb } from './unsentDb';
 
 /** A photo row as read: its `file` is the full current address, whatever way it was stored (see storedPath.ts). */
@@ -531,9 +531,20 @@ export async function sweepOrphanFormFiles(): Promise<void> {
     const db = await getUnsentDb();
     const named = new Set<string>();
     for (const row of await db.all<{ file: string }>('SELECT file FROM item_photos', [])) named.add(fileOfStored(row.file));
-    for (const row of await db.all<{ photos: string | null }>('SELECT photos FROM forms', [])) for (const file of formFiles(row.photos ?? undefined)) named.add(file);
-    for (const row of await db.all<{ form_row: string | null }>('SELECT form_row FROM items WHERE form_row IS NOT NULL', [])) {
-      const kept = JSON.parse(row.form_row ?? '{}') as { photos?: string };
+    // WH-301: a file is also named by the text of a form (its state) or of a kept form_row, whatever the photos column says, and
+    // any row that cannot be read or parsed stops the sweep (the throw lands in the catch below, which removes nothing).
+    for (const row of await db.all<{ state: unknown; photos: unknown }>('SELECT state, photos FROM forms', [])) {
+      if (typeof row.state !== 'string') throw new TypeError('A form row has no readable text');
+      for (const file of ownFilesInText(row.state)) named.add(file);
+      if (row.photos !== null) {
+        if (typeof row.photos !== 'string' || !Array.isArray(JSON.parse(row.photos))) throw new TypeError('A form row has an unreadable photo list');
+        for (const file of formFiles(row.photos)) named.add(file);
+      }
+    }
+    for (const row of await db.all<{ form_row: unknown }>('SELECT form_row FROM items WHERE form_row IS NOT NULL', [])) {
+      if (typeof row.form_row !== 'string') throw new TypeError('A kept form row is not readable');
+      const kept = JSON.parse(row.form_row) as { photos?: string };
+      for (const file of ownFilesInText(row.form_row)) named.add(file);
       for (const file of formFiles(kept.photos)) named.add(file);
     }
     const folder = unsentPhotoDirectory();
