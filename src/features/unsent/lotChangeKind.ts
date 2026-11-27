@@ -9,6 +9,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type { OverlayPart } from '@/features/phone-copy/unsentOverlay';
 import type { TranslationKey } from '@/i18n';
+import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 import { classify } from './sendEngine';
 import { registerSendKind, type SendKind, type SendOutcome } from './sendKinds';
 
@@ -51,7 +52,10 @@ async function sendLotChange(body: LotChangeBody, requestKey: string): Promise<S
     p_changes: { ...body.changes, recorded_at: body.recordedAt },
     p_request_key: requestKey,
   });
-  return classify(answer.data, answer.error);
+  // An unreadable HTTP 200, an empty one and a gateway's 502 / 504 are a LOST answer (the change may be applied), not a
+  // plain transient failure: the item then stays tried, is checked by its request key, and is never merged into again.
+  const error = answer.error ?? emptyAnswerAsError({ data: answer.data, error: answer.error, status: answer.status });
+  return classify(answer.data, error ? withHttpStatus(error, answer.status) : null);
 }
 
 function overlayOf(body: LotChangeBody): OverlayPart {
