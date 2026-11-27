@@ -1,17 +1,19 @@
 /**
- * WH-299 slices 4 and 6 on screen: the Dispatch list and the stock reports over the phone copy.
- *  - contract product/tech/app-offline-read-from-copy.md 11 (S1, S2): no time line of their own; pull to refresh syncs;
- *  - 2.2 (R4): a restarted list asks its first page again;
- *  - 11.1 (PR9, Q2, Q3, Q4, Q6, Q7): the quiet re-read after a sync;
- *  - 10.2 and Design 2.10 (DS3, S3b): a report's sharing needs a connection.
+ * WH-299 + WH-381 on screen: the Dispatch list (online-only under WH-381) and the stock reports over the phone copy.
+ *  - WH-381 (Design Part 13.1 A): Dispatch list shows whole-screen `ScreenNeedsConnection` (`dispatch-needs-connection`)
+ *    offline with zero kept rows, no `StaleListStrip`, no `LastUpdatedLine`, no "Try again", and reloads automatically
+ *    on reconnect;
+ *  - Stock summary & Stock aging stay on the phone copy: S1 (no time line of their own), S2 (pull to refresh syncs),
+ *    PR9 (quiet re-read after a sync), S3b (sharing disabled offline with header line in English and Gujarati).
+ *
+ * ===== AGREE WITH DEVELOPMENT =====
+ *  - With the copy ready and the connection up, the Dispatch list reads the SERVER (`get_dispatch_list_with_items`), not the
+ *    copy (contract 4.4: `readVia` intercepts removed); its rows are the server's `row-<disp_no>`.
+ *  - The Dispatch list's testIDs `dispatch-needs-connection`, `dispatch-stale-strip`, `dispatch-last-updated`.
+ * ==================================
  *
  * Real: the screens, their header, filters and store, the services, the sync engine, the copy. Faked at the edge: the
  * server's answers, the phone's native modules, the connection, the navigator's focus, FlashList's native drawing.
- *
- * ===== AGREE WITH DEVELOPMENT =====
- *  - The Dispatch list is told of a scroll by the FlashList's `onScrollBeginDrag` and `onMomentumScrollEnd`, as the GRN
- *    list is.
- * ==================================
  */
 import React from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react-native';
@@ -20,13 +22,12 @@ import { configureStore } from '@reduxjs/toolkit';
 import DispatchFlashList from '@/components/lists/DispatchFlashList';
 import StockSummaryScreen from '../../../../app/reports/stock-summary';
 import StockAgingScreen from '../../../../app/reports/stock-aging';
-import * as dispatchService from '@/services/dispatch-service';
 import * as engine from '@/features/phone-copy/syncEngine';
 import * as copyDb from '@/features/phone-copy/copyDb';
 import { env, resetEnv, setReachable } from '@/tests/phoneCopy/phoneEnv';
-import { seedWarehouse, lotNamed } from '@/tests/phoneCopy/grnDataset';
-import { dispatchRow, seedDocuments } from '@/tests/phoneCopy/documentsDataset';
-import { resetScreenFocus, setScreenFocused } from '@/tests/components/focusHarness';
+import { seedWarehouse } from '@/tests/phoneCopy/grnDataset';
+import { seedDocuments } from '@/tests/phoneCopy/documentsDataset';
+import { resetScreenFocus } from '@/tests/components/focusHarness';
 import { forgetQueries, makeQueryUpdatesImmediate } from '@/tests/helpers/reportQueries';
 import { saveOperatorServer } from '@/config/operatorServer';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
@@ -162,7 +163,6 @@ afterEach(async () => {
   jest.restoreAllMocks();
 });
 
-const wait = (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); });
 async function loadCopy() {
   await engine.startPhoneCopy();
   expect(await engine.syncNow('open')).toBe('done');
@@ -180,103 +180,70 @@ async function sync(changes: unknown[]) {
 }
 const upsert = (e: string, id: string, row: unknown) => ({ e, id, op: 'upsert', v: 'b000000000000001', row });
 const rows = () => screen.queryAllByTestId(/^row-/).map(row => String(row.props.testID).slice(4));
-const ALL = ['D3', 'D2', 'D1', 'D10', 'D4'];
+const NEEDS_EN = 'This needs a connection. It will load when you reconnect.';
+const NEEDS_GU = 'આ માટે કનેક્શન જોઈએ. ફરી જોડાશો ત્યારે લોડ થશે.';
 
-/** The Dispatch list open over a ready copy, with the reads that follow counted. */
-async function openDispatchList() {
-  const read = jest.spyOn(dispatchService, 'getDispatchListWithItems');
-  await loadCopy();
-  await render(<DispatchFlashList />);
-  await screen.findByTestId('row-D3');
-  await wait(50);
-  read.mockClear();
-  return read;
-}
+describe('WH-381: the Dispatch list is online-only (Design Part 13.1 A)', () => {
+  const serverDispatchPage = {
+    success: true,
+    data: {
+      dispatches: [{ id: 'server-d', disp_no: 'S1', dispatch_date: '2026-11-25', customer_name: 'Server Fictional Traders', items: [] }],
+      total_count: 1,
+      current_page: 1,
+      total_pages: 1,
+      limit: 20,
+    },
+  };
 
-describe('the Dispatch list over the copy', () => {
-  it('S1: shows the copy\'s rows with no connection, with no time line or stale strip of its own', async () => {
+  it('cold-start offline with copy ready: whole-screen ScreenNeedsConnection, zero kept rows, no time line, no stale strip, no CustomerAgeStrip, no server call', async () => {
     await loadCopy();
     await connection(true);
     await render(<DispatchFlashList />);
-    await screen.findByTestId('row-D3');
-    expect(rows()).toEqual(ALL);
+    expect(await screen.findByTestId('dispatch-needs-connection')).toHaveTextContent(NEEDS_EN);
+    expect(rows()).toEqual([]);
+    expect(screen.queryByTestId('row-D3')).not.toBeOnTheScreen();
     expect(screen.queryByTestId('dispatch-last-updated')).not.toBeOnTheScreen();
     expect(screen.queryByTestId('dispatch-stale-strip')).not.toBeOnTheScreen();
-    expect(screen.queryByText(/Last updated/)).not.toBeOnTheScreen();
-    expect(serverCalls).toEqual([]);
-  });
-
-  it('S2: pull to refresh syncs once and reads the list again', async () => {
-    const read = await openDispatchList();
-    const syncNow = jest.spyOn(engine, 'syncNow').mockResolvedValue('done');
-    await act(async () => { mockList.props.refreshControl.props.onRefresh(); });
-    await waitFor(() => expect(syncNow).toHaveBeenCalledWith('pull-to-refresh'));
-    await waitFor(() => expect(read).toHaveBeenCalled());
-    expect(syncNow).toHaveBeenCalledTimes(1);
-    expect(serverCalls).toEqual([]);
-  });
-
-  it('R4: on a restart drops its pages and asks the first page again, showing no error', async () => {
-    for (let n = 11; n <= 30; n += 1) {
-      env.feed.rows.dispatch.push({ id: `d-D${n}`, row: { ...dispatchRow('D10'), id: `d-D${n}`, disp_no: `D${n}`, disp_date: '2026-11-01T05:00:00+00:00' } });
-    }
-    const read = await openDispatchList();
-    await act(async () => { await copyDb.eraseCopy(); });
-    serverAnswers.get_dispatch_list_with_items = {
-      success: true,
-      data: { dispatches: [{ id: 'server-d', disp_no: 'S1', dispatch_date: '2026-11-25', customer_name: 'Server Fictional Traders', items: [] }], total_count: 1, current_page: 1, total_pages: 1, limit: 20 },
-    };
-    await act(async () => { mockList.props.onEndReached(); });
-    expect(await screen.findByTestId('row-S1')).toBeOnTheScreen();
-    expect(read.mock.calls.map(call => call[0]?.offset)).toEqual([20, 0]);
-    expect(rows()).toEqual(['S1']);
     expect(screen.queryByTestId('dispatch-load-more-error')).not.toBeOnTheScreen();
-    expect(screen.queryByTestId('dispatch-stale-strip')).not.toBeOnTheScreen();
-  });
-
-  it('Q6: a dispatch deleted on the server goes after the sync, read quietly, the others in their order', async () => {
-    const read = await openDispatchList();
-    await sync([{ e: 'dispatch', id: 'd-D1', op: 'delete' }]);
-    await waitFor(() => expect(rows()).toEqual(['D3', 'D2', 'D10', 'D4']));
-    expect(read).toHaveBeenCalledTimes(1);
-    expect(read.mock.calls[0][0]).toMatchObject({ offset: 0 });
-    expect(mockList.props.refreshControl.props.refreshing).toBe(false);
+    expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('holding-strip')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/Last updated/)).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
     expect(serverCalls).toEqual([]);
   });
 
-  it('Q2: a change of a lot it shows reads the list once', async () => {
-    const read = await openDispatchList();
-    await sync([upsert('goodsreceived_trl', 'l02', { ...lotNamed('l02'), rack: 'Z-9' })]);
-    await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+  it('visited online then connection drops: zero kept rows, no stale strip, and reloads automatically on reconnect', async () => {
+    serverAnswers.get_dispatch_list_with_items = serverDispatchPage;
+    await loadCopy();
+    await render(<DispatchFlashList />);
+    expect(await screen.findByTestId('row-S1')).toBeOnTheScreen();
+    expect(rows()).toEqual(['S1']);
+    expect(screen.queryByTestId('dispatch-needs-connection')).not.toBeOnTheScreen();
+
+    await connection(true);
+    expect(await screen.findByTestId('dispatch-needs-connection')).toHaveTextContent(NEEDS_EN);
+    expect(rows()).toEqual([]);
+    expect(screen.queryByTestId('row-S1')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('dispatch-stale-strip')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('dispatch-last-updated')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
+
+    serverCalls.length = 0;
+    await connection(false);
+    expect(await screen.findByTestId('row-S1')).toBeOnTheScreen();
+    expect(rows()).toEqual(['S1']);
+    expect(screen.queryByTestId('dispatch-needs-connection')).not.toBeOnTheScreen();
+    expect(serverCalls).toContain('get_dispatch_list_with_items');
   });
 
-  it('Q1, Q3: a sync that brought nothing, or only GRN photos, reads nothing', async () => {
-    const read = await openDispatchList();
-    await sync([]);
-    await sync([{ e: 'grn_images', id: 'ph-lot', op: 'delete' }]);
-    await wait(300);
-    expect(read).not.toHaveBeenCalled();
-  });
-
-  it('Q4: waits while the list is scrolled, then reads', async () => {
-    await openDispatchList();
-    expect(mockList.props.onScrollBeginDrag).toEqual(expect.any(Function));
-    await act(async () => { mockList.props.onScrollBeginDrag({ nativeEvent: {} }); });
-    await sync([{ e: 'dispatch', id: 'd-D1', op: 'delete' }]);
-    await wait(1300);
-    expect(screen.getByTestId('row-D1')).toBeOnTheScreen();
-    await act(async () => { mockList.props.onMomentumScrollEnd({ nativeEvent: {} }); });
-    await waitFor(() => expect(screen.queryByTestId('row-D1')).not.toBeOnTheScreen(), { timeout: 3000 });
-  }, 15000);
-
-  it('Q7: a list that is not in view reads again when it comes back', async () => {
-    const read = await openDispatchList();
-    await act(async () => { setScreenFocused(false); });
-    await sync([{ e: 'dispatch', id: 'd-D1', op: 'delete' }]);
-    await wait(300);
-    expect(read).not.toHaveBeenCalled();
-    await act(async () => { setScreenFocused(true); });
-    await waitFor(() => expect(screen.queryByTestId('row-D1')).not.toBeOnTheScreen());
+  it('Gujarati offline: dispatch-needs-connection shows Gujarati wording and zero rows', async () => {
+    await setLanguage('gu');
+    await loadCopy();
+    await connection(true);
+    await render(<DispatchFlashList />);
+    expect(await screen.findByTestId('dispatch-needs-connection')).toHaveTextContent(NEEDS_GU);
+    expect(rows()).toEqual([]);
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
   });
 });
 

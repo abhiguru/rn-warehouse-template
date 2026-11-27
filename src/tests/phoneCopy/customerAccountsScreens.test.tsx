@@ -38,6 +38,8 @@ import { setLanguage } from '@/i18n';
 import { OfflineStatusBar } from '@/components/OfflineStatusBar';
 import { useCopyBarShown } from '@/features/phone-copy/useCopyBarShown';
 import { resetScreenFocus } from '@/tests/components/focusHarness';
+import OrdersTab from '../../../app/(tabs)/index';
+import InvoicesTab from '../../../app/(tabs)/invoices';
 
 jest.mock('expo-sqlite', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.sqlite(), { virtual: true });
 jest.mock('expo-secure-store', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.secureStore());
@@ -88,9 +90,16 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 const mockPermissions = { canCreate: false, canUpdate: false, canDelete: false, isCustomer: false };
 jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => mockPermissions }));
-const mockAccess = { assignedCustomerIds: [] as string[], isCustomerAccount: false };
+const mockAccess = { assignedCustomerIds: [] as string[], isCustomerAccount: false, canManageOrders: false, role: 'customer' as 'customer' | 'staff' };
 jest.mock('@/hooks/useRoleBasedAccess', () => ({ useRoleBasedAccess: () => mockAccess }));
 jest.mock('@/hooks/useCanPrint', () => ({ useCanPrint: () => false }));
+jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn(), useHaptics: () => ({ selection: jest.fn(), light: jest.fn(), medium: jest.fn() }) }));
+jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: () => {} }));
+jest.mock('@/components/ServerAlertBanner', () => ({ ServerAlertBanner: () => null }));
+jest.mock('@/features/gst/GstStrip', () => ({ GstStrip: () => null }));
+jest.mock('react-native-paper', () => Object.fromEntries(
+  ['ActivityIndicator', 'Badge', 'IconButton', 'Portal', 'Snackbar', 'Surface'].map(name => [name, name])
+));
 jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
 jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn(), printFailureMessage: jest.fn() }));
@@ -120,9 +129,14 @@ const Tab = () => {
   const GRNTab = (require('../../../app/(tabs)/grn') as { default: React.ComponentType }).default;
   return <GRNTab />;
 };
+const OrdersScreen = () => <OrdersTab />;
+const InvoicesScreen = () => <InvoicesTab />;
 
 function signIn(role: 'customer' | 'staff', customers: string[]) {
+  mockPermissions.isCustomer = role === 'customer';
   mockAccess.isCustomerAccount = role === 'customer';
+  mockAccess.canManageOrders = role !== 'customer';
+  mockAccess.role = role;
   mockAccess.assignedCustomerIds = customers;
   mockStore.dispatch(setUserProfile({ id: 'profile-2', role, name: 'Fictional Person', assignedCustomerIds: customers } as never) as never);
 }
@@ -321,5 +335,36 @@ describe('Find goods for a customer account (DQ9)', () => {
     await loadCopy();
     const row = await findPeas();
     expect(within(row).getByText(/asha Traders/)).toBeOnTheScreen();
+  });
+});
+
+describe('WH-381: customer account Orders and Invoices tabs (Design 13.1 A & C)', () => {
+  const NEEDS = 'This needs a connection. It will load when you reconnect.';
+
+  it.each([
+    ['Orders', OrdersScreen, 'orders-needs-connection', 'orders-new-needs-connection'],
+    ['Invoices', InvoicesScreen, 'invoices-needs-connection', 'invoices-new-needs-connection'],
+  ] as const)('%s tab offline: ScreenNeedsConnection with NO CustomerAgeStrip and no removed footnote', async (_name, Screen, testID, removedFootnote) => {
+    seedCustomerAccount(['c1']);
+    signIn('customer', ['c1']);
+    await loadCopy();
+    await connection(true);
+    await render(<Screen />);
+    expect(await screen.findByTestId(testID)).toHaveTextContent(NEEDS);
+    expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId(removedFootnote)).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
+  });
+
+  it.each([
+    ['Orders', OrdersScreen],
+    ['Invoices', InvoicesScreen],
+  ] as const)('%s tab online: NO CustomerAgeStrip (server-only screen)', async (_name, Screen) => {
+    seedCustomerAccount(['c1']);
+    signIn('customer', ['c1']);
+    await loadCopy();
+    await render(<Screen />);
+    await wait(100);
+    expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();
   });
 });

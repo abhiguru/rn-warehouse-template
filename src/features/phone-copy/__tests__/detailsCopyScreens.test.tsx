@@ -1,17 +1,23 @@
 /**
- * WH-299 slices 3 and 4 on screen: the GRN and dispatch details pages over the phone copy.
- *  - DS1 (contract product/tech/app-offline-read-from-copy.md 10.2, S3a): rates and invoice amounts need a connection;
- *  - Design 2.5 and 2.7 (S3): actions that need the server, offline;
- *  - contract 11.1 (PR9): the page reads again after a sync that changed what it shows;
- *  - contract section 9 and Design 2.5 (S4): a photo that is not on the phone, and one that is.
- *
- * Real: the pages and their parts, the services, the sync engine, the copy, the store. Faked at the edge: the server's
- * answers, the phone's native modules and files, the connection, the navigator.
+ * WH-299 + WH-381 on screen: GRN details over the phone copy and Dispatch details online-only (Design Part 13.1 A & B):
+ *  - DS1: GRN rates, GRN Dispatches tab (`grn-details-section-needs-connection-dispatches`), and GRN Invoices tab
+ *    (`grn-details-section-needs-connection-invoices`, no `grn-invoice-state`, no `grn-create-invoice`);
+ *  - GRNTabNavigator offline: no dispatch/invoice count badges; tabs remain selectable;
+ *  - GRN Items tab expanded lot offline: `grn-item-dispatches-<lotId>` disabled with `", needs a connection"` label +
+ *    `grn-item-dispatches-needs-connection-<lotId>`, while "Change rack or mark" stays enabled;
+ *  - Dispatch details offline: whole-screen `ScreenNeedsConnection` (`dispatch-details-needs-connection`), no kept rows;
+ *  - PR9: GRN details reads again after a sync that changed what it shows;
+ *  - S4: GRN photos offline (not on phone vs kept on phone).
  *
  * ===== AGREE WITH DEVELOPMENT =====
  *  - The photo frame's testID is `photo-needs-connection-<image id>` (contract 10.2).
- *  - The bottom-bar line is `grn-details-bottom-bar-needs-connection` / `dispatch-details-bottom-bar-needs-connection`.
+ *  - The bottom-bar line is `grn-details-bottom-bar-needs-connection`.
+ *  - The lot's quick-change button is `grn-lot-quick-change-<lotId>`; Dispatch details drops its tab bar and every section
+ *    offline (the whole screen is `dispatch-details-needs-connection`, contract 4.1).
  * ==================================
+ *
+ * Real: the pages and their parts, the services, the sync engine, the copy, the store. Faked at the edge: the server's
+ * answers, the phone's native modules and files, the connection, the navigator.
  */
 import React from 'react';
 import { act, render, screen, userEvent, waitFor } from '@testing-library/react-native';
@@ -24,9 +30,10 @@ import * as copyDb from '@/features/phone-copy/copyDb';
 import { env, resetEnv, setReachable } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
 import { grnFeedRow, grnNamed, seedWarehouse } from '@/tests/phoneCopy/grnDataset';
-import { dispatchRow, seedDocuments } from '@/tests/phoneCopy/documentsDataset';
+import { seedDocuments } from '@/tests/phoneCopy/documentsDataset';
 import { saveOperatorServer } from '@/config/operatorServer';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
+import { setLanguage } from '@/i18n';
 import authReducer from '@/store/slices/authSlice';
 import themeReducer from '@/store/slices/themeSlice';
 
@@ -118,6 +125,7 @@ jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
 const SERVER = { origin: 'https://warehouse.example.test', instanceId: 'instance-a', displayName: 'Fictional Cold Store', companyName: 'Fictional Cold Store' };
 const NEEDS = 'This needs a connection. It will load when you reconnect.';
+const NEEDS_GU = 'આ માટે કનેક્શન જોઈએ. ફરી જોડાશો ત્યારે લોડ થશે.';
 const serverCalls: string[] = [];
 
 beforeEach(async () => {
@@ -152,6 +160,7 @@ afterEach(async () => {
   await copyDb.eraseCopy();
   await AsyncStorage.clear();
   resetFacilityCapabilities();
+  await setLanguage('en');
   jest.restoreAllMocks();
 });
 
@@ -171,16 +180,15 @@ const upsert = (e: string, id: string, row: unknown) => ({ e, id, op: 'upsert', 
 async function openGrn() {
   mockParams = { id: 'g-A2' };
   await render(<GRNDetailScreen />);
-  await screen.findByRole('tab', { name: /overview/i });
+  await screen.findByRole('tab', { name: /overview|સારાંશ/i });
 }
 async function openDispatch() {
   mockParams = { id: 'd-D2' };
   await render(<DispatchDetailScreen />);
-  await screen.findByRole('tab', { name: /overview/i });
 }
 const tab = (name: RegExp) => userEvent.press(screen.getByRole('tab', { name }));
 
-describe('DS1: a section that needs the server', () => {
+describe('DS1: sections that need the server on GRN details (WH-299 + WH-381 Part 13.1 B)', () => {
   it.each([[false], [true]])('GRN rates (offline: %s): the heading, then one line, with no error and no retry', async offline => {
     await connection(offline);
     await openGrn();
@@ -193,40 +201,112 @@ describe('DS1: a section that needs the server', () => {
     expect(serverCalls).toEqual([]);
   });
 
-  it('dispatch invoice amounts: one line in place of them', async () => {
-    await openDispatch();
-    await tab(/invoices/i);
-    expect(await screen.findByTestId('dispatch-details-section-needs-connection-invoice-amounts')).toHaveTextContent(NEEDS);
+  it('GRNTabNavigator offline: omits dispatch and invoice count badges while keeping both tabs selectable', async () => {
+    await connection(true);
+    await openGrn();
+    const dispatchesTab = screen.getByRole('tab', { name: 'Dispatches' });
+    const invoicesTab = screen.getByRole('tab', { name: 'Invoices' });
+    expect(dispatchesTab).toBeOnTheScreen();
+    expect(invoicesTab).toBeOnTheScreen();
+    expect(screen.queryByRole('tab', { name: /^Dispatches, / })).not.toBeOnTheScreen();
+    expect(screen.queryByRole('tab', { name: /^Invoices, / })).not.toBeOnTheScreen();
+    expect(screen.getByRole('tab', { name: 'Items, 2' })).toBeOnTheScreen();
+    expect(screen.getByRole('tab', { name: 'Images, 3' })).toBeOnTheScreen();
+    await userEvent.press(dispatchesTab);
+    expect(dispatchesTab).toBeSelected();
+    await userEvent.press(invoicesTab);
+    expect(invoicesTab).toBeSelected();
+  });
+
+  it('GRN Dispatches tab offline: DS1 screenNeedsConnection, no rows, no Retry, no server calls', async () => {
+    await connection(true);
+    await openGrn();
+    await tab(/^Dispatches/);
+    expect(await screen.findByTestId('grn-details-section-needs-connection-dispatches')).toHaveTextContent(NEEDS);
+    expect(screen.queryByTestId('grn-dispatches-table')).not.toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
     expect(serverCalls).toEqual([]);
   });
-});
 
-describe('S3: actions that need the server, offline', () => {
-  it.each<[string, () => Promise<void>, string, RegExp[]]>([
-    ['GRN', openGrn, 'grn-details', [/^Delete.*, needs a connection$/, /^Share PDF, needs a connection$/, /^Print.*, needs a connection$/, /^Edit.*, needs a connection$/]],
-    ['dispatch', openDispatch, 'dispatch-details', [/^Delete.*, needs a connection$/, /^Share.*, needs a connection$/, /^Print.*, needs a connection$/, /^Edit.*, needs a connection$/]],
-  ])('%s details: each is disabled and says why, with one line above the bar', async (_name, open, id, labels) => {
+  it('GRN Invoices tab offline: DS1 screenNeedsConnection, no grn-invoice-state, no grn-create-invoice, no rows', async () => {
     await connection(true);
-    await open();
-    await tab(/overview/i);
-    for (const name of labels) expect(await screen.findByRole('button', { name })).toBeDisabled();
-    expect(screen.getByTestId(`${id}-bottom-bar-needs-connection`)).toHaveTextContent('Needs a connection');
+    await openGrn();
+    await tab(/^Invoices/);
+    expect(await screen.findByTestId('grn-details-section-needs-connection-invoices')).toHaveTextContent(NEEDS);
+    expect(screen.queryByTestId('grn-invoice-state')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('grn-create-invoice')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
+    expect(serverCalls).toEqual([]);
   });
 
-  it.each<[string, () => Promise<void>, string]>([
-    ['GRN', openGrn, 'grn-details'],
-    ['dispatch', openDispatch, 'dispatch-details'],
-  ])('%s details, reachable: the actions are as today', async (_name, open, id) => {
-    await open();
+  it('GRN Items tab expanded lot offline: View dispatches disabled with ", needs a connection" + footnote, Change rack or mark stays enabled', async () => {
+    await connection(true);
+    await openGrn();
+    await userEvent.press(await screen.findByTestId('grn-item-row-l02'));
+    const viewDispatches = await screen.findByTestId('grn-item-dispatches-l02');
+    expect(viewDispatches).toBeDisabled();
+    expect(viewDispatches).toHaveAccessibleName('View dispatches, needs a connection');
+    expect(screen.getByTestId('grn-item-dispatches-needs-connection-l02')).toHaveTextContent('Needs a connection');
+    expect(screen.getByTestId('grn-lot-quick-change-l02')).toBeEnabled();
+  });
+
+  it('Gujarati GRN details offline: Dispatches tab, Invoices tab and lot View dispatches use Design 13.3 wording', async () => {
+    await setLanguage('gu');
+    await connection(true);
+    await openGrn();
+    await userEvent.press(await screen.findByTestId('grn-item-row-l02'));
+    expect(await screen.findByTestId('grn-item-dispatches-l02')).toBeDisabled();
+    expect(screen.getByTestId('grn-item-dispatches-l02')).toHaveAccessibleName(/, કનેક્શન જોઈએ$/);
+    expect(screen.getByTestId('grn-item-dispatches-needs-connection-l02')).toHaveTextContent('કનેક્શન જોઈએ');
+    await tab(/જાવક/);
+    expect(await screen.findByTestId('grn-details-section-needs-connection-dispatches')).toHaveTextContent(NEEDS_GU);
+    await tab(/ઇન્વૉઇસ|બિલ/);
+    expect(await screen.findByTestId('grn-details-section-needs-connection-invoices')).toHaveTextContent(NEEDS_GU);
+  });
+});
+
+describe('WH-381: Dispatch details offline (Design Part 13.1 A)', () => {
+  it('offline: whole-screen ScreenNeedsConnection, no tabs, no kept rows, no bottom-bar line, no Retry', async () => {
+    await connection(true);
+    await openDispatch();
+    expect(await screen.findByTestId('dispatch-details-needs-connection')).toHaveTextContent(NEEDS);
+    expect(screen.queryByRole('tab', { name: /overview/i })).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('dispatch-details-section-needs-connection-invoice-amounts')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('dispatch-details-bottom-bar-needs-connection')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Fictional dispatch note')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
+    expect(serverCalls).toEqual([]);
+  });
+
+  it('Gujarati offline: dispatch-details-needs-connection shows Gujarati wording', async () => {
+    await setLanguage('gu');
+    await connection(true);
+    await openDispatch();
+    expect(await screen.findByTestId('dispatch-details-needs-connection')).toHaveTextContent(NEEDS_GU);
+  });
+});
+
+describe('S3: actions that need the server on GRN details, offline', () => {
+  it('GRN details: server-only actions are disabled and say why, with one line above the bar', async () => {
+    await connection(true);
+    await openGrn();
+    await tab(/overview/i);
+    for (const name of [/^Delete.*, needs a connection$/, /^Share PDF, needs a connection$/, /^Print.*, needs a connection$/, /^Edit.*, needs a connection$/]) {
+      expect(await screen.findByRole('button', { name })).toBeDisabled();
+    }
+    expect(screen.getByTestId('grn-details-bottom-bar-needs-connection')).toHaveTextContent('Needs a connection');
+  });
+
+  it('GRN details, reachable: the actions are as today', async () => {
+    await openGrn();
     await tab(/overview/i);
     expect(await screen.findByRole('button', { name: /^Delete/ })).toBeEnabled();
     expect(screen.queryByRole('button', { name: /needs a connection/ })).not.toBeOnTheScreen();
-    expect(screen.queryByTestId(`${id}-bottom-bar-needs-connection`)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('grn-details-bottom-bar-needs-connection')).not.toBeOnTheScreen();
   });
 });
 
-describe('PR9: a details page after a sync', () => {
+describe('PR9: GRN details after a sync', () => {
   it('GRN: shows a change at once', async () => {
     await openGrn();
     await tab(/overview/i);
@@ -240,21 +320,6 @@ describe('PR9: a details page after a sync', () => {
     await openGrn();
     await sync([{ e: 'goodsreceived', id: 'g-A2', op: 'delete' }]);
     expect(await screen.findByText('GRN not found')).toBeOnTheScreen();
-  });
-
-  it('dispatch: shows a change at once', async () => {
-    await openDispatch();
-    await tab(/overview/i);
-    expect(await screen.findByText('Fictional dispatch note')).toBeOnTheScreen();
-    await sync([upsert('dispatch', 'd-D2', { ...dispatchRow('D2'), note: 'Changed dispatch note' })]);
-    expect(await screen.findByText('Changed dispatch note')).toBeOnTheScreen();
-    expect(serverCalls).toEqual([]);
-  });
-
-  it('dispatch: deleted meanwhile, it says it is not found', async () => {
-    await openDispatch();
-    await sync([{ e: 'dispatch', id: 'd-D2', op: 'delete' }]);
-    expect(await screen.findByText('Dispatch not found')).toBeOnTheScreen();
   });
 
   it('Q1: a sync that brought nothing does not read the page again', async () => {

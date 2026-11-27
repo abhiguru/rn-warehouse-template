@@ -1,14 +1,17 @@
 /**
- * WH-348, Design offline-capture.md 2.5 and 2.11, contract product/tech/app-offline-read-more.md section 8 and S1, S4, S5:
- * with no connection the Invoices, Customers, Items and Users lists open from the copy, show their one footnote
- * ("New <things> need a connection.") and no "+"; Sensors and the temperature report say they need a connection, with no
- * "Try again"; no list shows a "Last updated" line of its own. Reachable, an older server or the feature off: today's screens.
+ * WH-348 + WH-381, Design offline-capture.md 2.5, 2.11 and Part 13.1 A & C:
+ * with no connection the Customers, Items and Users lists open from the copy, show their one footnote
+ * ("New <things> need a connection.") and no "+"; the Invoices tab (WH-381), Sensors and the temperature report say they
+ * need a connection (`invoices-needs-connection`, `sensors-needs-connection`, `temperature-report-needs-connection`) with
+ * no rows, no removed `invoices-new-needs-connection` footnote and no "Try again"; no list shows a "Last updated" line of
+ * its own. Reachable, an older server or the feature off: today's screens.
+ *
+ * ===== AGREE WITH DEVELOPMENT =====
+ *  - `create-invoice-fab` is the Invoices tab's "+" testID (Design 13.7 check 3); `invoices-last-updated` the removed time line.
+ * ==================================
  *
  * Real: the screens, the services, the sync engine, the copy, the store. Faked at the edge: the server's answers, the phone's
  * native modules, the connection, FlashList's native drawing.
- *
- * The feed format the WH-348 readers need is in one place, WH348_FORMAT (Product: format 3 comes with WH-328). Until the
- * build reads it, the copy does not load and the offline cases fail at that step.
  */
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
@@ -152,8 +155,6 @@ async function connection(offline: boolean) {
 
 type ListCase = { name: string; Screen: React.ComponentType; footnoteId: string; footnote: string; gujarati: string; plus: RegExp | null; row: string; ownTimeId: string };
 const LISTS: ListCase[] = [
-  { name: 'Invoices', Screen: InvoicesTab, footnoteId: 'invoices-new-needs-connection', footnote: 'New invoices need a connection.',
-    gujarati: 'નવા ઇન્વૉઇસ માટે કનેક્શન જોઈએ.', plus: /Create invoice/, row: '7001', ownTimeId: 'invoices-last-updated' },
   { name: 'Customers', Screen: CustomersScreen, footnoteId: 'customers-new-needs-connection', footnote: 'New customers need a connection.',
     gujarati: 'નવા વેપારી માટે કનેક્શન જોઈએ.', plus: /Add customer/, row: 'Bhavin Foods', ownTimeId: 'customers-last-updated' },
   { name: 'Items', Screen: ItemsScreen, footnoteId: 'items-new-needs-connection', footnote: 'New items need a connection.',
@@ -201,6 +202,41 @@ describe.each(LISTS)('$name list on an older server, offline (today\'s screen)',
     await render(<Screen />);
     expect(screen.queryByTestId(footnoteId)).not.toBeOnTheScreen();
     if (plus) expect(await screen.findByRole('button', { name: plus })).toBeOnTheScreen();
+  });
+});
+
+describe('Invoices tab with no connection (WH-381, Design 13.1 A & C)', () => {
+  const NEEDS_EN = 'This needs a connection. It will load when you reconnect.';
+  const NEEDS_GU = 'આ માટે કનેક્શન જોઈએ. ફરી જોડાશો ત્યારે લોડ થશે.';
+
+  it('offline: whole-screen ScreenNeedsConnection, no rows, no "+", no removed footnote, no "Try again"', async () => {
+    await load({ expectDone: true });
+    await connection(true);
+    await render(<InvoicesTab />);
+    expect(await screen.findByTestId('invoices-needs-connection')).toHaveTextContent(NEEDS_EN);
+    expect(screen.queryByText(/7001/)).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /Create invoice/ })).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('create-invoice-fab')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('invoices-new-needs-connection')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('invoices-last-updated')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
+  });
+
+  it('Gujarati offline: whole-screen ScreenNeedsConnection wording, no removed footnote', async () => {
+    await setLanguage('gu');
+    await load({ expectDone: true });
+    await connection(true);
+    await render(<InvoicesTab />);
+    expect(await screen.findByTestId('invoices-needs-connection')).toHaveTextContent(NEEDS_GU);
+    expect(screen.queryByTestId('invoices-new-needs-connection')).not.toBeOnTheScreen();
+  });
+
+  it('reachable: no needs-connection state and the "+" is there', async () => {
+    await load({ expectDone: true });
+    await render(<InvoicesTab />);
+    expect(await screen.findByRole('button', { name: /Create invoice/ })).toBeOnTheScreen();
+    expect(screen.queryByTestId('invoices-needs-connection')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('invoices-new-needs-connection')).not.toBeOnTheScreen();
   });
 });
 

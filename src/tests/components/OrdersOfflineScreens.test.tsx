@@ -1,22 +1,26 @@
 /**
- * WH-328, Design 2.10b and contract product/tech/app-offline-orders-payments.md section 8 (S1, S2, S3, S3b, S6, O1-O3 on
- * screen): with no connection the Orders list and the Queue say what needs one and show no "+", every change on an order
- * is disabled with ", needs a connection" in its label, "Cancel adding items" stays enabled, and an order line shows the net
- * stock with one footnote per deduction. Online, and with the feature off, the screens are as today.
+ * WH-381 (superseding WH-328's offline orders/queue and unsent-dispatch stock deductions; Design Part 13.1-13.5, contract
+ * product/tech/app-offline-scope-cut.md sections 3 & 4):
+ *  - Orders (`OrderFlashList`) and Queue (`SupervisorOrderQueueList`) show whole-screen `ScreenNeedsConnection` when
+ *    offline (`orders-needs-connection`, `order-queue-needs-connection`), both on cold-start offline and after visiting
+ *    online then losing connection — with ZERO kept rows, no "+", no search/filters, no `orders-new-needs-connection` or
+ *    `queue-dispatch-needs-connection`, no `LastUpdatedLine` / `StaleListStrip`, no "Try again", and automatic reload on
+ *    reconnect.
+ *  - Dispatch stock deduction footnotes (`lessNotSent`, `lessHeld`, `lessOtherPerson`) are removed from order lines.
+ *  - Online: Orders, Queue, queue cards and order lines work as today.
  *
- * Real: the lists, the queue card, the order line card, the order editor's own parts, i18n. Stand-ins: the navigator, the
- * network service reply, the connection flag (`useNeedsConnection`, the one the screens ask) and the seam of this phone's
- * unsent work (`getUnsentOverlay`; WH-301's store is not in this base).
+ * ===== AGREE WITH DEVELOPMENT (contract 4.4 says the lists gate rows; who draws the state is open) =====
+ *  - `OrderFlashList` and `SupervisorOrderQueueList` themselves render `orders-needs-connection` /
+ *    `order-queue-needs-connection` (Design 13.1 A keeps the tab header above it, which the tab owns). If Development draws
+ *    the state in the tab instead, move these list checks to the tab; the tab-level checks are in ScopeCutOfflineScreens.
+ *  - The mocked filter header's testID `mock-filtered-list-header` stands for search and filters (hidden offline).
+ * ==================================
  *
- * ===== AGREE WITH DEVELOPMENT (the contract is silent) =====
- *  - The footnote texts are Design 2.10b's words, English: "New orders need a connection." and "Creating a dispatch needs a connection."
- *  - The queue card's Edit button is found by its role and name `lists.orderGroup.editLabel`.
- *  - The line footnotes are the findGoods.lessNotSent / lessHeld words (Design: "no new words"); the other person's is components.offlineRead.lessOtherPerson (order-line-less-others-<id>).
- *  - The order screen's one line is `order-actions-needs-connection`; OrderItemCard's own controls carry the testIDs of section 8.
- * ============================================================
+ * Real: the lists, the queue card, the order line card, ScreenNeedsConnection, i18n. Stand-ins: the navigator, the
+ * network service reply, the connection flag (`useNeedsConnection`), and the unsent overlay seam.
  */
 import React from 'react';
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import OrderFlashList from '@/components/lists/OrderFlashList';
 import SupervisorOrderQueueList from '@/components/lists/SupervisorOrderQueueList';
 import { CustomerOrderGroupCard } from '@/components/list-items/CustomerOrderGroupCard';
@@ -26,12 +30,27 @@ import { setLanguage, t } from '@/i18n';
 import type { Order, OrderItem, OrderServiceResponse } from '@/types/order.types';
 import { resetScreenFocus } from './focusHarness';
 
-let mockOffline = false;
-jest.mock('@/features/phone-copy/useNeedsConnection', () => ({
-  ...jest.requireActual('@/features/phone-copy/useNeedsConnection'),
-  useNeedsConnection: () => mockOffline,
-  useNeedsConnectionV3: () => mockOffline,
-}));
+const mockConn = {
+  offline: false,
+  listeners: new Set<() => void>(),
+  subscribe(listener: () => void) {
+    mockConn.listeners.add(listener);
+    return () => { mockConn.listeners.delete(listener); };
+  },
+  set(offline: boolean) {
+    mockConn.offline = offline;
+    for (const listener of [...mockConn.listeners]) listener();
+  },
+};
+jest.mock('@/features/phone-copy/useNeedsConnection', () => {
+  const { useSyncExternalStore } = require('react');
+  const useOffline = () => useSyncExternalStore(mockConn.subscribe, () => mockConn.offline);
+  return {
+    ...jest.requireActual('@/features/phone-copy/useNeedsConnection'),
+    useNeedsConnection: useOffline,
+    useNeedsConnectionV3: useOffline,
+  };
+});
 const mockOverlay = { lessUnsent: {} as Record<string, number>, lessHeld: {} as Record<string, number>, lessOthers: {} as Record<string, number> };
 jest.mock('@/features/phone-copy/unsentOverlay', () => ({
   ...jest.requireActual('@/features/phone-copy/unsentOverlay'),
@@ -39,7 +58,11 @@ jest.mock('@/features/phone-copy/unsentOverlay', () => ({
     lessUnsent: (id: string) => mockOverlay.lessUnsent[id] ?? 0, lessHeld: (id: string) => mockOverlay.lessHeld[id] ?? 0,
     lessOthersUnsent: (id: string) => mockOverlay.lessOthers[id] ?? 0, deductions: () => new Map() }),
 }));
-jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false, useNetworkStatus: () => ({ isConnected: true }) }));
+jest.mock('@/hooks/useNetworkStatus', () => {
+  const { useSyncExternalStore } = require('react');
+  const useOffline = () => useSyncExternalStore(mockConn.subscribe, () => mockConn.offline);
+  return { useIsOffline: useOffline, useNetworkStatus: () => ({ isConnected: !useOffline() }) };
+});
 jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
   useRouter: () => ({ push: jest.fn() }),
@@ -53,10 +76,14 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: () => {} }));
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1, onSessionChange: () => () => undefined }));
 jest.mock('@/features/filters/configs', () => ({ ORDER_FILTERS: { listKey: 'order-list' }, ORDER_QUEUE_FILTERS: { listKey: 'order-queue' } }));
-jest.mock('@/features/filters/components/FilteredListHeader', () => ({
-  FilteredListHeader: () => null,
-  filteredEmptyProps: () => ({ activeFilterCount: 0 }),
-}));
+jest.mock('@/features/filters/components/FilteredListHeader', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    FilteredListHeader: () => React.createElement(View, { testID: 'mock-filtered-list-header' }),
+    filteredEmptyProps: () => ({ activeFilterCount: 0 }),
+  };
+});
 jest.mock('@/features/filters/useListFilters', () => ({ useListFilters: () => ({ request: {}, values: {} }) }));
 let mockRole = 'supervisor';
 jest.mock('@/store/hooks', () => ({
@@ -66,12 +93,22 @@ jest.mock('@/store/hooks', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
-jest.mock('@/components/list-items', () => ({ MemoizedOrderItem: () => null }));
+jest.mock('@/components/list-items', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+  return {
+    MemoizedOrderItem: ({ order }: { order: { id: string; customer?: { name?: string } } }) =>
+      React.createElement(Text, { testID: `order-row-${order.id}` }, order.customer?.name ?? order.id),
+  };
+});
 jest.mock('@/components/StockIndicator', () => 'StockIndicator');
 jest.mock('@/components/CustomerSearchBottomSheet', () => ({ CustomerSearchBottomSheet: () => null }));
 jest.mock('@/components/RecentDispatchedOrdersSection', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/features/customer/ownBusinesses', () => ({ readOwnBusinesses: async () => [], readAccessStatus: async () => null }));
 jest.mock('@/services/order-service', () => ({ OrderService: { getOrdersList: jest.fn(), getOrderWithItems: jest.fn() } }));
+
+const NEEDS_EN = 'This needs a connection. It will load when you reconnect.';
+const NEEDS_GU = 'આ માટે કનેક્શન જોઈએ. ફરી જોડાશો ત્યારે લોડ થશે.';
 
 const order = { id: 'order-fictional-1', customer_id: 'customer-1', customer: { id: 'customer-1', name: 'Fictional Traders' },
   status: 'OPEN', item_count: 1, quantity_sum: 5, updated_at: '2026-11-25T08:00:00Z' } as unknown as Order;
@@ -80,12 +117,15 @@ const line: OrderItem = { id: 'line-1', order_id: 'order-fictional-1', grn_item_
   grn_item: { id: 'lot-1', name: 'Fictional Onions', packaging: 'Bag', current_stock: 4, original_quantity: 10, gr_id: 'grn-1' } };
 const getOrdersList = jest.mocked(OrderService.getOrdersList);
 const getOrderWithItems = jest.mocked(OrderService.getOrderWithItems);
-const user = userEvent.setup({ delay: 0 });
 const hidden = { includeHiddenElements: true } as const;
+
+const setOffline = async (offline: boolean) => {
+  await act(async () => { mockConn.set(offline); });
+};
 
 beforeEach(() => {
   resetScreenFocus();
-  mockOffline = false;
+  mockConn.offline = false;
   mockRole = 'supervisor';
   mockOverlay.lessUnsent = {};
   mockOverlay.lessHeld = {};
@@ -96,149 +136,116 @@ beforeEach(() => {
 });
 afterEach(() => { setLanguage('en'); jest.restoreAllMocks(); });
 
-describe('S1: the Orders tab', () => {
-  it('offline: the footnote and no "+"', async () => {
-    mockOffline = true;
+describe('WH-381: the Orders list', () => {
+  it('cold-start offline: whole-screen ScreenNeedsConnection, no rows, no "+", no search/filters, no removed footnote, no server call', async () => {
+    mockConn.offline = true;
     await render(<OrderFlashList />);
-    expect(await screen.findByTestId('orders-new-needs-connection')).toHaveTextContent('New orders need a connection.');
+    expect(await screen.findByTestId('orders-needs-connection')).toHaveTextContent(NEEDS_EN);
+    expect(screen.queryByTestId('order-row-order-fictional-1', hidden)).not.toBeOnTheScreen();
     expect(screen.queryByTestId('orders-create', hidden)).not.toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: t('lists.order.create') })).not.toBeOnTheScreen();
-  });
-
-  it('online: the "+" is there and no footnote', async () => {
-    await render(<OrderFlashList />);
-    expect(await screen.findByTestId('orders-create')).toBeOnTheScreen();
     expect(screen.queryByTestId('orders-new-needs-connection', hidden)).not.toBeOnTheScreen();
-  });
-
-  it('S6: the footnote in Gujarati, word for word', async () => {
-    setLanguage('gu');
-    mockOffline = true;
-    await render(<OrderFlashList />);
-    expect(await screen.findByTestId('orders-new-needs-connection')).toHaveTextContent('નવા ઑર્ડર માટે કનેક્શન જોઈએ.');
-  });
-
-  it('S5: no own time line while it reads the copy offline', async () => {
-    mockOffline = true;
-    await render(<OrderFlashList />);
-    await screen.findByTestId('orders-new-needs-connection');
+    expect(screen.queryByTestId('mock-filtered-list-header', hidden)).not.toBeOnTheScreen();
     expect(screen.queryByTestId('orders-last-updated', hidden)).not.toBeOnTheScreen();
     expect(screen.queryByTestId('orders-stale-strip', hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
+    expect(getOrdersList).not.toHaveBeenCalled();
   });
-});
 
-describe('S3: the Queue', () => {
-  it('offline: one footnote at the top, no "+" footnote', async () => {
-    mockOffline = true;
-    await render(<SupervisorOrderQueueList />);
-    expect(await screen.findByTestId('queue-dispatch-needs-connection')).toHaveTextContent('Creating a dispatch needs a connection.');
+  it('visited online then connection drops: zero kept rows and clears automatically on reconnect', async () => {
+    await render(<OrderFlashList />);
+    expect(await screen.findByTestId('order-row-order-fictional-1')).toBeOnTheScreen();
+    expect(screen.getByTestId('orders-create')).toBeOnTheScreen();
+    expect(screen.queryByTestId('orders-needs-connection', hidden)).not.toBeOnTheScreen();
+
+    await setOffline(true);
+    expect(await screen.findByTestId('orders-needs-connection')).toHaveTextContent(NEEDS_EN);
+    expect(screen.queryByTestId('order-row-order-fictional-1', hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('orders-create', hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('orders-stale-strip', hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('orders-last-updated', hidden)).not.toBeOnTheScreen();
+
+    getOrdersList.mockClear();
+    await setOffline(false);
+    expect(await screen.findByTestId('order-row-order-fictional-1')).toBeOnTheScreen();
+    expect(screen.queryByTestId('orders-needs-connection', hidden)).not.toBeOnTheScreen();
+    expect(getOrdersList).toHaveBeenCalled();
+  });
+
+  it('Gujarati offline: ScreenNeedsConnection wording, no removed footnote', async () => {
+    setLanguage('gu');
+    mockConn.offline = true;
+    await render(<OrderFlashList />);
+    expect(await screen.findByTestId('orders-needs-connection')).toHaveTextContent(NEEDS_GU);
     expect(screen.queryByTestId('orders-new-needs-connection', hidden)).not.toBeOnTheScreen();
   });
 
-  it('online: no footnote', async () => {
-    await render(<SupervisorOrderQueueList />);
-    await screen.findByText('Fictional Traders', undefined).catch(() => undefined);
-    expect(screen.queryByTestId('queue-dispatch-needs-connection', hidden)).not.toBeOnTheScreen();
-  });
-
-  it('S6: the footnote in Gujarati, word for word', async () => {
-    setLanguage('gu');
-    mockOffline = true;
-    await render(<SupervisorOrderQueueList />);
-    expect(await screen.findByTestId('queue-dispatch-needs-connection')).toHaveTextContent('જાવક બનાવવા કનેક્શન જોઈએ.');
+  it('online: the "+" is there and no needs-connection state', async () => {
+    await render(<OrderFlashList />);
+    expect(await screen.findByTestId('orders-create')).toBeOnTheScreen();
+    expect(screen.queryByTestId('orders-needs-connection', hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('orders-new-needs-connection', hidden)).not.toBeOnTheScreen();
   });
 });
 
-describe('S3 and O1: a queue card', () => {
-  const draw = async () => {
-    await render(<CustomerOrderGroupCard order={order} isExpanded onToggleExpand={jest.fn()} />);
-    return screen.findByText('Fictional Onions');
-  };
+describe('WH-381: the Queue', () => {
+  it('cold-start offline: whole-screen ScreenNeedsConnection, no rows, no search/filters, no removed footnotes, no server call', async () => {
+    mockConn.offline = true;
+    await render(<SupervisorOrderQueueList />);
+    expect(await screen.findByTestId('order-queue-needs-connection')).toHaveTextContent(NEEDS_EN);
+    expect(screen.queryByText('Fictional Traders')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('queue-dispatch-needs-connection', hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('orders-new-needs-connection', hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('mock-filtered-list-header', hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
+    expect(getOrdersList).not.toHaveBeenCalled();
+  });
 
-  it('offline: Create dispatch is disabled and says why, Edit stays enabled', async () => {
-    mockOffline = true;
-    await draw();
-    const create = screen.getByTestId(`queue-card-dispatch-${order.id}`);
-    expect(create).toBeDisabled();
-    expect(create).toHaveAccessibleName(`${t('lists.dispatch.create')}, needs a connection`);
-    expect(screen.getByRole('button', { name: t('lists.orderGroup.editLabel', { customer: 'Fictional Traders' }) })).toBeEnabled();
-    // The footnote is the list's, once: the card has no line of its own (Design DQ3).
+  it('visited online then connection drops: zero kept rows and clears automatically on reconnect', async () => {
+    await render(<SupervisorOrderQueueList />);
+    expect(await screen.findByText('Fictional Traders')).toBeOnTheScreen();
+    expect(screen.queryByTestId('order-queue-needs-connection', hidden)).not.toBeOnTheScreen();
+
+    await setOffline(true);
+    expect(await screen.findByTestId('order-queue-needs-connection')).toHaveTextContent(NEEDS_EN);
+    expect(screen.queryByText('Fictional Traders')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('queue-dispatch-needs-connection', hidden)).not.toBeOnTheScreen();
+
+    getOrdersList.mockClear();
+    await setOffline(false);
+    expect(await screen.findByText('Fictional Traders')).toBeOnTheScreen();
+    expect(screen.queryByTestId('order-queue-needs-connection', hidden)).not.toBeOnTheScreen();
+    expect(getOrdersList).toHaveBeenCalled();
+  });
+
+  it('Gujarati offline: ScreenNeedsConnection wording, no removed footnote', async () => {
+    setLanguage('gu');
+    mockConn.offline = true;
+    await render(<SupervisorOrderQueueList />);
+    expect(await screen.findByTestId('order-queue-needs-connection')).toHaveTextContent(NEEDS_GU);
     expect(screen.queryByTestId('queue-dispatch-needs-connection', hidden)).not.toBeOnTheScreen();
   });
+});
 
-  it('online: Create dispatch is enabled', async () => {
-    await draw();
-    expect(screen.getByTestId(`queue-card-dispatch-${order.id}`)).toBeEnabled();
-  });
-
-  it('shows the net figure only, with no deduction footnotes', async () => {
+describe('WH-381: queue card and order line online (no dispatch deduction footnotes)', () => {
+  it('queue card online: Create dispatch is enabled and has no deduction footnotes', async () => {
     mockOverlay.lessUnsent['lot-1'] = 2;
-    await draw();
+    await render(<CustomerOrderGroupCard order={order} isExpanded onToggleExpand={jest.fn()} />);
+    await screen.findByText('Fictional Onions');
+    expect(screen.getByTestId(`queue-card-dispatch-${order.id}`)).toBeEnabled();
     expect(screen.queryByText(t('findGoods.lessNotSent', { count: 2 }), hidden)).not.toBeOnTheScreen();
   });
-});
 
-describe('S2, S3b and O1-O3: an order line', () => {
-  const draw = (props: Partial<React.ComponentProps<typeof OrderItemCard>> = {}) =>
-    render(<OrderItemCard item={line} onQuantityChange={jest.fn()} onRemove={jest.fn()} {...props} />);
-  const CONTROLS = ['less10', 'less1', 'more1', 'more10', 'remove'] as const;
-
-  it('offline: every control of the line is disabled, with the reason in its label', async () => {
-    mockOffline = true;
-    await draw();
-    for (const control of CONTROLS) {
-      const button = screen.getByTestId(`order-line-${control}-${line.id}`);
-      expect(button).toBeDisabled();
-      expect(button).toHaveAccessibleName(/, needs a connection$/);
-    }
-  });
-
-  it('offline: a press on a disabled control sends nothing', async () => {
-    mockOffline = true;
-    const onQuantityChange = jest.fn();
-    await draw({ onQuantityChange });
-    await user.press(screen.getByTestId(`order-line-more1-${line.id}`));
-    expect(onQuantityChange).not.toHaveBeenCalled();
-  });
-
-  it('online: the controls are enabled', async () => {
-    await draw();
-    for (const control of CONTROLS) expect(screen.getByTestId(`order-line-${control}-${line.id}`)).toBeEnabled();
-  });
-
-  it('O1: an unsent dispatch is a footnote under the line, and the end of its label', async () => {
+  it('order line online: controls are enabled and no unsent/held/others dispatch deduction footnotes render', async () => {
     mockOverlay.lessUnsent['lot-1'] = 20;
-    await draw();
-    const note = t('findGoods.lessNotSent', { count: 20 });
-    expect(screen.getByTestId(`order-line-less-unsent-${line.id}`)).toHaveTextContent(note);
-    expect(screen.queryByTestId(`order-line-less-held-${line.id}`, hidden)).not.toBeOnTheScreen();
-  });
-
-  it('O2: held bags have their own footnote', async () => {
     mockOverlay.lessHeld['lot-1'] = 6;
-    await draw();
-    expect(screen.getByTestId(`order-line-less-held-${line.id}`)).toHaveTextContent(t('findGoods.lessHeld', { count: 6 }));
-    expect(screen.queryByTestId(`order-line-less-unsent-${line.id}`, hidden)).not.toBeOnTheScreen();
-  });
-
-  it('O3: no unsent work, no footnote', async () => {
-    await draw();
-    expect(screen.queryByTestId(`order-line-less-unsent-${line.id}`, hidden)).not.toBeOnTheScreen();
-    expect(screen.queryByTestId(`order-line-less-held-${line.id}`, hidden)).not.toBeOnTheScreen();
-  });
-
-  it('O4: another person\'s unsent dispatches are a footnote of their own under the line', async () => {
     mockOverlay.lessOthers['lot-1'] = 12;
-    await draw();
-    expect(screen.getByTestId(`order-line-less-others-${line.id}`)).toHaveTextContent("Less 12 in another person's dispatches not sent yet");
+    await render(<OrderItemCard item={line} onQuantityChange={jest.fn()} onRemove={jest.fn()} />);
+    for (const control of ['less10', 'less1', 'more1', 'more10', 'remove'] as const) {
+      expect(screen.getByTestId(`order-line-${control}-${line.id}`)).toBeEnabled();
+    }
     expect(screen.queryByTestId(`order-line-less-unsent-${line.id}`, hidden)).not.toBeOnTheScreen();
     expect(screen.queryByTestId(`order-line-less-held-${line.id}`, hidden)).not.toBeOnTheScreen();
-  });
-
-  it('O5: this phone\'s own unsent dispatch does not show the other person\'s footnote', async () => {
-    mockOverlay.lessUnsent['lot-1'] = 3;
-    await draw();
-    expect(screen.getByTestId(`order-line-less-unsent-${line.id}`)).toBeOnTheScreen();
     expect(screen.queryByTestId(`order-line-less-others-${line.id}`, hidden)).not.toBeOnTheScreen();
   });
 });

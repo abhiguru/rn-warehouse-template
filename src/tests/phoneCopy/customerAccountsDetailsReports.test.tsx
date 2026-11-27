@@ -1,10 +1,10 @@
 /**
- * WH-306 (commits b877979d, cd10e951), as a customer account over its own copy (feed format 7):
- *  - `CustomerAgeStrip` under the header of the GRN and dispatch details pages and of the report layout (`ReportScaffold`);
- *    absent on Statement and Customer activity (money screens keep their own age, Design 9.7 DQ2) and on the Temperature
- *    report (a server-only report).
- *  - Offline: a report's "Change customer" stays enabled (a local switch) while its "Share PDF" is disabled and says it
- *    needs a connection; the Temperature report's "Share PDF" is disabled and says so.
+ * WH-306 + WH-381 (commits b877979d, cd10e951; Design Part 13.1 A & C; settled Q1):
+ *  - `CustomerAgeStrip` under the header of GRN details and kept stock reports (`ReportScaffold`);
+ *    absent on Statement and Customer activity (customer accounts keep their own age, Design 9.7 DQ2/DQ4),
+ *    on Temperature report (server-only), and on Dispatch details (WH-381: server-only, shows `dispatch-details-needs-connection`).
+ *  - Offline: Stock summary's "Change customer" stays enabled while "Share PDF" is disabled and says it needs a connection;
+ *    Temperature report's "Share PDF" is disabled and says so; warehouse roles on Customer activity see `customer-activity-needs-connection` (Q1).
  *
  * Real: the screens, the report layout and header, the services, the sync engine, the copy, the store, role access.
  * Faked at the edge: the server's answers, the phone's native modules and files, the connection, the navigator.
@@ -144,7 +144,7 @@ beforeAll(() => { restoreQueries = makeQueryUpdatesImmediate(); });
 afterAll(() => restoreQueries());
 
 /** Who is signed in, the feed the server sends that role, and the server's answers to anything but the feed. */
-async function boot(role: 'customer' | 'staff') {
+async function boot(role: 'customer' | 'staff' | 'admin') {
   if (role === 'customer') seedCustomerAccount(OWN.map(c => c.id));
   else { seedWarehouse(); seedDocuments(); }
   const feedRpc = env.feed.rpc;
@@ -197,34 +197,41 @@ async function pickCustomer(name: string) {
   await userEvent.press(await screen.findByText(name));
 }
 
-describe('CustomerAgeStrip on the details pages (b877979d)', () => {
-  it.each([
-    ['GRN', GRNDetailScreen, 'g-A2'],
-    ['dispatch', DispatchDetailScreen, 'd-D2'],
-  ] as const)('%s details, a customer account offline: the strip is under the header, with the time of the copy', async (_name, Screen, id) => {
+describe('CustomerAgeStrip on the details pages (WH-306 + WH-381)', () => {
+  it('GRN details, a customer account offline: the strip is under the header, with the time of the copy', async () => {
     await boot('customer');
     await connection(true);
-    mockParams = { id };
-    await render(<Screen />);
+    mockParams = { id: 'g-A2' };
+    await render(<GRNDetailScreen />);
     await screen.findByRole('tab', { name: /overview/i });
     expect(screen.getByTestId('customer-age-strip')).toBeOnTheScreen();
     expect(screen.getByTestId('customer-age-time')).toBeOnTheScreen();
   });
 
-  it.each([
-    ['GRN', GRNDetailScreen, 'g-A2'],
-    ['dispatch', DispatchDetailScreen, 'd-D2'],
-  ] as const)('%s details, staff offline: no strip', async (_name, Screen, id) => {
+  it('GRN details, staff offline: no strip', async () => {
     await boot('staff');
     await connection(true);
-    mockParams = { id };
-    await render(<Screen />);
+    mockParams = { id: 'g-A2' };
+    await render(<GRNDetailScreen />);
     await screen.findByRole('tab', { name: /overview/i });
     expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();
   });
+
+  it.each(['customer', 'staff'] as const)('dispatch details (%s) offline: whole-screen ScreenNeedsConnection and NO CustomerAgeStrip (WH-381)', async (role) => {
+    await boot(role);
+    await connection(true);
+    mockParams = { id: 'd-D2' };
+    await render(<DispatchDetailScreen />);
+    expect(await screen.findByTestId('dispatch-details-needs-connection')).toHaveTextContent(
+      'This needs a connection. It will load when you reconnect.'
+    );
+    expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('tab', { name: /overview/i })).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
+  });
 });
 
-describe('reports for a customer account with two customers, offline (b877979d, cd10e951)', () => {
+describe('reports for a customer account with two customers, offline (WH-306 + WH-381)', () => {
   it('Stock summary (the report layout): the strip; "Change customer" enabled; "Share PDF" disabled and says it needs a connection', async () => {
     await boot('customer');
     await connection(true);
@@ -269,5 +276,16 @@ describe('reports for a customer account with two customers, offline (b877979d, 
     expect(screen.getByLabelText('Share PDF, needs a connection')).toBeOnTheScreen();
     expect(screen.getByTestId('temperature-report-share-pdf-needs-connection')).toHaveTextContent('Needs a connection');
     expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();
+  });
+
+  it.each(['staff', 'admin'] as const)('Customer activity (%s, warehouse role) offline: whole-screen customer-activity-needs-connection (WH-381 Q1)', async (role) => {
+    await boot(role);
+    await connection(true);
+    await render(<CustomerActivityScreen />);
+    expect(await screen.findByTestId('customer-activity-needs-connection')).toHaveTextContent(
+      'This needs a connection. It will load when you reconnect.'
+    );
+    expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
   });
 });
