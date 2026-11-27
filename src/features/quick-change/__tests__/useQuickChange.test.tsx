@@ -190,7 +190,7 @@ describe('S4: Save with the server reachable', () => {
   it('with no answer in 8 seconds it closes on "Saved on this phone" and the item stays queued', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
     try {
-      let answerWith: (value: unknown) => void = () => undefined;
+      let answerWith: (value: { data: unknown; error: unknown }) => void = () => undefined;
       server.answers[RPC] = () => new Promise(resolve => { answerWith = resolve; });
       await openSheet();
       await userEvent.setup({ advanceTimers: jest.advanceTimersByTime }).clear(screen.getByTestId('quick-change-mark'));
@@ -248,7 +248,7 @@ describe('S4b: a refusal', () => {
   it('refused after the sheet closed: the item stays, refused, and still counts', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
     try {
-      let answerWith: (value: unknown) => void = () => undefined;
+      let answerWith: (value: { data: unknown; error: unknown }) => void = () => undefined;
       server.answers[RPC] = () => new Promise(resolve => { answerWith = resolve; });
       await openSheet();
       const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
@@ -312,7 +312,7 @@ describe('S5 to S7', () => {
   });
 
   it('S7: a double tap on Save while it is being saved makes one item and one call', async () => {
-    let answerWith: (value: unknown) => void = () => undefined;
+    let answerWith: (value: { data: unknown; error: unknown }) => void = () => undefined;
     server.answers[RPC] = () => new Promise(resolve => { answerWith = resolve; });
     await openSheet();
     await userEvent.clear(screen.getByTestId('quick-change-mark'));
