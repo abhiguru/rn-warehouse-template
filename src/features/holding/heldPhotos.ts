@@ -8,6 +8,7 @@
  */
 import { File } from 'expo-file-system';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { subscribeSyncRunEnd } from '@/features/phone-copy/syncEngine';
 import { classify } from '@/features/unsent/sendEngine';
 import { markPhoto, photosOf, updateItem, type ItemRow, type PhotoRow } from '@/features/unsent/unsentRows';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -94,7 +95,30 @@ export interface HeldPhotosResult {
   finished: Set<string>;
 }
 
-const blockedLogged = new Set<string>();
+/**
+ * HELD_PHOTO_NOT_YOURS is retried only until one full sync run has finished after the first such refusal (Product PQ11): the answer
+ * can be true for a moment while the sign-in or role is re-read. `syncRuns` counts the runs that ended; `blockedAt` holds the count at
+ * the first refusal of each photo. The record lives while the app runs; a restart starts the wait again, which is still bounded.
+ */
+let syncRuns = 0;
+const blockedAt = new Map<string, number>();
+subscribeSyncRunEnd(() => {
+  syncRuns += 1;
+});
+
+/** True once a sync run has ended since this photo was first refused as not the person's. Records the first refusal. */
+function blockedForGood(heldId: string, photo: PhotoRow): boolean {
+  const key = `${heldId}/${photo.client_photo_id}`;
+  const first = blockedAt.get(key);
+  if (first === undefined) {
+    blockedAt.set(key, syncRuns);
+    return false;
+  }
+  if (syncRuns <= first) return false;
+  blockedAt.delete(key);
+  logger.warn('A held photo is still refused as not this person\'s after a full sync run; it is marked missing: HELD_PHOTO_NOT_YOURS', { heldId });
+  return true;
+}
 
 /**
  * Sends the files of the `photos` rows that have a held id and are not held yet, then turns each row whose files are all done or
@@ -109,7 +133,8 @@ export async function sendHeldPhotos(rows: readonly ItemRow[], markHeld = true):
       let decided = false;
       for (const photo of await photosOf(row.id)) {
         if (photo.done === 1 || photo.missing === 1) continue;
-        const end = await sendOne(row.held_id, photo);
+        let end = await sendOne(row.held_id, photo);
+        if (end === 'blocked' && blockedForGood(row.held_id, photo)) end = 'missing';
         if (end === 'done') await markPhoto(row.id, photo.client_photo_id, { done: 1 });
         else if (end === 'missing') await markPhoto(row.id, photo.client_photo_id, { missing: 1 });
         else if (end === 'decided') {
@@ -117,13 +142,11 @@ export async function sendHeldPhotos(rows: readonly ItemRow[], markHeld = true):
           break;
         } else {
           settled = false;
-          if (end === 'stop') result.stop = true;
-          else if (end === 'transient') result.transient = true;
-          else if (!blockedLogged.has(row.held_id)) {
-            blockedLogged.add(row.held_id);
-            logger.warn('A held photo is not this person\'s to send: HELD_PHOTO_NOT_YOURS');
+          if (end === 'transient') result.transient = true;
+          if (end === 'stop') {
+            result.stop = true;
+            break;
           }
-          if (end === 'stop') break;
         }
       }
       if (decided || settled) {
