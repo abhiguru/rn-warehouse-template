@@ -3,7 +3,7 @@ import { DEFAULT_RACK_PRESETS } from '@/features/grn/rackPresets';
 
 const mockRpc = jest.fn();
 jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: async () => ({ rpc: mockRpc }) }));
-jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1, onSessionChange: () => () => undefined, onCredentialsSettled: () => () => undefined }));
+jest.mock('@/config/sessionLifecycle', () => ({ ...jest.requireActual('@/config/sessionLifecycle'), getSessionGeneration: () => 1 }));
 jest.mock('@/utils/serviceErrorHandler', () => ({ handleGlobalAuthError: jest.fn() }));
 
 const answer = (over: Record<string, unknown> = {}) => ({
