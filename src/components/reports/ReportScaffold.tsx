@@ -113,6 +113,17 @@ interface ReportScaffoldBaseProps<T> {
    * shown, with no "Try again", while the phone is offline over a copy of format 3 (WH-348, Design 2.5).
    */
   needsConnectionId?: string;
+  /**
+   * Kept answers (WH-305): nothing was ever kept for this screen and the phone is offline. The centred "not on this phone yet"
+   * state under the header, with no "Try again" (Design offline-capture.md 8.2).
+   */
+  notHere?: { testID: string; title: string; text: string };
+  /**
+   * Kept Customer activity offline (WH-305, Design 8.7): the period chip shows the kept answer's own dates and is disabled.
+   */
+  periodChip?: { label: string; accessibilityLabel: string };
+  /** Kept answers (WH-305): how old the figures are, the first thing under the header (Design offline-capture.md 8.1). */
+  ageLine?: React.ReactNode;
 }
 
 /** The search, filters, sort and period, and what the rows are for "No GRNs match ...": the noun is needed only with filters. */
@@ -182,6 +193,9 @@ function ReportScaffoldInner<T>({
   empty,
   errorTitle,
   needsConnectionId,
+  notHere,
+  periodChip,
+  ageLine,
 }: ReportScaffoldProps<T>) {
   const t = useTokens();
   const phoneNeedsConnection = useNeedsConnectionV3();
@@ -224,7 +238,7 @@ function ReportScaffoldInner<T>({
           loading={searchIsServerSide && isFetching}
         />
       ) : null}
-      {filters ? <FilterBar config={filters.config} filters={filters.state} /> : null}
+      {filters ? <FilterBar config={filters.config} filters={filters.state} periodChip={periodChip} /> : null}
     </>
   );
 
@@ -241,6 +255,15 @@ function ReportScaffoldInner<T>({
     ),
     [isRefreshing, refresh, t]
   );
+
+  if (notHere) {
+    return (
+      <View style={styles.container}>
+        {head}
+        <ListEmptyState activeFilterCount={0} emptyIcon="cloud-off-outline" emptyTitle={notHere.title} emptySubtitle={notHere.text} testID={notHere.testID} />
+      </View>
+    );
+  }
 
   if (needsConnectionId && phoneNeedsConnection && (phase === 'loading' || phase === 'error')) {
     return (
@@ -294,6 +317,7 @@ function ReportScaffoldInner<T>({
 
   const listHeader = (
     <>
+      {ageLine}
       {error ? (
         // The rows below were read earlier: say so, and why, where the person is looking.
         <View style={styles.stale} accessibilityRole="alert" accessibilityLiveRegion="polite">

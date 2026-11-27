@@ -25,6 +25,7 @@ import { validation } from './validation';
 import { components } from './components';
 import { findGoods } from './findGoods';
 import { offline } from './offline';
+import { money } from './money';
 
 /** Every English text of the app, by area. */
 export const en = {
@@ -55,4 +56,5 @@ export const en = {
   components,
   findGoods,
   offline,
+  money,
 };

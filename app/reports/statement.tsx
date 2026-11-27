@@ -11,7 +11,7 @@
  * the screen opens and on pull-down; nothing is kept from an earlier visit (useLiveReport). Share PDF makes the English PDF
  * of the same read on the server (generate-statement-pdf).
  */
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -28,7 +28,11 @@ import { Button } from '@/components/ui/Button';
 import { PaymentStatusTag } from '@/features/payments/PaymentStatusTag';
 import { DuesFigures, rupees } from '@/features/reports/DuesFigures';
 import { exportHeaderActions } from '@/features/reports/reportActions';
-import { useLiveReport } from '@/features/reports/useLiveReport';
+import { MoneyAgeLine } from '@/features/phone-copy/money/MoneyAgeLine';
+import { fetchStatement } from '@/features/phone-copy/money/moneyFetch';
+import { useMoneyOn } from '@/features/phone-copy/money/moneyGate';
+import { useMoneyReport, type MoneyReport } from '@/features/phone-copy/money/useMoneyReport';
+import { useLiveReport, type LiveReport } from '@/features/reports/useLiveReport';
 import { useReportScope } from '@/features/reports/useReportScope';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -36,6 +40,7 @@ import { t as tr, formatIdentifier, type TranslationKey } from '@/i18n';
 import { generateStatementPDF } from '@/services/pdf-service';
 import {
   getCustomerStatement,
+  mapKeptStatement,
   type CustomerStatement,
   type StatementInvoice,
   type StatementLeftRow,
@@ -115,6 +120,9 @@ function statementRows(data: CustomerStatement): StatementRow[] {
   return rows;
 }
 
+/** The text when there is one, else the fallback (an empty string is none). */
+const textOr = (value: string | undefined, fallback: string): string => (value !== undefined && value !== '' ? value : fallback);
+
 const units = (count: number) => tr('reports.shared.unitsValue', { count, value: formatNumber(count) });
 const grnTitle = (grNo: string) => tr('reports.shared.grnNumber', { number: formatIdentifier(grNo) });
 const openGrn = (grnId: string) => {
@@ -135,7 +143,7 @@ export default function StatementScreen() {
       return <ReportCustomerPicker title={tr('reports.titles.statement')} onPick={scope.chooseCustomer} />;
     case 'customers':
       // An administrator or supervisor picks the customer on Customer dues.
-      return manager ? <Redirect href={'/reports/customer-dues' as never} /> : <ReportNoCustomer title={tr('reports.titles.statement')} />;
+      return manager ? <Redirect href={'/reports/customer-dues'} /> : <ReportNoCustomer title={tr('reports.titles.statement')} />;
     case 'customer':
       return (
         <CustomerStatementView
@@ -157,33 +165,61 @@ interface CustomerStatementViewProps {
   onChangeCustomer?: () => void;
 }
 
-function CustomerStatementView({ customerId, customerName, canOpenLeft, onChangeCustomer }: CustomerStatementViewProps) {
+/** Kept answers (WH-305) for an administrator or supervisor when the feature is on; today's live read otherwise. */
+function CustomerStatementView(props: CustomerStatementViewProps) {
+  return useMoneyOn() ? <KeptStatement {...props} /> : <LiveStatement {...props} />;
+}
+
+function LiveStatement(props: CustomerStatementViewProps) {
+  const { customerId } = props;
   const fetch = useCallback(() => getCustomerStatement(customerId), [customerId]);
   const query = useLiveReport(`statement:${customerId}`, fetch, tr('reports.statement.loadError'));
+  return <StatementBody {...props} query={query} />;
+}
+
+function KeptStatement(props: CustomerStatementViewProps) {
+  const { customerId } = props;
+  const fetch = useCallback(() => fetchStatement(customerId), [customerId]);
+  const query = useMoneyReport<CustomerStatement>({
+    kind: 'statement',
+    id: customerId,
+    fetch,
+    map: mapKeptStatement,
+    answerHasStock: data => data.in_store.length > 0,
+    stockOf: customerId,
+    fallbackError: tr('reports.statement.loadError'),
+  });
+  return <StatementBody {...props} query={query} kept={query} />;
+}
+
+interface StatementBodyProps extends CustomerStatementViewProps {
+  query: LiveReport<CustomerStatement> | MoneyReport<CustomerStatement>;
+  /** Set when the answer is a kept one: the age line, and "not on this phone yet". */
+  kept?: MoneyReport<CustomerStatement>;
+}
+
+function StatementBody({ customerId, customerName, canOpenLeft, onChangeCustomer, query, kept }: StatementBodyProps) {
   const { data } = query;
-  const name = data?.customer.name || customerName;
+  const name = textOr(data?.customer.name, customerName);
   const rows = useMemo(() => (data ? statementRows(data) : []), [data]);
 
   // Share PDF: the server makes it from its own read; a second tap while it is being made is ignored.
   const [sharing, setSharing] = useState(false);
-  const sharingRef = useRef(false);
   const sharePdf = useCallback(async () => {
-    if (sharingRef.current) return;
-    sharingRef.current = true;
+    if (sharing) return;
     setSharing(true);
     try {
       const made = await generateStatementPDF(customerId);
       if (!made.success || !made.pdfUrl) {
-        showAlert(tr('reports.export.failedTitle'), made.error || tr('errors.pdf.generateFailed'));
+        showAlert(tr('reports.export.failedTitle'), textOr(made.error, tr('errors.pdf.generateFailed')));
         return;
       }
       const shared = await downloadAndSharePDF(made.pdfUrl, `Statement ${nameFileNamePart(name)}`.trim() + '.pdf');
-      if (!shared.success) showAlert(tr('reports.export.shareFailedTitle'), shared.error || tr('errors.pdf.shareFailed'));
+      if (!shared.success) showAlert(tr('reports.export.shareFailedTitle'), textOr(shared.error, tr('errors.pdf.shareFailed')));
     } finally {
-      sharingRef.current = false;
       setSharing(false);
     }
-  }, [customerId, name]);
+  }, [customerId, name, sharing]);
 
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
@@ -240,8 +276,20 @@ function CustomerStatementView({ customerId, customerName, canOpenLeft, onChange
       extraData={extraData}
       empty={{ icon: 'file-account-outline', title: tr('reports.statement.statementEmpty') }}
       errorTitle={tr('reports.statement.errorTitle')}
+      reportId={REPORT_ID}
+      ageLine={kept?.age ? <MoneyAgeLine {...kept.age} refreshFailed={kept.refreshFailed} onRetry={kept.retry} /> : undefined}
+      notHere={kept?.notHere ? { testID: 'statement-not-here', title: tr('money.statementNotHereTitle'), text: tr('money.statementNotHereText') } : undefined}
     >
-      {data ? <DuesFigures figures={data.figures} basis={data.invoices_basis} asOf={data.as_of} lotsWithoutRate={data.lots_without_rate} unlinkedPaid={data.unlinked_paid_amount} /> : null}
+      {data ? (
+        <DuesFigures
+          figures={data.figures}
+          basis={data.invoices_basis}
+          asOf={data.as_of}
+          lotsWithoutRate={data.lots_without_rate}
+          unlinkedPaid={data.unlinked_paid_amount}
+          showAsOf={!kept}
+        />
+      ) : null}
     </ReportScaffold>
   );
 }

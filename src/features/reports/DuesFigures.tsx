@@ -49,9 +49,11 @@ interface DuesFiguresProps {
   lotsWithoutRate: number;
   /** Payments that name no invoice: one line under the figures when above 0, added to nothing. */
   unlinkedPaid?: number | null;
+  /** False when the age line above says when the figures were worked out (WH-305, Design 8.6 DQ2): one time on the screen. */
+  showAsOf?: boolean;
 }
 
-export function DuesFigures({ figures, basis, asOf, lotsWithoutRate, unlinkedPaid }: DuesFiguresProps) {
+export function DuesFigures({ figures, basis, asOf, lotsWithoutRate, unlinkedPaid, showAsOf = true }: DuesFiguresProps) {
   const styles = useThemedStyles(makeStyles);
   const lines: [string, number][] = [
     [invoicesLabel(basis), figures.invoices_amount],
@@ -60,12 +62,14 @@ export function DuesFigures({ figures, basis, asOf, lotsWithoutRate, unlinkedPai
   ];
   return (
     <View style={styles.card}>
-      <Text
-        style={styles.asOf}
-        accessibilityLabel={tr('reports.statement.asOf', { dateTime: formatSpokenDateTime(asOf) })}
-      >
-        {tr('reports.statement.asOf', { dateTime: formatDateTime(asOf) })}
-      </Text>
+      {showAsOf ? (
+        <Text
+          style={styles.asOf}
+          accessibilityLabel={tr('reports.statement.asOf', { dateTime: formatSpokenDateTime(asOf) })}
+        >
+          {tr('reports.statement.asOf', { dateTime: formatDateTime(asOf) })}
+        </Text>
+      ) : null}
       {lines.map(([label, amount]) => (
         <View key={label} style={styles.figure} accessible accessibilityLabel={tr('reports.shared.labelValue', { label, value: rupees(amount) })}>
           <Text style={styles.label}>{label}</Text>

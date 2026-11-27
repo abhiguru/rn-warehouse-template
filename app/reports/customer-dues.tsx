@@ -15,10 +15,14 @@ import { ReportScaffold } from '@/components/reports';
 import { StatusTag } from '@/components/ui';
 import { trustCustomerName } from '@/features/reports/customerNames';
 import { DuesFigures, invoicesLabel, rupees } from '@/features/reports/DuesFigures';
-import { useLiveReport } from '@/features/reports/useLiveReport';
+import { MoneyAgeLine } from '@/features/phone-copy/money/MoneyAgeLine';
+import { fetchDues } from '@/features/phone-copy/money/moneyFetch';
+import { useMoneyOn } from '@/features/phone-copy/money/moneyGate';
+import { useMoneyReport, type MoneyReport } from '@/features/phone-copy/money/useMoneyReport';
+import { useLiveReport, type LiveReport } from '@/features/reports/useLiveReport';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
-import { getCustomerDues, type CustomerDuesRow, type InvoicesBasis } from '@/services/reporting/statement-service';
+import { getCustomerDues, mapKeptDues, type CustomerDues, type CustomerDuesRow, type InvoicesBasis } from '@/services/reporting/statement-service';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -47,14 +51,44 @@ const makeStyles = (t: ThemeTokens) => ({
 
 const customerKey = (row: CustomerDuesRow) => row.customer_id;
 
+/** Kept answers (WH-305) when the feature is on for an administrator or supervisor; today's live read otherwise. */
 export default function CustomerDuesScreen() {
+  return useMoneyOn() ? <KeptCustomerDues /> : <LiveCustomerDues />;
+}
+
+function LiveCustomerDues() {
   const query = useLiveReport('customer-dues', getCustomerDues, tr('reports.dues.loadError'));
+  return <DuesView query={query} />;
+}
+
+const hasDuesStock = (data: CustomerDues): boolean => data.customers.some(row => row.not_invoiced_in_store > 0);
+
+function KeptCustomerDues() {
+  const query = useMoneyReport<CustomerDues>({
+    kind: 'dues',
+    id: '',
+    fetch: fetchDues,
+    map: mapKeptDues,
+    answerHasStock: hasDuesStock,
+    stockOf: null,
+    fallbackError: tr('reports.dues.loadError'),
+  });
+  return <DuesView query={query} kept={query} />;
+}
+
+interface DuesViewProps {
+  query: LiveReport<CustomerDues> | MoneyReport<CustomerDues>;
+  /** Set when the answer is a kept one: the age line, and "not on this phone yet". */
+  kept?: MoneyReport<CustomerDues>;
+}
+
+function DuesView({ query, kept }: DuesViewProps) {
   const { data } = query;
   const router = useRouter();
   const openStatement = useCallback(
     (row: CustomerDuesRow) => {
       trustCustomerName(row.customer_id, row.name);
-      router.push({ pathname: '/reports/statement', params: { customerId: row.customer_id, customerName: row.name } } as never);
+      router.push({ pathname: '/reports/statement', params: { customerId: row.customer_id, customerName: row.name } });
     },
     [router]
   );
@@ -73,8 +107,12 @@ export default function CustomerDuesScreen() {
       extraData={basis}
       empty={{ icon: 'cash-check', title: tr('reports.dues.duesEmpty') }}
       errorTitle={tr('reports.dues.errorTitle')}
+      ageLine={kept?.age ? <MoneyAgeLine {...kept.age} refreshFailed={kept.refreshFailed} onRetry={kept.retry} /> : undefined}
+      notHere={kept?.notHere ? { testID: 'dues-not-here', title: tr('money.duesNotHereTitle'), text: tr('money.statementNotHereText') } : undefined}
     >
-      {data ? <DuesFigures figures={data.totals} basis={data.invoices_basis} asOf={data.as_of} lotsWithoutRate={data.lots_without_rate} /> : null}
+      {data ? (
+        <DuesFigures figures={data.totals} basis={data.invoices_basis} asOf={data.as_of} lotsWithoutRate={data.lots_without_rate} showAsOf={!kept} />
+      ) : null}
     </ReportScaffold>
   );
 }
