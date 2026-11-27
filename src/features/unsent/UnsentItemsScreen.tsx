@@ -93,6 +93,11 @@ export function UnsentItemsScreen() {
       else router.push(`/grn-edit/${row.form.grnId ?? ''}/step1`);
       return;
     }
+    // A held or rejected item: its page, read-only for the person who recorded it (Design 7.4).
+    if (row.heldId !== undefined && row.tag !== 'accepted') {
+      router.push({ pathname: '/held-item/[id]', params: { id: row.heldId, own: '1' } });
+      return;
+    }
     if (row.target.grnId !== undefined) router.push(`/grn-details/${row.target.grnId}`);
     else if (row.target.dispatchId !== undefined) router.push(`/dispatch-details/${row.target.dispatchId}`);
   }, []);
@@ -116,7 +121,11 @@ export function UnsentItemsScreen() {
     }
     const answer = await askAlert(
       tr('offline.delete.title'),
-      tr('offline.delete.message', { what: row.title, customer: row.customer ?? '', time: formatLoadedAt(row.recordedAt) }),
+      // An item the server refused and that could not be passed to a supervisor says so, so it can be noted down first (Design 7.11).
+      [
+        tr('offline.delete.message', { what: row.title, customer: row.customer ?? '', time: formatLoadedAt(row.recordedAt) }),
+        ...(row.tag === 'notPassedOn' && row.notPassedOnReason !== undefined ? [tr('offline.delete.notPassedOn', { reason: row.notPassedOnReason })] : []),
+      ].join(' '),
       [
         { text: tr('offline.delete.keep'), style: 'cancel', value: 'keep' as const },
         { text: tr('offline.delete.confirm'), style: 'destructive', value: 'delete' as const },

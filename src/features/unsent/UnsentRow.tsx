@@ -8,7 +8,7 @@ import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { formatIdentifier, t as tr } from '@/i18n';
+import { formatIdentifier, t as tr, type TranslationKey } from '@/i18n';
 import { fontWeight, iconSize, layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatLoadedAt } from '@/utils/formatters';
@@ -50,14 +50,20 @@ const TAG_STATUS: Record<TagName, StatusKind> = {
   sent: 'positive',
   waiting: 'neutral',
   held: 'critical',
+  notPassedOn: 'critical',
+  rejected: 'neutral',
+  accepted: 'positive',
 };
 
-const TAG_TEXT: Record<TagName,'stateSaved' | 'stateSending' | 'stateSent' | 'stateWaiting' | 'stateHeld'> = {
-  saved: 'stateSaved',
-  sending: 'stateSending',
-  sent: 'stateSent',
-  waiting: 'stateWaiting',
-  held: 'stateHeld',
+const TAG_TEXT: Record<TagName, TranslationKey> = {
+  saved: 'offline.unsent.stateSaved',
+  sending: 'offline.unsent.stateSending',
+  sent: 'offline.unsent.stateSent',
+  waiting: 'offline.unsent.stateWaiting',
+  held: 'offline.unsent.stateHeld',
+  notPassedOn: 'offline.holding.notPassedOn',
+  rejected: 'offline.holding.tags.rejected',
+  accepted: 'offline.holding.accepted',
 };
 
 export interface UnsentRowProps {
@@ -71,11 +77,16 @@ export const UnsentRow = memo(function UnsentRow({ row, divider, onOpen, onDelet
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
   const swipeable = useRef<SwipeableMethods>(null);
-  const opens = row.form !== null || row.target.grnId !== undefined || row.target.dispatchId !== undefined;
+  const opens = row.form !== null || row.target.grnId !== undefined || row.target.dispatchId !== undefined || (row.heldId !== undefined && row.tag !== 'accepted');
   const deletable = row.section === 'unsent' || row.section === 'unfinished';
-  const tagText = row.tag === null ? null : tr(`offline.unsent.${TAG_TEXT[row.tag]}`);
-  // "Sent · GRN 312": the number is an identifier, so it keeps 0-9.
-  const tagLabel = tagText !== null && row.sentNumber !== null ? `${tagText} · ${formatIdentifier(row.sentNumber)}` : tagText;
+  const tagText = row.tag === null ? null : tr(TAG_TEXT[row.tag]);
+  // "Sent · GRN 312": the number is an identifier, so it keeps 0-9. An accepted held item names its document: "Accepted · GRN 311".
+  const tagLabel =
+    row.tag === 'accepted' && row.sentNumber !== null
+      ? tr(row.sentDoc === 'dispatch' ? 'offline.holding.acceptedDispatch' : 'offline.holding.acceptedGrn', { number: formatIdentifier(row.sentNumber) })
+      : tagText !== null && row.sentNumber !== null
+        ? `${tagText} · ${formatIdentifier(row.sentNumber)}`
+        : tagText;
   // A form says when it was started; a record, when it was recorded.
   const recorded = row.form === null ? tr('offline.unsent.recordedAt', { time: formatLoadedAt(row.recordedAt) }) : tr('offline.unsent.startedAt', { time: formatLoadedAt(row.recordedAt) });
   const orderNotesText = formatOrderNotes(row.orderNotes);

@@ -7,8 +7,12 @@ import { useEffect, useState } from 'react';
 import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr } from '@/i18n';
 import { orderEffectLines, parseOrderEffects } from '@/services/orderEffects';
+import { describeReason, reasonOf } from '@/features/holding/heldReason';
+import { heldWhatText } from '@/features/holding/heldWhat';
+import { ownHeldCopyRows, type HeldCopyRow } from '@/features/holding/heldRows';
 import { listOwnForms, type FormKind } from './formDrafts';
 import { refusalCodeOf, refusalFamilyOf } from './refusalTags';
+import { answerFiguresOf } from './refusalAnswer';
 import { DEPENDS_ON_REFUSED } from './sendEngine';
 import { listItems, otherPeople, photosOfItem, type UnsentRowView } from './unsentQueue';
 import { getLastSentAt, type ItemState } from './unsentRows';
@@ -29,11 +33,17 @@ export interface UnsentListRow {
   /** A photo file of this item is gone from the phone (the record was sent without it). */
   photoMissing: boolean;
   /** The tag shown at the right; an unfinished form has none. */
-  tag: 'saved' | 'sending' | 'sent' | 'waiting' | 'held' | null;
+  tag: 'saved' | 'sending' | 'sent' | 'waiting' | 'held' | 'notPassedOn' | 'rejected' | 'accepted' | null;
   /** Set for an unfinished form (the row of "Not finished"): which form it is. */
   form: { kind: FormKind; grnId: string | null } | null;
   /** Under "Held": why it was not sent (the footnote); null when nothing is known. */
   reason: string | null;
+  /** The document an accepted held item became ("Accepted · GRN 311"): which kind of document `sentNumber` is the number of. */
+  sentDoc?: 'grn' | 'dispatch';
+  /** Set on a row that comes from the copy (the server holds the item): the id its page opens by. */
+  heldId?: string;
+  /** A refused item that could not be handed over: the reason's tag, for the Delete confirmation (Design 7.11). */
+  notPassedOnReason?: string;
   /** Under "Sent today" for a dispatch whose send changed open orders (WH-161, PQ5). */
   orderNotes?: string[];
   /** The record a tap opens, when it exists. */
@@ -99,6 +109,8 @@ async function titleOf(row: UnsentRowView): Promise<{ title: string; photoMissin
 /** The tag of a row: a record waiting for the GRN it depends on reads "Waiting for its GRN". */
 function tagOf(state: ItemState): UnsentListRow['tag'] {
   switch (state) {
+    case 'held':
+      return 'held';
     case 'sending':
       return 'sending';
     case 'sent':
@@ -117,11 +129,34 @@ function tagOf(state: ItemState): UnsentListRow['tag'] {
  * (Design 4.6). A refused item never shows the server's raw text: a code with a row in 7.5 shows its tag ("Refused: Stock
  * short", Design 4.10 of 2026-11-27; the answer carries no figures for the full sentence), any other code `refusedGeneric`.
  */
-function heldReason(reason: string | null, result: unknown): string | null {
+function heldReason(reason: string | null, result: unknown, view: Pick<UnsentRowView, 'kind' | 'customer'>): string | null {
   if (reason === null) return null;
   if (reason === DEPENDS_ON_REFUSED) return tr('offline.unsent.dependsOnRefused');
   const family = refusalFamilyOf(refusalCodeOf(result));
-  return family ? tr('offline.unsent.refusedTag', { tag: tr(`offline.unsent.refusedTags.${family}`) }) : tr('offline.unsent.refusedGeneric');
+  if (!family) return tr('offline.unsent.refusedGeneric');
+  const tag = tr('offline.unsent.refusedTag', { tag: tr(`offline.unsent.refusedTags.${family}`) });
+  // A reason with a row in Design 7.5 tells its sentence from the server's own figures (its answer is kept with the item); any
+  // other reason, or a sentence whose figures are missing, tells the tag.
+  if (reasonOf(family) !== family) return tag;
+  const answer = typeof result === 'object' && result !== null ? (result as { answer?: unknown }).answer : undefined;
+  return describeReason(family, { kind: view.kind, what: null, customer: view.customer, data: answerFiguresOf(answer), followsWhat: null }).sentence ?? tag;
+}
+
+/** The short tag of the reason of a refused item (Design 7.5, 7.9): "Stock short", or "Refused" for a code with no row. */
+function reasonTagOf(result: unknown): string {
+  const family = refusalFamilyOf(refusalCodeOf(result));
+  return family ? tr(`offline.unsent.refusedTags.${family}`) : tr('offline.holding.tags.other');
+}
+
+/**
+ * The tag and footnote of a refused row whose hand-over to the server is still to come (Design 7.9 DQ8, 7.11): "Sending…"
+ * with the hand-over line while the first attempt is under way, "Not passed on" with its own line once an attempt failed;
+ * what follows the refused item says so in its own words then (4.6).
+ */
+function handingOver(view: UnsentRowView): { tag: 'sending' | 'notPassedOn'; reason: string } {
+  if (!view.handoverFailed) return { tag: 'sending', reason: tr('offline.holding.handingOver') };
+  const dependant = view.reason === DEPENDS_ON_REFUSED;
+  return { tag: 'notPassedOn', reason: dependant ? tr('offline.unsent.dependsOnRefused') : tr('offline.holding.notPassedOnText', { reason: reasonTagOf(view.result) }) };
 }
 
 export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>> {
@@ -129,6 +164,7 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
   const rows: UnsentListRow[] = [];
   for (const view of views) {
     const { title, photoMissing } = await titleOf(view);
+    const passing = view.section === 'unsent' && view.state === 'refused' ? handingOver(view) : null;
     rows.push({
       id: view.id,
       state: view.state,
@@ -138,9 +174,10 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
       recordedAt: view.recordedAt,
       sentNumber: view.section === 'sent' ? numberOf(view.result) : null,
       photoMissing,
-      tag: tagOf(view.state),
+      tag: passing ? passing.tag : tagOf(view.state),
       form: null,
-      reason: view.section === 'held' ? heldReason(view.reason, view.result) : null,
+      reason: passing ? passing.reason : view.section === 'held' ? heldReason(view.reason, view.result, view) : null,
+      ...(passing?.tag === 'notPassedOn' ? { notPassedOnReason: reasonTagOf(view.result) } : {}),
       orderNotes: view.section === 'sent' && view.kind === 'newDispatch' ? orderNotesOfResult(view.result) : [],
       target: view.section === 'sent' ? sentTargetOf(view.target, view.result) : view.target,
     });
@@ -148,18 +185,83 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
   // "Not sent yet" oldest first (the order they are sent); "Held": each refused item with what follows it directly under
   // it; "Sent today" newest first.
   const unsent = rows.filter(row => row.section === 'unsent');
-  const heldIds = new Set(views.filter(view => view.section === 'held').map(view => view.id));
-  const roots = views.filter(view => view.section === 'held' && !(view.dependsOn !== null && heldIds.has(view.dependsOn)));
+  // The rows of the copy the person recorded (held, rejected, accepted today), but not an item the file still has too.
+  const inFile = new Set(views.flatMap(view => (view.heldId === null ? [] : [view.heldId])));
+  const fromCopy = ownHeldCopyRows().filter(row => !inFile.has(row.id)).map(copyRow);
+  const idOfHeld = new Map(views.flatMap(view => (view.heldId === null ? [] : [[view.heldId, view.id] as const])));
+  const heldRows = [
+    ...views.filter(view => view.section === 'held').map(view => ({ id: view.id, parent: view.dependsOn })),
+    ...fromCopy.filter(entry => entry.row.section === 'held').map(entry => ({ id: entry.row.id, parent: entry.follows === null ? null : (idOfHeld.get(entry.follows) ?? entry.follows) })),
+  ];
+  const everyRow = [...rows, ...fromCopy.map(entry => entry.row)];
+  const heldIds = new Set(heldRows.map(entry => entry.id));
+  const roots = heldRows
+    .filter(entry => !(entry.parent !== null && heldIds.has(entry.parent)))
+    .sort((a, b) => (everyRow.find(row => row.id === a.id)?.recordedAt ?? 0) - (everyRow.find(row => row.id === b.id)?.recordedAt ?? 0));
   const held: UnsentListRow[] = [];
   const place = (id: string) => {
-    const row = rows.find(own => own.id === id);
+    const row = everyRow.find(own => own.id === id);
     if (row) held.push(row);
-    for (const view of views) if (view.section === 'held' && view.dependsOn === id) place(view.id);
+    for (const entry of heldRows) if (entry.parent === id) place(entry.id);
   };
   for (const root of roots) place(root.id);
-  const sent = rows.filter(row => row.section === 'sent').reverse();
+  const sent = [...rows.filter(row => row.section === 'sent'), ...fromCopy.filter(entry => entry.row.section === 'sent').map(entry => entry.row)].reverse();
   const unfinished = (await listOwnForms()).map(formRow);
   return { rows: [...unfinished, ...unsent, ...held, ...sent], lastSentAt: await getLastSentAt(), others: await otherPeople() };
+}
+
+/** The row of an item of the copy the person recorded (WH-304, Design 7.4): held, rejected, or accepted today. */
+function copyRow(held: HeldCopyRow): { row: UnsentListRow; follows: string | null } {
+  const raw = held.raw;
+  const text = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null);
+  const follows = text(raw.follows);
+  const recordedAt = Date.parse(text(raw.recorded_at) ?? '');
+  const base = {
+    id: held.id,
+    state: 'held' as const,
+    title: heldWhatText(raw.what),
+    customer: text(raw.customer_name),
+    recordedAt: Number.isNaN(recordedAt) ? 0 : recordedAt,
+    sentNumber: null,
+    photoMissing: false,
+    form: null,
+    heldId: held.id,
+  };
+  if (held.state === 'accepted') {
+    const result = typeof raw.result === 'object' && raw.result !== null ? (raw.result as Record<string, unknown>) : {};
+    const grn = text(result.grn_id);
+    const dispatch = text(result.dispatch_id);
+    const dispatchNumber = text(result.disp_no);
+    return {
+      follows,
+      row: {
+        ...base,
+        state: 'sent',
+        section: 'sent',
+        tag: 'accepted',
+        sentNumber: dispatchNumber ?? text(result.gr_no),
+        sentDoc: dispatchNumber === null ? 'grn' : 'dispatch',
+        reason: null,
+        target: { ...(grn === null ? {} : { grnId: grn }), ...(dispatch === null ? {} : { dispatchId: dispatch }) },
+      },
+    };
+  }
+  if (held.state === 'rejected') {
+    return { follows, row: { ...base, section: 'held', tag: 'rejected', reason: text(raw.reject_reason), target: {} } };
+  }
+  const reason = reasonOf(raw.reason);
+  const words = describeReason(reason, { kind: held.kind, what: raw.what, customer: text(raw.customer_name), data: raw.reason_data, followsWhat: null });
+  return {
+    follows,
+    row: {
+      ...base,
+      section: 'held',
+      tag: 'held',
+      // What follows a held item says so in its own words, never the held item's reason (Design 4.6).
+      reason: reason === 'followsHeld' ? tr('offline.unsent.dependsOnRefused') : (words.sentence ?? tr('offline.unsent.refusedTag', { tag: words.tag })),
+      target: {},
+    },
+  };
 }
 
 /** A row of "Not finished": the form's words, when it was started, no tag. */
