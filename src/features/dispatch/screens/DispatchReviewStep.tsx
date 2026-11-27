@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import * as Crypto from 'expo-crypto';
 import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
@@ -71,6 +72,8 @@ import { OfflineSavedDialog } from '@/features/unsent/OfflineSavedDialog';
 import { OrderChangesLater } from '@/features/unsent/UnsentMarkers';
 import { offlineNewOn } from '@/features/unsent/offlineNew';
 import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
+import { acceptWithChanges, heldIdOfRoute } from '@/features/holding/heldForm';
+import { correctedDispatchBody, loadHeldDispatch } from '@/features/holding/heldDispatch';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
@@ -92,6 +95,10 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     const t = useTokens();
 
     const { id } = useLocalSearchParams<{ id: string }>();
+    // WH-304: a held dispatch being corrected; its Save is the decision on the held item, nothing is saved or queued here.
+    const heldId = mode === 'edit' ? heldIdOfRoute(id) : null;
+    // One decision key for this visit: a double tap is one decision (Design 7.7).
+    const heldDecisionKey = useRef(Crypto.randomUUID());
 
     // Use the consolidated dispatch form hook
     const {
@@ -121,7 +128,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // An older server has no preview: null, and the question is asked as it always was.
     const effectsKey = JSON.stringify([header.customer_id, header.disp_date, header.source_order_id, items.map((item) => [item.grnItems_id, item.disp_quantity])]);
     const { effects: orderEffects, refresh: refreshOrderEffects } = useOrderEffectsPreview(
-        items.length > 0 && !!header.customer_id,
+        items.length > 0 && !!header.customer_id && heldId === null,
         effectsKey,
         () => (isCreateMode ? previewCreateDispatch(header, items) : previewUpdateDispatch(id!, header, items, getLoadedUpdatedAt?.()))
     );
@@ -301,8 +308,38 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     }, [isCheckingAnswer, showConfirmDialog]);
 
     // Handle form submission
+    const acceptHeld = async (held: string) => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        try {
+            const loadedHeld = await loadHeldDispatch(held);
+            if (loadedHeld.kind !== 'loaded') {
+                void triggerError();
+                showAlert(tr('dispatch.wizard.errorTitle'), tr('common.couldNotLoad'));
+                return;
+            }
+            const decided = await acceptWithChanges(loadedHeld.item, correctedDispatchBody(loadedHeld.held, { header, items }), heldDecisionKey.current);
+            if (decided.kind === 'accepted' || decided.kind === 'alreadyDecided') {
+                void triggerSuccess();
+                showToast(decided.toast);
+                resetFormState();
+                router.dismissTo('/holding-list');
+            } else {
+                void triggerError();
+                showAlert(tr('dispatch.wizard.errorTitle'), decided.kind === 'refused' ? decided.message : tr('common.somethingWentWrong'));
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handleSubmit = async () => {
         if (orderEmpty) return;
+        // "Accept with changes" is the decision itself: no 2-hour gate, no question first (Design 7.3, contract 5.2).
+        if (heldId !== null) {
+            void acceptHeld(heldId);
+            return;
+        }
         // The 2-hour rule: old unsent work stops a new save; the form stays as it is (WH-301, Design 4.3).
         if (refuseAtLimit({ formOpen: true })) return;
         // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
@@ -695,7 +732,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         await navigateToStep(stepNumber);
     };
 
-    const submitLabel = isCreateMode ? tr('dispatch.review.createDispatch') : tr('dispatch.review.saveChanges');
+    const submitLabel = heldId !== null ? tr('offline.holding.acceptCorrected') : isCreateMode ? tr('dispatch.review.createDispatch') : tr('dispatch.review.saveChanges');
     const submitBusyLabel = isReloading ? tr('dispatch.form.loading') : isCreateMode ? tr('dispatch.review.creating') : tr('dispatch.review.savingChanges');
 
     const imageDataForGrid = images.map((img) => ({

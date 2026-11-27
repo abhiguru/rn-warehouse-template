@@ -6,6 +6,7 @@
 import { useLayoutEffect } from 'react';
 import { usePathname } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
+import { heldIdOfRoute } from '@/features/holding/heldForm';
 import type { FormKind } from './formDrafts';
 import { useFormDraft } from './useFormDraft';
 
@@ -19,7 +20,8 @@ export function formOfPath(path: string): OpenForm | null {
   if (path === '/grn-form' || path.startsWith('/grn-form/')) return { kind: 'grn', grnId: null };
   if (path === '/dispatch-form' || path.startsWith('/dispatch-form/')) return { kind: 'dispatch', grnId: null };
   const edit = /^\/grn-edit\/([^/]+)/.exec(path);
-  return edit?.[1] ? { kind: 'grnEdit', grnId: decodeURIComponent(edit[1]) } : null;
+  // A held GRN being corrected (WH-304) is never kept as an unfinished form: its Save is the supervisor's decision.
+  return edit?.[1] && heldIdOfRoute(decodeURIComponent(edit[1])) === null ? { kind: 'grnEdit', grnId: decodeURIComponent(edit[1]) } : null;
 }
 
 // The route as it is now. Written in a layout effect, which runs before any cleanup of the screens the route leaves: a form

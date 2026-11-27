@@ -41,9 +41,11 @@ export interface QuickChangeSheetProps {
   onClearRefusal: () => void;
   onSave: (values: { rack?: string | null; package_mark?: string | null }) => void;
   onClose: () => void;
+  /** The save button's words when they are not "Save" (a held change reads "Accept with changes", WH-304). */
+  saveLabel?: string;
 }
 
-export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSave, onClose }: QuickChangeSheetProps) {
+export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSave, onClose, saveLabel }: QuickChangeSheetProps) {
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const [rack, setRack] = useState(formatIdentifier(target.shown.rack));
@@ -56,7 +58,7 @@ export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSa
   const changed = rackChanged || markChanged;
 
   const grn = tr('lists.grn.cardTitle', { number: formatIdentifier(target.grnNumber) });
-  const title = useMemo(() => `${target.itemName} · ${grn}`, [target.itemName, grn]);
+  const title = useMemo(() => (target.itemName === '' ? grn : `${target.itemName} · ${grn}`), [target.itemName, grn]);
 
   const handleClose = () => {
     if (saving) return;
@@ -109,7 +111,7 @@ export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSa
             accessibilityState={{ disabled: !changed || saving, busy: saving }}
             testID="quick-change-save"
           >
-            {tr('common.save')}
+            {saveLabel ?? tr('common.save')}
           </Button>
         </View>
       </View>

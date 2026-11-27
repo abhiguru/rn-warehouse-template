@@ -7,6 +7,8 @@ import { useAppDispatch } from '@/store/hooks';
 import { loadGRNData, resetForm } from '@/store/slices/grnFormSlice';
 import { loadGRNData as loadGRNDataService } from '@/features/grn/services/grnFormService';
 import { nextGrnFormSession } from '@/features/grn/utils/grnFormSession';
+import { heldIdOfRoute } from '@/features/holding/heldForm';
+import { loadHeldGrn } from '@/features/holding/heldGrn';
 import { loadUnsentGrnForEdit } from '@/features/unsent/editUnsentGrn';
 import { setFormNumberMode } from '@/features/unsent/formNumberMode';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
@@ -67,6 +69,22 @@ export default function GRNEditLayout() {
     dispatch(resetForm());
 
     try {
+      // WH-304: a held new GRN is corrected here, filled from the held item's body (read from the server).
+      const heldId = heldIdOfRoute(id);
+      if (heldId !== null) {
+        const held = await loadHeldGrn(heldId);
+        if (request !== loadRequest.current) return;
+        if (held.kind === 'loaded') {
+          setFormNumberMode('grn', held.data.numberMode);
+          dispatch(loadGRNData({ header: held.data.header, items: held.data.items, grnId: id }));
+          setPhase('ready');
+        } else {
+          setErrorMessage(tr('common.couldNotLoad'));
+          setPhase('error');
+        }
+        return;
+      }
+
       // WH-161 (§8): an unsent new GRN on this phone is edited from the queue with no server call.
       const unsent = await loadUnsentGrnForEdit(id);
       if (request !== loadRequest.current) return;

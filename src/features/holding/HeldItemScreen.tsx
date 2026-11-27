@@ -23,7 +23,7 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
 import { syncNow } from '@/features/phone-copy/syncEngine';
 import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
-import { LOT_FIELD_LABELS } from '@/features/unsent/lotChangeKind';
+import { isLotChangeBody, LOT_FIELD_LABELS } from '@/features/unsent/lotChangeKind';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { formatIdentifier, t as tr } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
@@ -32,6 +32,9 @@ import { layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatDate, formatLoadedAt, formatNumber } from '@/utils/formatters';
 import { showToast } from '@/utils/toast';
+import { QuickChangeSheet } from '@/features/quick-change/QuickChangeSheet';
+import { acceptWithChanges, heldRouteId } from './heldForm';
+import { correctedLotBody, heldLotTarget } from './heldLot';
 import { decideHeldItem, getHeldItem, type HeldCurrent, type HeldItemDetail, type HeldListRow } from './holdingApi';
 import { describeReason } from './heldReason';
 import { heldCopyRows, markHeldSeen } from './heldRows';
@@ -272,6 +275,9 @@ function ManagerHeldItem() {
   const [busy, setBusy] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
+  // A held rack and mark change is corrected in the quick-change sheet (Design 7.9 DQ4); its refusal is told on the sheet.
+  const [correcting, setCorrecting] = useState(false);
+  const [sheetRefusal, setSheetRefusal] = useState<string | null>(null);
 
   const finish = useCallback(async () => {
     await client.invalidateQueries({ queryKey: queryKeys.holding.all });
@@ -312,6 +318,40 @@ function ManagerHeldItem() {
     [finish, refetch]
   );
 
+  const correctLot = useCallback(
+    async (item: HeldItemDetail, values: { rack?: string | null; package_mark?: string | null }) => {
+      if (deciding.current || !isLotChangeBody(item.body)) return;
+      deciding.current = true;
+      setBusy(true);
+      try {
+        const decided = await acceptWithChanges(item, correctedLotBody(item.body, values), decisionKey.current);
+        if (decided.kind === 'accepted' || decided.kind === 'alreadyDecided') {
+          showToast(decided.toast);
+          setCorrecting(false);
+          await finish();
+        } else if (decided.kind === 'refused') {
+          setSheetRefusal(decided.message);
+          await refetch();
+        } else {
+          setSheetRefusal(tr('common.somethingWentWrong'));
+        }
+      } finally {
+        deciding.current = false;
+        setBusy(false);
+      }
+    },
+    [finish, refetch]
+  );
+
+  const correct = (item: HeldItemDetail) => {
+    if (item.kind === 'newGrn') router.push({ pathname: '/grn-edit/[id]/step1', params: { id: heldRouteId(item.id) } });
+    else if (item.kind === 'newDispatch') router.push({ pathname: '/dispatch-edit/[id]/step1', params: { id: heldRouteId(item.id) } });
+    else if (item.kind === 'lotChange') {
+      setSheetRefusal(null);
+      setCorrecting(true);
+    }
+  };
+
   const item = query.data;
   let loaded = false;
   let body: React.ReactNode;
@@ -326,7 +366,9 @@ function ManagerHeldItem() {
     const open = item.state === 'held' && item.needsDecision;
     const waiting = open && !item.canAccept;
     const showAccept = open && (item.acceptPossible || waiting);
-    const showCorrect = open && item.kind !== 'photos';
+    // Correct opens the kind's own form where this app has one with a held mode: a new GRN, a new dispatch, and a rack and mark change.
+    const showCorrect = open && (item.kind === 'newGrn' || item.kind === 'newDispatch' || item.kind === 'lotChange');
+    const lotTarget = correcting ? heldLotTarget(item) : null;
     const stacked = fontScale >= STACK_FONT_SCALE;
     const current = currentLine(item.current);
     const words = describeReason(item.reason, { kind: item.kind, what: item.what, customer: item.customerName, data: item.reasonData, followsWhat: null });
@@ -366,8 +408,7 @@ function ManagerHeldItem() {
                 {tr('offline.holding.reject')}
               </Button>
               {showCorrect ? (
-                // Opening the kind's form with the held values is the next slice (A-4); until it is built the button is drawn and does nothing.
-                <Button testID="held-item-correct" type="secondary" size={stacked ? 'fullWidth' : 'auto'} disabled={waiting || busy} onPress={() => undefined}>
+                <Button testID="held-item-correct" type="secondary" size={stacked ? 'fullWidth' : 'auto'} disabled={waiting || busy} onPress={() => correct(item)}>
                   {tr('offline.holding.correct')}
                 </Button>
               ) : null}
@@ -378,6 +419,17 @@ function ManagerHeldItem() {
               ) : null}
             </View>
           </View>
+        ) : null}
+        {lotTarget ? (
+          <QuickChangeSheet
+            target={lotTarget}
+            saving={busy}
+            refusal={sheetRefusal}
+            onClearRefusal={() => setSheetRefusal(null)}
+            onSave={values => void correctLot(item, values)}
+            onClose={() => setCorrecting(false)}
+            saveLabel={tr('offline.holding.acceptCorrected')}
+          />
         ) : null}
         <ConfirmInputDialog
           visible={rejecting}

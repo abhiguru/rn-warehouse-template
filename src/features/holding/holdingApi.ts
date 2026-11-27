@@ -5,7 +5,7 @@
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { classify } from '@/features/unsent/sendEngine';
-import { answerCodeOf } from '@/features/unsent/refusalAnswer';
+import { answerCodeOf, answerFiguresOf } from '@/features/unsent/refusalAnswer';
 import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 
 type Fields = Record<string, unknown>;
@@ -142,7 +142,7 @@ export type DecideOutcome =
   | { kind: 'done'; state: 'accepted' | 'rejected'; result: unknown }
   | { kind: 'alreadyDecided'; state: 'accepted' | 'rejected'; decidedByName: string | null }
   /** The server refused the decision: Accept's own save refused, or the item is not decidable now. */
-  | { kind: 'refused'; code: string | null }
+  | { kind: 'refused'; code: string | null; /** The refusal's figures (`reason_data`'s shape). */ data: unknown }
   | { kind: 'failed' };
 
 /** Accepts or rejects an item. A plain Accept sends no `p_body` and no `p_reason`. */
@@ -160,7 +160,7 @@ export async function decideHeldItem(input: DecideInput): Promise<DecideOutcome>
     if (answer.code === 'HELD_ALREADY_DECIDED') {
       return { kind: 'alreadyDecided', state: answer.answer.state === 'rejected' ? 'rejected' : 'accepted', decidedByName: textOf(answer.answer.decided_by_name) };
     }
-    return { kind: 'refused', code: answer.code };
+    return { kind: 'refused', code: answer.code, data: answerFiguresOf(answer.answer) };
   } catch {
     return { kind: 'failed' };
   }

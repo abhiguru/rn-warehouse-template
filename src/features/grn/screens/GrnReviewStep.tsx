@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import * as Crypto from 'expo-crypto';
 import {
   View,
   Text,
@@ -136,6 +137,8 @@ import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConne
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { offlineEditOf } from '@/features/grn/offline-edit/grnEditSave';
 import { saveGrnEditAndWait, saveGrnEditOffline } from '@/features/grn/offline-edit/grnEditKind';
+import { acceptWithChanges, heldIdOfRoute } from '@/features/holding/heldForm';
+import { correctedGrnBody, loadHeldGrn } from '@/features/holding/heldGrn';
 import { saveEditedUnsentGrn, useUnsentGrnEditState } from '@/features/unsent/editUnsentGrn';
 import { getFormNumberMode } from '@/features/unsent/formNumberMode';
 import { OfflineSavedDialog } from '@/features/unsent/OfflineSavedDialog';
@@ -226,7 +229,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // WH-161 (§8): editing a new GRN still waiting on this phone replaces the waiting item in place with no server call.
   const editTargetId = typeof id === 'string' ? id : Array.isArray(id) ? (id[0] ?? '') : grnId ?? '';
   const unsentEditState = useUnsentGrnEditState(editTargetId);
-  const editingUnsent = !isCreateMode && unsentEditState !== 'not-new';
+  // WH-304: a held GRN being corrected; its Save is the decision on the held item.
+  const heldId = heldIdOfRoute(editTargetId);
+  const editingUnsent = !isCreateMode && (unsentEditState !== 'not-new' || heldId !== null);
   // The GRN's version token as the edit form read it (get_grn_edit_state, backend migration 121); null on an older
   // server. Save sends it back, and the server refuses the save when someone else changed the GRN since (STALE_RECORD).
   const loadedUpdatedAt = useAppSelector(selectGRNLoadedUpdatedAt);
@@ -242,6 +247,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // Set once this form has created its GRN. A further press of Create never creates again:
   // save_grn would answer the repeat with the same GRN and every photo would go up twice.
   const createdRef = useRef(false);
+  // One decision key for this visit to a held GRN's form: a double tap is one decision (Design 7.7).
+  const heldDecisionKey = useRef(Crypto.randomUUID());
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Photos of the GRN just saved that did not upload; the user is asked to try again or go on.
@@ -570,7 +577,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         return;
       }
 
-      if (!header.gr_images || header.gr_images.length === 0) {
+      // A held GRN's photos are on the server with the held item, not in this form (A-6): the check cannot be made here.
+      if (heldId === null && (!header.gr_images || header.gr_images.length === 0)) {
         showAlert(
           tr('grn.review.photoRequiredTitle'),
           tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
@@ -582,6 +590,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     // An edit asks the server again which orders it changes, so the question names what is true now.
     if (!isCreateMode && !grnImported) await refreshOrderEffects();
 
+    // "Accept with changes" is the decision itself: no "Save GRN" question first.
+    if (heldId !== null) {
+      void handleConfirmSubmit();
+      return;
+    }
     // Show custom confirm dialog (dark mode compliant)
     setShowConfirmDialog(true);
   };
@@ -1296,6 +1309,47 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
     dispatch(setIsSaving(true));
     try {
+      // WH-304: a held GRN's corrected form is the supervisor's decision on it, with nothing saved or queued here.
+      if (heldId !== null) {
+        const held = await loadHeldGrn(heldId);
+        if (formLeft()) return;
+        if (held.kind !== 'loaded') {
+          void triggerError();
+          showAlert(saveFailedTitle(), tr('common.couldNotLoad'));
+          return;
+        }
+        const body = correctedGrnBody(
+          held.held,
+          {
+            header,
+            items: items.map((item) => ({
+              item_table_id: item.item_table_id,
+              item_name: item.item_name,
+              packaging: item.packaging,
+              qty: item.qty,
+              weight: item.weight,
+              rack: item.rack,
+              package_mark: item.package_mark,
+              trl_images: item.trl_images ?? [],
+            })),
+            rates: ratesToSave(),
+          },
+          items.map((item) => item.grn_trl_id)
+        );
+        const decided = await acceptWithChanges(held.item, body, heldDecisionKey.current);
+        if (formLeft()) return;
+        if (decided.kind === 'accepted' || decided.kind === 'alreadyDecided') {
+          void triggerSuccess();
+          showToast(decided.toast);
+          resetFormState();
+          router.dismissTo('/holding-list');
+        } else {
+          void triggerError();
+          showAlert(saveFailedTitle(), decided.kind === 'refused' ? decided.message : connectionHint());
+        }
+        return;
+      }
+
       // WH-161 (§8): an unsent new GRN is updated in place in the phone's queue, with no server call.
       if (editingUnsent) {
         const localId = String(editedGrnId);
@@ -1477,7 +1531,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // the device under a temporary id and go up when the GRN is saved, so "Discard changes"
   // leaves the saved GRN's photos as they were.
   const imageUploadGrnId = tempGrnId ?? undefined;
-  const ctaLabel = isCreateMode ? tr('grn.review.createGrn') : tr('grn.review.saveGrn');
+  const ctaLabel = heldId !== null ? tr('offline.holding.acceptCorrected') : isCreateMode ? tr('grn.review.createGrn') : tr('grn.review.saveGrn');
 
   // The Qty column is as wide as its widest number, the total included.
   const qtyWidth = numberColumnWidth(screen, 40, items.map((item) => formatNumber(item.qty || 0)), [formatNumber(totalQty)]);

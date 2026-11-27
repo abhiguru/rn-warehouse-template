@@ -88,33 +88,8 @@ export type LoadUnsentGrnOutcome =
   | { kind: 'being-sent' }
   | { kind: 'loaded'; data: LoadedUnsentGrn };
 
-/** Finds the active `newGrn` item row for `localId` from SQLite. */
-async function findUnsentGrnRow(localId: string): Promise<{ scope: string; row: ItemRow; photos: PhotoRow[] } | null> {
-  const scope = await getSessionCacheScope();
-  if (!scope) return null;
-  const rows = await itemsOfScope(scope);
-  const row = rows.find(
-    entry => entry.kind === 'newGrn' && entry.state !== 'sent' && entry.state !== 'refused' && targetGrnIdOf(entry) === localId
-  );
-  if (!row) return null;
-  const dep = rows.find(entry => entry.kind === 'photos' && entry.depends_on === row.id);
-  const photos = dep ? await photosOfItem(dep.id) : [];
-  return { scope, row, photos };
-}
-
-/** Reads an unsent new GRN from the phone's queue to fill the edit wizard, with zero server calls. */
-export async function loadUnsentGrnForEdit(localId: string): Promise<LoadUnsentGrnOutcome> {
-  const found = await findUnsentGrnRow(localId);
-  if (!found) return { kind: 'not-found' };
-  const { row, photos } = found;
-  if (row.state !== 'saved' || row.attempts > 0) return { kind: 'being-sent' };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(row.body) as unknown;
-  } catch {
-    return { kind: 'not-found' };
-  }
-  if (!isNewGrnBody(parsed)) return { kind: 'not-found' };
+/** The form's header, lines and number mode for a new GRN's body, with the photos kept for it (none for a held item: A-6). */
+export function grnFormOfBody(parsed: NewGrnBody, photos: PhotoRow[]): LoadedUnsentGrn {
   const { args, lotLocalIds, show } = parsed;
   const headerImages = photos.filter(photo => photo.role === 'header').map(photoToFormImage);
   const header: GRNHeaderData = {
@@ -150,14 +125,37 @@ export async function loadUnsentGrnForEdit(localId: string): Promise<LoadUnsentG
       trl_images: lineImages,
     };
   });
-  return {
-    kind: 'loaded',
-    data: {
-      header,
-      items,
-      numberMode: args.p_issue_number ? 'pending' : 'typed',
-    },
-  };
+  return { header, items, numberMode: parsed.args.p_issue_number ? 'pending' : 'typed' };
+}
+
+/** Finds the active `newGrn` item row for `localId` from SQLite. */
+async function findUnsentGrnRow(localId: string): Promise<{ scope: string; row: ItemRow; photos: PhotoRow[] } | null> {
+  const scope = await getSessionCacheScope();
+  if (!scope) return null;
+  const rows = await itemsOfScope(scope);
+  const row = rows.find(
+    entry => entry.kind === 'newGrn' && entry.state !== 'sent' && entry.state !== 'refused' && targetGrnIdOf(entry) === localId
+  );
+  if (!row) return null;
+  const dep = rows.find(entry => entry.kind === 'photos' && entry.depends_on === row.id);
+  const photos = dep ? await photosOfItem(dep.id) : [];
+  return { scope, row, photos };
+}
+
+/** Reads an unsent new GRN from the phone's queue to fill the edit wizard, with zero server calls. */
+export async function loadUnsentGrnForEdit(localId: string): Promise<LoadUnsentGrnOutcome> {
+  const found = await findUnsentGrnRow(localId);
+  if (!found) return { kind: 'not-found' };
+  const { row, photos } = found;
+  if (row.state !== 'saved' || row.attempts > 0) return { kind: 'being-sent' };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(row.body) as unknown;
+  } catch {
+    return { kind: 'not-found' };
+  }
+  if (!isNewGrnBody(parsed)) return { kind: 'not-found' };
+  return { kind: 'loaded', data: grnFormOfBody(parsed, photos) };
 }
 
 export type SaveEditedUnsentGrnOutcome = 'not-found' | 'being-sent' | 'replaced';

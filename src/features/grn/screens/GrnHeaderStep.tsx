@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { heldIdOfRoute } from '@/features/holding/heldForm';
 import { normalizeVehicle } from '@/utils/vehicleNumber';
 import {
   View,
@@ -76,7 +77,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   // The server gives the number at send (WH-161): the box is read-only and says so, with its helper line.
   const numberMode = useFormNumberMode('grn');
   const unsentEditState = useUnsentGrnEditState(typeof id === 'string' ? id : '');
-  const editingUnsent = !isCreateMode && unsentEditState !== 'not-new';
+  // A held GRN being corrected (WH-304) is edited like an unsent one: no GRN of this id is on the server.
+  const editingUnsent = !isCreateMode && (unsentEditState !== 'not-new' || heldIdOfRoute(typeof id === 'string' ? id : null) !== null);
   const canEditNumber = isCreateMode || (editingUnsent && numberMode === 'typed');
   const numberPending = (isCreateMode || editingUnsent) && numberMode === 'pending';
   const modeHelp = useNumberModeHelp('grn');
