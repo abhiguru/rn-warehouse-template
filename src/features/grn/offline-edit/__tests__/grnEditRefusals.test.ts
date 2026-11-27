@@ -58,7 +58,7 @@ describe('a refused item keeps the server\'s whole answer', () => {
     await jest.advanceTimersByTimeAsync(1_000);
     const [row] = await items();
     expect(row.state).toBe('refused');
-    expect(JSON.parse(row.result as string)).toMatchObject({ code: 'QTY_BELOW_DISPATCHED', dispatched: 41, requested: 30, lot_id: 'l06' });
+    expect(JSON.parse(row.result as string)).toMatchObject({ code: 'QTY_BELOW_DISPATCHED', answer: { dispatched: 41, requested: 30, lot_id: 'l06' } });
   });
 
   it('during the wait: the answer handed to the screen has the figures', async () => {

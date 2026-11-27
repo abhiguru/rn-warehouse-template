@@ -223,6 +223,8 @@ describe('Q3: photos of an offline edit', () => {
     const rows = await items();
     const photoItem = rows.find(r => r.kind === 'photos');
     expect(photoItem?.depends_on).toBe(saved.id);
-    expect(phone.store.getUnsentSummary().count).toBe(2);
+    // A record and its photos count once (WH-161 K9, now for grnEdit too): two rows, one in the bar.
+    expect(rows).toHaveLength(2);
+    expect(phone.store.getUnsentSummary().count).toBe(1);
   });
 });

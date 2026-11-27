@@ -344,13 +344,34 @@ describe('T9: refusals and failures', () => {
 });
 
 describe('T15: who keeps what', () => {
-  it.each(['staff', 'customer'] as const)('%s: no dues or statement row and no request of the pass', async role => {
-    const w = await ready(role);
+  it('staff: no dues or statement row and no request of the pass', async () => {
+    const w = await ready('staff');
     startPass();
     await runEnd(w, [mark('c1')]);
     await pause(2600);
     expect(w.serverCalls.filter(c => c.name.startsWith('get_customer_'))).toEqual([]);
     expect(await money(w)).toEqual([]);
+  }, 20000);
+
+  it('customer (WH-306, feed format 7): no dues call, each copy customer\'s statement once, and no dues row', async () => {
+    env.feed.format = 7;
+    const w = await ready('customer');
+    startPass();
+    await runEnd(w);
+    await until(async () => (await money(w)).length === 3, 15000);
+    expect(w.serverCalls.some(c => c.name === 'get_customer_dues' || c.name === 'get_customer_dues_for')).toBe(false);
+    expect(statementIds(w).sort()).toEqual(['c1', 'c2', 'c3']);
+    expect((await money(w)).map(r => `${r.kind}:${r.key}`)).toEqual(['statement:c1', 'statement:c2', 'statement:c3']);
+    expect(await metaDuesStale(w)).toBeNull();
+  }, 25000);
+
+  it('customer below feed format 7: the copy is off at its first load, so nothing is asked', async () => {
+    const w = await bootWarehouse({ role: 'customer' });
+    await w.phone.engine.startPhoneCopy();
+    expect(await w.phone.engine.syncNow('open')).toBe('off');
+    startPass();
+    await pause(2600);
+    expect(w.serverCalls).toEqual([]);
   }, 20000);
 
   it('a supervisor is kept like an administrator', async () => {

@@ -68,8 +68,8 @@ const heldChange = (position: string, change: { id: string; op: 'upsert'; row: R
   changes: [change.op === 'upsert' ? { e: 'held_items', id: change.id, op: 'upsert' as const, v: `000000000000000${position.slice(-1)}`, row: change.row } : { e: 'held_items', id: change.id, op: 'delete' as const }],
 });
 
-async function startWithCopy(role: HoldingRole, heldFeedRows: FeedRow[], profileId = `profile-${role}-1`): Promise<HoldingPhone> {
-  const phone = await bootHolding({ role, profileId, heldFeedRows, withCopy: true });
+async function startWithCopy(role: HoldingRole, heldFeedRows: FeedRow[], profileId = `profile-${role}-1`, feedFormat?: number): Promise<HoldingPhone> {
+  const phone = await bootHolding({ role, profileId, heldFeedRows, withCopy: true, ...(feedFormat === undefined ? {} : { feedFormat }) });
   // The copy must load at the held-items format; today it turns off here (SYNC_FORMATS has no 5).
   expect(phone.phone.engine.isCopyReadable()).toBe(true);
   return phone;
@@ -179,7 +179,8 @@ describe('T3: the new dispatch form\'s limit uses the net figure', () => {
 describe('T4 (PQ3): a customer account\'s phone has no held rows and shows the server\'s figure', () => {
   it('never asks for held_items, and a lot shows the copy\'s stock with no held deduction', async () => {
     // The server would hold a held dispatch on this lot, but a customer account's feed never lists the entity.
-    await startWithCopy('customer', [managerRow('held-t4', 6)], 'profile-customer-1');
+    // A customer account's copy is read from feed format 7 (WH-306 CUSTOMER_COPY_FORMAT); below it the copy is off.
+    await startWithCopy('customer', [managerRow('held-t4', 6)], 'profile-customer-1', 7);
     expect(env.feed.pagesOf('held_items')).toHaveLength(0);
     expect(overlay().lessHeld(LOT)).toBe(0);
     expect(netLotStock(LOT, LOT_STOCK)).toBe(LOT_STOCK);

@@ -398,9 +398,24 @@ describe('T14: Customer activity with the copy routing', () => {
 });
 
 describe('T15, T16: where today\'s screens stay', () => {
-  it('a customer account\'s Statement is a live read: no kept answer, no age line, its own "As of" line', async () => {
+  it('a customer account\'s Statement is kept like a manager\'s (WH-306): offline it draws the kept answer with its time in the strip, and no "As of" line', async () => {
+    env.feed.format = 7;
     mockStore.dispatch(setUserProfile({ id: 'profile-2', role: 'customer', name: 'Bhavin Fictional', assignedCustomerIds: ['c2'] } as never) as never);
     await loadCopy();
+    await keep('statement', 'c2', statementBody('c2'));
+    await connection(true);
+    await render(statementFor('c2'));
+    expect(await screen.findByTestId('money-age-strip')).toHaveTextContent(/Figures as of 9:05\s?am today/i);
+    expect(screen.getByText('GRN A10')).toBeOnTheScreen();
+    expect(screen.queryByTestId('money-age-line')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/^As of /)).not.toBeOnTheScreen();
+    expect(serverCalls).toEqual([]);
+  });
+
+  it('a customer account before feed format 7 has no copy: its Statement is a live read, with its own "As of" line and no age', async () => {
+    mockStore.dispatch(setUserProfile({ id: 'profile-2', role: 'customer', name: 'Bhavin Fictional', assignedCustomerIds: ['c2'] } as never) as never);
+    await engine.startPhoneCopy();
+    expect(await engine.syncNow('open')).toBe('off');
     serverAnswers.get_customer_statement = statementBody('c2');
     await render(statementFor('c2'));
     expect(await screen.findByText(/^As of /)).toBeOnTheScreen();
