@@ -32,6 +32,8 @@ export interface UnsentListRow {
   sentNumber: string | null;
   /** A photo file of this item is gone from the phone (the record was sent without it). */
   photoMissing: boolean;
+  /** True when the item with the missing photo is a dispatch's (its footnote says "dispatch", not "GRN"). */
+  photoMissingDispatch?: boolean;
   /** The tag shown at the right; an unfinished form has none. */
   tag: 'saved' | 'sending' | 'sent' | 'waiting' | 'held' | 'notPassedOn' | 'rejected' | 'accepted' | null;
   /** Set for an unfinished form (the row of "Not finished"): which form it is. */
@@ -174,6 +176,7 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
       recordedAt: view.recordedAt,
       sentNumber: view.section === 'sent' ? numberOf(view.result) : null,
       photoMissing,
+      ...(photoMissing && view.photoDoc === 'dispatch' ? { photoMissingDispatch: true } : {}),
       tag: passing ? passing.tag : tagOf(view.state),
       form: null,
       reason: passing ? passing.reason : view.section === 'held' ? heldReason(view.reason, view.result, view) : null,

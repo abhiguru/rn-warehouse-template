@@ -16,6 +16,7 @@ export interface HeldPhotoView extends HeldPhoto {
 const bucketOf = (role: string): string => (role === 'dispatch' ? 'dispatch-images' : 'grn-images');
 
 async function signed(photo: HeldPhoto): Promise<HeldPhotoView> {
+  if (photo.path === null) return { ...photo, url: null };
   try {
     const client = await getAuthenticatedClient();
     const { data, error } = await client.storage.from(bucketOf(photo.role)).createSignedUrl(photo.path, URL_SECONDS);

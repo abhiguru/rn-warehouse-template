@@ -46,7 +46,10 @@ export interface HeldCurrent {
 export interface HeldPhoto {
   clientPhotoId: string;
   role: string;
-  path: string;
+  /** Null for a photo the phone marked missing: there is no file. */
+  path: string | null;
+  /** True when the recorder's phone reported the file missing (state `missing`). */
+  missing: boolean;
   /** `index:<n>` of a new GRN line, a lot id, or null (header and dispatch photos). */
   lineRef: string | null;
 }
@@ -146,10 +149,13 @@ export async function getHeldItem(id: string): Promise<HeldItemDetail> {
     : [];
   const photos = Array.isArray(answer.data.photos)
     ? answer.data.photos.flatMap((entry: unknown): HeldPhoto[] => {
-        if (!isFields(entry) || entry.state !== 'confirmed') return [];
+        if (!isFields(entry) || (entry.state !== 'confirmed' && entry.state !== 'missing')) return [];
         const clientPhotoId = textOf(entry.client_photo_id);
         const path = textOf(entry.path);
-        return clientPhotoId !== null && path !== null ? [{ clientPhotoId, role: textOf(entry.role) ?? 'header', path, lineRef: textOf(entry.line_ref) }] : [];
+        const missing = entry.state === 'missing';
+        return clientPhotoId !== null && (missing || path !== null)
+          ? [{ clientPhotoId, role: textOf(entry.role) ?? 'header', path: missing ? null : path, missing, lineRef: textOf(entry.line_ref) }]
+          : [];
       })
     : [];
   const photoFollowers = Array.isArray(answer.data.followers)

@@ -33,6 +33,23 @@ function Tile({ photo, index, total, size }: { photo: HeldPhotoView; index: numb
   const tokens = useTokens();
   const uri = useViaCurrentPath(photo.url ?? '');
   const label = photo.role === 'dispatch' ? tr('dispatch.photos.photoOf', { index: index + 1, total }) : photo.role === 'item' ? tr('grn.images.photoOfUnnamedItem') : tr('grn.images.grnPhoto');
+  if (photo.missing) {
+    return (
+      <View
+        testID={`held-photo-missing-${photo.clientPhotoId}`}
+        style={[styles.tile, { width: size, height: size }]}
+        accessible
+        accessibilityLabel={`${label}, ${tr('common.photoMissing')}`}
+      >
+        <View style={styles.frame}>
+          <Icon name="image-off-outline" size={iconSize.xl} color={tokens.icon.secondary} importantForAccessibility="no" />
+          <Text style={styles.frameText} maxFontSizeMultiplier={1.4}>
+            {tr('common.photoMissing')}
+          </Text>
+        </View>
+      </View>
+    );
+  }
   if (photo.url === null || !uri) {
     return (
       <View

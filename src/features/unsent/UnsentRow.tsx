@@ -121,7 +121,7 @@ export const UnsentRow = memo(function UnsentRow({ row, divider, onOpen, onDelet
         ) : null}
         {row.photoMissing ? (
           <Text testID={`unsent-row-photo-missing-${row.id}`} style={styles.footnote}>
-            {tr('offline.unsent.photoMissing')}
+            {tr(row.photoMissingDispatch ? 'offline.unsent.photoMissingDispatch' : 'offline.unsent.photoMissing')}
           </Text>
         ) : null}
       </View>

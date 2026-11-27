@@ -22,7 +22,10 @@ const isFields = (value: unknown): value is Fields => typeof value === 'object' 
 const mimeOf = (name: string): string => (/\.webp$/i.test(name) ? 'image/webp' : /\.png$/i.test(name) ? 'image/png' : 'image/jpeg');
 
 /** How one photo ended. */
-type PhotoEnd = 'done' | 'missing' | 'decided' | 'blocked' | 'transient' | 'stop';
+type PhotoEnd = 'done' | 'invalid' | 'file_missing' | 'not_yours' | 'missing' | 'decided' | 'blocked' | 'transient' | 'stop';
+
+/** Why a photo is marked missing; the reason code the server keeps with it. */
+type MissingReason = 'invalid' | 'file_missing' | 'not_yours';
 
 /** What a call to the server gave: its members when it succeeded, or why not. */
 type Reply = { kind: 'ok'; data: Fields } | { kind: 'code'; code: string } | { kind: 'transient' } | { kind: 'stop' };
@@ -46,14 +49,14 @@ async function rpc(name: string, args: Fields): Promise<Reply> {
 /** What a refusal code means for the photo: the item is decided, the photo can never be accepted, or it is not this person's. */
 function endOfCode(code: string): PhotoEnd {
   if (code === 'HELD_ALREADY_DECIDED') return 'decided';
-  if (code === 'HELD_PHOTO_INVALID') return 'missing';
+  if (code === 'HELD_PHOTO_INVALID') return 'invalid';
   if (code === 'HELD_PHOTO_NOT_YOURS') return 'blocked';
   return 'transient';
 }
 
 async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
   const file = new File(photo.file);
-  if (!file.exists) return 'missing';
+  if (!file.exists) return 'file_missing';
   const fileName = photo.file.slice(photo.file.lastIndexOf('/') + 1).replace(/^[0-9a-f-]{36}-/, '');
   const mimeType = mimeOf(fileName);
   const registered = await rpc('register_held_photo_upload', {
@@ -85,6 +88,23 @@ async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
   const confirmed = await rpc('confirm_held_photo_upload', { p_held_id: heldId, p_client_photo_id: photo.client_photo_id });
   if (confirmed.kind === 'ok') return 'done';
   return confirmed.kind === 'code' ? endOfCode(confirmed.code) : confirmed.kind;
+}
+
+/**
+ * Tells the server the photo is missing, so the held item page shows it as missing. Only a settled answer lets the phone mark the
+ * photo done: a transient failure leaves it for the next pass, and an item already decided needs nothing more.
+ */
+async function reportMissing(heldId: string, photo: PhotoRow, reason: MissingReason): Promise<PhotoEnd> {
+  const reply = await rpc('mark_held_photo_missing', {
+    p_held_id: heldId,
+    p_client_photo_id: photo.client_photo_id,
+    p_role: photo.role,
+    p_line_ref: photo.line_ref,
+    p_reason: reason,
+  });
+  if (reply.kind === 'ok') return 'missing';
+  if (reply.kind === 'code') return reply.code === 'HELD_ALREADY_DECIDED' ? 'decided' : 'transient';
+  return reply.kind;
 }
 
 /** What a round of uploads learned. */
@@ -134,7 +154,8 @@ export async function sendHeldPhotos(rows: readonly ItemRow[], markHeld = true):
       for (const photo of await photosOf(row.id)) {
         if (photo.done === 1 || photo.missing === 1) continue;
         let end = await sendOne(row.held_id, photo);
-        if (end === 'blocked' && blockedForGood(row.held_id, photo)) end = 'missing';
+        if (end === 'blocked' && blockedForGood(row.held_id, photo)) end = 'not_yours';
+        if (end === 'invalid' || end === 'file_missing' || end === 'not_yours') end = await reportMissing(row.held_id, photo, end);
         if (end === 'done') await markPhoto(row.id, photo.client_photo_id, { done: 1 });
         else if (end === 'missing') await markPhoto(row.id, photo.client_photo_id, { missing: 1 });
         else if (end === 'decided') {

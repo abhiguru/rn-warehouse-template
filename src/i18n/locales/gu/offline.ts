@@ -57,6 +57,7 @@ export const offline: Translation<typeof source> = {
     otherPerson: 'આ ફોનમાં {{name}} એ નોંધેલી {{count}} એન્ટ્રી મોકલવાની બાકી છે. {{name}} આ ફોનમાં ફરી લૉગિન કરશે ત્યારે તે મોકલાશે.',
     moveToHolding: 'રોકેલી યાદીમાં મૂકો',
     photoMissing: 'આ ફોનમાં એક ફોટો ફાઇલ નથી; આવક પાવતી તેના વગર મોકલાઈ.',
+    photoMissingDispatch: 'આ ફોનમાં એક ફોટો ફાઇલ નથી; જાવક તેના વગર મોકલાઈ.',
   },
   limit: {
     title: 'પહેલાં બાકી એન્ટ્રી મોકલો',

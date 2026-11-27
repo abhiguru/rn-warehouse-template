@@ -54,6 +54,7 @@ export const offline = {
     otherPerson: 'This phone holds {{count}} unsent items recorded by {{name}}. They are sent when {{name}} signs in on this phone again.',
     moveToHolding: 'Move to the holding list',
     photoMissing: 'A photo file is missing on this phone; the GRN was sent without it.',
+    photoMissingDispatch: 'A photo file is missing on this phone; the dispatch was sent without it.',
   },
   limit: {
     title: 'Send your unsent items first',

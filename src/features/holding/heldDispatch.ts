@@ -83,7 +83,7 @@ export async function loadHeldDispatch(heldId: string): Promise<LoadedHeldDispat
   }
   // The photos the recorder's phone uploaded show in the form as they are on the server; one storage will not sign is left out.
   const images: DispatchImageData[] = (await loadHeldPhotos(item)).flatMap(photo =>
-    photo.url === null ? [] : [{ id: `held_${photo.clientPhotoId}`, file_name: photo.path.slice(photo.path.lastIndexOf('/') + 1), image_url: photo.url, upload_status: 'completed' as const, storage_path: photo.path }]
+    photo.url === null || photo.path === null ? [] : [{ id: `held_${photo.clientPhotoId}`, file_name: photo.path.slice(photo.path.lastIndexOf('/') + 1), image_url: photo.url, upload_status: 'completed' as const, storage_path: photo.path }]
   );
   return { kind: 'loaded', item, held, header, items, images };
 }
