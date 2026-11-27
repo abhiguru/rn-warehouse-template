@@ -80,7 +80,7 @@ export async function bootNewRecords({ scheme = 'letters', withCopy = true }: { 
 export const grnSaved = (number = '312', lines = 1): RpcAnswer => ({
   data: {
     success: true,
-    data: { grn_id: 'grn-server-1', gr_no: number, item_mapping: Array.from({ length: lines }, (_, index) => ({ index, item_id: `item-server-${index}` })) },
+    data: { grn_id: 'grn-server-1', gr_no: number, item_mapping: Array.from({ length: lines }, (_, index) => ({ index, item_id: `item-server-${index}`, item_name: 'Peas' })) },
   },
   error: null,
 });
@@ -89,10 +89,33 @@ export const dispatchSaved = (number = '77', orderEffects: unknown = []): RpcAns
   data: { success: true, dispatch_id: 'disp-server-1', disp_no: number, dispatch_items: [], invoice_data: null, order_effects: orderEffects },
   error: null,
 });
-export const refusal = (reason: string, extra: Record<string, unknown> = {}): RpcAnswer => ({
-  data: { success: false, reason, message: `refused: ${reason}`, ...extra },
+/** `warehouse_security.refuse(reason, sentence, fields)` (migration 121): the fields, then success false, error_code WH409, reason, error, message. */
+export const refusal = (reason: string, extra: Record<string, unknown> = {}, sentence = `Refused: ${reason}`): RpcAnswer => ({
+  data: { ...extra, success: false, error_code: 'WH409', reason, error: sentence, message: sentence },
   error: null,
 });
+/** `grn_rate_failure(code, sentence, data)` (baseline): NO `reason`; the code is `error_code`, the figures are under `data`. */
+export const rateFailure = (code: string, data: Record<string, unknown> = {}, sentence = 'Some lines of this GRN have no rate'): RpcAnswer => ({
+  data: { success: false, error: sentence, error_code: code, data, message: sentence },
+  error: null,
+});
+/** Migration 124's answer: `refuse('POSSIBLE_DUPLICATE', sentence, {kind, existing_id, existing_number, existing_created_at, existing_created_by, customer_name, items, window_minutes[, vehicle]})`. */
+export const duplicateWarning = (kind: 'grn' | 'dispatch' = 'grn'): RpcAnswer =>
+  refusal(
+    'POSSIBLE_DUPLICATE',
+    {
+      kind,
+      existing_id: 'grn-existing-1',
+      existing_number: 'A-3',
+      existing_created_at: '2026-11-27T03:20:00+00:00',
+      existing_created_by: 'Meera Fictional',
+      customer_name: 'asha Traders',
+      items: [{ item_name: 'Peas', packaging: 'Bag' }],
+      ...(kind === 'dispatch' ? { vehicle: 'GJ01AB1234' } : {}),
+      window_minutes: 30,
+    },
+    'GRN A-3 for asha Traders was created 3 minutes ago with the same items.'
+  );
 
 /** The rows of one save RPC the server got, in order. */
 export const callsOf = (name: string) => server.calls.filter(call => call.name === name);

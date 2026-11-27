@@ -23,7 +23,8 @@
 import { eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
 import { rawRows, server } from '@/tests/unsent/unsentPhone';
-import { bootNewRecords, callsOf, dispatchPayload, dispatchSaved, grnPayload, grnSaved, refusal, type NewRecordPhone } from '@/tests/unsent/newRecordPhone';
+import { bootNewRecords, callsOf, dispatchPayload, dispatchSaved, duplicateWarning, grnPayload, grnSaved, rateFailure, refusal } from '@/tests/unsent/newRecordPhone';
+import type { RpcAnswer } from '@/tests/unsent/unsentPhone';
 
 type Saved = { path: string; result?: any; itemId?: string; answer?: any; warning?: unknown };
 type Form = Record<string, unknown>;
@@ -192,20 +193,21 @@ describe('P5: reachable with an own unsent record', () => {
 });
 
 describe('P7: a refusal within the wait is told on the form and nothing is kept', () => {
-  it.each<[string, string, Record<string, unknown>]>([
-    ['number taken', 'NUMBER_TAKEN', { number: 'G-501' }],
-    ['a rate', 'RATE_MISSING', {}],
-    ['SERIES_FULL', 'SERIES_FULL', {}],
-  ])('%s: no item, the form is given back with its photos', async (_name, reason, extra) => {
+  it.each<[string, RpcAnswer, Record<string, unknown>]>([
+    ['number taken', refusal('NUMBER_TAKEN', { number: 'G-501' }), { reason: 'NUMBER_TAKEN' }],
+    // a rate failure has its code in error_code and no reason (grn_rate_failure): the app must read error_code
+    ['a rate', rateFailure('RATE_MISSING', { lines: [{ index: 0, item_name: 'Peas' }] }), { error_code: 'RATE_MISSING', data: { lines: [{ index: 0, item_name: 'Peas' }] } }],
+    ['SERIES_FULL', refusal('SERIES_FULL'), { reason: 'SERIES_FULL' }],
+  ])('%s: no item, the form is given back with its photos', async (_name, answer, expected) => {
     await bootNewRecords();
     const photo = (await import('@/tests/unsent/unsentPhone')).addPhoto('bags.jpg');
-    server.answers[GRN_RPC] = () => refusal(reason, extra);
+    server.answers[GRN_RPC] = () => answer;
     const saved = await saving(
       offlineNew().saveNewGrn(grnPayload({ number: 'G-501' }), { numberMode: 'typed', photos: [{ file: photo, role: 'header' }] }),
       100
     );
     expect(saved.path).toBe('refused');
-    expect(saved.answer).toMatchObject({ reason });
+    expect(saved.answer).toMatchObject({ success: false, ...expected }); // the server's answer, unchanged (17.1)
     expect(await items()).toHaveLength(0);
     expect(files.held.has(photo)).toBe(true); // the photo file is not erased
     expect(server.calls.filter(call => call.name.includes('image'))).toHaveLength(0);
@@ -234,13 +236,14 @@ describe('P7: a refusal within the wait is told on the form and nothing is kept'
 });
 
 describe('P8: a possible duplicate within the wait', () => {
-  const warning = () => refusal('POSSIBLE_DUPLICATE', { dup_warn: true, duplicate: { gr_no: 'A-3' } });
+  const warning = () => duplicateWarning('grn');
 
   it('asks today\'s duplicate question and keeps nothing; confirming saves again as a new item with the warning off and a new key', async () => {
     await bootNewRecords();
     server.answers[GRN_RPC] = () => warning();
     const asked = await saving(offlineNew().saveNewGrn(grnPayload(), { numberMode: 'pending' }), 100);
     expect(asked.path).toBe('duplicate');
+    expect(asked.warning).toMatchObject({ reason: 'POSSIBLE_DUPLICATE', existing_number: 'A-3', existing_id: 'grn-existing-1', kind: 'grn', window_minutes: 30 });
     expect(await items()).toHaveLength(0);
     const firstKey = callsOf(GRN_RPC)[0].args.p_idempotency_key;
 
