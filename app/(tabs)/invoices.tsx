@@ -11,7 +11,6 @@ import { View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { InvoiceFlashList } from '@/components/lists';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
-import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { Fab } from '@/components/ui/Fab';
@@ -19,7 +18,7 @@ import { t } from '@/i18n';
 import { useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { beginNewBill, releaseNewBill } from '@/features/invoice/utils/startNewBill';
-import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import type { ThemeTokens } from '@/theme/tokens';
 
@@ -34,8 +33,8 @@ export default function InvoicesTab() {
   const styles = useThemedStyles(makeStyles);
   const dispatch = useAppDispatch();
   const { canCreate } = usePermissions();
-  // The "+" is not offered while the phone is offline over a copy that reads invoices: the list says why (WH-348, Design 2.5).
-  const needsConnection = useNeedsConnectionV3();
+  // Invoices are made only with the server (WH-381): the list says so, and its "+" is not offered offline.
+  const needsConnection = useNeedsConnection();
 
   // Set by the first tap on "Create invoice" until this tab is in front again:
   // a second tap opened a second step 1 and reset the form the first one had
@@ -64,7 +63,6 @@ export default function InvoicesTab() {
 
   return (
     <View style={styles.container}>
-      <CustomerAgeStrip />
       <ListErrorBoundary listName="invoices">
         <InvoiceFlashList />
       </ListErrorBoundary>

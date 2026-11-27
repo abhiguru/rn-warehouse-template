@@ -44,8 +44,7 @@ import { MemoizedInvoiceItem } from '@/components/list-items';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
-import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
-import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { ListNeedsConnection, useListNeedsConnection } from './ListNeedsConnection';
 import { useQuietReread, type QuietReread } from '@/features/phone-copy/useQuietReread';
 import type { EntityName } from '@/features/phone-copy/copySchema';
 import { syncNow } from '@/features/phone-copy/syncEngine';
@@ -139,7 +138,7 @@ SectionHeader.displayName = 'SectionHeader';
 // MAIN COMPONENT
 // ============================================================================
 
-const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
+const InvoiceFlashListOnline: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const listRef = useRef<FlashListRef<FlattenedItem<Invoice>>>(null);
 
   // Theme
@@ -188,7 +187,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const [listEpoch, setListEpoch] = useState(0);
   /** Asks for the first page again (a list whose source changed between two pages). */
   const restartRef = useRef<() => void>(() => undefined);
-  const needsConnection = useNeedsConnectionV3() && isWarehouseRole;
   // While the keyboard is up the list area ends at its top (WH-261), so the no-match state is centred above it.
   const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   /** The request the rows on screen answer, so a failed refresh of it keeps them and a failed new filter does not. */
@@ -653,7 +651,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         emptyIcon="file-document-outline"
         emptyTitle={translate('lists.invoice.emptyTitle')}
         emptySubtitle={canCreateInvoice ? translate('lists.invoice.emptyCreator') : translate('lists.invoice.emptyViewer')}
-        showCreateButton={canCreateInvoice && !needsConnection}
+        showCreateButton={canCreateInvoice}
         createButtonLabel={translate('lists.invoice.create')}
         onCreatePress={handleCreateInvoice}
       />
@@ -664,10 +662,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
     <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.container, { marginBottom: keyboardLift }]}>
       {/* The header, search field and filter bar are shown in every state. */}
       <FilteredListHeader title={translate('lists.invoice.title')} config={INVOICE_FILTERS} filters={filters} loading={isLoading} onRefresh={handleRefresh} />
-      {/* The "+" is hidden while the phone is offline: its reason is a lasting fact about the list (Design 2.5, 2.11). */}
-      {needsConnection && canCreateInvoice ? (
-        <NeedsConnectionLine testID="invoices-new-needs-connection" text={translate('invoice.offline.newNeedsConnection')} />
-      ) : null}
       {content}
 
       {/* Print dialog and jobs sheet */}
@@ -745,5 +739,12 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
 });
+
+/** Offline the list is only its title row and the needs-a-connection state: nothing is fetched or kept (WH-381). */
+const InvoiceFlashList: React.FC<InvoiceFlashListProps> = props => {
+  const needsConnection = useListNeedsConnection();
+  if (needsConnection) return <ListNeedsConnection title={translate('lists.invoice.title')} testID="invoices-needs-connection" />;
+  return <InvoiceFlashListOnline {...props} />;
+};
 
 export default InvoiceFlashList;

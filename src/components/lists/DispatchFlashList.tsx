@@ -55,6 +55,7 @@ import { MemoizedDispatchItem } from '@/components/list-items';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
+import { ListNeedsConnection, useListNeedsConnection } from './ListNeedsConnection';
 import { formatCount, formatNumber, formatLoadedAt } from '@/utils/formatters';
 import { localizeDigits, t as translate } from '@/i18n';
 
@@ -150,7 +151,7 @@ SectionHeader.displayName = 'SectionHeader';
 // MAIN COMPONENT
 // ============================================================================
 
-const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => {
+const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId }) => {
   const listRef = useRef<FlashListRef<FlattenedItem<Dispatch>>>(null);
 
   // Theme
@@ -815,5 +816,12 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingBottom: space.xs,
   },
 });
+
+/** Offline the list is only its title row and the needs-a-connection state: nothing is fetched or kept (WH-381). */
+const DispatchFlashList: React.FC<DispatchFlashListProps> = props => {
+  const needsConnection = useListNeedsConnection();
+  if (needsConnection) return <ListNeedsConnection title={translate('lists.dispatch.title')} testID="dispatch-needs-connection" />;
+  return <DispatchFlashListOnline {...props} />;
+};
 
 export default DispatchFlashList;

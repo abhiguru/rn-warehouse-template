@@ -22,8 +22,7 @@ import { ActivityIndicator } from 'react-native-paper';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
 import { listRefreshAccessibility } from './listRefreshAccessibility';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
-import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
-import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { ListNeedsConnection, useListNeedsConnection } from './ListNeedsConnection';
 import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 import { useFocusEffect } from 'expo-router';
 import { ListSkeleton } from '@/components/skeletons';
@@ -69,7 +68,7 @@ export interface SupervisorOrderQueueListProps {
 // MAIN COMPONENT
 // ============================================================================
 
-const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
+const SupervisorOrderQueueListOnline: React.FC<SupervisorOrderQueueListProps> = ({
   customerFilter: externalFilter,
   subHeader,
 }) => {
@@ -386,7 +385,6 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // Offline with no failed refresh: the top of the list says when the queue was loaded. A failed refresh says it in
   // its strip instead.
   const isOffline = useIsOffline();
-  const needsConnection = useNeedsConnectionV3();
   // Rows of the phone copy have no time line of their own: the status bar's time is the only one (Design 2.10b).
   const offlineUpdatedAt = isOffline && !error && !fromPhoneCopy ? loadedAt : undefined;
   // An element, not a component: the line comes and goes without remounting the recent section (a remount reloads
@@ -526,10 +524,6 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   return (
     <View style={styles.container}>
       {header}
-      {/* One line for the whole Queue: each card's Create dispatch is disabled and says why in its label (Design 2.10b, DQ3). */}
-      {needsConnection ? (
-        <NeedsConnectionLine testID="queue-dispatch-needs-connection" text={translate('orders.offline.queueDispatchNeedsConnection')} />
-      ) : null}
       {content}
 
     </View>
@@ -579,5 +573,14 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
 });
+
+/** Offline the list is only its title row, the switch and the needs-a-connection state: nothing is fetched or kept (WH-381). */
+const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = props => {
+  const needsConnection = useListNeedsConnection();
+  if (needsConnection) {
+    return <ListNeedsConnection title={translate('lists.queue.title')} testID="order-queue-needs-connection" subHeader={props.subHeader} />;
+  }
+  return <SupervisorOrderQueueListOnline {...props} />;
+};
 
 export default SupervisorOrderQueueList;

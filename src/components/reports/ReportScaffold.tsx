@@ -31,7 +31,7 @@ import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
 import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
 import { useHideListTime } from '@/features/phone-copy/useCustomerAge';
-import { useNeedsConnection, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { useNeedsConnectionV3, useServerOnlyNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -211,7 +211,7 @@ function ReportScaffoldInner<T>({
 }: ReportScaffoldProps<T>) {
   const t = useTokens();
   const phoneNeedsConnection = useNeedsConnectionV3();
-  const serverOnlyOffline = useNeedsConnection() && Boolean(needsConnectionId);
+  const serverOnlyOffline = useServerOnlyNeedsConnection() && Boolean(needsConnectionId);
   const hideListTime = useHideListTime();
   const showCustomerAge = !needsConnectionId && !hideCustomerAgeStrip;
   const styles = useThemedStyles(makeStyles);

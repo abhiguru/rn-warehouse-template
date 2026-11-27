@@ -71,8 +71,7 @@ import { Fab, FAB_CLEARANCE } from '@/components/ui/Fab';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
-import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
-import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { ListNeedsConnection, useListNeedsConnection } from './ListNeedsConnection';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 
@@ -123,7 +122,7 @@ OrderSectionHeader.displayName = 'OrderSectionHeader';
 // MAIN COMPONENT
 // ============================================================================
 
-const OrderFlashList: React.FC<OrderFlashListProps> = ({
+const OrderFlashListOnline: React.FC<OrderFlashListProps> = ({
   customerId,
   onItemPress,
   subHeader,
@@ -170,9 +169,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   const [hasLoaded, setHasLoaded] = useState(false);
   // The next page failed: the list's last row offers "Try again".
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
-  // The rows came from the phone copy (WH-328): the status bar tells their time, and "New orders" needs a connection.
+  // The rows came from the phone copy: the status bar tells their time.
   const [fromPhoneCopy, setFromPhoneCopy] = useState(false);
-  const needsConnection = useNeedsConnectionV3();
 
   // ============================================================================
   // DATA FETCHING
@@ -623,13 +621,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   return (
     <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.container, { marginBottom: keyboardLift }]}>
       {header}
-      {/* The "+" is hidden while the phone is offline: its reason is a lasting fact about the list (Design 2.10b). */}
-      {needsConnection ? (
-        <NeedsConnectionLine testID="orders-new-needs-connection" text={translate('orders.offline.newNeedsConnection')} />
-      ) : null}
       {content}
 
-      {needsConnection ? null : <Fab label={translate('lists.order.create')} onPress={handleAddOrder} testID="orders-create" />}
+      <Fab label={translate('lists.order.create')} onPress={handleAddOrder} testID="orders-create" />
 
       {/* Customer Search Bottom Sheet */}
       <CustomerSearchBottomSheet
@@ -674,5 +668,14 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
 });
+
+/** Offline the list is only its title row, the switch and the needs-a-connection state: nothing is fetched or kept (WH-381). */
+const OrderFlashList: React.FC<OrderFlashListProps> = props => {
+  const needsConnection = useListNeedsConnection();
+  if (needsConnection) {
+    return <ListNeedsConnection title={translate('lists.order.title')} testID="orders-needs-connection" subHeader={props.subHeader} />;
+  }
+  return <OrderFlashListOnline {...props} />;
+};
 
 export default OrderFlashList;

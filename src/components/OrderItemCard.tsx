@@ -847,12 +847,6 @@ const makeStyles = (t: ThemeTokens) => ({
   controlOff: {
     opacity: t.interaction.disabledOpacity,
   },
-  // The "only N in stock" warning under the stock indicator
-  footnote: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    paddingHorizontal: space.xs,
-  },
   overStockRow: {
     paddingHorizontal: space.xs,
     paddingTop: space.xs,
