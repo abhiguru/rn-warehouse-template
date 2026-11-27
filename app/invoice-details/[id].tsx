@@ -38,7 +38,7 @@ import { invoiceFileName, invoiceLabelOf } from '@/utils/invoiceLabel';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { useAppSelector } from '@/store/hooks';
 import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
-import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
+import { ServerOnlyScreen } from '@/features/phone-copy/components/ServerOnlyScreen';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import {
@@ -97,7 +97,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-function InvoiceDetailScreen() {
+function InvoiceDetailScreenOnline() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
   const needsConnection = useNeedsConnectionV3();
@@ -532,7 +532,6 @@ function InvoiceDetailScreen() {
           }}
         />
         <View style={styles.container}>
-          <CustomerAgeStrip />
           <View style={styles.centerContainer}>
             {loading ? (
               <DetailSkeleton tabCount={3} cardCount={3} />
@@ -656,7 +655,6 @@ function InvoiceDetailScreen() {
         style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
         pointerEvents={isCancelling || lostDelete ? 'none' : 'auto'}
       >
-        <CustomerAgeStrip />
         {/* Hero header */}
         <InvoiceHeroHeader
           invoice_number={invoiceLabelOf(invoice.invoice_label, invoice.invoice_number || 0)}
@@ -795,6 +793,15 @@ function InvoiceDetailScreen() {
       />
 
     </>
+  );
+}
+
+/** Offline the page is only its header and the needs-a-connection state: nothing is read or kept (WH-381). */
+function InvoiceDetailScreen() {
+  return (
+    <ServerOnlyScreen title={tr('common.invoice')} testID="invoice-details-needs-connection">
+      <InvoiceDetailScreenOnline />
+    </ServerOnlyScreen>
   );
 }
 

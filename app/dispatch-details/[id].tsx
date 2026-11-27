@@ -38,7 +38,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { LostAnswerStrip } from '@/features/dispatch/components/LostAnswerStrip';
-import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
+import { ServerOnlyScreen } from '@/features/phone-copy/components/ServerOnlyScreen';
 import {
   DispatchHeroHeader,
   DispatchTabNavigator,
@@ -67,8 +67,6 @@ import { photoAddFailure } from '@/utils/photoUploadError';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
 import type { EntityName } from '@/features/phone-copy/copySchema';
-import { onceSentLabel, UnsentDetailsStrip, useFollowSentRoute, useNewDocumentActions } from '@/features/unsent/UnsentMarkers';
-import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 
 /** The records this page reads from the phone copy: a sync that changed one of them reads the page again. */
 const DISPATCH_PAGE_KINDS: readonly EntityName[] = [
@@ -103,7 +101,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-function DispatchDetailScreen() {
+function DispatchDetailScreenOnline() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
   const { canUpdate, canDelete } = usePermissions();
@@ -125,10 +123,6 @@ function DispatchDetailScreen() {
   // WH-299: the page was read from the phone copy, which has no invoice amounts; offline, every action needs the server.
   const [amountsNeedServer, setAmountsNeedServer] = useState(false);
   const fromCopyRef = useRef(false);
-  // A dispatch that exists only on this phone: its actions wait for the server, whatever the connection (WH-161, Design 10.3).
-  useFollowSentRoute('dispatch', String(id));
-  const newDocument = useNewDocumentActions('dispatch', String(id));
-  const needsConnection = useNeedsConnection() || newDocument.isNew;
   const [isDeletingImage, setIsDeletingImage] = useState(false);
   // A delete is running (the ref is read by the Back key and by a second tap, the state draws the button)
   const [isDeleting, setIsDeleting] = useState(false);
@@ -459,7 +453,6 @@ function DispatchDetailScreen() {
         />
         <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
         <View style={styles.container}>
-          <CustomerAgeStrip />
           <View style={styles.centerContainer}>
             {loading ? (
               <DetailSkeleton tabCount={5} cardCount={3} />
@@ -620,8 +613,7 @@ function DispatchDetailScreen() {
               <Button
                 type="tertiary"
                 onPress={handleEditDispatch}
-                disabled={isDeleting || isCheckingDelete || needsConnection}
-                accessibilityLabel={needsConnection ? (newDocument.note ? onceSentLabel(tr('common.edit'), newDocument.note) : needsConnectionLabel(tr('common.edit'))) : undefined}
+                disabled={isDeleting || isCheckingDelete}
               >
                 {tr('common.edit')}
               </Button>
@@ -640,7 +632,6 @@ function DispatchDetailScreen() {
         style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
         pointerEvents={isCheckingDelete ? 'none' : 'auto'}
       >
-        <CustomerAgeStrip />
         {/* Hero Header - Quick Stats Only */}
         <DispatchHeroHeader
           disp_no={dispatch.disp_no}
@@ -651,8 +642,6 @@ function DispatchDetailScreen() {
           customer_name={dispatch.customer_details?.name}
           imported={dispatch.imported === true}
         />
-
-        <UnsentDetailsStrip kind="dispatch" id={String(id)} testID="dispatch-details-unsent-strip" />
 
         {isCheckingDelete ? <LostAnswerStrip kind="delete" testID="dispatch-details-checking-delete" /> : null}
 
@@ -685,8 +674,6 @@ function DispatchDetailScreen() {
               onSharePDF={handleSharePDF}
               is_share_loading={isShareLoading}
               onPrint={canPrint ? handlePrint : undefined}
-              needs_connection={needsConnection}
-              needs_connection_note={newDocument.note}
             />
           )}
 
@@ -760,6 +747,15 @@ function DispatchDetailScreen() {
       />
 
     </>
+  );
+}
+
+/** Offline the page is only its header and the needs-a-connection state: nothing is read or kept (WH-381). */
+function DispatchDetailScreen() {
+  return (
+    <ServerOnlyScreen title={tr('common.dispatch')} testID="dispatch-details-needs-connection">
+      <DispatchDetailScreenOnline />
+    </ServerOnlyScreen>
   );
 }
 
