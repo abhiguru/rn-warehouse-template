@@ -57,7 +57,10 @@ export const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'reports/accountant-pack': 'accountantPack',
   'reports/replaced-entries': 'replacedEntries',
   // The Holding list of refused items (WH-304): administrators and supervisors. The held item page is also the recorder's own read-only view.
+  // Two routes open the same screen: the strip's `/holding-list` and the Reports row's `/reports/holding-list`. The held item route
+  // (`held-item`) is left open on purpose: staff open their own item there, read-only.
   'holding-list': 'holdingList',
+  'reports/holding-list': 'holdingList',
 };
 
 /**
