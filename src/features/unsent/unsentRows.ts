@@ -5,7 +5,11 @@
  */
 import { File } from 'expo-file-system';
 import { createLogger, loggableError } from '@/utils/logger';
+import { fileOfStored, formTextFromStored, formTextToStored, toStored } from './storedPath';
 import { getUnsentDb, unsentPhotoDirectory, type SqlValue, type UnsentDb } from './unsentDb';
+
+/** A photo row as read: its `file` is the full current address, whatever way it was stored (see storedPath.ts). */
+const readPhoto = <T extends { file: string }>(row: T): T => ({ ...row, file: fileOfStored(row.file) });
 
 const logger = createLogger('[unsent]');
 
@@ -174,7 +178,7 @@ export async function insertItems(db: UnsentDb, items: readonly NewItem[], form?
         for (const photo of rowsOf.get(item.id) ?? []) {
           await tx.run(
             'INSERT INTO item_photos (item_id, file, client_photo_id, role, line_ref, done, missing) VALUES (?, ?, ?, ?, ?, 0, 0)',
-            [item.id, photo.uri, photo.clientPhotoId, photo.role, photo.lineRef ?? null]
+            [item.id, toStored(photo.uri), photo.clientPhotoId, photo.role, photo.lineRef ?? null]
           );
         }
       }
@@ -182,7 +186,7 @@ export async function insertItems(db: UnsentDb, items: readonly NewItem[], form?
       const first = items[0];
       if (form && first) {
         const [row] = await tx.all<Record<string, SqlValue>>('SELECT * FROM forms WHERE scope = ? AND kind = ? AND grn_id = ?', [form.scope, form.kind, '']);
-        await tx.run('UPDATE items SET form_row = ? WHERE id = ?', [JSON.stringify({ ...(row ?? {}), hadForm: row !== undefined, taken: moved }), first.id]);
+        await tx.run('UPDATE items SET form_row = ? WHERE id = ?', [JSON.stringify({ ...(row ?? {}), hadForm: row !== undefined, taken: moved.map(entry => ({ from: entry.from, to: toStored(entry.to) })) }), first.id]);
         if (row) {
           await tx.run('DELETE FROM forms WHERE id = ?', [String(row.id)]);
           leftovers = formFiles(row.photos);
@@ -202,7 +206,7 @@ function formFiles(raw: SqlValue | undefined): string[] {
   if (typeof raw !== 'string') return [];
   try {
     const list: unknown = JSON.parse(raw);
-    return Array.isArray(list) ? list.filter((entry): entry is string => typeof entry === 'string') : [];
+    return Array.isArray(list) ? list.flatMap(entry => (typeof entry === 'string' && fileOfStored(entry) !== '' ? [fileOfStored(entry)] : [])) : [];
   } catch {
     return [];
   }
@@ -222,13 +226,14 @@ export async function giveBackForm(db: UnsentDb, scope: string, recordId: string
     const form = JSON.parse(record.form_row) as Record<string, SqlValue> & { taken?: { from: string; to: string }[]; hadForm?: boolean };
     const dependants = await db.all<{ id: string }>('SELECT id FROM items WHERE scope = ? AND depends_on = ?', [scope, recordId]);
     const ids = [recordId, ...dependants.map(row => row.id)];
-    const photos = (await db.all<PhotoRow & { item_id: string }>(`SELECT * FROM item_photos WHERE item_id IN (${ids.map(() => '?').join(', ')}) ORDER BY rowid`, ids));
+    const photos = (await db.all<PhotoRow & { item_id: string }>(`SELECT * FROM item_photos WHERE item_id IN (${ids.map(() => '?').join(', ')}) ORDER BY rowid`, ids)).map(readPhoto);
+    const taken = form.taken?.map(entry => ({ from: entry.from, to: fileOfStored(entry.to) }));
     unsentPhotoDirectory().create({ intermediates: true, idempotent: true });
-    let state = typeof form.state === 'string' ? form.state : '{}';
+    let state = typeof form.state === 'string' ? formTextFromStored(form.state) : '{}';
     const back: string[] = [];
     for (const photo of photos) {
       const name = photo.file.slice(photo.file.lastIndexOf('/') + 1).replace(/^[0-9a-f-]{36}-/, '');
-      const origin = form.taken?.find(entry => entry.to === photo.file)?.from;
+      const origin = taken?.find(entry => entry.to === photo.file)?.from;
       // No form was saved for it: the photo goes back where it came from.
       const target = !form.hadForm && origin ? new File(origin) : new File(unsentPhotoDirectory(), `form-${name}`);
       const source = new File(photo.file);
@@ -237,7 +242,7 @@ export async function giveBackForm(db: UnsentDb, scope: string, recordId: string
       moved.push({ from: photo.file, to: target.uri });
       back.push(target.uri);
       // The cache file the form first named is no longer there: the form names the moved file instead.
-      const first = form.taken?.find(entry => entry.to === photo.file);
+      const first = taken?.find(entry => entry.to === photo.file);
       if (first) state = state.split(first.from).join(target.uri);
     }
     await db.transaction(async tx => {
@@ -248,8 +253,8 @@ export async function giveBackForm(db: UnsentDb, scope: string, recordId: string
           scope,
           String(form.kind),
           String(form.grn_id ?? ''),
-          state,
-          JSON.stringify(back),
+          formTextToStored(state),
+          JSON.stringify(back.map(toStored)),
           typeof form.customer === 'string' ? form.customer : null,
           Number(form.started_at ?? Date.now()),
           Date.now(),
@@ -296,7 +301,7 @@ export async function replaceItemWithPhotos(db: UnsentDb, scope: string, itemId:
     [scope, itemId]
   );
   const existingPhotos = existingPhotosItem
-    ? await db.all<PhotoRow>('SELECT * FROM item_photos WHERE item_id = ? ORDER BY rowid', [existingPhotosItem.id])
+    ? (await db.all<PhotoRow>('SELECT * FROM item_photos WHERE item_id = ? ORDER BY rowid', [existingPhotosItem.id])).map(readPhoto)
     : [];
   const existingByFile = new Map(existingPhotos.map(photo => [photo.file, photo]));
 
@@ -355,7 +360,7 @@ export async function replaceItemWithPhotos(db: UnsentDb, scope: string, itemId:
         for (const photo of prepared) {
           await tx.run(
             'INSERT INTO item_photos (item_id, file, client_photo_id, role, line_ref, done, missing) VALUES (?, ?, ?, ?, ?, 0, 0)',
-            [dep.id, photo.uri, photo.clientPhotoId, photo.role, photo.lineRef ?? null]
+            [dep.id, toStored(photo.uri), photo.clientPhotoId, photo.role, photo.lineRef ?? null]
           );
         }
       } else {
@@ -383,7 +388,7 @@ export async function replaceItemWithPhotos(db: UnsentDb, scope: string, itemId:
         for (const photo of prepared) {
           await tx.run(
             'INSERT INTO item_photos (item_id, file, client_photo_id, role, line_ref, done, missing) VALUES (?, ?, ?, ?, ?, 0, 0)',
-            [next.newPhotosItemId, photo.uri, photo.clientPhotoId, photo.role, photo.lineRef ?? null]
+            [next.newPhotosItemId, toStored(photo.uri), photo.clientPhotoId, photo.role, photo.lineRef ?? null]
           );
         }
       }
@@ -432,7 +437,7 @@ export async function itemsOfScope(scope: string): Promise<ItemRow[]> {
 
 export async function photosOf(itemId: string): Promise<PhotoRow[]> {
   const db = await getUnsentDb();
-  return db.all<PhotoRow>('SELECT * FROM item_photos WHERE item_id = ? ORDER BY rowid', [itemId]);
+  return (await db.all<PhotoRow>('SELECT * FROM item_photos WHERE item_id = ? ORDER BY rowid', [itemId])).map(readPhoto);
 }
 
 export async function itemById(id: string): Promise<ItemRow | null> {
@@ -464,6 +469,7 @@ export async function markPhoto(itemId: string, clientPhotoId: string, fields: {
 /** Removes a photo file; a file already gone is not an error. */
 export function removePhotoFile(uri: string): void {
   try {
+    if (uri === '') return;
     const file = new File(uri);
     if (file.exists) file.delete();
   } catch (error) {
@@ -497,7 +503,7 @@ export async function deleteItems(scope: string, ids: string[]): Promise<void> {
     }
     for (const id of doomed) {
       const photos = await tx.all<{ file: string }>('SELECT file FROM item_photos WHERE item_id = ?', [id]);
-      files.push(...photos.map(photo => photo.file));
+      files.push(...photos.map(photo => fileOfStored(photo.file)));
       await tx.run('DELETE FROM item_photos WHERE item_id = ?', [id]);
       await tx.run('DELETE FROM items WHERE id = ?', [id]);
     }
@@ -521,7 +527,7 @@ export async function sweepSentRows(today: string): Promise<void> {
     );
     for (const { id } of old) {
       const photos = await tx.all<{ file: string }>('SELECT file FROM item_photos WHERE item_id = ?', [id]);
-      files.push(...photos.map(photo => photo.file));
+      files.push(...photos.map(photo => fileOfStored(photo.file)));
       await tx.run('DELETE FROM item_photos WHERE item_id = ?', [id]);
       await tx.run('DELETE FROM items WHERE id = ?', [id]);
     }
@@ -545,7 +551,7 @@ export async function sweepHeldRows(heldIds: readonly string[]): Promise<void> {
     const rows = await tx.all<{ id: string }>(`SELECT id FROM items WHERE state = 'held' AND held_id IN (${marks})`, [...heldIds]);
     for (const { id } of rows) {
       const photos = await tx.all<{ file: string }>('SELECT file FROM item_photos WHERE item_id = ?', [id]);
-      files.push(...photos.map(photo => photo.file));
+      files.push(...photos.map(photo => fileOfStored(photo.file)));
       await tx.run('DELETE FROM item_photos WHERE item_id = ?', [id]);
       await tx.run('DELETE FROM items WHERE id = ?', [id]);
       removed += 1;

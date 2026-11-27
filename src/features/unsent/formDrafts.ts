@@ -9,6 +9,7 @@ import { getSessionCacheScope } from '@/utils/cacheManager';
 import { isAppOwnedFileUri } from '@/utils/localPhotoFiles';
 import { createLogger, loggableError } from '@/utils/logger';
 import { getUnsentDb, unsentPhotoDirectory } from './unsentDb';
+import { formTextFromStored, formTextToStored, fromStored, toStoredOrNull } from './storedPath';
 import { announceUnsentChange, removePhotoFile } from './unsentRows';
 
 const logger = createLogger('[unsent-forms]');
@@ -54,11 +55,20 @@ function filesOfColumn(raw: string | null): string[] {
   if (raw === null) return [];
   try {
     const list: unknown = JSON.parse(raw);
-    return Array.isArray(list) ? list.filter((entry): entry is string => typeof entry === 'string') : [];
+    return Array.isArray(list) ? list.flatMap(entry => (typeof entry === 'string' ? fullFiles(entry) : [])) : [];
   } catch {
     return [];
   }
 }
+
+/** A stored file address as the full current one (none when it cannot be one). */
+function fullFiles(stored: string): string[] {
+  const full = fromStored(stored);
+  return full === null ? [] : [full];
+}
+
+/** The addresses as the `photos` column keeps them. */
+const storedFiles = (files: readonly string[]): string[] => files.flatMap(file => toStoredOrNull(file) ?? []);
 
 /**
  * Copies the files the state names into the unsent folder (a file already there is left) and gives back the state text with
@@ -98,7 +108,9 @@ export async function saveFormDraft(input: { kind: FormKind; grnId?: string | nu
   try {
     const scope = await ownScope();
     if (!scope) return false;
-    const kept = await keepPhotoFiles(JSON.stringify(input.state));
+    const copied = await keepPhotoFiles(JSON.stringify(input.state));
+    // Nothing absolute is stored: the text names the copies as `app-doc:///...` and the column relative to the documents folder.
+    const kept = { text: formTextToStored(copied.text), files: copied.files, stored: JSON.stringify(storedFiles(copied.files)) };
     const grnId = input.grnId ?? '';
     const now = input.at ?? Date.now();
     const db = await getUnsentDb();
@@ -107,7 +119,7 @@ export async function saveFormDraft(input: { kind: FormKind; grnId?: string | nu
       const [old] = await tx.all<{ id: string; photos: string | null }>('SELECT id, photos FROM forms WHERE scope = ? AND kind = ? AND grn_id = ?', [scope, input.kind, grnId]);
       if (old) {
         dropped = filesOfColumn(old.photos).filter(file => !kept.files.includes(file));
-        await tx.run('UPDATE forms SET state = ?, photos = ?, customer = ?, updated_at = ? WHERE id = ?', [kept.text, JSON.stringify(kept.files), input.customer ?? null, now, old.id]);
+        await tx.run('UPDATE forms SET state = ?, photos = ?, customer = ?, updated_at = ? WHERE id = ?', [kept.text, kept.stored, input.customer ?? null, now, old.id]);
       } else {
         await tx.run('INSERT INTO forms (id, scope, kind, grn_id, state, photos, customer, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
           Crypto.randomUUID(),
@@ -115,7 +127,7 @@ export async function saveFormDraft(input: { kind: FormKind; grnId?: string | nu
           input.kind,
           grnId,
           kept.text,
-          JSON.stringify(kept.files),
+          kept.stored,
           input.customer ?? null,
           now,
           now,
@@ -142,7 +154,7 @@ export async function loadFormDraft(kind: FormKind, grnId?: string | null): Prom
       [scope, kind, grnId ?? '']
     );
     if (!row) return null;
-    return { id: row.id, kind, grnId: grnId ?? null, state: JSON.parse(row.state) as unknown, customer: row.customer, startedAt: row.started_at };
+    return { id: row.id, kind, grnId: grnId ?? null, state: JSON.parse(formTextFromStored(row.state)) as unknown, customer: row.customer, startedAt: row.started_at };
   } catch (error) {
     logger.warn('An unfinished form could not be read', loggableError(error));
     return null;
@@ -243,8 +255,8 @@ function photoFilesOf(raw: string | null): string[] {
     const list: unknown = JSON.parse(raw);
     if (!Array.isArray(list)) return [];
     return list.flatMap((entry: unknown) => {
-      if (typeof entry === 'string') return [entry];
-      if (typeof entry === 'object' && entry !== null && 'file' in entry && typeof entry.file === 'string') return [entry.file];
+      if (typeof entry === 'string') return fullFiles(entry);
+      if (typeof entry === 'object' && entry !== null && 'file' in entry && typeof entry.file === 'string') return fullFiles(entry.file);
       return [];
     });
   } catch {
