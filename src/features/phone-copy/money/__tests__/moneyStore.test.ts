@@ -44,10 +44,10 @@ describe('T1: answers are stored as the server sent them', () => {
     const activity = { success: true, summary: { total_customers: 1 }, customers: [{ customer_id: 'c2' }] };
     expect(await store().writeMoneyAnswer({ kind: 'dues', key: '', asOf: dues.as_of, today: dues.today, body: dues })).toBe(true);
     expect(await store().writeMoneyAnswer({ kind: 'statement', key: 'c2', asOf: statement.as_of, today: statement.today, body: statement })).toBe(true);
-    expect(await store().writeMoneyAnswer({ kind: 'activity', key: 'k1', asOf: MORNING, today: null, body: activity })).toBe(true);
+    expect(await store().writeMoneyAnswer({ kind: 'activity', key: 'customers|2026-10-29|2026-11-27', asOf: MORNING, today: null, body: activity })).toBe(true);
     expect(await store().readMoneyAnswer('dues', '')).toMatchObject({ asOf: MORNING, today: '2026-11-27', body: dues });
     expect(await store().readMoneyAnswer('statement', 'c2')).toMatchObject({ body: statement });
-    expect(await store().readMoneyAnswer('activity', 'k1')).toMatchObject({ today: null, body: activity });
+    expect(await store().readMoneyAnswer('activity', 'customers|2026-10-29|2026-11-27')).toMatchObject({ today: null, body: activity });
     expect(await store().readMoneyAnswer('statement', 'c1')).toBeNull();
     // Byte for byte: the stored text is the body, the figures are not re-worked (the totals are not the sum of the rows).
     const [storedDues] = (await rowsOfMoney(w)).filter(r => r.kind === 'dues');
@@ -106,13 +106,13 @@ describe('T3: bounds', () => {
     await store().writeMoneyAnswer({ kind: 'statement', key: 'c1', asOf: MORNING, today: '2026-11-27', body: statementBody('c1') });
     for (let n = 1; n <= 21; n += 1) {
       now.mockReturnValue(base + n);
-      await store().writeMoneyAnswer({ kind: 'activity', key: `k${n}`, asOf: MORNING, today: null, body: { success: true, n } });
+      await store().writeMoneyAnswer({ kind: 'activity', key: `customer:c1|2026-11-${String(n).padStart(2, "0")}|2026-11-27`, asOf: MORNING, today: null, body: { success: true, n } });
     }
     const rows = await rowsOfMoney(w);
     const activity = rows.filter(r => r.kind === 'activity').map(r => r.key);
     expect(activity).toHaveLength(20);
-    expect(activity).not.toContain('k1');
-    expect(activity).toContain('k21');
+    expect(activity).not.toContain('customer:c1|2026-11-01|2026-11-27');
+    expect(activity).toContain('customer:c1|2026-11-21|2026-11-27');
     expect(rows.filter(r => r.kind === 'statement').map(r => r.key)).toEqual(['c1']);
   });
 });

@@ -13,7 +13,7 @@
  *    subscribes to the sync run end (`subscribeSyncRunEnd`). In the app PhoneCopyLifecycle calls them; these tests call them.
  *  - The kept dues answer's age for the 10-minute rule is `Date.now()` minus its `as_of`.
  *  - "The first sync of a day" is a run end on a business day later than the kept dues answer's `today`.
- *  - A refusal is a body `{ success: false, error_code: '42501', error: 'Access denied' }`; "Customer not found" is the
+ *  - A refusal is a body `{ success: false, error_code: '42501', error: 'Access denied' }` or (the server raises it) an error with code 42501 and no body; "Customer not found" is the
  *    body's `error` text (the contract names the text only).
  * ==========================================================================================
  */
@@ -301,6 +301,15 @@ describe('T9: refusals and failures', () => {
     const w = await ready();
     await firstMoneyLoad(w);
     statementAnswer = id => (id === 'c2' ? ok({ success: false, error_code: '42501', error: 'Access denied' }) : null);
+    await runEnd(w, [mark('c1'), mark('c2'), mark('c3')]);
+    await until(async () => (await money(w)).length === 0);
+    expect(await stale(w)).toEqual([]);
+  }, 20000);
+
+  it('an access refusal the server RAISES (the client delivers error.code 42501, no body) erases every kept answer and mark', async () => {
+    const w = await ready();
+    await firstMoneyLoad(w);
+    statementAnswer = id => (id === 'c2' ? { data: null, error: { code: '42501', message: 'Access denied', details: null, hint: null } } : null);
     await runEnd(w, [mark('c1'), mark('c2'), mark('c3')]);
     await until(async () => (await money(w)).length === 0);
     expect(await stale(w)).toEqual([]);

@@ -325,6 +325,20 @@ describe('T13: online, the kept answer first and the new one in place', () => {
   });
 });
 
+describe('T9: an access refusal the server raises', () => {
+  it('error.code 42501 with no body shows the refusal alone: the figures go and nothing stays kept', async () => {
+    await loadCopy();
+    await keep('statement', 'c2', statementBody('c2'));
+    serverAnswers.get_customer_statement = () => ({ data: null, error: { code: '42501', message: 'Access denied', details: null, hint: null } });
+    await render(statementFor('c2'));
+    await screen.findByText("Couldn't load the statement");
+    expect(screen.queryByText('GRN A10')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('money-age-line')).not.toBeOnTheScreen();
+    const db = await copyDb.openCopy((await (require('@/utils/cacheManager') as typeof import('@/utils/cacheManager')).getSessionCacheScope())!);
+    expect(await db.all('SELECT kind FROM money_answers')).toEqual([]);
+  });
+});
+
 describe('T14: Customer activity with the copy routing', () => {
   const activity = (id = 'c2') => ({
     success: true, data: { summary: { total_customers: 1, total_current_stock: 21, total_grns: 2, total_dispatches: 1, total_invoice_amount: 4321 },
