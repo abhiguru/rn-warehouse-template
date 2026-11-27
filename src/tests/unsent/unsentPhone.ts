@@ -96,6 +96,8 @@ export async function bootUnsent({ sync = true }: { sync?: boolean } = {}): Prom
   });
   supabase.getAuthenticatedClient = client;
   supabase.getSupabaseClient = client;
+  // The write gate a delete takes while it runs (the real one only refuses during a server switch; there is none here).
+  supabase.beginOperatorMutation = () => () => undefined;
   (require('@/config/lanTransport') as Record<string, unknown>).setLanContext = () => undefined;
   await (require('@/config/operatorServer') as typeof import('@/config/operatorServer')).saveOperatorServer(SERVER);
   const capabilities = require('@/config/facilityCapabilities') as typeof import('@/config/facilityCapabilities');

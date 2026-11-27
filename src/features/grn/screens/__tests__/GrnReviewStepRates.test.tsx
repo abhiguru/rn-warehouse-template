@@ -25,11 +25,12 @@ let mockGrnRates: unknown[] = [];
 let mockChanges: unknown[] = [];
 let mockRemoved: unknown[] = [];
 let mockInvoiced = false;
+let mockRatesNeedServer = false;
 let mockRole = 'supervisor';
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,
   useAppSelector: (selector: (state: unknown) => unknown) =>
-    selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { role: mockRole } }, grnForm: { items: [], removedImages: [], grnRates: mockGrnRates, rateChanges: mockChanges, removedGrnRates: mockRemoved, grnInvoiced: mockInvoiced } }),
+    selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { role: mockRole } }, grnForm: { items: [], removedImages: [], grnRates: mockGrnRates, rateChanges: mockChanges, removedGrnRates: mockRemoved, grnInvoiced: mockInvoiced, ratesNeedServer: mockRatesNeedServer } }),
 }));
 
 const mockHeader = {
@@ -178,6 +179,7 @@ beforeEach(() => {
   mockChanges = [];
   mockRemoved = [];
   mockInvoiced = false;
+  mockRatesNeedServer = false;
   mockRole = 'supervisor';
   mockStatus = 'ready';
   mockItems = [line(1, 'gur', 'Fictional Gur', 12), line(2, 'rice', 'Fictional Rice', 30)];
@@ -704,5 +706,43 @@ describe('the sections fold, one open at a time (owner, 2026-10-17)', () => {
     await render('edit');
     expect(screen.queryByRole('button', { name: NAMES.rates })).not.toBeOnTheScreen();
     expect(SECTIONS.filter((section) => section !== 'rates' && isOpen(section))).toEqual(['items']);
+  });
+});
+
+describe('WH-303 DQ10: the Rates section of an Edit GRN loaded from the phone copy', () => {
+  const copyRates = [{ price_type: 'monthly', item_id: 'gur', weight_min: 0, weight_max: 50, unit_price: 3.5, labour_rate: 1.5, tax_percent: 5 }];
+
+  it('shows the copy\'s rates as online, with every control off and one Needs a connection line under the heading', async () => {
+    mockRatesNeedServer = true;
+    mockGrnRates = copyRates;
+    await render('edit');
+    expect(hasText('RATES')).toBe(true);
+    // One line, the short words, not the whole-screen sentence.
+    expect(screen.getAllByTestId('grn-edit-rates-needs-connection')).toHaveLength(1);
+    expect(screen.getByTestId('grn-edit-rates-needs-connection')).toHaveTextContent('Needs a connection');
+    expect(screen.queryByText('This needs a connection. It will load when you reconnect.')).not.toBeOnTheScreen();
+    // The row that has a rate is drawn as online draws it ...
+    expect(rowTexts(0)).toContain('Fictional Gur');
+    expect(rowTexts(0)).toContain('3.50');
+    // ... and nothing on it changes a rate.
+    for (const kind of ['changeFor', 'addFor', 'undoFor', 'removeFor', 'restoreFor'] as const) {
+      expect(action(kind, 0)).not.toBeOnTheScreen();
+    }
+    expect(screen.queryByText('No rate')).not.toBeOnTheScreen();
+  });
+
+  it('a copy that holds no rates shows the whole-screen sentence in place of the section', async () => {
+    mockRatesNeedServer = true;
+    mockGrnRates = [];
+    await render('edit');
+    expect(screen.getByTestId('grn-edit-rates-needs-connection')).toHaveTextContent('This needs a connection. It will load when you reconnect.');
+    expect(rowCount()).toBe(0);
+  });
+
+  it('with a connection the section is as before: rows with their actions and no Needs a connection line', async () => {
+    mockRatesNeedServer = false;
+    await render('edit');
+    expect(screen.queryByTestId('grn-edit-rates-needs-connection')).not.toBeOnTheScreen();
+    expect(action('changeFor', 0)).toBeOnTheScreen();
   });
 });

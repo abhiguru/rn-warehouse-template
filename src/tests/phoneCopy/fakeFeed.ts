@@ -21,7 +21,12 @@ export const ENTITIES = ['customers', 'items', 'settings', 'people', 'goodsrecei
   'dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'grn_lock', 'user_profiles', 'users_customers_new'] as const;
 /** What a format-3 feed adds (WH-348 contract section 14.1; the names are the contract's topics, the build confirms them). */
 export const FORMAT_3_ENTITIES = ['grn_rates', 'item_storage_prices', 'standard_rate_tiers', 'item_price_history', 'payments'] as const;
-const entitiesFor = (format: number): readonly string[] => (format >= 3 ? [...ENTITIES, ...FORMAT_3_ENTITIES] : ENTITIES);
+/** What a format-4 feed adds (WH-303 contract section 5.6: the replaced entries, staff roles only). */
+export const FORMAT_4_ENTITIES = ['grn_replacements'] as const;
+const entitiesFor = (format: number): readonly string[] => {
+  if (format >= 4) return [...ENTITIES, ...FORMAT_3_ENTITIES, ...FORMAT_4_ENTITIES];
+  return format >= 3 ? [...ENTITIES, ...FORMAT_3_ENTITIES] : ENTITIES;
+};
 export const STAGE_ONE = ENTITIES.slice(0, 7);
 export const STAGE_TWO = ENTITIES.slice(7);
 
@@ -33,7 +38,7 @@ export function createFakeFeed() {
     copy: COPY_KEY,
     startPosition: '1048576',
     asOf: '2026-11-25T05:12:00.000+00:00',
-    rows: Object.fromEntries([...ENTITIES, ...FORMAT_3_ENTITIES].map(e => [e, [] as FeedRow[]])) as Record<string, FeedRow[]>,
+    rows: Object.fromEntries([...ENTITIES, ...FORMAT_3_ENTITIES, ...FORMAT_4_ENTITIES].map(e => [e, [] as FeedRow[]])) as Record<string, FeedRow[]>,
     calls: [] as Call[],
     changeAnswers: [] as Array<ChangesAnswer | { error: { message: string; code?: string } } | { refusal: string }>,
     gates: [] as Gate[],
