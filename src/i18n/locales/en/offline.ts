@@ -103,6 +103,26 @@ export const offline = {
     refused: "Couldn't save: {{reason}}",
     refusedUnknown: "Couldn't save. The server refused this change.",
   },
+  // Edit GRN with no connection (WH-303; product/design/offline-capture.md 6.1, 6.2, 6.x)
+  linesAdded: 'Lines added',
+  linesRemoved: 'Lines removed',
+  lineRemovedNotSent: 'Removed, not sent yet',
+  belowDispatched: '{{quantity}} is less than the {{dispatched}} already dispatched from this lot.',
+  replaced: {
+    title: "A change here replaced someone's newer entry. Check it is right.",
+    field: '{{field}}: {{newer}} ({{newerBy}}, {{newerAt}}) was replaced by {{sent}} ({{sentBy}}, {{sentAt}}).',
+    fieldLate:
+      '{{field}}: {{newer}} ({{newerBy}}, {{newerAt}}) was replaced by {{sent}} ({{sentBy}}, made {{sentAt}}, reached the server {{reachedAt}}).',
+    lineAdded: 'Line added: {{item}}, {{quantity}} ({{by}}, {{at}}).',
+    lineAddedLate: 'Line added: {{item}}, {{quantity}} ({{by}}, made {{at}}, reached the server {{reachedAt}}).',
+    whoUnknown: 'someone',
+    empty: 'empty',
+    markChecked: 'Mark as checked',
+    showAll: 'Show all {{count}}',
+    lotField: '{{item}}, {{field}}',
+    lotFieldMark: '{{item}} ({{mark}}), {{field}}',
+    lotFieldRack: '{{item}} (rack {{rack}}), {{field}}',
+  },
   duration: {
     hoursMinutes: '{{hours}} h {{minutes}} min',
     hours: '{{hours}} h',
