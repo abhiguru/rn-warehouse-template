@@ -4,11 +4,11 @@
  * line about time: the strip under the header is where it reads it, once.
  */
 import { useSyncExternalStore } from 'react';
-import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePhoneCopyStatus } from '@/hooks/usePhoneCopyStatus';
 import { useAppSelector } from '@/store/hooks';
 import { customerAge, type CustomerAge } from './customerAge';
 import { businessDate } from './pgCompat';
+import { useCopyOffline } from './useCopyOffline';
 
 const DAY_CHECK_MS = 60_000;
 const subscribeDay = (onChange: () => void): (() => void) => {
@@ -31,7 +31,7 @@ export interface CustomerAgeView {
 export function useCustomerAge(): CustomerAgeView | null {
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const snapshot = usePhoneCopyStatus();
-  const offline = useIsOffline();
+  const offline = useCopyOffline();
   // India's day on the phone's clock, looked at again every minute: a strip left open overnight turns to "earlier".
   const phoneDay = useSyncExternalStore(subscribeDay, phoneDayNow, phoneDayNow);
   if (role !== 'customer' || snapshot.feature !== 'on' || snapshot.asOf === null) return null;

@@ -50,7 +50,7 @@ import { describeDateRange } from '@/features/filters/filterModel';
 import { trustCustomerName } from '@/features/reports/customerNames';
 import { reportById } from '@/features/reports/reportRegistry';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
-import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
+import { changeCustomerAction, exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportPrefs } from '@/features/reports/useReportPrefs';
@@ -216,6 +216,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.customerActivity')}
       subtitle={tr('reports.shared.allCustomers')}
       actions={actions}
@@ -367,7 +368,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...changeCustomerAction(onChangeCustomer),
       ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
@@ -420,6 +421,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.customerActivity')}
       subtitle={name || undefined}
       actions={actions}

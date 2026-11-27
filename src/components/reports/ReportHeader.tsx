@@ -32,6 +32,8 @@ export interface ReportHeaderAction {
   busy?: boolean;
   /** Cannot be used now (it needs a connection); the label then says why. */
   disabled?: boolean;
+  /** True for a local action (such as Change customer) that stays enabled while the phone is offline (WH-306). */
+  worksOffline?: boolean;
 }
 
 interface ReportHeaderProps {

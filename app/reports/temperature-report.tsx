@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/Button';
 import { DatePickerInput } from '@/components/ui/DatePickerInput';
 import { StatusTag } from '@/components/ui/StatusTag';
 import { useLiveReport } from '@/features/reports/useLiveReport';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import {
   PERIOD_TEXT,
   getReportSensors,
@@ -128,6 +130,7 @@ const SensorRow = memo(function SensorRow({ sensor }: { sensor: ReportSensor }) 
 
 function ReportForm({ deviceId, sensor }: { deviceId: string; sensor: ReportSensor | undefined }) {
   const styles = useThemedStyles(makeStyles);
+  const needsConnection = useNeedsConnectionV3();
   const today = useMemo(() => todayInIST(), []);
   const [to, setTo] = useState<Date>(today);
   const [from, setFrom] = useState<Date>(() => new Date(today.getFullYear(), today.getMonth(), today.getDate() - (DEFAULT_DAYS - 1)));
@@ -187,12 +190,17 @@ function ReportForm({ deviceId, sensor }: { deviceId: string; sensor: ReportSens
             {tr(problem)}
           </Text>
         ) : null}
+        {needsConnection ? (
+          <NeedsConnectionLine testID="temperature-report-share-pdf-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        ) : null}
         <Button
           type="primary"
           size="fullWidth"
           leftIcon="share-variant"
           loading={sharing}
-          disabled={sharing || problem !== null}
+          disabled={sharing || problem !== null || needsConnection}
+          testID="temperature-report-share-pdf"
+          accessibilityLabel={needsConnection ? needsConnectionLabel(tr('components.sharePdf')) : undefined}
           onPress={() => { void sharePdf(); }}
         >
           {tr('components.sharePdf')}

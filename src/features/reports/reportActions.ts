@@ -17,6 +17,14 @@ import type { ReportExport } from './useReportExport';
 export const exportHeaderActions = ({ exportPdf, busy, available }: ReportExport): ReportHeaderAction[] =>
   available ? [{ icon: 'file-pdf-box', label: tr('reports.export.sharePdf'), busy, onPress: () => void exportPdf() }] : [];
 
+/**
+ * The header's "Change customer" for an account assigned to several customers: local switching stays enabled offline (WH-306).
+ */
+export const changeCustomerAction = (onChangeCustomer?: () => void): ReportHeaderAction[] =>
+  onChangeCustomer
+    ? [{ icon: 'account-switch-outline', label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer, worksOffline: true }]
+    : [];
+
 /** The longest quick period of a report (REPORT_DATE_PRESETS). */
 export const LONGEST_REPORT_PERIOD: DateRangeValue = { preset: 'last420' };
 const LONGEST_REPORT_DAYS = 420;

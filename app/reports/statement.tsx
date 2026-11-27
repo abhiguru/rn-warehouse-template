@@ -27,7 +27,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Button } from '@/components/ui/Button';
 import { PaymentStatusTag } from '@/features/payments/PaymentStatusTag';
 import { DuesFigures, rupees } from '@/features/reports/DuesFigures';
-import { exportHeaderActions } from '@/features/reports/reportActions';
+import { changeCustomerAction, exportHeaderActions } from '@/features/reports/reportActions';
 import { MoneyAgeLine } from '@/features/phone-copy/money/MoneyAgeLine';
 import { fetchStatement } from '@/features/phone-copy/money/moneyFetch';
 import { useMoneyOn } from '@/features/phone-copy/money/moneyGate';
@@ -223,7 +223,7 @@ function StatementBody({ customerId, customerName, canOpenLeft, onChangeCustomer
 
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...changeCustomerAction(onChangeCustomer),
       // Only once the figures are on screen: the PDF is of the same read.
       ...exportHeaderActions({ exportPdf: sharePdf, busy: sharing, available: !!data }),
     ],
@@ -264,6 +264,7 @@ function StatementBody({ customerId, customerName, canOpenLeft, onChangeCustomer
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.statement')}
       subtitle={name || undefined}
       actions={actions}
@@ -276,7 +277,6 @@ function StatementBody({ customerId, customerName, canOpenLeft, onChangeCustomer
       extraData={extraData}
       empty={{ icon: 'file-account-outline', title: tr('reports.statement.statementEmpty') }}
       errorTitle={tr('reports.statement.errorTitle')}
-      reportId={REPORT_ID}
       ageLine={kept?.age ? <MoneyAgeLine {...kept.age} refreshFailed={kept.refreshFailed} onRetry={kept.retry} /> : undefined}
       notHere={kept?.notHere ? { testID: 'statement-not-here', title: tr('money.statementNotHereTitle'), text: tr('money.statementNotHereText') } : undefined}
       // Statement is a money screen: its own kept-answer age (WH-305, Design 9.7 DQ2), never CustomerAgeStrip.

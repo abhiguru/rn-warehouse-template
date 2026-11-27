@@ -218,13 +218,19 @@ function ReportScaffoldInner<T>({
   // The phone copy's time is the status bar's (warehouse) or CustomerAgeStrip (customer account): never two times on screen.
   const fromPhoneCopy = Boolean(query.fromPhoneCopy);
   const updatedAt = fromPhoneCopy || (showCustomerAge && hideListTime) ? undefined : query.updatedAt;
-  // Sharing needs the server: with no connection the icons stay, disabled, and one line under the header says why.
+  // Sharing and PDFs need the server: with no connection those icons stay, disabled, and one line under the header says why.
+  // Local actions such as Change customer (`worksOffline`) stay enabled so a several-customer account can switch offline.
   const offline = useCopyOffline();
-  const sharingNeedsConnection = fromPhoneCopy && offline && Boolean(actions?.length);
+  const hasServerAction = Boolean(actions?.some(action => !action.worksOffline));
+  const sharingNeedsConnection = (fromPhoneCopy || phoneNeedsConnection) && offline && hasServerAction;
   const headerActions = useMemo(
     () =>
       sharingNeedsConnection
-        ? actions?.map(action => ({ ...action, disabled: true, label: tr('reports.shared.actionNeedsConnection', { label: action.label }) }))
+        ? actions?.map(action =>
+            action.worksOffline
+              ? action
+              : { ...action, disabled: true, label: tr('reports.shared.actionNeedsConnection', { label: action.label }) }
+          )
         : actions,
     [actions, sharingNeedsConnection]
   );

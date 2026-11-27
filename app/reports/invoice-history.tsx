@@ -41,7 +41,7 @@ import { invoiceMonths, invoiceMonthsHavePaise, invoiceMonthTotals, type Invoice
 import { invoicePayment, isCancelledInvoice } from '@/features/filters/configs/reports/invoicePayment';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
-import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
+import { changeCustomerAction, exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
@@ -217,6 +217,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.invoiceHistory')}
       subtitle={tr('reports.shared.allCustomers')}
       actions={actions}
@@ -380,7 +381,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...changeCustomerAction(onChangeCustomer),
       ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
@@ -398,6 +399,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.invoiceHistory')}
       subtitle={customerName || undefined}
       actions={actions}

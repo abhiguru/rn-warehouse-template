@@ -68,7 +68,7 @@ import type { StockGRNMore } from '@/components/reports/StockItemCard';
 import { ITEM_STOCK, itemStockFallbackView } from '@/features/filters/configs/reports/itemStock';
 import { reportById } from '@/features/reports/reportRegistry';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
-import { exportHeaderActions } from '@/features/reports/reportActions';
+import { changeCustomerAction, exportHeaderActions } from '@/features/reports/reportActions';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
@@ -454,7 +454,7 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...changeCustomerAction(onChangeCustomer),
       // Left out once the facility's server has said it cannot make report PDFs, and for a server
       // that cannot sort the list (older than migration 52, so without generate-report-pdf too).
       ...(serverSorted ? exportHeaderActions({ exportPdf, busy, available }) : []),
