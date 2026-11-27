@@ -309,7 +309,7 @@ describe('3. Un-upgraded server compatibility (criterion 14)', () => {
 
   it('customer account against format-7 server listing dispatch yields off with zero copy DB', async () => {
     seedCustomerAccount(['c1'], 7);
-    const w = await bootWarehouse({ role: 'customer' });
+    const w = await bootWarehouse({ role: 'customer', legacyServer: true });
     await w.phone.engine.startPhoneCopy();
     expect(await w.phone.engine.syncNow('open')).toBe('off');
     expect(w.phone.syncStore.getSyncSnapshot().feature).toBe('off');
@@ -606,11 +606,11 @@ describe('6. Routing: server-only services do NOT read from the phone copy offli
       () => (require('@/services/paymentsService') as typeof import('@/services/paymentsService')).getInvoicePayments('inv1').catch(() => null)],
     ['dispatch-activity-service getAllDispatchActivity', 'get_all_dispatch_activity',
       () => (require('@/services/reporting/dispatch-activity-service') as typeof import('@/services/reporting/dispatch-activity-service')).getAllDispatchActivity(period)],
-    ['dispatch-activity-service getCustomerDispatchActivity', 'get_dispatch_activity_report',
+    ['dispatch-activity-service getCustomerDispatchActivity', 'get_customer_dispatch_activity',
       () => (require('@/services/reporting/dispatch-activity-service') as typeof import('@/services/reporting/dispatch-activity-service')).getCustomerDispatchActivity({ customerId: 'c1', ...period })],
     ['grn-activity-service getAllGRNActivity', 'get_all_grn_activity',
       () => (require('@/services/reporting/grn-activity-service') as typeof import('@/services/reporting/grn-activity-service')).getAllGRNActivity(period)],
-    ['grn-activity-service getCustomerGRNActivity', 'get_grn_activity_report',
+    ['grn-activity-service getCustomerGRNActivity', 'get_customer_grn_activity',
       () => (require('@/services/reporting/grn-activity-service') as typeof import('@/services/reporting/grn-activity-service')).getCustomerGRNActivity({ customerId: 'c1', ...period })],
     ['grn-detail-service getGRNItemDispatches', 'get_grn_item_dispatches',
       () => (require('@/services/grn-detail-service') as typeof import('@/services/grn-detail-service')).getGRNItemDispatches('l02')],
@@ -673,4 +673,83 @@ describe('7. Customer activity kept answers (Product Q1, 2026-11-27): customer a
       const gate = require('@/features/phone-copy/money/moneyGate') as typeof import('@/features/phone-copy/money/moneyGate');
       expect(gate.activityMoneyOn()).toBe(expected);
     });
+});
+
+describe('8. WH-381 follow-ups (Dev, 2026-11-28)', () => {
+  it('a schema-4 copy is erased and loaded again in ONE pass at schema 5: no stage two, nothing of the old tables left', async () => {
+    const first = bootPhone();
+    const scope = (await first.scope())!;
+    const oldDb = await first.copyDb.openCopy(scope);
+    await oldDb.exec(`
+      CREATE TABLE IF NOT EXISTS dispatch (id TEXT PRIMARY KEY, v TEXT NOT NULL, v_hi INTEGER NOT NULL, v_lo INTEGER NOT NULL, row TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, v TEXT NOT NULL, v_hi INTEGER NOT NULL, v_lo INTEGER NOT NULL, row TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS invoice (id TEXT PRIMARY KEY, v TEXT NOT NULL, v_hi INTEGER NOT NULL, v_lo INTEGER NOT NULL, row TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS payments (id TEXT PRIMARY KEY, v TEXT NOT NULL, v_hi INTEGER NOT NULL, v_lo INTEGER NOT NULL, row TEXT NOT NULL);
+      INSERT OR REPLACE INTO dispatch (id, v, v_hi, v_lo, row) VALUES ('d-old', '0123456789abcdef', 0, 0, '{"id":"d-old"}');
+      INSERT OR REPLACE INTO orders (id, v, v_hi, v_lo, row) VALUES ('o-old', '0123456789abcdef', 0, 0, '{"id":"o-old"}');
+      INSERT OR REPLACE INTO invoice (id, v, v_hi, v_lo, row) VALUES ('i-old', '0123456789abcdef', 0, 0, '{"id":"i-old"}');
+      INSERT OR REPLACE INTO payments (id, v, v_hi, v_lo, row) VALUES ('p-old', '0123456789abcdef', 0, 0, '{"id":"p-old"}');
+      INSERT OR REPLACE INTO meta (k, v) VALUES ('schema_version', '4'), ('phase', 'ready');
+    `);
+    await first.engine.stopPhoneCopy();
+
+    seedWarehouse();
+    useFormat8Feed();
+    const upgraded = bootPhone();
+    const phases: string[] = [];
+    const unsubscribe = upgraded.syncStore.subscribeSync(() => { phases.push(upgraded.syncStore.getSyncSnapshot().phase); });
+    try {
+      await upgraded.engine.startPhoneCopy();
+      expect(upgraded.syncStore.getSyncSnapshot().phase).toBe('empty');
+      expect(upgraded.engine.isCopyReadable()).toBe(false);
+      expect(await upgraded.engine.syncNow('open')).toBe('done');
+    } finally {
+      unsubscribe();
+    }
+    expect(phases).not.toContain('stage2');
+    expect(upgraded.syncStore.getSyncSnapshot()).toMatchObject({ phase: 'ready', format: 8 });
+    expect(await metaOf(upgraded, 'schema_version')).toBe('5');
+    expect((await idsOf(upgraded, 'goodsreceived')).length).toBe(7);
+    const db = await upgraded.copyDb.openCopy(scope);
+    const tables = (await db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")).map(r => r.name);
+    for (const dropped of DROPPED_ENTITIES) expect(tables).not.toContain(dropped);
+  });
+
+  it('the Invoicing filter offline for a customer account: no rows, "waiting" not "no match", nothing from the server', async () => {
+    seedWarehouse();
+    seedDocuments();
+    seedCustomerAccount(['c1', 'c2'], 8);
+    useFormat8Feed(KEPT_CUSTOMER_ENTITIES);
+    const w = await bootWarehouse({ role: 'customer' });
+    await loadCopy(w);
+    await goOffline(w);
+    w.serverCalls.length = 0;
+    const grnService = require('@/services/grn-service') as typeof import('@/services/grn-service');
+    for (const invoiced of [true, false, 'partly_invoiced'] as const) {
+      const offline = (await grnService.getGRNListPage({ p_limit: 20, p_offset: 0, p_filters: { invoiced } }, ['c1'])) as unknown as {
+        data: { items: unknown[] }; invoiceFilterWaiting?: boolean;
+      };
+      expect(offline.data.items).toEqual([]);
+      expect(offline.invoiceFilterWaiting).toBe(true);
+    }
+    expect(w.serverCalls).toEqual([]);
+  });
+
+  it('getAssignedCustomerInvoices offline for a customer account: needs a connection, no kept rows', async () => {
+    const w = await (async () => {
+      seedWarehouse();
+      seedDocuments();
+      seedCustomerAccount(['c1', 'c2'], 8);
+      useFormat8Feed(KEPT_CUSTOMER_ENTITIES);
+      const warehouse = await bootWarehouse({ role: 'customer' });
+      await loadCopy(warehouse);
+      return warehouse;
+    })();
+    const invoices = require('@/services/invoice-service') as typeof import('@/services/invoice-service');
+    await goOffline(w);
+    const result = await invoices.getAssignedCustomerInvoices(['c2'], { p_limit: 20 });
+    expect(sourceOf(result)).toBeUndefined();
+    expect(result.success).toBe(false);
+    expect(result.data.invoices).toEqual([]);
+  });
 });

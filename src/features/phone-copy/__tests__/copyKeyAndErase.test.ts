@@ -158,6 +158,7 @@ describe('T8, T9: opening the copy', () => {
 
 describe('T11, T13: erasing with the session (spec step 26, decision 7)', () => {
   async function loadedPhone() {
+    filterKeptFeed();
     env.feed.rows.goodsreceived.push(grnRow('g1'));
     const phone = bootPhone();
     await phone.engine.startPhoneCopy();

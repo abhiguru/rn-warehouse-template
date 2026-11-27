@@ -27,7 +27,25 @@ export interface Warehouse {
   setCapability(on: boolean): void;
 }
 
-export async function bootWarehouse({ role = 'staff', capability = true }: { role?: Role; capability?: boolean } = {}): Promise<Warehouse> {
+/** The eight entities WH-381 takes out of the feed (format 8). */
+export const DROPPED_BY_WH381 = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
+/** Makes the fake server answer as a WH-381 server: its entity list and checksums name only the kept entities. */
+export function serveKeptEntitiesOnly(): void {
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED_BY_WH381.has(e)) } };
+    if (name === 'get_sync_checksums') return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED_BY_WH381.has(e.e)) } };
+    return answer;
+  };
+}
+
+/** `legacyServer: true` keeps the fake server listing the dropped entities, as a server not yet on format 8 does. */
+export async function bootWarehouse({ role = 'staff', capability = true, legacyServer = false }: { role?: Role; capability?: boolean; legacyServer?: boolean } = {}): Promise<Warehouse> {
+  if (!legacyServer) serveKeptEntitiesOnly();
   for (const method of ['log', 'info', 'warn', 'error', 'debug', 'time', 'timeEnd'] as const) {
     jest.spyOn(console, method).mockImplementation(() => undefined);
   }
@@ -94,7 +112,7 @@ export async function tryLoadCopy(w: Warehouse): Promise<void> {
  * Stops the first load on the first page of `entity`: before 'goodsreceived' the phase is 'stage1', before 'dispatch' it
  * is 'stage2'. `finish()` lets the load end; call it before the test ends.
  */
-export async function loadUpTo(w: Warehouse, entity: 'goodsreceived' | 'dispatch') {
+export async function loadUpTo(w: Warehouse, entity: 'goodsreceived' | 'dispatch' | 'grn_lock') {
   const gate = env.feed.hold(call => call.name === 'get_sync_page' && call.args.p_entity === entity);
   await w.phone.engine.startPhoneCopy();
   const run = w.phone.engine.syncNow('open');

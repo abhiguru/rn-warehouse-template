@@ -120,13 +120,16 @@ describe('G: when Find goods is offered', () => {
     expect(gate().findGoodsState()).toBe('ready');
   });
 
+  // WH-381 (step 2, criterion 14a) replaces "ready while older records still load (stage two)": there is no second stage,
+  // so a load held after grn_images (where stage one used to end) is still 'loading', online and offline, and ready at the end.
   it('G1: ready while older records still load (stage two), online and offline', async () => {
     const w = await bootWarehouse();
-    const load = await loadUpTo(w, 'dispatch');
-    expect(gate().findGoodsState()).toBe('ready');
+    const load = await loadUpTo(w, 'grn_lock');
+    expect(gate().findGoodsState()).toBe('loading');
     await goOffline(w);
-    expect(gate().findGoodsState()).toBe('ready');
+    expect(gate().findGoodsState()).toBe('loading');
     await load.finish();
+    expect(gate().findGoodsState()).toBe('ready');
   });
 
   it('G2: loading before the first load and during stage one', async () => {
@@ -192,7 +195,7 @@ describe('F2 and F3: the rows and their order', () => {
     expect(answer.source).toEqual(copySource());
     expect(answer.copyId).toEqual(expect.any(String));
     expect(answer.copyId).not.toBe('');
-    expect(answer.olderLoading).toBe(false);
+    expect(answer.olderLoading).toBeUndefined();   // WH-381 (step 2, criterion 14a): no second stage, so no older-records flag
   });
 
   it.each([
@@ -285,12 +288,12 @@ describe('F5: this phone\'s unsent dispatches and held dispatches (the overlay s
     mockOverlay.lessHeld.set('l07', 3);     // 8 -> 5
     await ready();
     const answer = await service().findGoods('a', 0);
-    // group 1 (stock above 0): l07, l05, l06, l04, l03, l01; group 2: l08 (newer) then l02
-    expect(ids(answer)).toEqual(['l07', 'l05', 'l06', 'l04', 'l03', 'l01', 'l08', 'l02']);
+    // WH-381 item 4: the server's figure, no deduction, so l08 keeps its 2 and stays in the stock group
+    expect(ids(answer)).toEqual(['l08', 'l07', 'l05', 'l06', 'l04', 'l03', 'l01', 'l02']);
     const byId = new Map(pageOf(answer).data.map(r => [r.grn_item_id, r.stock]));
-    expect(byId.get('l08')).toBe(0);
-    expect(byId.get('l06')).toBe(5);
-    expect(byId.get('l07')).toBe(5);
+    expect(byId.get('l08')).toBe(stockOf('l08'));
+    expect(byId.get('l06')).toBe(stockOf('l06'));
+    expect(byId.get('l07')).toBe(stockOf('l07'));
     expect(byId.get('l05')).toBe(stockOf('l05'));
     expect(pageOf(answer).total_count).toBe(8);
   });
@@ -300,23 +303,21 @@ describe('F5: this phone\'s unsent dispatches and held dispatches (the overlay s
     mockOverlay.lessHeld.set('l04', 15);    // 20 -> 0
     await ready();
     const answer = await service().findGoods('c-1', 0);
-    expect(pageOf(answer).data.map(r => [r.grn_item_id, r.stock])).toEqual([['l04', 0]]);
+    expect(pageOf(answer).data.map(r => [r.grn_item_id, r.stock])).toEqual([['l04', stockOf('l04')]]);
     const all = await service().findGoods('a', 0);
-    expect(ids(all).slice(-2)).toEqual(['l04', 'l02']);
+    expect(ids(all).slice(-2)).toEqual(['l01', 'l02']);
   });
 });
 
 describe('F6: no network, whatever the connection', () => {
-  it.each(['online', 'offline', 'stage two online', 'stage two offline'])('%s: nothing reaches the server', async mode => {
+  it.each(['online', 'offline'])('%s: nothing reaches the server', async mode => {
     const w = await bootWarehouse();
-    const load = mode.startsWith('stage two') ? await loadUpTo(w, 'dispatch') : undefined;
-    if (!load) await loadCopy(w);
+    await loadCopy(w);
     if (mode.endsWith('offline')) await goOffline(w);
     const answer = await service().findGoods('peas', 0);
     expect(ids(answer)).toEqual(['l08', 'l06', 'l01', 'l02']);
-    expect((answer as Extract<Answer, { kind: 'page' }>).olderLoading).toBe(mode.startsWith('stage two'));
+    expect((answer as Extract<Answer, { kind: 'page' }>).olderLoading).toBeUndefined();   // WH-381: no second stage
     expect(w.serverCalls).toEqual([]);
-    await load?.finish();
   });
 
   it('not ready (no copy yet, or only stage one loaded): not-ready, and still no call to the server', async () => {
@@ -325,6 +326,15 @@ describe('F6: no network, whatever the connection', () => {
     const load = await loadUpTo(w, 'goodsreceived');
     expect(await service().findGoods('peas', 0)).toEqual({ kind: 'not-ready' });
     await load.finish();
+    // WH-381: no second stage, so a load held after grn_images (where stage one used to end) is still not ready.
+    await eraseEverything();
+    resetEnv();
+    seedWarehouse();
+    const w2 = await bootWarehouse();
+    const held = await loadUpTo(w2, 'grn_lock');
+    expect(await service().findGoods('peas', 0)).toEqual({ kind: 'not-ready' });
+    await held.finish();
+    expect(w2.serverCalls).toEqual([]);
     expect(w.serverCalls).toEqual([]);
   });
 
@@ -338,14 +348,15 @@ describe('F6: no network, whatever the connection', () => {
 });
 
 describe('F7: readCopyOnly', () => {
+  // WH-381 (step 2, criterion 14a) replaces the stage-two case: while the single load is held after grn_images the copy is
+  // not readable, online, and readCopyOnly answers not-ready, never a server path.
   it('in stage two, online, answers from the copy where readVia (stage one need) answers the server', async () => {
     const w = await bootWarehouse();
-    const load = await loadUpTo(w, 'dispatch');
-    expect(await route().readVia('stage1', async q => q.get('SELECT 1 AS n'))).toBeNull();   // today: the server path
-    const result = await route().readCopyOnly(async q => q.get<{ n: number }>('SELECT 1 AS n'));
-    expect(result).toEqual({ kind: 'answer', answer: { value: { n: 1 }, source: copySource() } });
+    const load = await loadUpTo(w, 'grn_lock');
+    expect(await route().readCopyOnly(async q => q.get<{ n: number }>('SELECT 1 AS n'))).toEqual({ kind: 'not-ready' });
     expect(w.serverCalls).toEqual([]);
     await load.finish();
+    expect(await route().readCopyOnly(async q => q.get<{ n: number }>('SELECT 1 AS n'))).toEqual({ kind: 'answer', answer: { value: { n: 1 }, source: copySource() } });
   });
 
   it('before the first load answers not-ready, never a server path', async () => {

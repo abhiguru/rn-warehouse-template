@@ -26,6 +26,7 @@ import * as engine from '@/features/phone-copy/syncEngine';
 import * as syncStore from '@/features/phone-copy/syncStore';
 import * as copyDb from '@/features/phone-copy/copyDb';
 import { env, resetEnv, setReachable } from '@/tests/phoneCopy/phoneEnv';
+import { serveKeptEntitiesOnly } from '@/tests/phoneCopy/wh299Phone';
 import { GRNS, grnNamed, lockRow, lotNamed, seedWarehouse } from '@/tests/phoneCopy/grnDataset';
 import { saveOperatorServer } from '@/config/operatorServer';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
@@ -129,6 +130,7 @@ const serverGrn = {
 beforeEach(async () => {
   for (const level of ['log', 'info', 'warn', 'error', 'debug', 'time', 'timeEnd'] as const) jest.spyOn(console, level).mockImplementation(() => undefined);
   resetEnv();
+  serveKeptEntitiesOnly();
   seedWarehouse();
   serverCalls.length = 0;
   serverRows = null;
@@ -174,15 +176,6 @@ const cards = () => screen.queryAllByTestId(/^grn-card-g-[^-]+(-1)?$/).map(card 
 async function loadCopy() {
   await engine.startPhoneCopy();
   expect(await engine.syncNow('open')).toBe('done');
-}
-/** The first load held at the first dispatch page: stage two. */
-async function loadToStageTwo() {
-  const gate = env.feed.hold(call => call.name === 'get_sync_page' && call.args.p_entity === 'dispatch');
-  await engine.startPhoneCopy();
-  const run = engine.syncNow('open');
-  await Promise.race([gate.opened, run]);
-  expect(syncStore.getSyncSnapshot().phase).toBe('stage2');
-  return { finish: () => act(async () => { gate.release(); await run; }) };
 }
 async function connection(offline: boolean) {
   await act(async () => {
@@ -247,10 +240,10 @@ describe('PR9: the quiet re-read', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('Q3: a change of dispatches only does not read the GRN list again', async () => {
+  it('Q3: a change of people only (WH-381: dispatches are no longer in the copy) does not read the GRN list again', async () => {
     await loadCopy();
     const read = await openList();
-    await sync([upsert('dispatch', 'd9', { id: 'd9', disp_no: 'D9', customer_id: 'c1' })]);
+    await sync([upsert('people', 'p9', { id: 'p9', name: 'Fictional Person' })]);
     await wait(300);
     expect(read).not.toHaveBeenCalled();
   });
@@ -344,51 +337,50 @@ describe('PR9: the quiet re-read', () => {
   });
 });
 
-describe('PR12: the Invoicing filter offline while older records load (Design 2.10a)', () => {
+describe('PR12: the Invoicing filter offline over a ready copy (Design 2.10a, Part 13.3, WH-381)', () => {
   const FOOTNOTE = 'The Invoicing filter works when you reconnect.';
   const OFF_LABEL = 'Invoicing, works when you reconnect';
   const NOT_INVOICED = ['g-5', 'g-A10', 'g-B1', 'g-GR-1', 'g-a3'];
 
   it('not set: the chip stays, disabled, says why, and cannot be opened; the footnote shows under the chips', async () => {
-    const load = await loadToStageTwo();
+    await loadCopy();
     await connection(true);
     await render(<GRNListFiori />);
     await screen.findByTestId('grn-card-g-B1');
     const chip = screen.getByRole('button', { name: OFF_LABEL });
     expect(chip).toBeDisabled();
     expect(screen.getByTestId('grn-invoicing-filter-off')).toHaveTextContent(FOOTNOTE);
+    const tagsBefore = screen.queryAllByText('Partly invoiced').length;
     await userEvent.press(chip);
-    expect(screen.queryByText('Partly invoiced')).not.toBeOnTheScreen();
+    expect(screen.queryAllByText('Partly invoiced')).toHaveLength(tagsBefore);
     expect(screen.queryByTestId('grn-invoicing-wait')).not.toBeOnTheScreen();
-    await load.finish();
   });
 
   it('already set when the connection drops: no rows, the reason and its button, never "No match"', async () => {
-    const load = await loadToStageTwo();
-    serverRows = [serverGrn];
+    await loadCopy();
     setFilters({ invoicing: 'not_invoiced' });
     await render(<GRNListFiori />);
-    await screen.findByTestId('grn-card-server-grn'); // reachable: the filter works as today
+    await screen.findByTestId('grn-card-g-B1'); // reachable over a ready copy: the filter reads grn_lock from the copy
     serverCalls.length = 0;
     serverRows = null;
     await connection(true);
     const empty = await screen.findByTestId('grn-invoicing-wait');
-    expect(empty).toHaveTextContent(/Can't filter by invoicing yet/);
-    expect(empty).toHaveTextContent(/The phone doesn't have invoice details yet\. They load when you reconnect\. Clear the filter to see GRNs now\./);
+    expect(empty).toHaveTextContent(/Filtering by invoicing needs a connection/);
+    expect(empty).toHaveTextContent(/Clear the filter to see GRNs offline\./);
     expect(screen.getByRole('button', { name: 'Clear Invoicing filter' })).toBeOnTheScreen();
-    expect(screen.queryByTestId('grn-card-server-grn')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('grn-card-g-B1')).not.toBeOnTheScreen();
     expect(cards()).toEqual([]);
     expect(screen.queryByText('No GRNs match your filters')).not.toBeOnTheScreen();
     expect(screen.queryByTestId('grn-invoicing-filter-off')).not.toBeOnTheScreen();
     // The chip still shows its value and cannot be opened.
+    const tagsBefore = screen.queryAllByText('Partly invoiced').length;
     await userEvent.press(screen.getByText('Not invoiced'));
-    expect(screen.queryByText('Partly invoiced')).not.toBeOnTheScreen();
+    expect(screen.queryAllByText('Partly invoiced')).toHaveLength(tagsBefore);
     expect(serverCalls).toEqual([]);
-    await load.finish();
   });
 
   it('the button clears only the Invoicing filter, and the rows of the other choices show from the copy', async () => {
-    const load = await loadToStageTwo();
+    await loadCopy();
     await connection(true);
     setFilters({ invoicing: 'not_invoiced', [SEARCH_KEY]: 'peas' });
     await render(<GRNListFiori />);
@@ -400,25 +392,25 @@ describe('PR12: the Invoicing filter offline while older records load (Design 2.
     expect(screen.queryByTestId('grn-invoicing-wait')).not.toBeOnTheScreen();
     expect(screen.getByTestId('grn-invoicing-filter-off')).toBeOnTheScreen();
     expect(serverCalls).toEqual([]);
-    await load.finish();
   });
 
+  // WH-381 (criterion 14a) replaces "once the older records have loaded ...": there is no second stage to wait for, so over a
+  // ready copy the chip stays off and the wait state stays for as long as the phone is offline, and no "older records" line shows.
   it('once the older records have loaded, the list fills by itself and the chip works', async () => {
-    const load = await loadToStageTwo();
+    await loadCopy();
     await connection(true);
     setFilters({ invoicing: 'not_invoiced' });
     await render(<GRNListFiori />);
     await screen.findByTestId('grn-invoicing-wait');
-    await load.finish();
-    await screen.findByTestId('grn-card-g-B1');
-    expect(cards().sort()).toEqual(NOT_INVOICED);
-    expect(screen.queryByTestId('grn-invoicing-wait')).not.toBeOnTheScreen();
-    expect(screen.queryByRole('button', { name: OFF_LABEL })).not.toBeOnTheScreen();
+    await wait(500);
+    expect(screen.getByTestId('grn-invoicing-wait')).toBeOnTheScreen();
+    expect(cards()).toEqual([]);
+    expect(screen.queryByText(/Older records/)).not.toBeOnTheScreen();
     expect(serverCalls).toEqual([]);
   });
 
   it('on reconnecting the footnote goes and the chip works', async () => {
-    const load = await loadToStageTwo();
+    await loadCopy();
     await connection(true);
     await render(<GRNListFiori />);
     await screen.findByTestId('grn-invoicing-filter-off');
@@ -427,21 +419,21 @@ describe('PR12: the Invoicing filter offline while older records load (Design 2.
     await waitFor(() => expect(screen.queryByTestId('grn-invoicing-filter-off')).not.toBeOnTheScreen());
     const chip = screen.getByRole('button', { name: 'Filter by invoicing' });
     expect(chip).toBeEnabled();
+    const tagsBefore = screen.queryAllByText('Partly invoiced').length;
     await userEvent.press(chip);
-    expect(await screen.findByText('Partly invoiced')).toBeOnTheScreen();
-    await load.finish();
+    await waitFor(() => expect(screen.queryAllByText('Partly invoiced').length).toBeGreaterThan(tagsBefore));
   });
 
   it.each([
     ['en', 'invoicingFilterOff', 'The Invoicing filter works when you reconnect.'],
     ['en', 'invoicingFilterOffLabel', 'Invoicing, works when you reconnect'],
-    ['en', 'invoicingWaitTitle', "Can't filter by invoicing yet"],
-    ['en', 'invoicingWaitMessage', "The phone doesn't have invoice details yet. They load when you reconnect. Clear the filter to see GRNs now."],
+    ['en', 'invoicingWaitTitle', "Filtering by invoicing needs a connection"],
+    ['en', 'invoicingWaitMessage', 'Clear the filter to see GRNs offline.'],
     ['en', 'clearInvoicingFilter', 'Clear Invoicing filter'],
     ['gu', 'invoicingFilterOff', 'ઇન્વૉઇસ ફિલ્ટર ફરી જોડાશો ત્યારે ચાલશે.'],
     ['gu', 'invoicingFilterOffLabel', 'ઇન્વૉઇસ, ફરી જોડાશો ત્યારે ચાલશે'],
-    ['gu', 'invoicingWaitTitle', 'હજુ ઇન્વૉઇસ પ્રમાણે ફિલ્ટર થઈ શકતું નથી'],
-    ['gu', 'invoicingWaitMessage', 'ફોનમાં હજુ ઇન્વૉઇસની વિગતો નથી. ફરી જોડાશો ત્યારે લોડ થશે. હમણાં આવક પાવતી જોવા ફિલ્ટર સાફ કરો.'],
+    ['gu', 'invoicingWaitTitle', 'ઇન્વૉઇસ પ્રમાણે ફિલ્ટર કરવા કનેક્શન જોઈએ'],
+    ['gu', 'invoicingWaitMessage', 'ઑફલાઇન આવક પાવતી જોવા ફિલ્ટર સાફ કરો.'],
     ['gu', 'clearInvoicingFilter', 'ઇન્વૉઇસ ફિલ્ટર સાફ કરો'],
   ] as const)('%s grn.offline.%s is Design\'s text', async (language, key, text) => {
     await setLanguage(language);

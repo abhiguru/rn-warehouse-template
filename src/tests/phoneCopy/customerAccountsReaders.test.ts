@@ -276,8 +276,8 @@ describe('customer-copy parity & staff-key stripping on details, rates, stock, a
       'get_order_with_items',
       'get_customer_order',
       'from:customers',
-      'get_grn_activity_report',
-      'get_dispatch_activity_report',
+      'get_customer_grn_activity',
+      'get_customer_dispatch_activity',
     ]));
   });
 

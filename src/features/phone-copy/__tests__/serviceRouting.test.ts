@@ -72,9 +72,9 @@ const SERVER_ONLY: [string, string, () => Promise<unknown>][] = [
   ['getDispatchDetails', 'get_dispatch_details', () => dispatchDetail().getDispatchDetails('d1')],
   ['getGRNItemDispatches', 'get_grn_item_dispatches', () => grnDetail().getGRNItemDispatches('l02')],
   ['getAllGRNActivity', 'get_all_grn_activity', () => grnActivity().getAllGRNActivity(period)],
-  ['getCustomerGRNActivity', 'get_grn_activity_report', () => grnActivity().getCustomerGRNActivity({ customerId: 'c1', ...period })],
+  ['getCustomerGRNActivity', 'get_customer_grn_activity', () => grnActivity().getCustomerGRNActivity({ customerId: 'c1', ...period })],
   ['getAllDispatchActivity', 'get_all_dispatch_activity', () => dispatchActivity().getAllDispatchActivity(period)],
-  ['getCustomerDispatchActivity', 'get_dispatch_activity_report', () => dispatchActivity().getCustomerDispatchActivity({ customerId: 'c1', ...period })],
+  ['getCustomerDispatchActivity', 'get_customer_dispatch_activity', () => dispatchActivity().getCustomerDispatchActivity({ customerId: 'c1', ...period })],
 ];
 
 /** Services whose result has no place for `source`: proved by what they answer and by the silence on the network. */

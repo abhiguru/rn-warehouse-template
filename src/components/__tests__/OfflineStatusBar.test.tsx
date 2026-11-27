@@ -89,38 +89,26 @@ describe('OfflineStatusBar: wording (Design 1.4, 1.5)', () => {
     const bar = await show({ phase: 'stage1', running: 'first-load', current: false, asOf: null });
     expect(bar).toHaveTextContent('Loading the warehouse onto this phone…');
   });
-
-  it('"Older records are still loading." after the row\'s own line in stage two', async () => {
-    const bar = await show({ phase: 'stage2', running: 'first-load', current: false });
-    expect(bar).toHaveTextContent('Updating… Last updated 10:42 am. Older records are still loading.');
-  });
-
-  it('"Older records will load when you reconnect." in stage two while offline (not "still loading")', async () => {
-    const bar = await show({ phase: 'stage2', current: false }, true);
-    expect(bar).toHaveTextContent('Offline. Last updated 10:42 am. Older records will load when you reconnect.');
-    expect(bar).not.toHaveTextContent('still loading');
-  });
-
-  // WH-299, S6 (Design 1.5 row 6): the two sentences are joined with ". ", in what is seen and what is read aloud.
-  it.each<[string, Partial<SyncSnapshot>, boolean, string]>([
-    ['up to date', { phase: 'stage2' }, false, 'Up to date. Older records are still loading.'],
-    ['offline', { phase: 'stage2', current: false }, true, 'Offline. Last updated 10:42 am. Older records will load when you reconnect.'],
-  ])('stage two, %s: joins the sentences with ". " and names the bar the same', async (_name, patch, offline, expected) => {
+  // WH-381 (step 2, criterion 14a, Design 1.5 row 6 removed): there is no second stage, so the bar never says older records
+  // are loading or will load. The old stage-two cases become: no such sentence, whatever the state.
+  it.each<[string, Partial<SyncSnapshot>, boolean]>([
+    ['"Older records are still loading." after the row\'s own line in stage two', { phase: 'ready', running: 'first-load', current: false }, false],
+    ['"Older records will load when you reconnect." in stage two while offline (not "still loading")', { phase: 'ready', current: false }, true],
+    ['stage two, up to date: joins the sentences with ". " and names the bar the same', { phase: 'ready' }, false],
+    ['stage two, offline: joins the sentences with ". " and names the bar the same', { phase: 'ready', current: false }, true],
+  ])('%s: no older-records sentence (English)', async (_name, patch, offline) => {
     const bar = await show(patch, offline);
-    expect(screen.getByTestId('offline-status-bar-line1')).toHaveTextContent(expected);
-    expect(bar).toHaveAccessibleName(expected);
+    expect(bar).not.toHaveTextContent(/older records/i);
+    expect(bar).not.toHaveAccessibleName(/older records/i);
   });
 
-  it.each<[string, Partial<SyncSnapshot>, boolean, (time: string) => string]>([
-    ['up to date', { phase: 'stage2' }, false, () => 'અપડેટ છે. જૂની માહિતી હજુ લોડ થઈ રહી છે.'],
-    ['offline', { phase: 'stage2', current: false }, true,
-      time => `ઑફલાઇન. છેલ્લે અપડેટ થયું: ${time}. જૂની માહિતી ફરી જોડાશો ત્યારે લોડ થશે.`],
-  ])('stage two in Gujarati, %s: the same join', async (_name, patch, offline, expected) => {
+  it.each<[string, Partial<SyncSnapshot>, boolean]>([
+    ['up to date', { phase: 'ready' }, false],
+    ['offline', { phase: 'ready', current: false }, true],
+  ])('stage two in Gujarati, %s: no older-records sentence', async (_name, patch, offline) => {
     await setLanguage('gu');
     const bar = await show(patch, offline);
-    const text = expected(formatLoadedAt(Date.parse(AS_OF)));
-    expect(screen.getByTestId('offline-status-bar-line1')).toHaveTextContent(text);
-    expect(bar).toHaveAccessibleName(text);
+    expect(bar).not.toHaveTextContent('જૂની માહિતી');
   });
 
   it('"This phone isn\'t ready yet. Connect to load the warehouse." with nothing loaded and no connection', async () => {

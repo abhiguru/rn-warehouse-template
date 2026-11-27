@@ -167,7 +167,7 @@ describe('deriveStatusBar: the two critical states and line 2', () => {
   it('every state that is not the limit or low storage is neutral (offline is not an error)', () => {
     const patches: Partial<StatusBarInput>[] = [
       {}, { current: false, running: true }, { offline: true, current: false }, { current: false, lastRunFailed: true },
-      { phase: 'stage1', loading: true, current: false }, { phase: 'stage2', current: false },
+      { phase: 'stage1', loading: true, current: false }, { phase: 'ready', current: false },
       { phase: 'empty', current: false, offline: true },
       { offline: true, unsent: { count: 9, sendBy: SEND_BY, limitReached: false } },
     ];
