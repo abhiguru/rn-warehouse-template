@@ -59,53 +59,6 @@ class ItemService {
   // ===========================================================================
 
   /**
-   * Search items by name or packaging
-   * Uses get_items RPC which respects RLS
-   */
-  async searchItems(
-    query: string,
-    limit: number = 20
-  ): Promise<ItemListItem[]> {
-    try {
-      console.log('[ItemService] searchItems:', { query, limit });
-
-      if (!query || query.length < 1) {
-        return [];
-      }
-
-      const client = await getAuthenticatedClient();
-      const { data, error } = await client.rpc('get_items', {
-        p_search_query: query,
-        p_active_only: true,
-        p_limit: limit,
-        p_offset: 0,
-      });
-
-      if (error) {
-        handleGlobalAuthError(error);
-        console.error('[ItemService] Search error:', error);
-        return [];
-      }
-
-      if (!data || !Array.isArray(data)) {
-        return [];
-      }
-
-      // Map RPC response to ItemListItem
-      return data.map((item: RpcItemRow) => ({
-        id: item.id,
-        name: item.name,
-        packaging: item.packaging,
-        description: item.description,
-        active: item.active ?? true,
-      }));
-    } catch (error) {
-      console.error('[ItemService] Exception in searchItems:', error);
-      return [];
-    }
-  }
-
-  /**
    * Get paginated item list with filters
    * Uses get_items RPC
    */
@@ -680,7 +633,6 @@ export const itemService = new ItemService();
 
 // Also export individual functions for convenience
 export const {
-  searchItems,
   getItemList,
   getItemById,
   createItem,
