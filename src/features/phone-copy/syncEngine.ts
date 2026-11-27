@@ -11,6 +11,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { getLanStatus } from '@/config/lanTransport';
 import { isOfflineState } from '@/config/netOffline';
+import { hasCapability } from '@/config/facilityCapabilities';
 import { noteRpcSupport } from '@/config/facilityRpcSupport';
 import { captureMessage } from '@/config/sentryConfig';
 import { getSessionCacheScope } from '@/utils/cacheManager';
@@ -18,11 +19,12 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { applyChanges, finishReload, stageRows, writeRows } from './applyBatch';
 import { compareChecksums } from './checksums';
 import { forgetCopyChanges, noteCopyChange, publishCopyChanges } from './copyChanges';
+import { copyKindOf, signedInRole, storedCopyKind } from './copyKind';
 import { CopyKeyUnreadableError, eraseCopyFiles, openCopy, replaceWithEmptyCopy, setBeforeErase } from './copyDb';
 import type { CopyDriver } from './copyDriver';
 import { recordCopyKeyReadTry, resetCopyKeyReadTries } from './copyKeyReadTries';
 import {
-  ALL_ENTITIES, LAST_STAGE_ONE_ENTITY, SYNC_FORMATS, createIndexes, isEntityName, rebuildAllDispatchSearch,
+  ALL_ENTITIES, CUSTOMER_COPY_FORMAT, LAST_STAGE_ONE_ENTITY, SYNC_FORMATS, createIndexes, isEntityName, rebuildAllDispatchSearch,
   rebuildAllSearch, type EntityName,
 } from './copySchema';
 import { isDiskFull, isSpaceShort, readCopyStorage } from './copyStorage';
@@ -217,7 +219,8 @@ const isReadablePhase = (phase: CopyPhase): boolean => phase === 'stage2' || pha
 async function publishFromMeta(db: CopyDriver, offline: boolean): Promise<void> {
   const phase = await phaseOf(db);
   const format = Number(await meta(db, 'format'));
-  const patch: Partial<SyncSnapshot> = { phase, asOf: await meta(db, 'as_of'), format: format || undefined, copyOpen: true };
+  const kind = storedCopyKind(await meta(db, 'kind'), format > 0);
+  const patch: Partial<SyncSnapshot> = { phase, asOf: await meta(db, 'as_of'), format: format || undefined, kind, copyOpen: true };
   if (phase !== 'empty' && SYNC_FORMATS.includes(format) && getSyncSnapshot().feature !== 'off') patch.feature = 'on';
   if (isReadablePhase(phase) || offline) patch.pending = false;
   publish(patch);
@@ -234,9 +237,22 @@ async function clearData(tx: CopyDriver): Promise<void> {
   await setMeta(tx, 'phase', 'empty');
 }
 
+/**
+ * The copy this session's role may keep reads a format this app knows; a customer account's copy only from
+ * `CUSTOMER_COPY_FORMAT` (formats 4 to 6 are read for the warehouse roles only).
+ */
+function readableFormat(format: number): boolean {
+  if (!SYNC_FORMATS.includes(format)) return false;
+  return copyKindOf(signedInRole()) !== 'customer' || format >= CUSTOMER_COPY_FORMAT;
+}
+const readableStart = (start: { format: number }): boolean => readableFormat(start.format);
+
 async function startLoad(run: Run): Promise<void> {
+  const kind = copyKindOf(signedInRole());
+  // A customer account's copy is for a facility that says it has the feature (contract 11 O3): no copy file otherwise.
+  if (kind === 'customer' && !hasCapability('sync')) throw new FeatureOffError();
   const start = await getSyncStart(run.stop);
-  if (!SYNC_FORMATS.includes(start.format) || !start.entities.every(isEntityName)) throw new FeatureOffError();
+  if (!readableStart(start) || !start.entities.every(isEntityName)) throw new FeatureOffError();
   // A name listed twice would send the page cursor round in a circle: each entity is loaded once, at its first place.
   const entities: EntityName[] = [...new Set(start.entities)];
   const boundary = entities.indexOf(LAST_STAGE_ONE_ENTITY);
@@ -244,6 +260,7 @@ async function startLoad(run: Run): Promise<void> {
   await write(run, async tx => {
     await clearData(tx);
     await setMeta(tx, 'format', String(start.format));
+    if (kind) await setMeta(tx, 'kind', kind);
     await setMeta(tx, 'copy', start.copy);
     await setMeta(tx, 'start_position', start.position);
     await setMeta(tx, 'as_of', start.asOf);
@@ -252,7 +269,7 @@ async function startLoad(run: Run): Promise<void> {
     await setMeta(tx, 'phase', 'stage1');
     if (entities.length) await setMeta(tx, 'load_cursor', JSON.stringify({ entity: entities[0], after: null }));
   });
-  publish({ feature: 'on', phase: 'stage1', asOf: start.asOf, format: start.format });
+  publish({ feature: 'on', phase: 'stage1', asOf: start.asOf, format: start.format, kind: kind ?? undefined });
 }
 
 async function fetchPage(run: Run, cursor: Cursor): Promise<SyncPage> {
@@ -384,7 +401,7 @@ async function reloadAll(run: Run, reason: string): Promise<void> {
   if (KEEP_OLD_REASONS.includes(reason) && !isSpaceShort(freeBytes) && (await phaseOf(run.db)) === 'ready') {
     publish({ running: 'reload' });
     const start = await getSyncStart(run.stop);
-    if (!SYNC_FORMATS.includes(start.format) || !start.entities.every(isEntityName)) throw new FeatureOffError();
+    if (!readableStart(start) || !start.entities.every(isEntityName)) throw new FeatureOffError();
     const entities: EntityName[] = [...new Set(start.entities)];
     const pending: PendingReload = {
       whole: true, entities, position: start.position, copy: start.copy, format: start.format, asOf: start.asOf,
@@ -421,7 +438,7 @@ async function catchUp(run: Run): Promise<void> {
       throw error;
     }
     if (answer.reloadAll) {
-      if (answer.reloadAll === 'FORMAT_CHANGED' && answer.format !== null && !SYNC_FORMATS.includes(answer.format)) throw new FeatureOffError();
+      if (answer.reloadAll === 'FORMAT_CHANGED' && answer.format !== null && !readableFormat(answer.format)) throw new FeatureOffError();
       throw new ReloadAllError(answer.reloadAll);
     }
     if (answer.reload.length) {

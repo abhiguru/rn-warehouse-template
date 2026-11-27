@@ -1,6 +1,7 @@
 import { discoverOperator, loadOperatorServer, saveOperatorServer, getActiveOperatorServer } from './operatorServer';
 import { setFacilityCapabilities } from './facilityCapabilities';
 import { noteBackendRelease } from './backendTooOld';
+import { setFacilityRelease } from './backendFeatures';
 import { clearAppTooOld, isAppTooOld, reportAppTooOld } from './appTooOld';
 import { noteDiscoveryAnswered, noteDiscoveryUpgrading } from './upgradeNotice';
 import { UPGRADING_CODE } from '@/utils/serverText';
@@ -11,12 +12,12 @@ import { getSessionGeneration } from './sessionLifecycle';
 import {
   clearOfflineStarted,
   hasSyncCapability,
-  isCopyRole,
   isNoAnswer,
   keepOfflineStart,
   markOfflineStarted,
   markPastOfflineLimit,
   markStoreUnreadable,
+  opensOffline,
   readOfflineStart,
 } from './offlineStart';
 
@@ -58,9 +59,9 @@ async function offlineStartConfig(
   })) as { role?: unknown } | null;
   if (!profile) {
     if (profileUnreadable) return 'store-unreadable';
-    return isCopyRole(pastLimitRole) ? 'past-limit' : 'profile-refused';
+    return opensOffline(pastLimitRole, config.schemaHead) ? 'past-limit' : 'profile-refused';
   }
-  return isCopyRole(profile.role) ? config : null;
+  return opensOffline(profile.role, config.schemaHead) ? config : null;
 }
 
 // Discovery is public. Complete local cleanup before adopting a replacement
@@ -103,6 +104,7 @@ export async function verifySelectedOperator(
         }
       } else if (config) {
         setFacilityCapabilities(selected, config.capabilities);
+        setFacilityRelease(selected, config);
         markOfflineStarted();
         return { kind: 'offline', server: selected, config };
       }

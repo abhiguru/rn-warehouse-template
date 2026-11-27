@@ -14,14 +14,31 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { PublicConfig } from '@/services/configService';
 import { getCurrentConfig, getStoredToken, RequestTimeoutError } from './supabaseConfig';
 import { getActiveOperatorServer, type OperatorServer } from './operatorServer';
+import { INTRODUCED_BY_MIGRATION, migrationNumber } from './backendFeatures';
 import { getSessionGeneration, onCredentialsSettled } from './sessionLifecycle';
 import { registerSessionScoped } from './sessionScopedRegistry';
 
 const STORAGE_KEY = 'offline_start_v1';
 
-/** The roles the phone copy and the offline start are for; customer accounts keep today's behaviour (Product's P5). */
-export const COPY_ROLES: readonly string[] = ['admin', 'supervisor', 'staff'];
+/** The roles that work in the warehouse: the staff-only surfaces of the phone copy are for them (WH-306). */
+export const WAREHOUSE_COPY_ROLES: readonly string[] = ['admin', 'supervisor', 'staff'];
+export const isWarehouseCopyRole = (role: unknown): boolean => typeof role === 'string' && WAREHOUSE_COPY_ROLES.includes(role);
+
+/** The roles the phone copy and the offline start are for: the warehouse roles and, from WH-306, customer accounts. */
+export const COPY_ROLES: readonly string[] = [...WAREHOUSE_COPY_ROLES, 'customer'];
 export const isCopyRole = (role: unknown): boolean => typeof role === 'string' && COPY_ROLES.includes(role);
+
+/**
+ * True when a person of this role may open the app with no answer from the server: a warehouse role always; a customer
+ * account only when the kept config's release (`schemaHead`) has the customer copy (WH-306, PQ5). No `schemaHead`
+ * counts as older.
+ */
+export function opensOffline(role: unknown, schemaHead: string | null | undefined): boolean {
+  if (isWarehouseCopyRole(role)) return true;
+  if (role !== 'customer') return false;
+  const head = migrationNumber(schemaHead);
+  return head !== null && head >= INTRODUCED_BY_MIGRATION.customerCopy;
+}
 
 export interface OfflineStartRecord {
   origin: string;

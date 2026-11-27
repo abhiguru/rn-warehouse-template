@@ -19,6 +19,8 @@ import { waitForServer } from '@/utils/lostAnswer';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
 import { readVia } from '@/features/phone-copy/readRoute';
+import { readCustomerDispatchList, type CustomerDispatchListData } from '@/features/phone-copy/reads/customer/customerDispatchList';
+import { customerScope, ownIds, type CustomerScope } from '@/features/phone-copy/reads/customer/customerScope';
 import { readDispatchList } from '@/features/phone-copy/reads/dispatchList';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { readRecentDispatchedOrders } from '@/features/phone-copy/reads/recentOrderDispatches';
@@ -664,6 +666,23 @@ export const getDispatchListWithItems = async (
   }
 };
 
+/**
+ * A customer account's read of one customer from the phone copy (WH-306): its page, a refusal when the customer is not a
+ * row of the copy (the server is not asked), or null for today's server path.
+ */
+const readCopyCustomerDispatches = async (
+  customerId: string,
+  limit: number,
+  offset: number,
+  includeItems: boolean
+): Promise<{ refused: DataSource } | { page: CustomerDispatchListData; source: DataSource } | null> => {
+  const scope = await customerScope('all');
+  if (!scope) return null;
+  if (!scope.names.has(customerId)) return { refused: scope.source };
+  const copy = await readVia('all', q => readCustomerDispatchList(q, customerId, limit, offset, includeItems));
+  return copy ? { page: copy.value, source: copy.source } : null;
+};
+
 export const getCustomerDispatchList = async (
   params: GetCustomerDispatchListParams
 ): Promise<DispatchListResponseNew> => {
@@ -703,16 +722,18 @@ export const getCustomerDispatchList = async (
   }
 
   try {
-    const authenticatedClient = await getAuthenticatedClient();
-    const { data, error } = await authenticatedClient.rpc(
-      'get_customer_dispatch_list',
-      {
-        p_customer_id: params.p_customer_id,
-        p_limit: limit,
-        p_offset: offset,
-        p_include_items: params.p_include_items ?? true,
-      }
-    );
+    const copy = await readCopyCustomerDispatches(params.p_customer_id, limit, offset, params.p_include_items ?? true);
+    if (copy && 'refused' in copy) {
+      return { success: false, message: t('errors.customer.accessDenied'), data: emptyData, source: copy.refused };
+    }
+    const { data, error } = copy
+      ? { data: { success: true, data: copy.page } as unknown, error: null }
+      : await (await getAuthenticatedClient()).rpc('get_customer_dispatch_list', {
+          p_customer_id: params.p_customer_id,
+          p_limit: limit,
+          p_offset: offset,
+          p_include_items: params.p_include_items ?? true,
+        });
 
     if (error) {
       return {
@@ -741,6 +762,7 @@ export const getCustomerDispatchList = async (
 
     return {
       success: true,
+      ...(copy ? { source: copy.source } : {}),
       message: serverText(data.message, t('errors.dispatch.customerRetrieved')),
       data: {
         ...emptyData,
@@ -910,6 +932,8 @@ export function selectCustomerDispatches(
   });
 }
 
+const scopedIds = (scope: CustomerScope | null, ids: string[]): string[] => (scope ? ownIds(scope, ids) : ids);
+
 /**
  * Dispatch list for a customer account. The all-customers list RPC is for
  * warehouse roles only, so this collects get_customer_dispatch_list for each
@@ -936,7 +960,9 @@ export const getAssignedCustomerDispatchList = async (
     },
   });
 
-  const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
+  // Read from the phone copy, the account's customers are the copy's rows (WH-306).
+  const scope = await customerScope('all');
+  const assigned = scopedIds(scope, [...new Set(assignedCustomerIds.filter(Boolean))]);
   const requested = Array.isArray(filters.customer_ids) ? (filters.customer_ids as string[]) : [];
   if (requested.some(id => !assigned.includes(id))) return empty(t('errors.customer.accessDenied'), false);
   const targetIds = requested.length > 0 ? requested : assigned;
@@ -983,6 +1009,7 @@ export const getAssignedCustomerDispatchList = async (
 
   const dispatches = matching.slice(offset, offset + limit);
   const result = empty(t('errors.dispatch.customerRetrieved'), true);
+  if (scope) result.source = scope.source;
   result.data.dispatches = dispatches;
   result.data.pagination = {
     total_count: matching.length,

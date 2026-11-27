@@ -16,6 +16,8 @@ import { noteGrnPagingUnit } from '@/config/facilityGrnPaging';
 import { grnLineKey } from '@/features/grn/utils/grnLineKey';
 import { readVia } from '@/features/phone-copy/readRoute';
 import { readGrnItems } from '@/features/phone-copy/reads/grnItems';
+import { readCustomerGrnItems } from '@/features/phone-copy/reads/customer/customerGrnItems';
+import { customerScope, ownIds } from '@/features/phone-copy/reads/customer/customerScope';
 import type { DataSource } from '@/features/phone-copy/sourced';
 
 /**
@@ -361,6 +363,98 @@ const normalizeCustomerGRNItem = (raw: Record<string, unknown>): GRNItem => ({
   package_mark: raw.package_mark == null ? null : String(raw.package_mark),
 });
 
+/** The list's response from the customer read's answer: the server's, or the phone copy's in the same shape. */
+const customerListResponse = (
+  response: CustomerGRNRpcResponse & { data: NonNullable<CustomerGRNRpcResponse['data']> },
+  params: GRNListParams,
+  limit: number,
+  offset: number
+): GRNListResponse => {
+  const items = (response.data.items || []).map(normalizeCustomerGRNItem);
+  const unit = response.data.pagination?.unit === 'receipt' ? 'receipt' : 'line';
+  if (params.p_filters?.page_by === 'receipt') noteGrnPagingUnit(unit);
+  const totalCount = Number(
+    response.data.pagination?.total_count ??
+      response.data.pagination?.total ??
+      response.data.aggregations?.total_count ??
+      items.length
+  );
+
+  return {
+    success: true,
+    message: serverText(response.message, t('errors.grn.customerItemsRetrieved')),
+    data: {
+      items,
+      pagination: {
+        total_count: totalCount,
+        limit,
+        offset,
+        has_more:
+          response.data.pagination?.has_more ?? hasMoreItems(offset, limit, totalCount),
+        unit,
+      },
+      aggregations: {
+        total_qty: Number(response.data.aggregations?.total_qty) || 0,
+        total_stock: Number(response.data.aggregations?.total_stock) || 0,
+      },
+      filters: {
+        date_from: params.p_date_from || null,
+        date_to: params.p_date_to || null,
+        applied_filters: params.p_filters || {},
+        sort_by: params.p_sort_by || 'date',
+        sort_order: params.p_sort_order || 'desc',
+      },
+      user_access: {
+        role: 'customer',
+        is_admin: false,
+        is_supervisor: false,
+        accessible_customers: 1,
+      },
+    },
+  };
+};
+
+/**
+ * A customer account's read of one customer from the phone copy (WH-306), or null for today's server path. A customer
+ * that is not a row of the copy is refused as the server refuses it, and the server is not asked.
+ */
+const getCopyCustomerGRNItems = async (
+  customerId: string,
+  params: GRNListParams,
+  limit: number,
+  offset: number,
+  emptyData: GRNListResponse['data']
+): Promise<GRNListResponse | null> => {
+  const scope = await customerScope('stage1');
+  if (!scope) return null;
+  if (!scope.names.has(customerId)) {
+    return { success: false, data: emptyData, message: t('errors.customer.accessDenied'), source: scope.source };
+  }
+  const request: GRNListParams = { ...params, p_limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, p_offset: offset };
+  const dates = closeDateRange(params.p_date_from, params.p_date_to);
+  request.p_date_from = dates?.from;
+  request.p_date_to = dates?.to;
+  const chained = { ...request, p_limit: undefined, p_offset: undefined, customerId };
+  const copy = await readVia('stage1', q => readCustomerGrnItems(q, customerId, request), {
+    key: `grn-customer-items:${JSON.stringify(chained)}`,
+    page: offset,
+  });
+  if (!copy) return null;
+  if ('restart' in copy) return { ...copyFailure(), copyRestart: true };
+  const { value, source } = copy;
+  if (value.kind !== 'page') return { ...copyFailure(), source };
+  const { page } = value;
+  const answer = {
+    success: true,
+    data: {
+      items: page.data as unknown as Array<Record<string, unknown>>,
+      pagination: { total_count: page.pagination.total_count, unit: page.pagination.unit },
+      aggregations: { total_qty: page.aggregates.total_qty, total_stock: page.aggregates.total_stock },
+    },
+  };
+  return { ...customerListResponse(answer, params, request.p_limit ?? limit, offset), source };
+};
+
 export const getCustomerGRNItems = async (
   customerId: string,
   params: GRNListParams = {}
@@ -377,6 +471,8 @@ export const getCustomerGRNItems = async (
   }
 
   try {
+    const copy = await getCopyCustomerGRNItems(customerId, params, limit, offset, emptyData);
+    if (copy) return copy;
     const authenticatedClient = await getAuthenticatedClient();
     const rpcParams: Record<string, unknown> = {
       p_customer_id: customerId,
@@ -417,48 +513,7 @@ export const getCustomerGRNItems = async (
       };
     }
 
-    const items = (response.data.items || []).map(normalizeCustomerGRNItem);
-    const unit = response.data.pagination?.unit === 'receipt' ? 'receipt' : 'line';
-    if (params.p_filters?.page_by === 'receipt') noteGrnPagingUnit(unit);
-    const totalCount = Number(
-      response.data.pagination?.total_count ??
-        response.data.pagination?.total ??
-        response.data.aggregations?.total_count ??
-        items.length
-    );
-
-    return {
-      success: true,
-      message: serverText(response.message, t('errors.grn.customerItemsRetrieved')),
-      data: {
-        items,
-        pagination: {
-          total_count: totalCount,
-          limit,
-          offset,
-          has_more:
-            response.data.pagination?.has_more ?? hasMoreItems(offset, limit, totalCount),
-          unit,
-        },
-        aggregations: {
-          total_qty: Number(response.data.aggregations?.total_qty) || 0,
-          total_stock: Number(response.data.aggregations?.total_stock) || 0,
-        },
-        filters: {
-          date_from: params.p_date_from || null,
-          date_to: params.p_date_to || null,
-          applied_filters: params.p_filters || {},
-          sort_by: params.p_sort_by || 'date',
-          sort_order: params.p_sort_order || 'desc',
-        },
-        user_access: {
-          role: 'customer',
-          is_admin: false,
-          is_supervisor: false,
-          accessible_customers: 1,
-        },
-      },
-    };
+    return customerListResponse({ ...response, data: response.data }, params, limit, offset);
   } catch (error) {
     return {
       ...createErrorResponse(error, t('errors.grn.fetchCustomerItemsFailed'), 'GRNService.getCustomerGRNItems'),
@@ -542,6 +597,8 @@ interface CursorEntry {
   unitKnown: boolean;
   /** Calls on one cursor run one after another. */
   tail: Promise<unknown>;
+  /** Set while every customer's last answer came from the phone copy (WH-306). */
+  source?: DataSource;
 }
 
 /** A customer's rows as the cursor's units: whole receipts (consecutive lines of one GRN), or single lines. */
@@ -695,6 +752,7 @@ const extendCursor = async (
     // The facility's first answer says what it pages by. If a later answer comes in the other unit (the
     // backend was updated while the list was open), the rows held count something else: start again from 0
     // in the new unit, in this same call, so one answer never mixes units (code review 2026-10-18, R1-03).
+    entry.source = responses.every(response => response.source) ? responses[0].source : undefined;
     const answered = responses.find(response => response.success);
     if (answered) {
       const answeredUnit = answered.data.pagination.unit === 'receipt' ? 'receipt' : 'line';
@@ -733,7 +791,10 @@ export const getAssignedCustomerGRNItems = async (
   assignedCustomerIds: string[],
   params: GRNListParams = {}
 ): Promise<GRNListResponse> => {
-  const uniqueAssignedIds = [...new Set(assignedCustomerIds.filter(Boolean))];
+  // Read from the phone copy, the account's customers are the copy's rows: a customer deleted since the profile was read is left out.
+  const scope = await customerScope('stage1');
+  const profileIds = [...new Set(assignedCustomerIds.filter(Boolean))];
+  const uniqueAssignedIds = scope ? ownIds(scope, profileIds) : profileIds;
   const requestedIds = params.p_filters?.customer_ids || [];
   const unauthorizedId = requestedIds.find(id => !uniqueAssignedIds.includes(id));
   if (unauthorizedId) {
@@ -770,6 +831,7 @@ export const getAssignedCustomerGRNItems = async (
     const totalCount = customers.reduce((total, customer) => total + customer.totalCount, 0);
     return {
       success: true,
+      ...(entry.source ? { source: entry.source } : {}),
       message: t('errors.grn.assignedItemsRetrieved'),
       data: {
         items: merged.slice(offset, end).flat(),

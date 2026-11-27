@@ -103,6 +103,7 @@ import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { sweepLocalPhotoFiles } from '@/utils/localPhotoFiles';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { isCentralLoginConfigured } from '@/config/envConfig';
+import { getFacilityRelease } from '@/config/backendFeatures';
 import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/centralSession';
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
 import { endSessionKeepingFacility } from '@/store/signInAgain';
@@ -117,8 +118,8 @@ import { startDailyLanCheck } from '@/config/lanCheck';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
 import {
-  isCopyRole,
   isPastOfflineLimit,
+  opensOffline,
   isStoreUnreadable,
   markRoleUnconfirmed,
   onRoleUnconfirmed,
@@ -645,7 +646,7 @@ function BootstrapApp() {
   // start shows then. Nothing is signed out or erased; "Try again" runs the start again. Only for the roles that have
   // the phone copy: a customer account never opens offline and keeps today's behaviour.
   const closeForOfflineLimit = (error: unknown) => {
-    if (!appOpen.current || !isCopyRole(store.getState().auth.userProfile?.role)) return;
+    if (!appOpen.current || !opensOffline(store.getState().auth.userProfile?.role, getFacilityRelease().schemaHead)) return;
     appOpen.current = false;
     markRoleUnconfirmed();
     dropAllAlerts();

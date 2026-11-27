@@ -27,11 +27,12 @@ import { getSessionGeneration, renewAheadMs } from '@/config/sessionLifecycle';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { isStaleFacility } from '@/config/staleFacilitySession';
+import { getFacilityRelease } from '@/config/backendFeatures';
 import {
-  isCopyRole,
   isOfflineStarted,
   isRoleUnconfirmed,
   noteRoleConfirmed,
+  opensOffline,
   roleMarkCount,
   onFirstServerAnswer,
   readOfflineStart,
@@ -286,7 +287,7 @@ export const initializeAuth = createAsyncThunk.withTypes<{
           if (profileUnreadable) throw new SessionStoreUnreadableError();
 
           // An offline restore is only for the roles that have the phone copy (Product's P5).
-          if (offlineRestore && !isCopyRole((cachedProfile as { role?: unknown } | null)?.role))
+          if (offlineRestore && !opensOffline((cachedProfile as { role?: unknown } | null)?.role, getFacilityRelease().schemaHead))
             return { session: null, user: null, userProfile: null };
 
           if (cachedProfile) {

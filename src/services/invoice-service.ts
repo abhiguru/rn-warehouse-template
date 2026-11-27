@@ -14,6 +14,8 @@ import { createLogger } from '@/utils/logger';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { readVia } from '@/features/phone-copy/readRoute';
+import { readCustomerInvoiceSummary } from '@/features/phone-copy/reads/customer/customerInvoiceSummary';
+import { customerScope, ownIds } from '@/features/phone-copy/reads/customer/customerScope';
 import { readInvoiceData, readInvoiceItemsDetailed, readInvoiceReasons } from '@/features/phone-copy/reads/invoiceDetails';
 import { readInvoicesList } from '@/features/phone-copy/reads/invoices';
 import type { DataSource } from '@/features/phone-copy/sourced';
@@ -422,18 +424,21 @@ export const getAssignedCustomerInvoices = async (
     data: { invoices: [], pagination: { total_count: 0, limit, offset, has_more: false } },
   });
 
-  const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
+  // Read from the phone copy, the account's customers are the copy's rows (WH-306).
+  const scope = await customerScope('all');
+  const profileIds = [...new Set(assignedCustomerIds.filter(Boolean))];
+  const assigned = scope ? ownIds(scope, profileIds) : profileIds;
   const requested = [...(params.p_customer_ids ?? []), ...(params.p_customer_id ? [params.p_customer_id] : [])];
   if (requested.some(id => !assigned.includes(id))) return failure(t('errors.customer.accessDenied'));
   const targetIds = requested.length > 0 ? [...new Set(requested)] : assigned;
   if (targetIds.length === 0) return failure(t('errors.customer.noAssignment'));
 
   try {
-    const authenticatedClient = await getAuthenticatedClient();
-    // The summary rows carry no customer name. Use the caller's names, else read
+    // The summary rows carry no customer name. Use the caller's names, else the copy's, else read
     // them; a failed name lookup only leaves the row's name line empty.
-    const names: Record<string, string> = { ...(params.customerNames || {}) };
-    if (targetIds.some(id => !names[id])) {
+    const names: Record<string, string> = { ...(scope ? Object.fromEntries(scope.names) : {}), ...(params.customerNames || {}) };
+    if (!scope && targetIds.some(id => !names[id])) {
+      const authenticatedClient = await getAuthenticatedClient();
       const { data: customers } = await authenticatedClient.from('customers').select('id, name').in('id', targetIds);
       for (const customer of customers || []) names[customer.id] = customer.name;
     }
@@ -446,7 +451,9 @@ export const getAssignedCustomerInvoices = async (
         customerHistory<CustomerInvoiceHistory>(
           `invoices:${customerId}`,
           async () => {
-            const { data, error } = await authenticatedClient.rpc('get_customer_invoice_summary', {
+            const copy = scope ? await readVia('all', q => readCustomerInvoiceSummary(q, customerId)) : null;
+            if (copy) return { success: true, rows: copy.value.invoices as unknown as CustomerInvoiceRow[] };
+            const { data, error } = await (await getAuthenticatedClient()).rpc('get_customer_invoice_summary', {
               p_customer_uuid: customerId,
               // The whole history; the date filter is applied here, to the moment.
               p_from_date: CUSTOMER_INVOICE_EARLIEST,
@@ -478,6 +485,7 @@ export const getAssignedCustomerInvoices = async (
     const invoices = matching.slice(offset, offset + limit);
     return {
       success: true,
+      ...(scope ? { source: scope.source } : {}),
       message: t('errors.invoice.listRetrieved'),
       data: {
         invoices,

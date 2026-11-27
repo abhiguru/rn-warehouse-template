@@ -11,8 +11,10 @@ import { mobileDigits, mobileKey, parseTimestampUs } from './pgCompat';
 export const SCHEMA_VERSION = 4;
 /** The format from which Customer dues, Statement and Customer activity are kept as the server answered (WH-305; the feed's money marks). */
 export const MONEY_FORMAT = 6;
+/** The format from which a customer account's copy is read: WH-303 is 4, WH-304 5, WH-305 6, WH-306 7 (contract 15). */
+export const CUSTOMER_COPY_FORMAT = 7;
 /** The payload formats of the change-log feed this build reads (feed formats follow build order). */
-export const SYNC_FORMATS: readonly number[] = [1, 2, 3, 4, 5, MONEY_FORMAT];
+export const SYNC_FORMATS: readonly number[] = [1, 2, 3, 4, 5, MONEY_FORMAT, CUSTOMER_COPY_FORMAT];
 /** The format from which the screens may read the copy: it carries what their rows need (WH-299, section 6). */
 export const READ_FORMAT = 2;
 /** The format from which the WH-348 screens (invoices, rates, users, settings) read the copy; the one constant (contract section 2). */

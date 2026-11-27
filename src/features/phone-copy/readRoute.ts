@@ -9,8 +9,9 @@ import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger } from '@/utils/logger';
 import { currentCopy } from './copyDb';
+import { copyKindOf, signedInRole, storedCopyKind } from './copyKind';
 import type { SqlValue } from './copyDriver';
-import { COPY_FORMAT_V3, READ_FORMAT, type RankKind } from './copySchema';
+import { COPY_FORMAT_V3, CUSTOMER_COPY_FORMAT, READ_FORMAT, type RankKind } from './copySchema';
 import { ensureRanks } from './reads/textRank';
 import { CopyReadError, type DataSource } from './sourced';
 import { isCopyOffline } from './syncEngine';
@@ -36,7 +37,7 @@ export interface CopyReader {
   /** The feed format of this copy: from 3 it carries the rates and invoice amounts (WH-348). */
   readonly format: number;
   /** The signed-in person's role: what the server's function would ask `warehouse_security.active_role()`. */
-  readonly role: 'admin' | 'supervisor' | 'staff';
+  readonly role: 'admin' | 'supervisor' | 'staff' | 'customer';
 }
 
 export interface CopyAnswer<T> {
@@ -70,23 +71,18 @@ function recordChain(key: string, record: ChainRecord): void {
 }
 
 /**
- * The signed-in person's role. The store is loaded when first asked: the services that read through this route would
- * otherwise bring the whole store, and its screens' hooks, into everything that imports them.
- */
-function signedInRole(): unknown {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports -- loaded when first asked, see above
-  const { store } = require('@/store') as typeof import('@/store');
-  return store.getState().auth.userProfile?.role;
-}
-
-/**
- * A warehouse role, on a facility with the feature, over a copy that is not of an older format. A copy that has not
- * begun its first load (no format yet) is eligible: what it holds is a question of its phase.
+ * A role with a copy, on a facility with the feature, over a copy loaded for that kind of role (a warehouse copy holds
+ * every customer's rows and is never read by a customer account, WH-306) and not of an older format. A copy that has
+ * not begun its first load (no format yet) is eligible: what it holds is a question of its phase.
  */
 export function copyEligible(): boolean {
-  if (!hasCapability('sync') || !isCopyRole(signedInRole())) return false;
-  const { feature, format } = getSyncSnapshot();
-  return feature !== 'off' && (format === undefined || format >= READ_FORMAT);
+  const role = signedInRole();
+  if (!hasCapability('sync') || !isCopyRole(role)) return false;
+  const { feature, format, kind } = getSyncSnapshot();
+  if (feature === 'off') return false;
+  if (kind !== undefined && kind !== copyKindOf(role)) return false;
+  const oldest = copyKindOf(role) === 'customer' ? CUSTOMER_COPY_FORMAT : READ_FORMAT;
+  return format === undefined || format >= oldest;
 }
 
 /**
@@ -108,8 +104,8 @@ export function copyCarriesFormat3(): boolean {
   return (getSyncSnapshot().format ?? 0) >= COPY_FORMAT_V3;
 }
 
-const copyRoleOf =(role: unknown): CopyReader['role'] | null =>
-  role === 'admin' || role === 'supervisor' || role === 'staff' ? role : null;
+const copyRoleOf = (role: unknown): CopyReader['role'] | null =>
+  role === 'admin' || role === 'supervisor' || role === 'staff' || role === 'customer' ? role : null;
 
 const isPhase = (value: string | undefined): value is CopyPhase =>
   value === 'empty' || value === 'stage1' || value === 'stage2' || value === 'ready';
@@ -122,7 +118,7 @@ async function readCopy<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<
   if (!db || !scope || !role) throw new CopyReadError();
   let result: { answer: CopyAnswer<T>; copyId: string } | null = null;
   await db.transaction(async tx => {
-    const rows = await tx.all<{ k: string; v: string }>("SELECT k, v FROM meta WHERE k IN ('scope', 'copy', 'phase', 'as_of')");
+    const rows = await tx.all<{ k: string; v: string }>("SELECT k, v FROM meta WHERE k IN ('scope', 'copy', 'phase', 'as_of', 'kind', 'format')");
     const meta = new Map(rows.map(r => [r.k, r.v]));
     const phase = meta.get('phase');
     const copyId = meta.get('copy');
@@ -130,6 +126,8 @@ async function readCopy<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<
     // The copy may have been replaced since the route was decided.
     const holds = phase === 'ready' || (needsStage1Only(need) && phase === 'stage2');
     if (meta.get('scope') !== scope || !copyId || !asOf || !isPhase(phase) || !holds) throw new CopyReadError();
+    // Only the kind of role the copy was loaded for reads it (WH-306).
+    if (storedCopyKind(meta.get('kind'), meta.has('format')) !== copyKindOf(role)) throw new CopyReadError();
     const reader: CopyReader = {
       all: (sql, params) => tx.all(sql, params),
       get: async <R,>(sql: string, params?: SqlValue[]) => (await tx.all<R>(sql, params))[0] ?? null,

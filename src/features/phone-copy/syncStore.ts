@@ -2,6 +2,8 @@
  * What the sync engine tells the app about the phone copy (WH-298, contract 7.1): read with useSyncExternalStore
  * (src/hooks/usePhoneCopyStatus.ts). The same snapshot object until something in it changes.
  */
+import type { CopyKind } from './copyKind';
+
 export type CopyPhase = 'empty' | 'stage1' | 'stage2' | 'ready';
 
 export interface SyncSnapshot {
@@ -10,6 +12,8 @@ export interface SyncSnapshot {
   phase: CopyPhase;
   /** The payload format of what the copy holds; absent until a load has begun (WH-299: the screens read format 2 on). */
   format?: number;
+  /** The kind of role the copy was loaded for (WH-306): a copy is read only by that kind and erased when the role changes kind. */
+  kind?: CopyKind;
   running: null | 'first-load' | 'changes' | 'reload' | 'checksums';
   /** A full sync within the last minute and the server reachable. */
   current: boolean;
