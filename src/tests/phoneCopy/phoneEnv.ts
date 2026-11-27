@@ -110,8 +110,12 @@ export function controlAppState() {
   }) as never);
 }
 
-/** The app started afresh (modules loaded again) over the phone's files, with every edge faked as above. */
-export function bootPhone() {
+/**
+ * The app started afresh (modules loaded again) over the phone's files, with every edge faked as above.
+ * The signed-in role is `role` ('staff' unless said: a copy load refuses an unknown role, 67f79a73), read by `signedInRole()`
+ * from a minimal stand-in for `@/store`. Pass `null` to leave `@/store` real (the caller signs in through the real store).
+ */
+export function bootPhone(role: string | null = 'staff') {
   jest.resetModules();
   jest.doMock('expo-sqlite', mockFactories.sqlite, { virtual: true }); // main has no expo-sqlite until 4ab537c2
   jest.doMock('expo-secure-store', mockFactories.secureStore);
@@ -119,6 +123,9 @@ export function bootPhone() {
   jest.doMock('@/config/supabaseConfig', mockFactories.supabase);
   jest.doMock('@react-native-community/netinfo', mockFactories.netinfo);
   jest.doMock('@/config/lanTransport', mockFactories.lan);
+  // doMock registrations outlive resetModules: a boot with no stand-in must drop the one an earlier boot left.
+  if (role !== null) jest.doMock('@/store', () => ({ store: { getState: () => ({ auth: { userProfile: { id: 'profile-1', role } } }) } }));
+  else jest.dontMock('@/store');
   controlAppState();
   return {
     engine: require('@/features/phone-copy/syncEngine') as typeof import('@/features/phone-copy/syncEngine'),

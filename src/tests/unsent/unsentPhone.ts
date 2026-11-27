@@ -86,7 +86,7 @@ export type UnsentPhone = { phone: Phone; setSyncCapability(on: boolean): void }
 /** A started phone. The facility has the offline feature (`capabilities.sync`) on unless the test says otherwise (criterion 14). */
 export async function bootUnsent({ sync = true }: { sync?: boolean } = {}): Promise<UnsentPhone> {
   overrides.fileSystem = () => fileSystemModule(); // before bootPhone, which stands expo-file-system in and loads the modules that keep it
-  const phone = bootPhone();
+  const phone = bootPhone(null);
   const supabase = require('@/config/supabaseConfig') as Record<string, unknown>;
   const client = async () => ({
     rpc: async (name: string, args: Record<string, unknown> = {}) => {

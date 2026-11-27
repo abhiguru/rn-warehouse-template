@@ -31,7 +31,7 @@ export async function bootWarehouse({ role = 'staff', capability = true }: { rol
   for (const method of ['log', 'info', 'warn', 'error', 'debug', 'time', 'timeEnd'] as const) {
     jest.spyOn(console, method).mockImplementation(() => undefined);
   }
-  const phone = bootPhone();
+  const phone = bootPhone(null);
   const serverCalls: ServerCall[] = [];
   const answers: Warehouse['answers'] = {};
 
