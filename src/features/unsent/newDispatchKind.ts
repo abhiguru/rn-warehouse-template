@@ -5,6 +5,7 @@
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type { NewDocRow, OverlayPart } from '@/features/phone-copy/unsentOverlay';
+import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 import { outcomeOfAnswer } from './newRecordAnswer';
 import { registerSendKind, type SendKind, type SendOutcome } from './sendKinds';
 import type { ItemState } from './unsentRows';
@@ -31,7 +32,9 @@ async function sendNewDispatch(body: NewDispatchBody, requestKey: string): Promi
   if (!isNewDispatchBody(body)) return { kind: 'refused', reason: 'newDispatch: unreadable body' };
   const client = await getAuthenticatedClient();
   const answer = await client.rpc('create_dispatch_with_stock_check', { ...body.args, p_idempotency_key: requestKey });
-  return outcomeOfAnswer('dispatch', answer.data, answer.error);
+  // An unreadable or empty HTTP 200 and a gateway's 502 / 504 are a LOST answer (the record may be saved), not a transient one.
+  const error = answer.error ?? emptyAnswerAsError({ data: answer.data, error: answer.error, status: answer.status });
+  return outcomeOfAnswer('dispatch', answer.data, error ? withHttpStatus(error, answer.status) : null);
 }
 
 export function newDispatchRow(body: NewDispatchBody, state: ItemState, item: { id: string; recordedAt: number; result: unknown }): NewDocRow {

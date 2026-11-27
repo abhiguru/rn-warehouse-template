@@ -7,6 +7,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type { NewDocRow, OverlayPart } from '@/features/phone-copy/unsentOverlay';
 import type { buildSaveGrnArgs } from '@/features/grn/services/saveGrnArgs';
+import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 import { outcomeOfAnswer } from './newRecordAnswer';
 // Keeps the phone's numbering row ready for the number box's mode (loaded with the kinds at start).
 import './numberingCache';
@@ -35,7 +36,9 @@ async function sendNewGrn(body: NewGrnBody, requestKey: string): Promise<SendOut
   if (!isNewGrnBody(body)) return { kind: 'refused', reason: 'newGrn: unreadable body' };
   const client = await getAuthenticatedClient();
   const answer = await client.rpc('save_grn', { ...body.args, p_idempotency_key: requestKey });
-  return outcomeOfAnswer('grn', answer.data, answer.error);
+  // An unreadable or empty HTTP 200 and a gateway's 502 / 504 are a LOST answer (the record may be saved), not a transient one.
+  const error = answer.error ?? emptyAnswerAsError({ data: answer.data, error: answer.error, status: answer.status });
+  return outcomeOfAnswer('grn', answer.data, error ? withHttpStatus(error, answer.status) : null);
 }
 
 /** The row an unsent GRN shows in lists and details, and its lots at stock = qty (6, 17.4). */
