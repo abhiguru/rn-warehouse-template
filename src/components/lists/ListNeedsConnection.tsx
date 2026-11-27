@@ -35,6 +35,7 @@ export const ListNeedsConnection: React.FC<Props> = ({ title, testID, subHeader 
 
 /**
  * The seam between the lists and the phone's connection: true when the list must show `ListNeedsConnection` instead of
- * reading anything. The one place that decides it for Orders, the order queue, Dispatch and Invoices.
+ * reading anything. The one place that decides it for Orders, the order queue, Dispatch and Invoices. Those services are
+ * server-only (no read of the phone copy, WH-381), so the signal is the copy engine's offline flag with the feature on.
  */
 export const useListNeedsConnection = (): boolean => useNeedsConnection();
