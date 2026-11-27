@@ -807,6 +807,49 @@ describe('S13: a held field change shows the server\'s present value', () => {
   });
 });
 
+describe('DQ14: an accept whose answer lists replaced entries says so, on every accept path', () => {
+  const REPLACED = [{ field: 'rack', newer: 'D-4', sent: 'C-2' }];
+  const lotRow = () => listRow('lc1', { kind: 'lotChange', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['rack'] } } });
+  const lotExtra = { accept_possible: true, body: { lotId: 'l06', grnId: 'g-B1', recordedAt: '2026-11-27T09:00:00+05:30', changes: { rack: { from: 'B-2', to: 'C-2' } } }, current: [{ field: 'rack', line_ref: 'l06', current: 'D-4', held: 'C-2' }] };
+  const editRow = () => listRow('ge1', { kind: 'grnEdit', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['note'] } } });
+  const editExtra = { accept_possible: true, body: { v: 1, grnId: 'g-B1', loadedAt: null, recordedAt: '2026-11-27T09:00:00+05:30', header: { note: { from: null, to: 'Recorder note' } } } };
+  const SAID = 'Accepted: GRN B1 updated. It replaced a newer entry. Check the GRN.';
+
+  it('plain Accept of a held GRN edit', async () => {
+    await openItem(editRow(), editExtra);
+    mockServer.answers.decide_held_item = () => decideOk('ge1', 'accepted', { grn_id: 'g-B1', gr_no: 'B1', replaced: REPLACED });
+    await user.press(screen.getByTestId('held-item-accept'));
+    expect(showToast).toHaveBeenCalledWith(SAID, { durationMs: 8000 });
+  });
+
+  it('plain Accept of a rack or mark change', async () => {
+    await openItem(lotRow(), lotExtra);
+    mockServer.answers.decide_held_item = () => decideOk('lc1', 'accepted', { grn_id: 'g-B1', gr_no: 'B1', replaced: REPLACED });
+    await user.press(screen.getByTestId('held-item-accept'));
+    expect(showToast).toHaveBeenCalledWith(SAID, { durationMs: 8000 });
+  });
+
+  it('the quick-change sheet\'s "Accept with changes"', async () => {
+    await openItem(lotRow(), lotExtra);
+    await user.press(screen.getByTestId('held-item-correct'));
+    await user.clear(await screen.findByLabelText('Rack'));
+    await user.type(screen.getByLabelText('Rack'), 'D-9');
+    mockServer.answers.decide_held_item = () => decideOk('lc1', 'accepted', { grn_id: 'g-B1', gr_no: 'B1', replaced: REPLACED });
+    await user.press(screen.getByTestId('quick-change-save'));
+    expect(showToast).toHaveBeenCalledWith(SAID, { durationMs: 8000 });
+  });
+
+  it.each([
+    ['an empty replaced list', []],
+    ['no replaced list', undefined],
+  ])('plain Accept with %s says only "Accepted: GRN B1 updated"', async (_name, replaced) => {
+    await openItem(editRow(), editExtra);
+    mockServer.answers.decide_held_item = () => decideOk('ge1', 'accepted', { grn_id: 'g-B1', gr_no: 'B1', ...(replaced ? { replaced } : {}) });
+    await user.press(screen.getByTestId('held-item-accept'));
+    expect(showToast).toHaveBeenCalledWith('Accepted: GRN B1 updated');
+  });
+});
+
 describe('S14: accepting a field change', () => {
   it('toasts "Accepted: GRN B1 updated" from result.gr_no', async () => {
     await openItem(

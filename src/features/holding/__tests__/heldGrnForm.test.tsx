@@ -205,6 +205,14 @@ describe('A-4: a held new GRN in the GRN form', () => {
     expect(router.dismissTo).toHaveBeenCalledWith('/holding-list');
   });
 
+  it('a held new GRN sends its rates, so a line with no rate is still stopped: "Add the missing rates", and nothing is decided (WH-304, savesNoRates)', async () => {
+    await openCorrection();
+    await act(async () => { mockStore.dispatch(updateItem({ grn_trl_id: LOT, item: { item_table_id: '66666666-2222-4333-8444-0000000000ff', item_name: 'Example Beans' } })); });
+    await user.press(screen.getByRole('button', { name: 'Accept with changes' }));
+    expect(showAlert).toHaveBeenCalledWith('Add the missing rates', 'Add the missing rates before saving.');
+    expect(decideCalls()).toHaveLength(0);
+  });
+
   it('a refused corrected accept shows the sentence and the hint, and goes nowhere (the item stays held)', async () => {
     mockRpc.mockImplementation(async (name: string) => {
       if (name === 'get_held_item') return heldAnswer();

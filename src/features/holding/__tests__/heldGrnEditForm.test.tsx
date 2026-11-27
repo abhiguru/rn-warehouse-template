@@ -76,6 +76,9 @@ const makeStore = () => configureStore({
 });
 let mockStore: ReturnType<typeof makeStore>;
 const mockRpc = jest.fn();
+let mockRouteId = 'held-aaaaaaaa-2222-4333-8444-555555555555';
+let mockFieldChanges = false;
+const mockFieldChangeSave = jest.fn();
 const mockServerRead = jest.fn();
 const mockRate = {
   id: 'r1', item_id: ITEM_POTATO, item_name: 'Example Potatoes', customer_id: null, customer_name: null, price_type: 'monthly',
@@ -93,7 +96,7 @@ jest.mock('@/store/hooks', () => {
 jest.mock('react-redux', () => ({ useStore: () => mockStore, useDispatch: () => mockStore.dispatch, useSelector: (s: (st: unknown) => unknown) => s(mockStore.getState()) }));
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), back: jest.fn(), push: jest.fn(), dismissTo: jest.fn() },
-  useLocalSearchParams: () => ({ id: 'held-aaaaaaaa-2222-4333-8444-555555555555' }),
+  useLocalSearchParams: () => ({ id: mockRouteId }),
   usePathname: () => '/grn-edit/held-aaaaaaaa-2222-4333-8444-555555555555/step3',
   useFocusEffect: jest.fn(),
 }));
@@ -103,6 +106,21 @@ jest.mock('@/lib/queryClient', () => ({ ...jest.requireActual('@/lib/queryClient
 jest.mock('@/features/grn/services/grnFormService', () => ({
   ...jest.requireActual('@/features/grn/services/grnFormService'),
   loadGRNData: (...args: unknown[]) => mockServerRead(...args),
+}));
+// A field-change save (WH-303) needs the facility's capability and release; the one case that checks its rates is not
+// blocked turns them on, and the save itself (the unsent queue's own, tested with WH-303) is the one stand-in.
+jest.mock('@/config/facilityCapabilities', () => {
+  const actual = jest.requireActual('@/config/facilityCapabilities');
+  return { ...actual, hasCapability: (name: string) => (mockFieldChanges && name === 'sync' ? true : actual.hasCapability(name)) };
+});
+jest.mock('@/config/backendFeatures', () => {
+  const actual = jest.requireActual('@/config/backendFeatures');
+  return { ...actual, backendHasFeature: (name: string) => (mockFieldChanges && name === 'grnFieldChanges' ? true : actual.backendHasFeature(name)) };
+});
+jest.mock('@/features/grn/offline-edit/grnEditKind', () => ({
+  ...jest.requireActual('@/features/grn/offline-edit/grnEditKind'),
+  saveGrnEditAndWait: (...args: unknown[]) => mockFieldChangeSave(...args),
+  saveGrnEditOffline: (...args: unknown[]) => mockFieldChangeSave(...args),
 }));
 jest.mock('@/config/supabaseConfig', () => {
   const builder = () => {
@@ -135,7 +153,8 @@ jest.mock('expo-crypto', () => {
   };
 });
 jest.mock('@/features/grn/rates/useGrnRates', () => ({
-  useGrnRates: () => ({ rates: [mockRate, { ...mockRate, id: 'r2', item_id: '66666666-2222-4333-8444-000000000009', item_name: 'Example Beans' }], status: 'ready', offline: false, refresh: jest.fn(async () => {}) }),
+  // Only the potatoes have a rate: the added "Example Beans" line has none, as a recorder's added line may not.
+  useGrnRates: () => ({ rates: [mockRate], status: 'ready', offline: false, refresh: jest.fn(async () => {}) }),
 }));
 jest.mock('@/features/grn/rates/GrnRateSheet', () => ({ GrnRateSheet: () => null }));
 jest.mock('@/features/item-pricing/useStandardRate', () => ({ useStandardRate: () => ({ rate: null, status: 'ready' }) }));
@@ -209,6 +228,9 @@ const backToServer = async () => {
 };
 
 beforeEach(() => {
+  mockRouteId = heldRouteId(HELD);
+  mockFieldChanges = false;
+  mockFieldChangeSave.mockReset();
   mockRpc.mockReset();
   mockServerRead.mockReset();
   mockServerRead.mockImplementation(async () => ({ success: true, data: serverGrn() }));
@@ -304,22 +326,42 @@ describe('Accept with changes', () => {
     expect(router.dismissTo).toHaveBeenCalledWith('/holding-list');
   });
 
-  it('a result that lists replaced entries is accepted like any other: the toast names the GRN and the list is left', async () => {
+  const decideAnswering = (result: Record<string, unknown>) =>
     mockRpc.mockImplementation(async (name: string) => {
       if (name === 'get_held_item') return heldAnswer();
-      if (name === 'decide_held_item') {
-        return {
-          data: { success: true, id: HELD, state: 'accepted', result: { grn_id: GRN, gr_no: 'B1', replaced: [{ field: 'note', newer: 'Server note', sent: 'Recorder note' }] }, now_acceptable: [] },
-          error: null,
-        };
-      }
+      if (name === 'decide_held_item') return { data: { success: true, id: HELD, state: 'accepted', result, now_acceptable: [] }, error: null };
       return { data: { success: true }, error: null };
     });
+  const REPLACED = [{ field: 'note', newer: 'Server note', sent: 'Recorder note' }];
+
+  it('a result that lists replaced entries says so, for 8 seconds, and leaves for the Holding list', async () => {
+    decideAnswering({ grn_id: GRN, gr_no: 'B1', replaced: REPLACED });
     await openCorrection();
     await user.press(screen.getByRole('button', { name: 'Accept with changes' }));
     expect(decideCalls()).toHaveLength(1);
-    expect(showToast).toHaveBeenCalledWith('Accepted: GRN B1 updated');
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith('Accepted: GRN B1 updated. It replaced a newer entry. Check the GRN.', { durationMs: 8000 });
     expect(router.dismissTo).toHaveBeenCalledWith('/holding-list');
+  });
+
+  it('Gujarati: the same toast in Design\'s words', async () => {
+    await setLanguage('gu');
+    decideAnswering({ grn_id: GRN, gr_no: 'B1', replaced: REPLACED });
+    await openCorrection();
+    await user.press(screen.getByRole('button', { name: 'ફેરફાર સાથે સ્વીકારો' }));
+    expect(showToast).toHaveBeenCalledWith('સ્વીકાર્યું: આવક પાવતી B1 અપડેટ થઈ. તેનાથી એક નવી એન્ટ્રી બદલાઈ. આવક પાવતી તપાસો.', { durationMs: 8000 });
+  });
+
+  it.each([
+    ['an empty replaced list', { grn_id: GRN, gr_no: 'B1', replaced: [] }],
+    ['no replaced list', { grn_id: GRN, gr_no: 'B1' }],
+  ])('%s gives the normal accepted toast, with the normal time', async (_name, result) => {
+    decideAnswering(result);
+    await openCorrection();
+    await user.press(screen.getByRole('button', { name: 'Accept with changes' }));
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith('Accepted: GRN B1 updated');
+    expect((showToast as jest.Mock).mock.calls[0]).toHaveLength(1);
   });
 
   it('a refused corrected accept shows the reason\'s sentence and hint, and goes nowhere (the item stays held)', async () => {
@@ -339,6 +381,53 @@ describe('Accept with changes', () => {
     expect(alert?.[1]).toContain('Reject.');
     expect(router.dismissTo).not.toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('rates: a corrected edit sends none, so a line with no rate does not stop it (WH-304, aa1d283e)', () => {
+  it('a held edit that adds a line with no rate is not stopped by "Add the missing rates": it reaches decide_held_item', async () => {
+    const edit = await openCorrection();
+    expect(edit.items.some(line => line.item_name === 'Example Beans')).toBe(true);
+    await user.press(screen.getByRole('button', { name: 'Accept with changes' }));
+    const titles = (showAlert as jest.Mock).mock.calls.map(([title]) => title);
+    expect(titles).not.toContain('Add the missing rates');
+    expect(titles).not.toContain("The rates couldn't be loaded");
+    expect(decideCalls()).toHaveLength(1);
+    expect(decideCalls()[0][1].p_body.linesAdded).toEqual([expect.objectContaining({ item_name: 'Example Beans' })]);
+  });
+
+  it('a refusal for a missing rate shows the reason\'s sentence and hint, and the item stays held', async () => {
+    mockRpc.mockImplementation(async (name: string) => {
+      if (name === 'get_held_item') return heldAnswer();
+      if (name === 'decide_held_item') return { data: { success: false, error_code: 'WH409', reason: 'RATE_MISSING', error: 'no rate', message: 'no rate' }, error: null };
+      return { data: { success: true }, error: null };
+    });
+    await openCorrection();
+    await user.press(screen.getByRole('button', { name: 'Accept with changes' }));
+    expect(decideCalls()).toHaveLength(1);
+    const alert = (showAlert as jest.Mock).mock.calls.at(-1);
+    expect(alert?.[1]).toMatch(/rate/i);
+    expect(String(alert?.[1]).length).toBeGreaterThan('rate'.length + 10);
+    expect(router.dismissTo).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('a field-change save of an ordinary edit (WH-303) is not stopped by a line with no rate either', async () => {
+    mockFieldChanges = true;
+    mockRouteId = GRN;
+    mockFieldChangeSave.mockResolvedValue({ id: 'u1', outcome: 'sent', reason: null });
+    mockStore = makeStore();
+    const server = serverGrn();
+    await act(async () => {
+      mockStore.dispatch(loadIntoForm({ ...server, header: { ...server.header, gr_images: [{ id: 'img-1', fileName: 'book.jpg', imageUrl: 'file:///book.jpg', uploadStatus: 'completed' }] }, grnId: GRN, source: 'copy' } as never));
+      mockStore.dispatch(updateItem({ grn_trl_id: LOT2, item: { item_table_id: '66666666-2222-4333-8444-000000000009', item_name: 'Example Beans' } }));
+    });
+    await render(<GrnReviewStep mode="edit" />);
+    await user.press(screen.getByRole('button', { name: 'Save GRN' }));
+    await user.press(await screen.findByRole('button', { name: 'Confirm' }));
+    const titles = (showAlert as jest.Mock).mock.calls.map(([title]) => title);
+    expect(titles).not.toContain('Add the missing rates');
+    expect(mockFieldChangeSave).toHaveBeenCalledTimes(1);
   });
 });
 
