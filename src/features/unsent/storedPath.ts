@@ -7,19 +7,15 @@
  * - every read joins it to the current documents folder, and callers only ever see full current `file://` addresses;
  * - a legacy absolute `.../Documents/unsent-work/...` address of any container is rebased onto the current documents folder when
  *   it is read, so what was stored before this change recovers without a migration step.
- * Only the app's own folders below are rebased, and an address with a `..` segment is never accepted.
+ * Only one of the app's own folders is rebased (`unsent-work` unless the caller names `phone-copy-photos`), and an address with
+ * a `..` segment is never accepted.
  */
 import { Paths } from 'expo-file-system';
 
 /** The folders of the documents folder the app keeps its own files in. */
-const OWN_FOLDERS = ['unsent-work', 'phone-copy-photos'] as const;
-const OWN_FOLDER_PATTERN = OWN_FOLDERS.join('|');
+export type OwnFolder = 'unsent-work' | 'phone-copy-photos';
 
 const FORM_SCHEME = 'app-doc:///';
-// A legacy address: any container's Documents folder, then one of the app's folders. (Android's documents folder is not called
-// Documents, so its addresses are only ever matched by the current folder below.)
-const LEGACY = new RegExp(`^file://[^?#]*?/Documents/((?:${OWN_FOLDER_PATTERN})/[^?#]+)$`);
-const RELATIVE = new RegExp(`^(?:${OWN_FOLDER_PATTERN})/[^?#]+$`);
 const ADDRESS_IN_TEXT = /(?:app-doc|file):\/\/[^"\\]+/g;
 
 /** The current documents folder, with its closing slash. */
@@ -37,43 +33,39 @@ function climbs(path: string): boolean {
   }
 }
 
-/** The part below the documents folder of an address of the app's own folders, or null for any other address. */
-function relativeOf(address: string): string | null {
-  if (address.startsWith(FORM_SCHEME)) {
-    const rest = address.slice(FORM_SCHEME.length);
-    return RELATIVE.test(rest) && !climbs(rest) ? rest : null;
-  }
-  if (RELATIVE.test(address)) return climbs(address) ? null : address;
-  if (!address.startsWith('file://')) return null;
+/** The part below the documents folder of an address inside `folder`, or null for any other address. */
+function relativeOf(address: string, folder: OwnFolder): string | null {
+  const relative = (rest: string): string | null => (rest.startsWith(`${folder}/`) && rest.length > folder.length + 1 && !/[?#]/.test(rest) && !climbs(rest) ? rest : null);
+  if (address.startsWith(FORM_SCHEME)) return relative(address.slice(FORM_SCHEME.length));
+  if (!address.startsWith('file://')) return relative(address);
   const documents = documentsUri();
-  if (address.startsWith(documents)) {
-    const rest = address.slice(documents.length);
-    return RELATIVE.test(rest) && !climbs(rest) ? rest : null;
-  }
-  const legacy = LEGACY.exec(address)?.[1];
-  return legacy !== undefined && !climbs(legacy) ? legacy : null;
+  if (address.startsWith(documents)) return relative(address.slice(documents.length));
+  // A legacy address: any container's Documents folder, then the app's folder. (Android's documents folder is not called
+  // Documents, so its addresses are only ever matched by the current folder above.)
+  const marker = address.lastIndexOf(`/Documents/${folder}/`);
+  return marker < 0 ? null : relative(address.slice(marker + '/Documents/'.length));
 }
 
-/** The address as it is kept in a column, or null when it is not a file of the app's own folders. */
-export function toStoredOrNull(address: string): string | null {
-  return relativeOf(address);
+/** The address as it is kept in a column, or null when it is not a file of the folder. */
+export function toStoredOrNull(address: string, folder: OwnFolder = 'unsent-work'): string | null {
+  return relativeOf(address, folder);
 }
 
-/** The address as it is kept in a column; throws for an address outside the app's own folders, which must never be stored. */
-export function toStored(address: string): string {
-  const stored = relativeOf(address);
-  if (stored === null) throw new RangeError('A file outside the app folders cannot be kept');
+/** The address as it is kept in a column; throws for an address outside the folder, which must never be stored. */
+export function toStored(address: string, folder: OwnFolder = 'unsent-work'): string {
+  const stored = relativeOf(address, folder);
+  if (stored === null) throw new RangeError('A file outside the app folder cannot be kept');
   return stored;
 }
 
 /**
- * The full current address of a stored one. A legacy absolute address of the app's folders is rebased; an address outside them
- * is given back as it is; an address that climbs out of its folder gives null.
+ * The full current address of a stored one. A legacy absolute address of the folder is rebased; any other address is given
+ * back as it is; an address that climbs out of its folder gives null.
  */
-export function fromStored(value: string): string | null {
-  const own = relativeOf(value);
+export function fromStored(value: string, folder: OwnFolder = 'unsent-work'): string | null {
+  const own = relativeOf(value, folder);
   if (own !== null) return `${documentsUri()}${own}`;
-  if (value.startsWith(FORM_SCHEME) || RELATIVE.test(value) || climbs(value)) return null;
+  if (value.startsWith(FORM_SCHEME) || climbs(value)) return null;
   return value;
 }
 
@@ -85,7 +77,7 @@ export function fileOfStored(value: string): string {
 /** A form's text with the addresses of the app's own files written as `app-doc:///...`. */
 export function formTextToStored(text: string): string {
   return text.replace(ADDRESS_IN_TEXT, address => {
-    const stored = relativeOf(address);
+    const stored = relativeOf(address, 'unsent-work');
     return stored === null ? address : `${FORM_SCHEME}${stored}`;
   });
 }
@@ -93,7 +85,7 @@ export function formTextToStored(text: string): string {
 /** A saved form's text with every `app-doc:///...` (and every legacy absolute own address) as a full current address. */
 export function formTextFromStored(text: string): string {
   return text.replace(ADDRESS_IN_TEXT, address => {
-    const own = relativeOf(address);
+    const own = relativeOf(address, 'unsent-work');
     return own === null ? address : `${documentsUri()}${own}`;
   });
 }

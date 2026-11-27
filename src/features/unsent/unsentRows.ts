@@ -254,7 +254,7 @@ export async function giveBackForm(db: UnsentDb, scope: string, recordId: string
           String(form.kind),
           String(form.grn_id ?? ''),
           formTextToStored(state),
-          JSON.stringify(back.map(toStored)),
+          JSON.stringify(back.map(file => toStored(file))),
           typeof form.customer === 'string' ? form.customer : null,
           Number(form.started_at ?? Date.now()),
           Date.now(),

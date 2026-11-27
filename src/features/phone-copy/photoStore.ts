@@ -5,6 +5,7 @@
  */
 import { File } from 'expo-file-system';
 import { sha256Hex } from '@/config/lanSigner';
+import { fromStored, toStored } from '@/features/unsent/storedPath';
 import { createLogger } from '@/utils/logger';
 import { currentCopy } from './copyDb';
 import { photoDirectory } from './photoFolder';
@@ -29,7 +30,7 @@ async function download(storagePath: string, signedUrl: string): Promise<boolean
     if (target.exists) return true;
     const file = await File.downloadFileAsync(signedUrl, target);
     await db.run('INSERT OR REPLACE INTO photo_files (storage_path, file, bytes, kept_at) VALUES (?, ?, ?, ?)', [
-      storagePath, file.uri, file.size ?? 0, Date.now(),
+      storagePath, toStored(file.uri, 'phone-copy-photos'), file.size ?? 0, Date.now(),
     ]);
     return true;
   } catch (error) {
@@ -55,7 +56,8 @@ export async function photoFile(storagePath: string): Promise<string | null> {
   try {
     const rows = await db.all<{ file: string }>('SELECT file FROM photo_files WHERE storage_path = ?', [storagePath]);
     if (!rows[0]) return null;
-    if (new File(rows[0].file).exists) return rows[0].file;
+    const kept = fromStored(rows[0].file, 'phone-copy-photos');
+    if (kept !== null && new File(kept).exists) return kept;
     await db.run('DELETE FROM photo_files WHERE storage_path = ?', [storagePath]);
     return null;
   } catch {
