@@ -87,7 +87,7 @@ describe('S9: the recorder\'s Held, Accepted and Rejected rows in "Unsent items"
 
   it('S14: an accepted field change reads as the GRN it changed', async () => {
     await recorder([
-      accepted('acc-lc', TODAY, { grn_id: 'g-B1', gr_no: 'B1' }, { kind: 'lotChange', lines: null, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: 'Rack' } } }),
+      accepted('acc-lc', TODAY, { grn_id: 'g-B1', gr_no: 'B1' }, { kind: 'lotChange', lines: null, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['rack'] } } }),
     ]);
     const { rows } = await loadList();
     expect(rows.find(r => r.id === 'acc-lc')).toMatchObject({ section: 'sent', tag: 'accepted', sentNumber: 'B1' });

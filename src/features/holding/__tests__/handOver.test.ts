@@ -17,8 +17,9 @@
  *        with `p_recorder = subject`; rejects or returns `{ moved: 0, ... }` for non-admins or offline).
  *  - `unsentSchema.ts` bumps `UNSENT_SCHEMA_VERSION` to at least 2 and adds `held_id TEXT` (and any hand-over-failed flag
  *    column, e.g. `handover_failed` or JSON field in `last_error`) to `items`, migrating schema-1 databases in place.
- *  - `sendEngine.ts` stores a server refusal in `last_error` as JSON `{ code, reason, data }` (contract section 3, 11.2),
- *    and calls hand-over after the record lane (and at the start of a pass) whenever `holdingOn()` is true.
+ *  - `sendEngine.ts` keeps a server refusal in `items.result` as JSON `{ code, answer }` (as WH-161 does; contract section 12),
+ *    while `last_error` keeps the reason text, and calls hand-over after the record lane (and at the start of a pass)
+ *    whenever `holdingOn()` is true.
  *  - `unsentList.ts` maps:
  *      - a `refused` item with `holdingOn()` true and no failed hand-over yet -> `section: 'unsent'`, `tag: 'sending'`,
  *        reason text matching `offline.holding.handingOver`;
@@ -65,6 +66,7 @@ type ItemDbRow = {
   state: string;
   depends_on: string | null;
   last_error: string | null;
+  result: string | null;
   held_id?: string | null;
 };
 
@@ -147,7 +149,7 @@ describe('K8: unsent-work schema step 2 (items.held_id) migrates in place', () =
 });
 
 describe('K1: refused item and followers handed over together in one hold_items call', () => {
-  it('stores structured refusal JSON in last_error, calls hold_items in seq order with follows_key, and transitions both to held with held_id', async () => {
+  it('keeps the refusal in result as { code, answer }, calls hold_items in seq order with follows_key, and transitions both to held with held_id', async () => {
     const phone = await startStaff();
     await phone.offline();
     const root = await phone.queue.enqueue({
@@ -193,8 +195,8 @@ describe('K1: refused item and followers handed over together in one hold_items 
       ['held', 'srv-held-1'],
       ['held', 'srv-held-2'],
     ]);
-    const parsedErr = JSON.parse(rows[0].last_error ?? '{}') as Record<string, unknown>;
-    expect(parsedErr).toMatchObject({ code: 'STOCK_SHORT', data: { lines } });
+    const refusal = JSON.parse(rows[0].result ?? '{}') as Record<string, unknown>;
+    expect(refusal).toMatchObject({ code: 'STOCK_SHORT', answer: { lines } });
   });
 });
 

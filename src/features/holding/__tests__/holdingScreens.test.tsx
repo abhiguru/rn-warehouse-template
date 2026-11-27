@@ -427,7 +427,7 @@ describe('S4: the Held item', () => {
   });
 
   it('a follower of a held item: Accept and Correct disabled under the follows line, Reject enabled', async () => {
-    await openItem(listRow('f1', { reason: 'followsHeld', follows: 'h1', can_accept: false, kind: 'lotChange', what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: 'Rack' } } }), { accept_possible: false });
+    await openItem(listRow('f1', { reason: 'followsHeld', follows: 'h1', can_accept: false, kind: 'lotChange', what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['rack'] } } }), { accept_possible: false });
     expect(screen.getByTestId('held-item-follows')).toHaveTextContent('Decide the earlier item, then Accept or Reject this one.');
     expect(screen.getByTestId('held-item-accept')).toBeDisabled();
     expect(screen.getByTestId('held-item-correct')).toBeDisabled();
@@ -527,7 +527,7 @@ describe('S8: another manager decided it meanwhile', () => {
 describe('S13: a held field change shows the server\'s present value', () => {
   it('"Now on the server: Rack D-4" for a held rack change to C-2', async () => {
     await openItem(
-      listRow('lc1', { kind: 'lotChange', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: 'Rack' } } }),
+      listRow('lc1', { kind: 'lotChange', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['rack'] } } }),
       { accept_possible: true, body: { lotId: 'l06', grnId: 'g-B1', recordedAt: '2026-11-27T09:00:00+05:30', changes: { rack: { from: 'B-2', to: 'C-2' } } }, current: [{ field: 'rack', line_ref: 'l06', current: 'D-4', held: 'C-2' }] },
     );
     expect(screen.getByTestId('held-item-current')).toHaveTextContent('Now on the server: Rack D-4');
@@ -536,7 +536,7 @@ describe('S13: a held field change shows the server\'s present value', () => {
   it('S11: in Gujarati', async () => {
     await setLanguage('gu');
     await openItem(
-      listRow('lc1', { kind: 'lotChange', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: 'Rack' } } }),
+      listRow('lc1', { kind: 'lotChange', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['rack'] } } }),
       { accept_possible: true, current: [{ field: 'rack', line_ref: 'l06', current: 'D-4', held: 'C-2' }] },
     );
     expect(screen.getByTestId('held-item-current')).toHaveTextContent(/^હાલ સર્વર પર: .+ D-4$/);
@@ -546,7 +546,7 @@ describe('S13: a held field change shows the server\'s present value', () => {
 describe('S14: accepting a field change', () => {
   it('toasts "Accepted: GRN B1 updated" from result.gr_no', async () => {
     await openItem(
-      listRow('lc1', { kind: 'lotChange', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: 'Rack' } } }),
+      listRow('lc1', { kind: 'lotChange', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['rack'] } } }),
       { accept_possible: true, current: [{ field: 'rack', line_ref: 'l06', current: 'D-4', held: 'C-2' }] },
     );
     mockServer.answers.decide_held_item = () => decideOk('lc1', 'accepted', { grn_id: 'g-B1', gr_no: 'B1' });
