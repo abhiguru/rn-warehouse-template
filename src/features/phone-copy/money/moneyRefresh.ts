@@ -15,7 +15,7 @@ import { getSyncSnapshot, subscribeSync } from '../syncStore';
 import { fetchDues, fetchStatement, type MoneyFetched } from './moneyFetch';
 import { moneyOn } from './moneyGate';
 import {
-  clearMark, copyCustomerIds, deleteMarks, deleteMoneyAnswer, eraseMoney, isDuesStale, keptStatementIds, putMark, readMarks,
+  clearMark, copyCustomerIds, deleteMarks, deleteMoneyAnswer, dropMoneyOutside, eraseMoney, isDuesStale, keptStatementIds, putMark, readMarks,
   readMoneyAnswer, restoreMark, writeMoneyAnswer,
 } from './moneyStore';
 
@@ -92,10 +92,13 @@ async function runPass(id: number): Promise<void> {
   if (!moneyOn() || getSyncSnapshot().phase !== 'ready' || !canGo(id)) return;
 
   // A customer account has no dues (the server refuses it them): its wanted set is the customers of its own copy (WH-306).
-  const start = copyKindOf(signedInRole()) === 'customer' ? { wanted: await copyCustomerIds(), failures: 0 } : await warehouseWanted(id);
+  const isCustomer = copyKindOf(signedInRole()) === 'customer';
+  const start = isCustomer ? { wanted: await copyCustomerIds(), failures: 0 } : await warehouseWanted(id);
   if (!start) return;
   const { wanted } = start;
   let { failures } = start;
+  // The copy's customers changed: what was kept for one that left it goes (a customer's phone holds only what its screens show).
+  if (isCustomer) await dropMoneyOutside(wanted);
 
   // Rule 1: a mark "all" becomes one mark per wanted customer; marks outside the wanted set go.
   const marks = await readMarks();

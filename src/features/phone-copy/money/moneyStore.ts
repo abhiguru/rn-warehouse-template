@@ -119,6 +119,26 @@ export async function deleteMoneyAnswer(kind: MoneyKind, key: string): Promise<v
   await withCopy(tx => tx.run('DELETE FROM money_answers WHERE kind = ? AND key = ?', [kind, key]));
 }
 
+/**
+ * A customer account's phone holds only what its screens show (WH-306): the kept statements and activity answers of a
+ * customer no longer in its copy are erased, with that customer's mark. `ids` are the customers the copy now holds.
+ */
+export async function dropMoneyOutside(ids: readonly string[]): Promise<void> {
+  const keep = new Set(ids);
+  await withCopy(async tx => {
+    const rows = await tx.all<{ kind: string; key: string }>("SELECT kind, key FROM money_answers WHERE kind IN ('statement', 'activity')");
+    for (const row of rows) {
+      let customer: string | null = null;
+      if (row.kind === 'statement') customer = row.key;
+      else if (row.key.startsWith('customer:')) customer = row.key.slice('customer:'.length, row.key.indexOf('|'));
+      if (customer !== null && !keep.has(customer)) await tx.run('DELETE FROM money_answers WHERE kind = ? AND key = ?', [row.kind, row.key]);
+    }
+    for (const mark of await tx.all<{ customer_id: string }>('SELECT customer_id FROM money_stale')) {
+      if (mark.customer_id !== 'all' && !keep.has(mark.customer_id)) await tx.run('DELETE FROM money_stale WHERE customer_id = ?', [mark.customer_id]);
+    }
+  });
+}
+
 /** A refusal: every kept answer and every mark goes. */
 export async function eraseMoney(): Promise<void> {
   await withCopy(async tx => {
