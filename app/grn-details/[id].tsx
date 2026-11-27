@@ -39,6 +39,7 @@ import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
 import { startInvoiceFromGrn } from '@/features/invoice/utils/invoiceFormOrigin';
 import { prepareInvoiceFromGrn } from '@/features/invoice/utils/prepareInvoiceFromGrn';
 import { backendHasFeature } from '@/config/backendFeatures';
+import { hasCapability } from '@/config/facilityCapabilities';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { useBackHandler } from '@/hooks/useBackHandler';
@@ -85,7 +86,9 @@ import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { beginNewBill, newBillIsCurrent, newBillToken, releaseNewBill } from '@/features/invoice/utils/startNewBill';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
-import { UnsentDetailsStrip } from '@/features/unsent/UnsentMarkers';
+import { ReplacedStrip } from '@/components/grn-details/ReplacedStrip';
+import { markGrnReplacementsChecked } from '@/services/replacedEntriesService';
+import { UnsentDetailsStrip, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
 import { useQuickChange } from '@/features/quick-change/useQuickChange';
 
 const log = createLogger('grn');
@@ -125,6 +128,19 @@ interface PhotoRef {
 const GRN_PAGE_KINDS: readonly EntityName[] = [
   'goodsreceived', 'goodsreceived_trl', 'grn_images', 'grn_lock', 'dispatch', 'dispatch_trl', 'customers', 'items', 'invoice', 'invoice_trl',
 ];
+
+/** The names of the items that are on more than one lot of this GRN (a lot's mark or rack then tells them apart, Design DQ11). */
+function repeatedItemNames(items: readonly { item_name?: string | null }[]): ReadonlySet<string> {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const item of items) {
+    const name = item.item_name ?? '';
+    if (name === '') continue;
+    if (seen.has(name)) repeated.add(name);
+    seen.add(name);
+  }
+  return repeated;
+}
 
 function GRNDetailScreen() {
   const { id, tab } = useLocalSearchParams<{ id: string; tab?: string | string[] }>();
@@ -195,6 +211,11 @@ function GRNDetailScreen() {
   const [ratesNeedServer, setRatesNeedServer] = useState(false);
   const fromCopyRef = useRef(false);
   const needsConnection = useNeedsConnection();
+  const unsentOverlay = useUnsentOverlay();
+  // WH-303: marking the replaced entries as checked (administrators), and whether that is being sent.
+  const [markingChecked, setMarkingChecked] = useState(false);
+  // WH-303: with a server that takes the edit as field changes, Edit works with no connection (the form reads the phone copy).
+  const editNeedsConnection = needsConnection && !(hasCapability('sync') && backendHasFeature('grnFieldChanges'));
 
   // Check edit permissions
   useEffect(() => {
@@ -599,6 +620,19 @@ function GRNDetailScreen() {
     router.push(`/invoice-details/${invoiceId}`);
   };
 
+  // "Mark as checked" on the replaced-entries strip: the strip goes at once on this phone and, with the next sync, on the others.
+  const handleMarkChecked = async (ids: string[]) => {
+    if (!id || markingChecked) return;
+    setMarkingChecked(true);
+    try {
+      const done = await markGrnReplacementsChecked(String(id), ids);
+      if (done) await fetchGRNDetails();
+      else showAlert(tr('offline.replaced.title'), tr('errors.general.unexpectedRetry'));
+    } finally {
+      setMarkingChecked(false);
+    }
+  };
+
   // Handle edit action
   const handleEditGRN = () => {
     if (deleteRunningRef.current) return;
@@ -917,8 +951,8 @@ function GRNDetailScreen() {
               <Button
                 type="tertiary"
                 onPress={handleEditGRN}
-                disabled={isDeleting || deleteChecking || needsConnection}
-                accessibilityLabel={needsConnection ? needsConnectionLabel(tr('common.edit')) : undefined}
+                disabled={isDeleting || deleteChecking || editNeedsConnection}
+                accessibilityLabel={editNeedsConnection ? needsConnectionLabel(tr('common.edit')) : undefined}
               >
                 {tr('common.edit')}
               </Button>
@@ -943,6 +977,15 @@ function GRNDetailScreen() {
           total_dispatched={statistics.total_dispatched}
           customer_name={grn.customer_details?.name}
           imported={grn.imported === true}
+        />
+        {/* The strip of replaced entries sits above the unsent strip (Design 6.2); a customer account never gets entries. */}
+        <ReplacedStrip
+          entries={grn.replacements ?? []}
+          canMarkChecked={userProfile?.role === 'admin'}
+          needsConnection={needsConnection}
+          onMarkChecked={ids => void handleMarkChecked(ids)}
+          busy={markingChecked}
+          repeatedItemNames={repeatedItemNames(items)}
         />
         <UnsentDetailsStrip kind="grn" id={String(id)} lotIds={items.map(item => String(item.id))} testID="grn-details-unsent-strip" />
 
@@ -992,6 +1035,7 @@ function GRNDetailScreen() {
               onViewItemImages={handleViewItemImages}
               onViewItemDispatches={handleViewItemDispatches}
               grnNumber={grn.gr_no}
+              removedLotIds={unsentOverlay.lotsRemoved?.(String(grn.id)) ?? []}
               onQuickChange={
                 quickChange.available
                   ? (item) =>

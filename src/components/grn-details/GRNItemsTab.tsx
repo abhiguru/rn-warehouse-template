@@ -77,6 +77,8 @@ interface GRNItemsTabProps {
   onViewItemDispatches?: (item: GRNItem) => void;
   /** Opens the quick change of this lot's rack and mark (WH-302); absent = no button. */
   onQuickChange?: (item: GRNItem) => void;
+  /** Lots an unsent edit removes: they stay in place, greyed, with "Removed, not sent yet" (WH-303, Design 6.x DQ4). */
+  removedLotIds?: readonly string[];
   /** The GRN's number, for the button's screen-reader label. */
   grnNumber?: string | number | null;
 }
@@ -187,6 +189,7 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
   loading = false,
   onViewItemDispatches,
   onQuickChange,
+  removedLotIds = [],
   grnNumber,
 }) => {
   const styles = useThemedStyles(makeTableStyles);
@@ -227,13 +230,14 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
             // The In stock column already says "in stock" and "0"; only Low stock, which a number alone
             // does not show, gets a tag (a long "Fully dispatched" tag was cut at font scale 1.3).
             const tag = status && status.status === 'critical' ? status : null;
+            const removed = removedLotIds.includes(String(item.id));
             return (
               <>
-                <Text style={styles.primary}>{item.item_name}</Text>
+                <Text style={removed ? [styles.primary, { color: t.text.secondary }] : styles.primary}>{item.item_name}</Text>
                 {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
                 {stacked ? <Text style={styles.secondary}>{nb(tr('grn.stock.receivedCount', { quantity: formatNumber(item.qty) }))}</Text> : null}
                 {tag ? <StatusTag status={tag.status} label={tag.label} icon={tag.icon} style={own.tag} /> : null}
-                <UnsentLotLines lotId={String(item.id)} />
+                <UnsentLotLines lotId={String(item.id)} removed={removed} />
               </>
             );
           },
@@ -259,7 +263,7 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
           cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.stock)}</Text>,
         }),
       ]),
-    [stacked, width, styles, own]
+    [stacked, width, styles, own, removedLotIds, t]
   );
 
   const grid = useAppTable({ data: items, columns, getRowId: (item) => item.id, getRowCanExpand: () => true });
@@ -300,6 +304,7 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
         stock: formatNumber(item.stock),
       }),
       tag?.label,
+      removedLotIds.includes(String(item.id)) ? tr('offline.lineRemovedNotSent') : undefined,
     ]
       .filter(Boolean)
       .join(', ');

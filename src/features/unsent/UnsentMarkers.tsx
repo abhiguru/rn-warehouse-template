@@ -79,14 +79,14 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 /** Design 2.2: a footnote at the bottom of a card or row, icon and words, never a tag. Nothing when there is no marker. */
-export function UnsentFootnote({ marker, testID, inline = false }: { marker: Marker | null; testID: string; inline?: boolean }) {
+export function UnsentFootnote({ marker, testID, inline = false, text }: { marker: Marker | null; testID: string; inline?: boolean; text?: string }) {
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
   if (marker === null) return null;
   return (
     <View style={[styles.footnote, inline && styles.footnoteInline]} testID={testID}>
       <Icon name="cloud-upload-outline" size={iconSize.sm} color={tokens.status.informative.text} importantForAccessibility="no" />
-      <Text style={styles.footnoteText}>{markerText(marker)}</Text>
+      <Text style={styles.footnoteText}>{text ?? markerText(marker)}</Text>
     </View>
   );
 }
@@ -127,11 +127,12 @@ export function UnsentDetailsStrip({ kind, id, lotIds = [], testID }: { kind: 'g
 }
 
 /** A lot row's unsent footnote (Design 2.2) and its deduction lines (Design 2.4), under the lot's item name. */
-export function UnsentLotLines({ lotId }: { lotId: string }) {
+export function UnsentLotLines({ lotId, removed = false }: { lotId: string; removed?: boolean }) {
   const overlay = useUnsentOverlay();
   return (
     <>
-      <UnsentFootnote inline marker={overlay.marker('lot', lotId)} testID={`grn-lot-unsent-${lotId}`} />
+      {/* A line the person removed and has not sent: "Removed, not sent yet" in place of "Not sent yet" (Design 6.x DQ4). */}
+      <UnsentFootnote inline marker={overlay.marker('lot', lotId)} testID={`grn-lot-unsent-${lotId}`} {...(removed ? { text: tr('offline.lineRemovedNotSent') } : {})} />
       <DeductionLines lotId={lotId} />
     </>
   );

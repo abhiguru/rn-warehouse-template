@@ -385,6 +385,28 @@ export interface RpcGrnDetails {
   dispatches_summary: RpcGrnDispatchesSummary;
   /** Rates for this GRN only (backend migration 86); absent from an older server. */
   rates?: RpcGrnRate[];
+  /** WH-303: entries that replaced someone's newer value and are not checked yet (staff roles only; absent from an older server). */
+  replacements?: RpcGrnReplacement[];
+}
+
+/** A change that replaced a value someone else set after the sender loaded the GRN (WH-303; `get_grn_replacements` row shape). */
+export interface RpcGrnReplacement {
+  id: string;
+  kind: 'field' | 'line_added';
+  /** The column name of a field entry ('rack'); null for a line. */
+  field: string | null;
+  newer_value: unknown;
+  newer_by_name: string | null;
+  newer_at: string | null;
+  sent_value: unknown;
+  sent_by_name: string | null;
+  sent_at: string | null;
+  /** Phone time of the change, when the server was told it. */
+  recorded_at: string | null;
+  lot_id?: string | null;
+  lot_item_name?: string | null;
+  lot_package_mark?: string | null;
+  lot_rack?: string | null;
 }
 
 /**

@@ -44,6 +44,7 @@ import {
   selectGRNFormChanged,
   selectGRNLoadedBaseline,
   selectGRNLoadedFrom,
+  selectGRNRatesNeedServer,
 } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { ImageUploadButton } from '@/features/grn/components/ImageUploadButton';
@@ -131,6 +132,7 @@ import { displayPackaging } from '@/utils/packagingWord';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
 import { backendHasFeature } from '@/config/backendFeatures';
 import { hasCapability } from '@/config/facilityCapabilities';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { offlineEditOf } from '@/features/grn/offline-edit/grnEditSave';
 import { saveGrnEditAndWait, saveGrnEditOffline } from '@/features/grn/offline-edit/grnEditKind';
@@ -222,6 +224,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // WH-303: where the form was loaded from and what it was loaded with; an edit saved as field changes is the difference.
   const loadedFrom = useAppSelector(selectGRNLoadedFrom);
   const loadedBaseline = useAppSelector(selectGRNLoadedBaseline);
+  // The rates are not on the phone: the section keeps its heading and says so (Design DQ8), and Save does not wait for them.
+  const ratesNeedServer = useAppSelector(selectGRNRatesNeedServer);
+  /** This edit is saved as field changes (WH-303): the form came from the phone copy, or the phone has no connection. */
+  const savesAsFieldChanges = () =>
+    hasCapability('sync') && backendHasFeature('grnFieldChanges') && !grnImported && !!loadedBaseline && (loadedFrom === 'copy' || isCopyOffline());
   // Set once this form has created its GRN. A further press of Create never creates again:
   // save_grn would answer the repeat with the same GRN and every photo would go up twice.
   const createdRef = useRef(false);
@@ -523,13 +530,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
 
     // Every line needs a rate before the GRN is saved (and the rates must be known).
-    if (canSetRates && stored.status !== 'ready') {
+    if (canSetRates && !savesAsFieldChanges() && stored.status !== 'ready') {
       showAlert(tr('grn.review.ratesNotLoadedTitle'), tr('grn.review.ratesNotLoadedMessage'));
       scrollToRates();
       return;
     }
     // An invoiced GRN is not checked: its invoice keeps its own figures and the server skips the check too.
-    if (canSetRates && !grnInvoiced && missingCount(pricedRows) > 0) {
+    if (canSetRates && !savesAsFieldChanges() && !grnInvoiced && missingCount(pricedRows) > 0) {
       showAlert(tr('grn.review.ratesMissingTitle'), tr('grn.review.ratesMissingMessage'));
       scrollToRates();
       return;
@@ -1240,7 +1247,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const performUpdate = async (formSession: number) => {
     const formLeft = () => currentGrnFormSession() !== formSession;
-    if (hasCapability('sync') && backendHasFeature('grnFieldChanges') && !grnImported && loadedBaseline && (loadedFrom === 'copy' || isCopyOffline())) {
+    if (savesAsFieldChanges()) {
       const target: unknown = Array.isArray(id) ? id[0] : id;
       if (typeof target === 'string' && grnId && target === grnId) {
         await performFieldChanges(formSession, target);
@@ -1643,6 +1650,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                 if (ratesFocusPending.current && items.length > 0) scrollRatesIntoView();
               }}
             >
+                {ratesNeedServer ? (
+                  <NeedsConnectionLine testID="grn-edit-rates-needs-connection" text={tr('components.offlineRead.screenNeedsConnection')} icon />
+                ) : (
                 <GrnRatesSection
                   rows={pricedRows}
                   status={stored.status}
@@ -1657,6 +1667,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                   onRestore={restoreRateEntry}
                   onRetry={() => { void stored.refresh(); }}
                 />
+                )}
             </ReviewSection>
           ) : null}
           </ReviewCard>

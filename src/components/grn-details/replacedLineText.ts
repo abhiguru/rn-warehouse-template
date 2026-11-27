@@ -4,26 +4,12 @@
  * who set each value; when the phone's own time and the server's time differ by more than a minute, both are told.
  */
 import type { t as Translate, TranslationKey } from '@/i18n';
+import type { RpcGrnReplacement } from '@/types/rpc-canonical.types';
 import { displayPackaging } from '@/utils/packagingWord';
 import { formatLoadedAt, formatQuantity } from '@/utils/formatters';
 
 /** A row of `get_grn_replacements`, the feed entity `grn_replacements` or `get_grn_details.replacements`. */
-export interface ReplacedEntry {
-  id: string;
-  kind: 'field' | 'line_added';
-  field: string | null;
-  newer_value: unknown;
-  newer_by_name: string | null;
-  newer_at: string | null;
-  sent_value: unknown;
-  sent_by_name: string | null;
-  sent_at: string | null;
-  recorded_at: string | null;
-  lot_id?: string | null;
-  lot_item_name?: string | null;
-  lot_package_mark?: string | null;
-  lot_rack?: string | null;
-}
+export type ReplacedEntry = RpcGrnReplacement;
 
 export interface ReplacedTextOptions {
   /** The GRN has more than one lot of this entry's item: the lot's mark or rack tells them apart (DQ11). */
