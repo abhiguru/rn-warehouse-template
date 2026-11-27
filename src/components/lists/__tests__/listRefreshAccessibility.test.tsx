@@ -8,6 +8,11 @@ import { listRefreshAccessibility } from '../listRefreshAccessibility';
 import { LastUpdatedLine } from '../ListLoadErrors';
 import { setLanguage } from '@/i18n';
 
+// The last-updated line asks the store for the signed-in role (customer strip, WH-306); a staff person has none.
+jest.mock('@/store/hooks', () => ({
+  useAppSelector: (select: (s: unknown) => unknown) => select({ auth: { userProfile: { id: 'profile-1', role: 'staff' } } }),
+  useAppDispatch: () => jest.fn(),
+}));
 jest.mock('@/hooks/useTheme', () => ({
   useThemedStyles: (make: (t: unknown) => unknown) => make(new Proxy({}, { get: () => new Proxy({}, { get: () => '#000' }) })),
 }));

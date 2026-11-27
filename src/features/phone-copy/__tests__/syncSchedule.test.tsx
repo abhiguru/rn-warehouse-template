@@ -32,6 +32,8 @@ jest.mock('expo-file-system', () => require('@/tests/phoneCopy/phoneEnv').mockFa
 jest.mock('@/config/supabaseConfig', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.supabase());
 jest.mock('@react-native-community/netinfo', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.netinfo());
 jest.mock('@/config/lanTransport', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.lan());
+// The signed-in role (a copy load with no known role is refused, 67f79a73): a staff person, as bootPhone() gives.
+jest.mock('@/store', () => ({ store: { getState: () => ({ auth: { userProfile: { id: 'profile-1', role: 'staff' } } }) } }));
 // react-redux is not transformed by this repo's Jest config; PhoneCopyLifecycle mounts FormDraftHost, which renders nothing off a form route, so the hook is only a stand-in.
 jest.mock('@/store/hooks', () => ({ useAppSelector: () => false, useAppDispatch: () => jest.fn() }));
 

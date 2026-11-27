@@ -41,7 +41,7 @@ let mockOffline = false;
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => mockOffline }));
 jest.mock('@/utils/alert', () => ({ askAlert: jest.fn(), showAlert: jest.fn() }));
 jest.mock('@/store/hooks', () => {
-  const state = { theme: jest.requireActual('@/store/slices/themeSlice').default(undefined, { type: 'init' }) };
+  const state = { auth: { userProfile: { id: 'profile-1', role: 'staff' } }, theme: jest.requireActual('@/store/slices/themeSlice').default(undefined, { type: 'init' }) };
   return { useAppSelector: (select: (s: unknown) => unknown) => select(state), useAppDispatch: () => () => undefined };
 });
 

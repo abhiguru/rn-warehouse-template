@@ -34,6 +34,8 @@ jest.mock('expo-file-system', () => require('@/tests/phoneCopy/phoneEnv').mockFa
 jest.mock('@/features/unsent/unsentStore', () => ({ ...jest.requireActual('@/features/unsent/unsentStore'), initUnsent: jest.fn(async () => undefined) }));
 jest.mock('@/config/supabaseConfig', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.supabase());
 jest.mock('@react-native-community/netinfo', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.netinfo());
+// The signed-in role (a copy load with no known role is refused, 67f79a73): a staff person, as bootPhone() gives.
+jest.mock('@/store', () => ({ store: { getState: () => ({ auth: { userProfile: { id: 'profile-1', role: 'staff' } } }) } }));
 // react-redux does not load under Jest here: the app's two store hooks read the real theme slice's starting state.
 jest.mock('@/store/hooks', () => {
   const state = { theme: jest.requireActual('@/store/slices/themeSlice').default(undefined, { type: 'init' }) };

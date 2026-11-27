@@ -129,6 +129,7 @@ jest.mock('expo-router', () => {
     Stack,
     Tabs,
     useRouter: () => ({ replace: mockReplace }),
+    usePathname: () => '/',
     DarkTheme: { colors: {} },
     DefaultTheme: { colors: {} },
     ThemeProvider: ({ children }: { children: React.ReactNode }) => children,

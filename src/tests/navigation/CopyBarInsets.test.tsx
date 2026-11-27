@@ -18,6 +18,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import authReducer from '@/store/slices/authSlice';
 import { verifySelectedOperator } from '@/config/operatorBootstrap';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
+import { resetSyncSnapshot, updateSyncSnapshot } from '@/features/phone-copy/syncStore';
 import { noteUpgradeAnswer, resetUpgradeNotice } from '@/config/upgradeNotice';
 import { AppTooOldError, clearAppTooOld } from '@/config/appTooOld';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
@@ -142,7 +143,7 @@ jest.mock('@/components/OfflineStatusBar', () => {
   return { OfflineStatusBar: () => <Text>phone copy bar</Text> };
 });
 jest.mock('@/features/phone-copy/components/PhoneCopyLifecycle', () => ({ PhoneCopyLifecycle: () => null }));
-jest.mock('@/features/phone-copy/copyDb', () => ({ eraseCopy: jest.fn(async () => {}) }));
+jest.mock('@/features/phone-copy/copyDb', () => ({ eraseCopy: jest.fn(async () => {}), setBeforeErase: jest.fn() }));
 
 // ---------------------------------------------------------------------------
 // Everything else the root draws, as in RootIntoTabs.test.tsx.
@@ -359,6 +360,7 @@ beforeEach(() => {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterEach(() => {
+  resetSyncSnapshot();
   resetFacilityCapabilities();
   resetUpgradeNotice();
   clearAppTooOld();
@@ -368,7 +370,8 @@ afterEach(() => {
 /** The feature off in each way it can be: the facility has no phone copy, or the person's role has none. */
 const FEATURE_OFF: [string, () => void][] = [
   ['the facility has no phone copy', () => facilitySync(false)],
-  ['a customer account', () => { mockRole = 'customer'; }],
+  // WH-306: a customer account's bar is drawn only before its first load is done; after it, the strip carries the time.
+  ['a customer account past its first load', () => { mockRole = 'customer'; updateSyncSnapshot({ phase: 'ready' }); }],
 ];
 
 describe('the tabs: no second top inset under the bar', () => {
@@ -380,6 +383,14 @@ describe('the tabs: no second top inset under the bar', () => {
     await start();
     expect(screen.getByText('phone copy bar')).toBeOnTheScreen();
     expect(screen.getByTestId('protected-tabs')).toBeOnTheScreen();
+    expect(safeAreaEdges()).toEqual([TABS_NONE]);
+  });
+
+  it('a customer account in its first load shows the bar, and the tabs leave the top edge to it', async () => {
+    mockRole = 'customer';
+    updateSyncSnapshot({ phase: 'stage1' });
+    await start();
+    expect(screen.getByText('phone copy bar')).toBeOnTheScreen();
     expect(safeAreaEdges()).toEqual([TABS_NONE]);
   });
 
