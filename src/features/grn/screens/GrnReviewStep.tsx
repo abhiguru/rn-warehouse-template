@@ -1651,7 +1651,26 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
               }}
             >
                 {ratesNeedServer ? (
-                  <NeedsConnectionLine testID="grn-edit-rates-needs-connection" text={tr('components.offlineRead.screenNeedsConnection')} icon />
+                  grnRates.length === 0 ? (
+                    <NeedsConnectionLine testID="grn-edit-rates-needs-connection" text={tr('components.offlineRead.screenNeedsConnection')} icon />
+                  ) : (
+                    // The copy's rates, with every control off (Design DQ10): one "Needs a connection" line under the heading.
+                    <>
+                      <NeedsConnectionLine testID="grn-edit-rates-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+                      <GrnRatesSection
+                        rows={pricedRows.filter(row => row.rate !== null)}
+                        status="ready"
+                        offline
+                        oneTime={rateCtx.priceType === 'one_time'}
+                        day={rateCtx.day}
+                        invoiced
+                        onChange={() => undefined}
+                        onAdd={() => undefined}
+                        onUndo={() => undefined}
+                        onRetry={() => undefined}
+                      />
+                    </>
+                  )
                 ) : (
                 <GrnRatesSection
                   rows={pricedRows}
