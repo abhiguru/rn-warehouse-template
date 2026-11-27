@@ -105,3 +105,14 @@ export function formTextFromStored(text: string): string {
     return own === null ? address : `${documentsUri()}${own}`;
   });
 }
+
+/** The photo files (full current addresses) a `forms.photos` column names; none for a value that is not a list. */
+export function formFiles(raw: unknown): string[] {
+  if (typeof raw !== 'string') return [];
+  try {
+    const list: unknown = JSON.parse(raw);
+    return Array.isArray(list) ? list.flatMap(entry => (typeof entry === 'string' && fileOfStored(entry) !== '' ? [fileOfStored(entry)] : [])) : [];
+  } catch {
+    return [];
+  }
+}

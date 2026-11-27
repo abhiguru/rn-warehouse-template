@@ -11,6 +11,7 @@
 import { Directory, Paths } from 'expo-file-system';
 import * as ExpoSqlite from 'expo-sqlite';
 import { createLogger, loggableError } from '@/utils/logger';
+import { removeFiles } from './legacyDispatchCleanup';
 import { SCHEMA_STATEMENTS, SCHEMA_STEPS, UNSENT_FILE, UNSENT_FOLDER, UNSENT_PHOTO_FOLDER, UNSENT_SCHEMA_VERSION } from './unsentSchema';
 
 const logger = createLogger('[unsent]');
@@ -75,10 +76,13 @@ async function openFile(): Promise<UnsentDb> {
     const have = Number(stored?.value ?? 1);
     for (const step of SCHEMA_STEPS) {
       if (step.version <= have || step.version > UNSENT_SCHEMA_VERSION) continue;
+      const leftovers: { files: readonly string[] } = { files: [] };
       await db.withTransactionAsync(async () => {
         for (const statement of step.statements) await db.execAsync(statement);
+        if (step.work) leftovers.files = await step.work(db);
         await db.runAsync("UPDATE meta SET value = ? WHERE key = 'schema_version'", [String(step.version)]);
       });
+      removeFiles(leftovers.files);
     }
     await db.getAllAsync('SELECT count(*) AS n FROM items', []);
   } catch (error) {

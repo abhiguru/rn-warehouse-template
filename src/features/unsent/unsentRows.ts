@@ -5,7 +5,7 @@
  */
 import { File } from 'expo-file-system';
 import { createLogger, loggableError } from '@/utils/logger';
-import { fileOfStored, formTextFromStored, formTextToStored, ownFilesInText, toStored } from './storedPath';
+import { fileOfStored, formFiles, formTextFromStored, formTextToStored, ownFilesInText, toStored } from './storedPath';
 import { getUnsentDb, unsentPhotoDirectory, type SqlValue, type UnsentDb } from './unsentDb';
 
 /** A photo row as read: its `file` is the full current address, whatever way it was stored (see storedPath.ts). */
@@ -216,17 +216,6 @@ export async function insertItems(db: UnsentDb, items: readonly NewItem[], form?
   await announceUnsentChange();
 }
 
-/** The photo files a `forms.photos` column names. */
-function formFiles(raw: SqlValue | undefined): string[] {
-  if (typeof raw !== 'string') return [];
-  try {
-    const list: unknown = JSON.parse(raw);
-    return Array.isArray(list) ? list.flatMap(entry => (typeof entry === 'string' && fileOfStored(entry) !== '' ? [fileOfStored(entry)] : [])) : [];
-  } catch {
-    return [];
-  }
-}
-
 /**
  * Takes the record item `recordId` and its dependants back out of the queue and puts the unfinished form back (WH-161): the
  * forms row from `form_row`, its state with the photo addresses now pointing at the photo files, which are moved back to the form's
@@ -303,7 +292,7 @@ export interface ReplaceItemInput {
   customer?: string | undefined;
   /** The replacement photos item's details; an empty `photos` array removes any dependent photos item. */
   photos: { file: string; clientPhotoId: string; role: string; lineRef?: string | undefined }[];
-  photoDoc: 'grn' | 'dispatch';
+  photoDoc: 'grn';
   photoWhat: string;
   newPhotosItemId: string;
   newPhotosRequestKey: string;
