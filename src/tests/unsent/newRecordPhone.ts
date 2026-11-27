@@ -27,18 +27,34 @@ const numberingRow = (scheme: Scheme) => ({
 });
 
 export async function bootNewRecords({ scheme = 'letters', withCopy = true }: { scheme?: Scheme; withCopy?: boolean } = {}): Promise<NewRecordPhone> {
+  // jest.setup's expo-crypto stand-in has no digestStringAsync, which the direct createGRN / createDispatch save uses for the request key.
+  jest.doMock('expo-crypto', () => {
+    const nodeCrypto = require('node:crypto');
+    return {
+      CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+      digestStringAsync: async (_algorithm: string, data: string) => nodeCrypto.createHash('sha256').update(data).digest('hex'),
+      digest: async (_algorithm: string, data: ArrayBufferView) => {
+        const out = nodeCrypto.createHash('sha256').update(Buffer.from(data.buffer, data.byteOffset, data.byteLength)).digest();
+        return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
+      },
+      getRandomBytesAsync: async (count: number) => new Uint8Array(nodeCrypto.randomBytes(count)),
+      randomUUID: () => nodeCrypto.randomUUID(),
+    };
+  });
   seedWarehouse();
   env.feed.rows.settings.push({ id: 'numbering', row: numberingRow(scheme) });
   const phone = await bootUnsent();
   // The sync calls go to the fake feed, every other call to the facility's answers (`server`).
   const supabase = require('@/config/supabaseConfig') as Record<string, unknown>;
   const routed = async () => ({
+    storage: { from: () => ({ upload: async () => ({ error: null }), remove: async () => ({ error: null }) }) },
     rpc: async (name: string, args: Record<string, unknown> = {}) => {
       if (name.startsWith('get_sync_')) return env.feed.rpc(name, args);
       server.calls.push({ name, args });
       return server.answers[name]?.(args) ?? NO_NETWORK;
     },
   });
+  supabase.beginOperatorMutation = () => () => undefined; // the real gate holds a server switch off; the phone env's stand-in lacks it
   supabase.getAuthenticatedClient = routed;
   supabase.getSupabaseClient = routed;
   // react-redux is not transformed by this repo's Jest config; the services below never call its hooks.

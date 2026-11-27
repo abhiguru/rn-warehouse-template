@@ -140,9 +140,11 @@ describe('K9: a record refused after the wait takes its photos with it', () => {
     expect(rows[1]).toMatchObject({ id: photos.id, state: 'refused', depends_on: record.id });
     expect(rows[1].last_error).toContain('dependsOnRefused');
     expect(server.calls.some(call => call.name === 'register_grn_image_upload')).toBe(false);
-    expect(phone.store.getUnsentSummary().count).toBe(0);
-    expect(phone.store.getUnsentSummary().sendBy).toBe(0);
-    expect(phone.gate.accountActionAllowed()).toEqual({ ok: true });
+    // WH-301 ruling (tech/app-offline-unsent-work.md): until WH-304 holds them on the server, the refused record and its photos still count as one unsent
+    // thing, keep the 2-hour clock and refuse the account actions, because the phone has the only copy.
+    expect(phone.store.getUnsentSummary().count).toBe(1);
+    expect(phone.store.getUnsentSummary().sendBy).toBeGreaterThan(0);
+    expect(phone.gate.accountActionAllowed()).toMatchObject({ ok: false });
     expect(keptPhotoFiles()).toHaveLength(1);
   });
 });

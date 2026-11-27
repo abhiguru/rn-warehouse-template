@@ -34,6 +34,7 @@ class FakeFile {
   get name() { return this.uri.slice(this.uri.lastIndexOf('/') + 1); }
   get exists() { return files.held.has(this.uri); }
   get size() { return files.held.get(this.uri) ?? 0; }
+  async arrayBuffer() { return new ArrayBuffer(this.size); }
   create() { files.held.set(this.uri, 0); }
   write(data: { length: number }) { files.held.set(this.uri, data.length); }
   delete() { files.held.delete(this.uri); }

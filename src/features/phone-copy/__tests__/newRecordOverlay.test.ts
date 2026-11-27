@@ -132,14 +132,15 @@ describe('S3: after the send', () => {
     env.feed.changeAnswers.push({
       position: '1048600', as_of: env.feed.asOf, more: false, reload_all: null, reload: [],
       changes: [
-        { e: 'goodsreceived', id: 'grn-server-1', op: 'upsert', v: '1', row },
-        { e: 'goodsreceived_trl', id: 'item-server-0', op: 'upsert', v: '1', row: lot },
+        { e: 'goodsreceived', id: 'grn-server-1', op: 'upsert', v: 'a3f09c2b11d4e5f6', row },
+        { e: 'goodsreceived_trl', id: 'item-server-0', op: 'upsert', v: 'a3f09c2b11d4e5f7', row: lot },
       ],
     });
+    overlay(); // the screens subscribe to the sync runs when they mount: the run below must end after that, as on the phone
     expect(await phone.phone.engine.syncNow('pull-to-refresh')).toBe('done');
     expect(overlay().newDocuments('grn')).toHaveLength(0);
     const result = await list();
-    expect(result.data.items.filter(item => item.grn_id === 'grn-server-1')).toHaveLength(1);
+    expect(result.data.items.filter(item => item.gr_no === '312')).toHaveLength(1);
     expect(result.data.items.some(item => item.grn_id === LOCAL)).toBe(false);
   });
 });
@@ -190,10 +191,11 @@ describe('S9: an unsent GRN\'s bags in the totals the copy computes (PQ3)', () =
     env.feed.changeAnswers.push({
       position: '1048600', as_of: env.feed.asOf, more: false, reload_all: null, reload: [],
       changes: [
-        { e: 'goodsreceived', id: 'grn-server-1', op: 'upsert', v: '1', row },
-        { e: 'goodsreceived_trl', id: 'item-server-0', op: 'upsert', v: '1', row: lot },
+        { e: 'goodsreceived', id: 'grn-server-1', op: 'upsert', v: 'a3f09c2b11d4e5f6', row },
+        { e: 'goodsreceived_trl', id: 'item-server-0', op: 'upsert', v: 'a3f09c2b11d4e5f7', row: lot },
       ],
     });
+    overlay(); // the screens subscribe to the sync runs when they mount: the run below must end after that, as on the phone
     expect(await phone.phone.engine.syncNow('pull-to-refresh')).toBe('done');
     const all: any = await stockSummary().getAllStockSummary();
     expect(all.data.summary.total_quantity).toBe(109);

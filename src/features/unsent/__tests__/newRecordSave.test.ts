@@ -22,7 +22,7 @@
  */
 import { eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
-import { rawRows, server } from '@/tests/unsent/unsentPhone';
+import { addPhoto, rawRows, server } from '@/tests/unsent/unsentPhone';
 import { bootNewRecords, callsOf, dispatchPayload, dispatchSaved, duplicateWarning, grnPayload, grnSaved, rateFailure, refusal } from '@/tests/unsent/newRecordPhone';
 import type { RpcAnswer } from '@/tests/unsent/unsentPhone';
 
@@ -96,11 +96,11 @@ describe('K2: what the kind sends for each number mode', () => {
     await phone.offline();
     await offlineNew().saveNewGrn(grnPayload(), { numberMode: 'pending' }); // an own record item is unsent
     await phone.online();
-    server.answers[GRN_RPC] = () => grnSaved('A-7');
+    server.answers[GRN_RPC] = () => new Promise(() => undefined); // the older item stays unsent, so both saves go to the queue (section 3)
     const unchanged = offlineNew().saveNewGrn(grnPayload({ number: 'A-7' }), { numberMode: 'online', suggestedNumber: 'A-7' });
-    await saving(unchanged, 100);
+    expect((await saving(unchanged, 8_500)).path).toBe('saved');
     const changed = offlineNew().saveNewGrn(grnPayload({ number: 'A-9' }), { numberMode: 'online', suggestedNumber: 'A-7' });
-    await saving(changed, 100);
+    expect((await saving(changed, 8_500)).path).toBe('saved');
     const rows = await items();
     expect(bodyOf(rows[1]).args).toMatchObject({ p_gr_no: '', p_issue_number: true });
     expect(bodyOf(rows[2]).args).toMatchObject({ p_gr_no: 'A-9', p_issue_number: false });
@@ -199,11 +199,12 @@ describe('P7: a refusal within the wait is told on the form and nothing is kept'
     ['a rate', rateFailure('RATE_MISSING', { lines: [{ index: 0, item_name: 'Peas' }] }), { error_code: 'RATE_MISSING', data: { lines: [{ index: 0, item_name: 'Peas' }] } }],
     ['SERIES_FULL', refusal('SERIES_FULL'), { reason: 'SERIES_FULL' }],
   ])('%s: no item, the form is given back with its photos', async (_name, answer, expected) => {
-    await bootNewRecords();
-    const photo = (await import('@/tests/unsent/unsentPhone')).addPhoto('bags.jpg');
+    // reachable with nothing unsent and a typed number would save directly (P2); the rates footnote (P9) is what sends this Save by the queue
+    await bootNewRecords({ scheme: 'free' });
+    const photo = addPhoto('bags.jpg');
     server.answers[GRN_RPC] = () => answer;
     const saved = await saving(
-      offlineNew().saveNewGrn(grnPayload({ number: 'G-501' }), { numberMode: 'typed', photos: [{ file: photo, role: 'header' }] }),
+      offlineNew().saveNewGrn(grnPayload({ number: 'G-501' }), { numberMode: 'typed', ratesNotOnPhone: true, photos: [{ file: photo, role: 'header' }] }),
       100
     );
     expect(saved.path).toBe('refused');
