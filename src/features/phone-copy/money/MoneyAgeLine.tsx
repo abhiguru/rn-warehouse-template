@@ -10,7 +10,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
-import { formatCardDate, formatSpokenDateTime, formatTime } from '@/utils/formatters';
+import { formatLoadedAt, formatSpokenDateTime } from '@/utils/formatters';
 import { businessDate } from '../pgCompat';
 import { moneyAge, phoneBusinessDay } from './moneyAge';
 
@@ -53,13 +53,13 @@ export function MoneyAgeLine({ asOf, today, hasStock, refreshFailed = false, onR
   const when = new Date(asOf);
   const phoneDay = phoneBusinessDay();
   const age = moneyAge({ asOf, today: today !== null && today !== '' ? today : businessDate(asOf), phoneDay, hasStock });
-  const dateTime = `${formatCardDate(when)}, ${formatTime(when)}`;
+  const dateTime = formatLoadedAt(when.getTime());
   return (
     <View style={styles.wrap}>
       {age === 'today' ? (
-        <View style={styles.line} testID="money-age-line" accessible accessibilityLabel={tr('money.asOfToday', { time: formatTime(when) })}>
+        <View style={styles.line} testID="money-age-line" accessible accessibilityLabel={tr('money.asOfToday', { time: dateTime })}>
           <Icon name="clock-outline" size={iconSize.sm} color={tokens.icon.secondary} importantForAccessibility="no" />
-          <Text style={styles.lineText}>{tr('money.asOfToday', { time: formatTime(when) })}</Text>
+          <Text style={styles.lineText}>{tr('money.asOfToday', { time: dateTime })}</Text>
         </View>
       ) : (
         <View
