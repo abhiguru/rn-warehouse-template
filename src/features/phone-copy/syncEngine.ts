@@ -249,6 +249,9 @@ const readableStart = (start: { format: number }): boolean => readableFormat(sta
 
 async function startLoad(run: Run): Promise<void> {
   const kind = copyKindOf(signedInRole());
+  // No known role, no copy: a copy is stored for the kind that loaded it, and a guess could keep a warehouse copy for a customer.
+  // The run fails before anything is written and is tried again once the profile is known.
+  if (!kind) throw new SyncFailedError('role not known');
   // A customer account's copy is for a facility that says it has the feature (contract 11 O3): no copy file otherwise.
   if (kind === 'customer' && !hasCapability('sync')) throw new FeatureOffError();
   const start = await getSyncStart(run.stop);
@@ -260,7 +263,7 @@ async function startLoad(run: Run): Promise<void> {
   await write(run, async tx => {
     await clearData(tx);
     await setMeta(tx, 'format', String(start.format));
-    await setMeta(tx, 'kind', kind ?? 'warehouse');
+    await setMeta(tx, 'kind', kind);
     await setMeta(tx, 'copy', start.copy);
     await setMeta(tx, 'start_position', start.position);
     await setMeta(tx, 'as_of', start.asOf);
@@ -269,7 +272,7 @@ async function startLoad(run: Run): Promise<void> {
     await setMeta(tx, 'phase', 'stage1');
     if (entities.length) await setMeta(tx, 'load_cursor', JSON.stringify({ entity: entities[0], after: null }));
   });
-  publish({ feature: 'on', phase: 'stage1', asOf: start.asOf, format: start.format, kind: kind ?? 'warehouse' });
+  publish({ feature: 'on', phase: 'stage1', asOf: start.asOf, format: start.format, kind });
 }
 
 async function fetchPage(run: Run, cursor: Cursor): Promise<SyncPage> {
