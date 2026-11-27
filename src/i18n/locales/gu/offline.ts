@@ -98,6 +98,7 @@ export const offline: Translation<typeof source> = {
   holding: {
     title: 'રોકેલી યાદી',
     itemTitle: 'રોકેલી એન્ટ્રી',
+    facts: { customer: 'વેપારી', recordedBy: 'નોંધનાર', recordedAt: 'નોંધ્યાનો સમય', phone: 'ફોન' },
     listNote: 'કોઈ સ્વીકારે કે નકારે ત્યાં સુધી રોકેલી એન્ટ્રી અહીં રહે છે.',
     strip: { one: '{{count}} રોકેલી એન્ટ્રી પર નિર્ણય બાકી છે', other: '{{count}} રોકેલી એન્ટ્રી પર નિર્ણય બાકી છે' },
     stripOpens: 'રોકેલી યાદી ખોલે છે',

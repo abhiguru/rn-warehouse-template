@@ -95,6 +95,7 @@ export const offline = {
   holding: {
     title: 'Holding list',
     itemTitle: 'Held item',
+    facts: { customer: 'Customer', recordedBy: 'Recorded by', recordedAt: 'Recorded at', phone: 'Phone' },
     listNote: 'Held items stay here until someone accepts or rejects them.',
     strip: { one: '{{count}} held item needs a decision', other: '{{count}} held items need a decision' },
     stripOpens: 'opens the Holding list',

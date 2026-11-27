@@ -219,7 +219,7 @@ export const REPORTS: readonly ReportDefinition[] = [
 export const HOLDING_LIST_REPORT: ReportDefinition = define({
   id: 'holding-list',
   title: 'offline.holding.title',
-  description: 'offline.holding.listNote',
+  description: 'nav.reports.descriptions.holdingList',
   icon: 'inbox-arrow-down',
   category: 'operations',
   hasPeriod: false,

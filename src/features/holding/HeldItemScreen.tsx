@@ -50,7 +50,9 @@ const makeStyles = (t: ThemeTokens) => ({
   hero: { backgroundColor: t.surface.card, paddingHorizontal: layout.marginCompact, paddingVertical: space.md, gap: space.xxs, marginBottom: space.sm },
   docType: { ...typography.footnote, color: t.text.secondary },
   title: { ...typography.title2, color: t.text.primary },
-  fact: { ...typography.subhead, color: t.text.secondary },
+  facts: { marginTop: space.md, gap: space.sm },
+  factLabel: { ...typography.footnote, color: t.text.secondary },
+  factValue: { ...typography.subhead, color: t.text.primary },
   strip: { paddingHorizontal: layout.marginCompact, marginBottom: space.sm, gap: space.xs },
   hint: { ...typography.footnote, color: t.text.secondary },
   record: { backgroundColor: t.surface.card, paddingHorizontal: layout.marginCompact, paddingVertical: space.md, gap: space.xs },
@@ -120,13 +122,26 @@ interface FactsProps {
 /** The hero: the kind of page, what the item is, the customer, and who recorded it, when and from which phone. */
 function Hero({ row, styles }: FactsProps) {
   const recorded = Date.parse(row.recordedAt ?? '');
-  const footnote = [row.recordedByName, Number.isNaN(recorded) ? null : formatLoadedAt(recorded), row.phone].filter(Boolean).join(' · ');
+  const facts = [
+    { key: 'customer', label: tr('offline.holding.facts.customer'), value: row.customerName },
+    { key: 'recordedBy', label: tr('offline.holding.facts.recordedBy'), value: row.recordedByName },
+    { key: 'recordedAt', label: tr('offline.holding.facts.recordedAt'), value: Number.isNaN(recorded) ? null : formatLoadedAt(recorded) },
+    { key: 'phone', label: tr('offline.holding.facts.phone'), value: row.phone },
+  ].flatMap(fact => (fact.value ? [{ ...fact, value: fact.value }] : []));
   return (
-    <View style={styles.hero} accessible accessibilityRole="header" accessibilityLabel={[tr('offline.holding.itemTitle'), heldWhatText(row.what), row.customerName, footnote].filter(Boolean).join(', ')}>
-      <Text style={styles.docType}>{tr('offline.holding.itemTitle')}</Text>
-      <Text style={styles.title}>{heldWhatText(row.what)}</Text>
-      {row.customerName ? <Text style={styles.fact}>{row.customerName}</Text> : null}
-      {footnote ? <Text style={styles.fact}>{footnote}</Text> : null}
+    <View style={styles.hero}>
+      <View accessible accessibilityRole="header" accessibilityLabel={[tr('offline.holding.itemTitle'), heldWhatText(row.what)].join(', ')}>
+        <Text style={styles.docType}>{tr('offline.holding.itemTitle')}</Text>
+        <Text style={styles.title}>{heldWhatText(row.what)}</Text>
+      </View>
+      <View style={styles.facts}>
+        {facts.map(fact => (
+          <View key={fact.key} testID={`held-fact-${fact.key}`} accessible accessibilityLabel={`${fact.label}: ${fact.value}`}>
+            <Text style={styles.factLabel}>{fact.label}</Text>
+            <Text style={styles.factValue}>{fact.value}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }

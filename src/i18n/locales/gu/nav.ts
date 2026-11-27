@@ -1,6 +1,6 @@
 /** Gujarati text: nav. Follows docs/GUJARATI_GLOSSARY.md. */
 import type { nav as source } from '../en/nav';
-import type { Translation } from '../../types';
+import type { Translation } from '@/i18n/types';
 
 export const nav: Translation<typeof source> = {
   loading: 'લોડ થઈ રહ્યું છે',
@@ -60,6 +60,7 @@ export const nav: Translation<typeof source> = {
       temperatureReport: 'પસંદ કરેલા સમયગાળાની સેન્સર નોંધ, PDF તરીકે',
       accountantPack: 'મહિનાના ઇન્વૉઇસ, આવક અને સ્ટોક, તમારા હિસાબનીશ માટે',
       replacedEntries: 'કોઈની નવી એન્ટ્રી પર લખાયેલા ફેરફાર',
+      holdingList: 'નિર્ણય બાકી હોય તેવી રોકેલી એન્ટ્રી',
     },
   },
 };
