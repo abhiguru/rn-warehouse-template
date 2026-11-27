@@ -577,6 +577,8 @@ const grnFormSlice = createSlice({
         // WH-303: where the form was read from; a copy load has no rates.
         source?: GRNLoadSource;
         ratesNeedServer?: boolean;
+        // WH-304: a held edit shows the held changes, and what its Save is compared with is what the server holds.
+        baseline?: GRNLoadedBaseline;
       }>
     ) => {
       state.header = action.payload.header;
@@ -593,7 +595,7 @@ const grnFormSlice = createSlice({
       state.grnImported = action.payload.grnImported === true;
       state.loadedFrom = action.payload.source ?? 'server';
       state.ratesNeedServer = action.payload.ratesNeedServer === true;
-      state.loadedBaseline = baselineOf(action.payload.header, action.payload.items);
+      state.loadedBaseline = action.payload.baseline ?? baselineOf(action.payload.header, action.payload.items);
       state.removedImages = [];
       state.takenNumberError = null;
       state.loadedSignature = formSignature(state);

@@ -14,7 +14,11 @@ export type LoadedHeldGrn = { kind: 'loaded'; item: HeldItemDetail; held: NewGrn
 
 /** The held item and the form's values from its body. A decided item, another kind or an unreadable body is `unavailable`. */
 export async function loadHeldGrn(heldId: string): Promise<LoadedHeldGrn> {
-  const item = await getHeldItem(heldId);
+  return loadHeldGrnOf(await getHeldItem(heldId));
+}
+
+/** The same, from an item already read. */
+export async function loadHeldGrnOf(item: HeldItemDetail): Promise<LoadedHeldGrn> {
   if (item.kind !== 'newGrn' || item.state !== 'held' || !isNewGrnBody(item.body)) return { kind: 'unavailable' };
   // The photos the recorder's phone uploaded show in the form as they are on the server; one storage will not sign is left out.
   const photos: PhotoRow[] = (await loadHeldPhotos(item)).flatMap(photo =>

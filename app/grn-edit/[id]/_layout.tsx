@@ -8,7 +8,9 @@ import { loadGRNData, resetForm } from '@/store/slices/grnFormSlice';
 import { loadGRNData as loadGRNDataService } from '@/features/grn/services/grnFormService';
 import { nextGrnFormSession } from '@/features/grn/utils/grnFormSession';
 import { heldIdOfRoute } from '@/features/holding/heldForm';
-import { loadHeldGrn } from '@/features/holding/heldGrn';
+import { loadHeldGrnOf } from '@/features/holding/heldGrn';
+import { loadHeldGrnEditOf } from '@/features/holding/heldGrnEdit';
+import { getHeldItem } from '@/features/holding/holdingApi';
 import { loadUnsentGrnForEdit } from '@/features/unsent/editUnsentGrn';
 import { setFormNumberMode } from '@/features/unsent/formNumberMode';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
@@ -72,7 +74,22 @@ export default function GRNEditLayout() {
       // WH-304: a held new GRN is corrected here, filled from the held item's body (read from the server).
       const heldId = heldIdOfRoute(id);
       if (heldId !== null) {
-        const held = await loadHeldGrn(heldId);
+        const item = await getHeldItem(heldId);
+        if (request !== loadRequest.current) return;
+        // A held edit of a GRN: the GRN is read from the server and the held changes go on top (what the server holds stays the baseline).
+        if (item.kind === 'grnEdit') {
+          const edit = await loadHeldGrnEditOf(item);
+          if (request !== loadRequest.current) return;
+          if (edit.kind === 'loaded') {
+            dispatch(loadGRNData({ ...edit.server, header: edit.header, items: edit.items, baseline: edit.baseline, grnId: id }));
+            setPhase('ready');
+          } else {
+            setErrorMessage(edit.kind === 'failed' ? serverText(edit.message, tr('common.checkConnection')) : tr('common.couldNotLoad'));
+            setPhase('error');
+          }
+          return;
+        }
+        const held = await loadHeldGrnOf(item);
         if (request !== loadRequest.current) return;
         if (held.kind === 'loaded') {
           setFormNumberMode('grn', held.data.numberMode);
