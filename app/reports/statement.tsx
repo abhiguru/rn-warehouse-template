@@ -179,11 +179,11 @@ function LiveStatement(props: CustomerStatementViewProps) {
 
 function KeptStatement(props: CustomerStatementViewProps) {
   const { customerId } = props;
-  const fetch = useCallback(() => fetchStatement(customerId), [customerId]);
+  const load = useCallback(() => fetchStatement(customerId), [customerId]);
   const query = useMoneyReport<CustomerStatement>({
     kind: 'statement',
     id: customerId,
-    fetch,
+    load,
     map: mapKeptStatement,
     answerHasStock: data => data.in_store.length > 0,
     stockOf: customerId,

@@ -67,7 +67,7 @@ function KeptCustomerDues() {
   const query = useMoneyReport<CustomerDues>({
     kind: 'dues',
     id: '',
-    fetch: fetchDues,
+    load: fetchDues,
     map: mapKeptDues,
     answerHasStock: hasDuesStock,
     stockOf: null,

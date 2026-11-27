@@ -45,7 +45,7 @@ interface Options<T extends { as_of: string; today: string }> {
   kind: Exclude<MoneyKind, 'activity'>;
   /** The key of the kept answer: '' for dues, the customer's id for a statement. */
   id: string;
-  fetch: () => Promise<MoneyFetched<T>>;
+  load: () => Promise<MoneyFetched<T>>;
   map: (body: unknown) => T;
   /** The answer's own goods in store (the copy's stock is read besides). */
   answerHasStock: (data: T) => boolean;
@@ -102,7 +102,7 @@ export function useMoneyReport<T extends { as_of: string; today: string }>(optio
 
   const load = useCallback(async (): Promise<boolean> => {
     const seq = ++sequence.current;
-    const { kind, id, fetch, fallbackError } = latest.current;
+    const { kind, id, load, fallbackError } = latest.current;
     const done = (): void => {
       if (!mounted.current || seq !== sequence.current) return;
       setFetching(false);
@@ -117,7 +117,7 @@ export function useMoneyReport<T extends { as_of: string; today: string }>(optio
       if (shown.current === undefined) void showKept(false, seq);
       const wasMarked = await isMarked(kind, id);
       await clearMark(kind, id);
-      const got = await fetch();
+      const got = await load();
       if (!mounted.current || seq !== sequence.current) {
         if (got.kind === 'answer') await writeMoneyAnswer({ kind, key: id, asOf: got.asOf, today: got.today, body: got.body });
         else if (wasMarked && got.kind === 'failed') await restoreMark(kind, id);
