@@ -13,10 +13,21 @@ export interface ImageDeletionResult {
   error?: string;
 }
 
-export async function deleteWarehouseImage(
+/** The same, and whether the server answered and said no (GRN_PHOTO_REQUIRED, not allowed): trying again will not change it. */
+export interface DetailedImageDeletionResult extends ImageDeletionResult {
+  refusal?: { code: string | null };
+}
+
+export async function deleteWarehouseImage(kind: 'grn' | 'dispatch', imageId: string): Promise<ImageDeletionResult> {
+  const detailed = await deleteWarehouseImageDetailed(kind, imageId);
+  return Object.fromEntries(Object.entries(detailed).filter(([key]) => key !== 'refusal')) as unknown as ImageDeletionResult;
+}
+
+/** `deleteWarehouseImage`, telling a refusal from a failure of the network (the queue does not try a refusal again). */
+export async function deleteWarehouseImageDetailed(
   kind: 'grn' | 'dispatch',
   imageId: string
-): Promise<ImageDeletionResult> {
+): Promise<DetailedImageDeletionResult> {
   let finishMutation: (() => void) | undefined;
   try {
     finishMutation = beginOperatorMutation();
@@ -25,13 +36,18 @@ export async function deleteWarehouseImage(
       p_image_id: imageId,
     });
     if (error || data?.success !== true) {
+      // The server answered: a refusal in its body, or a 4xx other than a session or rate-limit one.
+      const status = (error as { status?: number } | null)?.status;
+      const answer = data as { success?: unknown; reason?: unknown } | null;
+      const refused = (!error && answer?.success === false) || (typeof status === 'number' && status >= 400 && status < 500 && status !== 401 && status !== 429);
+      const refusal = refused ? { refusal: { code: typeof answer?.reason === 'string' ? answer.reason : null } } : {};
       // The last photo of a GRN stays (migration 130): said in the app's words, whatever the server's English.
       if (data?.reason === 'GRN_PHOTO_REQUIRED') {
-        return { success: false, error: t('grn.refusal.lastPhoto') };
+        return { success: false, error: t('grn.refusal.lastPhoto'), ...refusal };
       }
       // Name the server's reason (no permission, not found) when it gave one the app knows.
       const reason = serverReason(String(error?.message ?? data?.message ?? data?.error ?? ''));
-      return { success: false, error: reason ?? t('errors.image.deletionRejected') };
+      return { success: false, error: reason ?? t('errors.image.deletionRejected'), ...refusal };
     }
     // Use the authorized RPC's path, never a signed URL containing a query token.
     const path = data.data?.storage_path;

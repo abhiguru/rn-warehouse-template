@@ -88,7 +88,7 @@ export function classify(result: unknown, error: unknown): SendOutcome {
     if (answer.success === true) return { kind: 'sent', result };
     if (answer.success === false) {
       const reason = typeof answer.error === 'string' ? answer.error : typeof answer.message === 'string' ? answer.message : '';
-      return { kind: 'refused', reason, ...(typeof answer.code === 'string' ? { code: answer.code } : {}) };
+      return { kind: 'refused', reason, ...(typeof answer.code === 'string' ? { code: answer.code } : {}), answer: result };
     }
   }
   // An answer with nothing readable in it: the request may have been applied.
@@ -139,6 +139,13 @@ async function markMissingPhotos(row: ItemRow): Promise<void> {
 export const DEPENDS_ON_REFUSED = 'dependsOnRefused';
 const dependsOnRefusedReason = (): string => DEPENDS_ON_REFUSED;
 
+/** What a refused item keeps: the server's whole answer (with the code when the kind found one), else the code alone. */
+function refusalResult(outcome: Extract<SendOutcome, { kind: 'refused' }>): string | null {
+  const answer = typeof outcome.answer === 'object' && outcome.answer !== null ? (outcome.answer as Record<string, unknown>) : null;
+  if (answer) return JSON.stringify(outcome.code ? { ...answer, code: outcome.code } : answer);
+  return outcome.code ? JSON.stringify({ code: outcome.code }) : null;
+}
+
 /** The outcome of one send, written to the item. */
 async function apply(row: ItemRow, outcome: SendOutcome, before: ItemRow): Promise<void> {
   switch (outcome.kind) {
@@ -149,7 +156,7 @@ async function apply(row: ItemRow, outcome: SendOutcome, before: ItemRow): Promi
       for (const photo of await photosOf(row.id)) removePhotoFile(photo.file);
       return;
     case 'refused':
-      await updateItem(row.id, { state: 'refused', last_error: outcome.reason, result: outcome.code ? JSON.stringify({ code: outcome.code }) : null });
+      await updateItem(row.id, { state: 'refused', last_error: outcome.reason, result: refusalResult(outcome) });
       return;
     case 'transient':
     case 'stop':

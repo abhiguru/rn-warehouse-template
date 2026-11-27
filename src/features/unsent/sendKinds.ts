@@ -6,7 +6,8 @@ import type { ItemState } from './unsentRows';
 
 export type SendOutcome =
   | { kind: 'sent'; result: unknown }
-  | { kind: 'refused'; reason: string; code?: string }
+  /** `answer` is the whole refusal the server sent, kept in the item's result so a screen can show its figures. */
+  | { kind: 'refused'; reason: string; code?: string; answer?: unknown }
   | { kind: 'lost' }
   | { kind: 'transient' }
   /** The session ended or was refused (401): the pass ends. */

@@ -12,7 +12,7 @@
  */
 import { File } from 'expo-file-system';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import { deleteWarehouseImage } from '@/services/imageDeletion';
+import { deleteWarehouseImageDetailed } from '@/services/imageDeletion';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
 import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 import { createLimiter } from '@/utils/concurrency';
@@ -162,9 +162,14 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
 /** Deletes the photos an offline edit removed. Null when all are gone (a photo already gone counts); else what to do next. */
 async function removePhotos(body: PhotosBody): Promise<SendOutcome | null> {
   for (const imageId of body.remove ?? []) {
-    const result = await deleteWarehouseImage('grn', imageId);
+    const result = await deleteWarehouseImageDetailed('grn', imageId);
     // The record is gone and only the stored file could not be confirmed deleted: the photo no longer belongs to the GRN.
-    if (!result.success && !result.partial) return { kind: 'transient' };
+    if (!result.success && !result.partial) {
+      // A refusal (the last photo of a GRN stays, not allowed) is not tried again; any other failure is the network's.
+      return result.refusal
+        ? { kind: 'refused', reason: result.error ?? '', ...(result.refusal.code ? { code: result.refusal.code } : {}) }
+        : { kind: 'transient' };
+    }
   }
   return null;
 }

@@ -174,8 +174,12 @@ export async function saveGrnEditAndWait(grnId: string, body: GrnEditBody | null
   const outcome = await waitForOutcome(saved.id, QUICK_CHANGE_WAIT_MS);
   if (outcome.kind !== 'refused') return { ...saved, outcome: outcome.kind, reason: null };
   const row = loadedUnsentRows().find(each => each.id === saved.id);
-  const code = refusalCodeOf(row?.result ? parseResult(row.result) : null);
+  const kept = row?.result ? parseResult(row.result) : null;
+  const code = refusalCodeOf(kept);
   const reason = row?.last_error ?? null;
   await deleteItem(saved.id);
-  return { ...saved, outcome: 'refused', reason, answer: { success: false, code, reason: code, error: reason, message: reason } };
+  // The server's whole refusal (its figures included) when the engine kept it; the code and message otherwise.
+  const fields = typeof kept === 'object' && kept !== null ? (kept as Record<string, unknown>) : {};
+  const reasonCode = typeof fields.reason === 'string' ? fields.reason : code;
+  return { ...saved, outcome: 'refused', reason, answer: { ...fields, success: false, code, reason: reasonCode, error: reason, message: reason } };
 }
