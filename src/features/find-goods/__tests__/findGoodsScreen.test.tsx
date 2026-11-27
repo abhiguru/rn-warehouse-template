@@ -136,6 +136,10 @@ const SERVER = { origin: 'https://warehouse.example.test', instanceId: 'instance
 const serverCalls: { name: string; args: Record<string, unknown> }[] = [];
 const GRN_CARDS = /^grn-card-g-/;
 
+// WH-375: the GRN tab is loaded on first use, which put its whole module tree inside the first case's 5 s;
+// on a loaded machine that failed "ready: GRN | Find goods". Load it once here, with its own time limit.
+beforeAll(() => { require('../../../../app/(tabs)/grn'); }, 120000);
+
 const Tab = () => {
   const GRNTab = (require('../../../../app/(tabs)/grn') as { default: React.ComponentType }).default;
   return <GRNTab />;
