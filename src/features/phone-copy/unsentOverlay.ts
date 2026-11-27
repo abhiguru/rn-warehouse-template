@@ -106,7 +106,6 @@ const NOTHING: UnsentOverlay = {
   dispatch: () => null,
   lessUnsent: () => 0,
   lessHeld: () => 0,
-  lessOthersUnsent: () => 0,
   deductions: () => EMPTY_NUMBERS,
   lotValues: () => EMPTY_FIELDS,
   marker: () => null,
@@ -334,3 +333,9 @@ export function getUnsentOverlay(): UnsentOverlay {
   return current().overlay;
 }
 
+
+/** The stock a lot shows: the copy's (the overlay takes nothing off since WH-381). */
+export function netStock(overlay: UnsentOverlay, lotId: string, copyStock: number | null): number | null {
+  if (copyStock === null) return null;
+  return copyStock - overlay.lessUnsent(lotId) - overlay.lessHeld(lotId);
+}

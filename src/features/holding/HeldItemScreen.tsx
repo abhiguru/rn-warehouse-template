@@ -414,7 +414,6 @@ function ManagerHeldItem() {
   const correct = (item: HeldItemDetail) => {
     // A held edit of a GRN opens the same wizard on the held item's id; its layout reads the GRN and puts the held changes on top.
     if (item.kind === 'newGrn' || item.kind === 'grnEdit') router.push({ pathname: '/grn-edit/[id]/step1', params: { id: heldRouteId(item.id) } });
-    else if (item.kind === 'newDispatch') router.push({ pathname: '/dispatch-edit/[id]/step1', params: { id: heldRouteId(item.id) } });
     else if (item.kind === 'lotChange') {
       setSheetRefusal(null);
       setCorrecting(true);
@@ -435,8 +434,8 @@ function ManagerHeldItem() {
     const open = item.state === 'held' && item.needsDecision;
     const waiting = open && !item.canAccept;
     const showAccept = open && (item.acceptPossible || waiting);
-    // Correct opens the kind's own form where this app has one with a held mode: a new GRN, a new dispatch, an edit of a GRN, and a rack and mark change.
-    const showCorrect = open && (item.kind === 'newGrn' || item.kind === 'newDispatch' || item.kind === 'grnEdit' || item.kind === 'lotChange');
+    // Correct opens the kind's own form where this app has one with a held mode: a new GRN, an edit of a GRN, and a rack and mark change.
+    const showCorrect = open && (item.kind === 'newGrn' || item.kind === 'grnEdit' || item.kind === 'lotChange');
     const lotTarget = correcting ? heldLotTarget(item, lotItemName) : null;
     const stacked = fontScale >= STACK_FONT_SCALE;
     const current = currentLine(item.current);

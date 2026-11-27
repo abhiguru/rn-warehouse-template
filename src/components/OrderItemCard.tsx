@@ -24,7 +24,6 @@ import StockIndicator from './StockIndicator';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { localizeDigits, t as tr } from '@/i18n';
 import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
-import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
 
 /** A count as it is stored (no grouping), in the digits of the language. */
 const digits = (n: number) => localizeDigits(String(n));
@@ -493,15 +492,6 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   const raiseOff = controlsOff || overStock;
   // The reason goes at the end of a disabled control's spoken label.
   const spoken = (label: string): string => (needsConnection ? needsConnectionLabel(label) : label);
-  // What this phone has taken off the lot's stock: dispatches not sent yet and held ones (Design 2.10b, "no new words").
-  const overlay = getUnsentOverlay();
-  const lotId = item.grn_item.id;
-  const lessUnsent = overlay.lessUnsent(lotId);
-  const lessHeld = overlay.lessHeld(lotId);
-  const lessUnsentText = lessUnsent > 0 ? tr('findGoods.lessNotSent', { count: lessUnsent }) : null;
-  const lessOthers = overlay.lessOthersUnsent?.(lotId) ?? 0;
-  const lessOthersText = lessOthers > 0 ? tr('components.offlineRead.lessOtherPerson', { count: lessOthers }) : null;
-  const lessHeldText = lessHeld > 0 ? tr('findGoods.lessHeld', { count: lessHeld }) : null;
   // − and −10 on a line above its stock lower it to the stock (the removal question when there is none): the spoken labels say so.
   const lowerLabel = (amount: number): string | undefined => {
     if (!overStock) return undefined;
@@ -562,9 +552,6 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           </View>
         </View>
 
-        {lessUnsentText ? <Text style={styles.footnote} testID={`order-line-less-unsent-${item.id}`}>{lessUnsentText}</Text> : null}
-        {lessOthersText ? <Text style={styles.footnote} testID={`order-line-less-others-${item.id}`}>{lessOthersText}</Text> : null}
-        {lessHeldText ? <Text style={styles.footnote} testID={`order-line-less-held-${item.id}`}>{lessHeldText}</Text> : null}
 
         {overStock ? (
           <View style={styles.overStockRow} testID="order-line-over-stock">

@@ -26,8 +26,6 @@ import { space, typography, type ThemeTokens } from '@/theme/tokens';
 import { useAppDispatch, useAppSelector, useAppStore } from '@/store/hooks';
 import { loadDispatchData as loadDispatchIntoForm, resetForm } from '@/store/slices/dispatchFormSlice';
 import { loadDispatchData } from '@/features/dispatch/services/dispatchFormService';
-import { heldIdOfRoute } from '@/features/holding/heldForm';
-import { loadHeldDispatch } from '@/features/holding/heldDispatch';
 import {
   openDispatchFormBlocking,
   openDispatchFormCount,
@@ -85,22 +83,6 @@ export default function DispatchEditLayout() {
     }
 
     try {
-      // WH-304: a held new dispatch is corrected here, filled from the held item's body (read from the server).
-      const heldId = heldIdOfRoute(id);
-      if (heldId !== null) {
-        const held = await loadHeldDispatch(heldId);
-        if (request !== loadRequest.current) return;
-        if (held.kind === 'loaded') {
-          dispatch(loadDispatchIntoForm({ dispatchId: id, header: held.header, items: held.items, images: held.images, updatedAt: undefined, invoicedNumber: undefined }));
-          setPhase('ready');
-        } else {
-          dispatch(resetForm());
-          setErrorMessage(tr('dispatch.wizard.loadFailed'));
-          setPhase('error');
-        }
-        return;
-      }
-
       const result = await loadDispatchData(id);
       if (request !== loadRequest.current) return;
 

@@ -19,7 +19,6 @@ import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeSt
 import { usePermissions } from '@/hooks/usePermissions';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { Fab } from '@/components/ui/Fab';
-import { HeldStrip } from '@/features/holding/HeldStrip';
 import { useOpenNewDispatchForm } from '@/features/dispatch/hooks/useOpenNewDispatchForm';
 import { t } from '@/i18n';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -41,7 +40,6 @@ export default function DispatchTab() {
   return (
     <View style={styles.container}>
       <CustomerAgeStrip />
-      <HeldStrip />
       <ListErrorBoundary listName="dispatches">
         <DispatchFlashList />
       </ListErrorBoundary>

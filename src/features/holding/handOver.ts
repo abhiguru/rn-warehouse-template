@@ -90,9 +90,7 @@ const codeOfRow = (row: ItemRow): string | null => {
 function customerOf(body: unknown): string | undefined {
   if (!isFields(body) || !isFields(body.args)) return undefined;
   const direct = body.args.p_customer_id;
-  const dispatch = isFields(body.args.p_dispatch_data) ? body.args.p_dispatch_data.customer_id : undefined;
-  const id = typeof direct === 'string' ? direct : dispatch;
-  return typeof id === 'string' && id !== '' ? id : undefined;
+  return typeof direct === 'string' && direct !== '' ? direct : undefined;
 }
 
 interface HoldItem {

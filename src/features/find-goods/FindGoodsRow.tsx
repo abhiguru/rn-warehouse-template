@@ -89,13 +89,6 @@ export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, d
 
   const overlay = useUnsentOverlay();
   const unsentMarker = overlay.marker('lot', lotId);
-  const lessUnsent = overlay.lessUnsent(lotId);
-  const lessHeld = overlay.lessHeld(lotId);
-  const lessUnsentText = lessUnsent > 0 ? translate('findGoods.lessNotSent', { count: lessUnsent }) : null;
-  const lessHeldText = lessHeld > 0 ? translate('findGoods.lessHeld', { count: lessHeld }) : null;
-  // Another person's dispatches not sent yet, on this phone: labelled as theirs, nothing else of them shown (Product PQ4b).
-  const lessOthers = overlay.lessOthersUnsent?.(lotId) ?? 0;
-  const lessOthersText = lessOthers > 0 ? translate('components.offlineRead.lessOtherPerson', { count: lessOthers }) : null;
 
   const label = [
     item.item_name,
@@ -105,9 +98,6 @@ export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, d
     grn,
     translate('reports.grnActivity.stockLabel', { stock, bags: received }),
     empty ? getStockBadgeLabel(stock, received) : null,
-    lessUnsentText,
-    lessOthersText,
-    lessHeldText,
     unsentMarker ? markerText(unsentMarker) : null,
   ]
     .filter(Boolean)
@@ -152,9 +142,6 @@ export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, d
             <View style={styles.dot} />
             <Text style={styles.footnote}>{formatCardDate(item.date)}</Text>
           </View>
-          {lessUnsentText ? <Text style={styles.footnote} testID={`lot-less-unsent-${lotId}`}>{lessUnsentText}</Text> : null}
-          {lessOthersText ? <Text style={styles.footnote} testID={`lot-less-others-${lotId}`}>{lessOthersText}</Text> : null}
-          {lessHeldText ? <Text style={styles.footnote} testID={`lot-less-held-${lotId}`}>{lessHeldText}</Text> : null}
           <UnsentFootnote inline marker={unsentMarker} testID={`find-goods-row-unsent-${lotId}`} />
         </View>
 

@@ -506,13 +506,10 @@ export const components: Translation<typeof source> = {
     needsConnection: 'કનેક્શન જોઈએ',
     screenNeedsConnection: 'આ માટે કનેક્શન જોઈએ. ફરી જોડાશો ત્યારે લોડ થશે.',
     photoNeedsConnection: 'ફોટો જોવા કનેક્શન જોઈએ',
-    lessOtherPerson: 'બીજી વ્યક્તિની મોકલવાની બાકી જાવકના {{count}} નંગ બાદ',
     notSent: 'હજુ મોકલવાનું બાકી',
     sending: 'મોકલાઈ રહ્યું છે…',
     changesNotSent: 'તમારા ફેરફાર હજુ મોકલવાના બાકી છે: {{fields}}.',
     changesSending: 'તમારા ફેરફાર મોકલાઈ રહ્યા છે…',
-    lessNotSent: 'મોકલવાની બાકી જાવકના {{count}} નંગ બાદ',
-    lessHeld: 'રોકેલી જાવકના {{count}} નંગ બાદ',
   },
   offline: {
     message: 'તમે ઑફલાઇન છો. સર્વરની જરૂર હોય તેવાં કામ ફરી કનેક્ટ થશો ત્યારે ચાલશે.',

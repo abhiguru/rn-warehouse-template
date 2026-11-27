@@ -60,19 +60,12 @@ export function heldWhatOf(row: HeldWhatSource, photoCount: number): HeldWhat {
       const number = textOf(args.p_gr_no);
       return number ? { key: 'offline.unsent.whatNewGrnNumber', params: { number } } : { key: 'offline.unsent.whatNewGrn' };
     }
-    case 'newDispatch': {
-      const number = textOf(isFields(args.p_dispatch_data) ? args.p_dispatch_data.disp_no : null);
-      return number ? { key: 'offline.unsent.whatNewDispatchNumber', params: { number } } : { key: 'offline.unsent.whatNewDispatch' };
-    }
     case 'lotChange':
     case 'grnEdit':
       return { key: 'offline.unsent.whatChange', params: { number: textOf(target.number) ?? '', fields: changedFieldsOf(body) } };
     case 'photos': {
-      const dispatch = body.doc === 'dispatch';
       const number = textOf(target.number);
-      const key = number
-        ? dispatch ? 'offline.unsent.whatPhotosDispatch' : 'offline.unsent.whatPhotos'
-        : dispatch ? 'offline.unsent.whatPhotosNewDispatch' : 'offline.unsent.whatPhotosNewGrn';
+      const key = number ? 'offline.unsent.whatPhotos' : 'offline.unsent.whatPhotosNewGrn';
       return { key, params: { count: photoCount, number: number ?? '' } };
     }
     default:

@@ -26,8 +26,6 @@ export interface HeldCopyRow {
   kind: string;
   state: string;
   needsDecision: boolean;
-  /** `[{ lot_id, qty }]` of a held dispatch. */
-  lines: { lotId: string; qty: number }[];
   /** The recorder's own row (it carries `body`). */
   own: boolean;
   raw: Fields;
@@ -48,16 +46,11 @@ const NO_ROWS: readonly HeldCopyRow[] = [];
 
 function rowOf(raw: unknown): HeldCopyRow | null {
   if (!isFields(raw) || typeof raw.id !== 'string') return null;
-  const lines = Array.isArray(raw.lines)
-    ? (raw.lines as unknown[]).flatMap(line =>
-        isFields(line) && typeof line.lot_id === 'string' && typeof line.qty === 'number' ? [{ lotId: line.lot_id, qty: line.qty }] : [])
-    : [];
   return {
     id: raw.id,
     kind: textOf(raw.kind) ?? '',
     state: textOf(raw.state) ?? '',
     needsDecision: raw.needs_decision === true,
-    lines,
     own: isFields(raw.body),
     raw,
   };
@@ -72,7 +65,8 @@ export async function refreshHeldRows(): Promise<void> {
       const found = await db.all<{ row: string }>('SELECT row FROM held_items ORDER BY id');
       rows = found.flatMap(entry => {
         const row = rowOf(JSON.parse(entry.row) as unknown);
-        return row ? [row] : [];
+        // A dispatch is made online only (WH-381): a held dispatch from before is neither counted nor listed on the phone.
+        return row && row.kind !== 'newDispatch' ? [row] : [];
       });
     } catch (error) {
       logger.warn('The held items could not be read from the copy', loggableError(error));
@@ -118,16 +112,6 @@ export function ownHeldCopyRows(): HeldCopyRow[] {
 /** Held dispatches to decide, for a manager's strip (the decision of a photos item that follows another is not counted). */
 export function heldNeedingDecision(): number {
   return heldCopyRows().filter(row => row.state === 'held' && row.needsDecision).length;
-}
-
-/** Bags of each lot in held dispatches of the copy. */
-export function heldBagsByLot(): Map<string, number> {
-  const bags = new Map<string, number>();
-  for (const row of heldCopyRows()) {
-    if (row.kind !== 'newDispatch' || row.state !== 'held') continue;
-    for (const line of row.lines) if (line.qty > 0) bags.set(line.lotId, (bags.get(line.lotId) ?? 0) + line.qty);
-  }
-  return bags;
 }
 
 async function readSeenMeta(): Promise<string[]> {
