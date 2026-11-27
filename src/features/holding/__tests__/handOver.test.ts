@@ -595,3 +595,27 @@ describe('WH-303: an item whose form still waits for its save is not handed over
     expect((await allItemRows()).find(r => r.id === waiting.id)?.state).toBe('held');
   });
 });
+
+describe('session end: what the hand-over remembered about the first person is gone', () => {
+  const endSession = () =>
+    (require('@/config/sessionScopedRegistry') as typeof import('@/config/sessionScopedRegistry')).runSessionScopedClears({ dispatch: () => undefined });
+
+  it('a hand-over the server refused for good is asked again after the session registry runs, as for a person who has not met the refusal', async () => {
+    const phone = await startStaff();
+    await phone.offline();
+    await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch', customer: 'asha Traders' });
+    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+    server.answers.hold_items = () => serverRefusal('HELD_BODY_TOO_LARGE', 'Body too large');
+    await phone.online();
+    await phone.pass();
+    expect(rpcCalls('hold_items')).toHaveLength(1);
+
+    // Refused for good: another pass does not ask again.
+    await phone.pass();
+    expect(rpcCalls('hold_items')).toHaveLength(1);
+
+    await endSession();
+    await phone.pass();
+    expect(rpcCalls('hold_items')).toHaveLength(2);
+  });
+});

@@ -255,6 +255,22 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
     expect((await itemRows()).find(row => row.kind === 'photos')?.state).toBe('refused');
   });
 
+  it('session end: the sync runs counted and the first refusals are forgotten, so the next person\'s photo waits a full run of its own', async () => {
+    const phone = await startStaff();
+    (require('@/features/holding/heldPhotos') as typeof import('@/features/holding/heldPhotos')).startHeldPhotos();
+    await refusedDispatchWithPhotos(phone);
+    server.answers.register_held_photo_upload = () => serverRefusal('HELD_PHOTO_NOT_YOURS', 'not yours');
+    server.answers.mark_held_photo_missing = () => okAnswer;
+
+    await phone.pass(); // the first refusal, with no run ended yet
+    await phone.sync(); // one run ended: the next pass would mark the photo missing
+    await (require('@/config/sessionScopedRegistry') as typeof import('@/config/sessionScopedRegistry')).runSessionScopedClears({ dispatch: () => undefined });
+
+    await phone.pass(); // as a first refusal again: tried, and not yet marked
+    expect(missingCalls()).toHaveLength(0);
+    expect((await itemRows()).find(row => row.kind === 'photos')?.state).toBe('refused');
+  });
+
   it('a report the server did not take is not marked: the photo stays waiting and is reported again next pass', async () => {
     const phone = await startStaff();
     await refusedDispatchWithPhotos(phone);
