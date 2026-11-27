@@ -378,6 +378,8 @@ describe('customer-copy parity & staff-key stripping on details, rates, stock, a
     // D2 has two lines (l04 x30, l05 x4); 30 x 40.55 = 1216.5 must be answered as 1217, never 1216.5.
     seedFullCustomerFeed(['c2']);
     Object.assign(feedRow('goodsreceived_trl', 'l04'), { weight: 40.55 });
+    // The shared D4 line points at c3's lot l07; a real dispatch carries only its own customer's lots, so use c2's l04.
+    Object.assign(feedRow('dispatch_trl', 't4'), { gr_id: feedRow('goodsreceived_trl', 'l04').gr_id, gr_trl_id: 'l04' });
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     await goOffline(w);
@@ -386,6 +388,9 @@ describe('customer-copy parity & staff-key stripping on details, rates, stock, a
     const answer = await readVia('all', forCustomerAccounts(q => readCustomerDispatchList(q, 'c2', 50, 0, true)));
     const d2 = answer?.value.dispatches.find(d => d.disp_no === 'D2');
     expect(d2).toMatchObject({ total_items: 2, supervisor_name: 'Meera Fictional', total_weight: 1217 });
+    // D4 is re-pointed to c2's own lot l04 above (a real dispatch carries only its own customer's lots): one line, 2 x 40.55 = 81.1.
+    const d4 = answer?.value.dispatches.find(d => d.disp_no === 'D4');
+    expect(d4).toMatchObject({ total_items: 1, supervisor_name: 'Meera Fictional', total_weight: 81 });
     expectNoStaffKeys(answer?.value);
     expect(w.serverCalls).toEqual([]);
   });
