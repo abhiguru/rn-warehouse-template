@@ -83,7 +83,8 @@ describe('Gujarati', () => {
     expect(late).toContain('એ સર્વર પર પહોંચ્યું');
     expect(late).toContain('૪:૨૦');
     expect(late).toContain('૨:૦૫');
-    expect(late).not.toMatch(/[0-9]/);
+    // Times are in Gujarati digits; a typed value such as a rack ("C-2") keeps its own digits.
+    expect(late).not.toMatch(/[0-9]{1,2}:[0-9]{2}/);
   });
 
   it('a Gujarati line added, late, ends with the reached-the-server words', () => {

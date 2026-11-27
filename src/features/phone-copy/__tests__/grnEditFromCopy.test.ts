@@ -21,6 +21,9 @@ import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { grnNamed, seedWarehouse } from '@/tests/phoneCopy/grnDataset';
 import { bootWarehouse, goOffline, loadCopy, settleWrites, type Warehouse } from '@/tests/phoneCopy/wh299Phone';
 
+// The test phone reports no server migration; the server here has WH-303's field changes (contract section 14).
+jest.mock('@/config/backendFeatures', () => ({ backendHasFeature: (feature: string) => feature === 'grnFieldChanges' }));
+
 const GRN = 'g-B1'; // lot l06: Peas, qty 50, stock 9 (41 dispatched), rack D-4, mark pk-99
 const LOT = 'l06';
 const LOCK_LINE = { id: LOT, dispatched_qty: 41, has_history: true, on_invoice: false, invoice_label: null, on_order: false, order_customer_name: null };
