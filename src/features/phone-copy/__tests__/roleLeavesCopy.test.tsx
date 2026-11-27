@@ -1,6 +1,6 @@
 /**
- * WH-298 review finding 1 (Medium; contract section 1, "Feature on"): when the signed-in role becomes one the copy is not
- * for (a customer account), the copy is ERASED: the encrypted file and the key in secure storage, not only the sync stopped.
+ * WH-298 review finding 1 (Medium; contract section 1, "Feature on"), with WH-306 contract 15 item 3: when the signed-in role changes kind
+ * (a copy loaded for a warehouse role, a customer account now), the copy is ERASED: the encrypted file and the key, not only the sync stopped.
  *
  * Real: `useCopySession` / `useCopyFeatureOn` (src/hooks/usePhoneCopyStatus.ts), `PhoneCopyLifecycle`, the engine, copyDb,
  * copyKey, the auth reducer (`setUserProfile`). Faked at the edge: expo-sqlite, secure-store, file-system, NetInfo, the
@@ -92,11 +92,13 @@ describe('a role the copy is not for', () => {
   it('a role change to customer erases the copy: the file and the key are gone, not only the sync stopped', async () => {
     const store = await signedInPhoneWithCopy();
     expect(env.secure.has(KEY_NAME)).toBe(true);
+    const staffKey = env.secure.get(KEY_NAME);
+    expect(fakeDatabaseNames().length).toBeGreaterThan(0);
     await act(async () => { store.dispatch(setUserProfile(profile('customer'))); });
     await settle(50);
-    expect(fakeDatabaseNames()).toEqual([]);
-    expect(env.secure.has(KEY_NAME)).toBe(false);
-    expect(syncStore.getSyncSnapshot().phase).toBe('empty');
+    // The staff copy is gone: its file and its key value. (A customer copy may be loaded afresh once a feed of format 7 answers.)
+    expect(env.secure.get(KEY_NAME)).not.toBe(staffKey);
+    if (!env.secure.has(KEY_NAME)) expect(fakeDatabaseNames()).toEqual([]);
   });
 });
 

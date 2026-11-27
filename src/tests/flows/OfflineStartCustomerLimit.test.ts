@@ -9,9 +9,9 @@
  * ===== AGREE WITH DEVELOPMENT =====
  *  - Customer accounts open from the kept profile within 30 days, as staff do, and are refused at exactly 30 days, with no
  *    stored time, or with the clock set back more than 5 minutes (the staff rules, unchanged).
- *  - SILENT in the contract: where the phone learns that the server is too old before it has synced. Guess: the kept
- *    public configuration says `capabilities: { sync: true, syncFormat: 6 }` (a server below 7 for a customer account).
- *    If Development keeps the format elsewhere, change only `serverFormat()` below.
+ *  - Too old a server (contract 15, item 4): the kept public config's `schemaHead` below `INTRODUCED_BY_MIGRATION.customerCopy`
+ *    (exported by `@/config/backendFeatures`), or with none, gives a customer account no offline start. A warehouse role is not
+ *    affected. `customerCopy`'s number is provisional until assembly; the test reads it from the table.
  *  - Too old: the start is refused as for a role with no copy (`'not opened'`), and it is NOT the 30-day screen: no
  *    past-limit mark is raised, even when the kept profile is past 30 days (PQ5: "no offline start and no 30-day screen").
  * ==================================
@@ -55,10 +55,14 @@ const shownProfile = () => store.getState().auth.userProfile;
 const clockAt = (time: number) => jest.setSystemTime(time);
 const tokenExpired = () => storeTokens(jwt('user-asha', 'session-user-asha', -60), 'a'.repeat(64), Date.now() - MINUTE, getSessionGeneration(), { refresh: true });
 
-/** The phone has kept the facility's last configuration; a server below the customer copy's format says so (guess, see top). */
-async function serverFormat(format: number) {
+/** The release the facility told at the last online check, kept with its public config: at, or one below, the customer copy's migration. */
+async function serverRelease(which: 'current' | 'older') {
+  const { INTRODUCED_BY_MIGRATION } = require('@/config/backendFeatures') as { INTRODUCED_BY_MIGRATION?: { customerCopy?: number } };
+  const number = INTRODUCED_BY_MIGRATION?.customerCopy;
+  expect(number).toEqual(expect.any(Number));
+  const head = `${String((which === 'current' ? number : (number as number) - 1)).padStart(14, '0')}_customer_account_copy`;
   const kept = JSON.parse((await AsyncStorage.getItem(START_KEY)) as string);
-  kept.config.capabilities = { ...kept.config.capabilities, sync: true, syncFormat: format };
+  kept.config.schemaHead = head;
   await AsyncStorage.setItem(START_KEY, JSON.stringify(kept));
 }
 
@@ -103,6 +107,7 @@ beforeEach(async () => {
   server.role = 'customer';
   server.customers = ['customer-1'];
   await openOnlineAs('customer');
+  await serverRelease('current');
 });
 afterEach(async () => {
   await store.dispatch(logout({ localOnly: true }));
@@ -159,13 +164,13 @@ describe('a customer account, launched with no connection (the staff limit of WH
 
 describe('PQ5: a server too old for the customer copy', () => {
   it('within 30 days: no offline start for a customer account', async () => {
-    await serverFormat(6);
+    await serverRelease('older');
     clockAt(CONFIRMED + DAY);
     await expect(launchOffline()).resolves.toBe('not opened');
   });
 
   it('past 30 days: still no offline start, and no 30-day screen (nothing is marked past the limit)', async () => {
-    await serverFormat(6);
+    await serverRelease('older');
     clockAt(CONFIRMED + 40 * DAY);
     const limit = require('@/config/offlineStart') as { markPastOfflineLimit: (e: unknown) => void };
     const marked = jest.spyOn(limit, 'markPastOfflineLimit');
@@ -173,14 +178,15 @@ describe('PQ5: a server too old for the customer copy', () => {
     expect(marked).not.toHaveBeenCalled();
   });
 
-  it('a customer account at a server of format 7 opens as above', async () => {
-    await serverFormat(7);
+  it('a customer account at a server with the customer copy opens as above', async () => {
+    await serverRelease('current');
     clockAt(CONFIRMED + DAY);
     await expect(launchOffline()).resolves.toBe('opened as the customer');
   });
 
   it('staff at the same older server open as today (the rule is for customer accounts)', async () => {
     await openOnlineAs('staff');
+    await serverRelease('older');
     clockAt(CONFIRMED + DAY);
     await expect(launchOffline()).resolves.toBe('opened as the customer');
     expect(shownProfile()).toMatchObject({ role: 'staff' });

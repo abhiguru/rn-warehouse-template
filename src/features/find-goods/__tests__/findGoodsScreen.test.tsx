@@ -250,7 +250,7 @@ describe('G3 and G4: the switch, and when it is not there', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('G3: a customer account: no switch (until WH-306), and Find goods never asked', async () => {
+  it('G3: a role change onto a staff copy: no switch for the customer account, and Find goods never asked', async () => {
     await loadCopy();
     mockAccess.isCustomerAccount = true;
     mockStore.dispatch(setUserProfile({ id: 'profile-2', role: 'customer', name: 'Customer Fictional' } as never) as never);

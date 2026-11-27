@@ -24,9 +24,10 @@ import { logout, setUserProfile } from '@/store/slices/authSlice';
 import { askAlert, resetAlertQueueForTests, showAlert } from '@/utils/alert';
 import { fakeAppState } from '@/tests/helpers/fakeRoute';
 import {
-  ASHA, PROFILE_PATH, REFRESH_PATH, count, deferred, json, jwt, leavePhone, noAnswer, paths, secure, server,
+  ASHA, FACILITY, PROFILE_PATH, REFRESH_PATH, count, deferred, json, jwt, leavePhone, noAnswer, paths, secure, server,
   signedInPhone,
 } from '@/tests/helpers/offlineRoleServer';
+import { resetFacilityRelease, setFacilityRelease } from '@/config/backendFeatures';
 import * as SecureStore from 'expo-secure-store';
 
 // The real React bindings: the package's React Native entry is ESM, which Jest cannot load, so its CommonJS build.
@@ -234,6 +235,7 @@ beforeEach(async () => {
 afterEach(async () => {
   server.profileWait = undefined;
   server.discovery = undefined;
+  resetFacilityRelease();
   await act(async () => {
     await store.dispatch(logout({ localOnly: true }));
     store.dispatch(setUserProfile(null));
@@ -429,8 +431,29 @@ describe('back at the front where nothing is to change', () => {
     stillThere();
   });
 
-  it('a customer account past the limit keeps its screens', async () => {
+  /** The release the facility last told: the customer copy's migration (from the table), or the one before it, or none. */
+  const releaseOf = (which: 'current' | 'older' | 'none') => {
+    const { INTRODUCED_BY_MIGRATION } = require('@/config/backendFeatures') as { INTRODUCED_BY_MIGRATION?: { customerCopy?: number } };
+    const number = INTRODUCED_BY_MIGRATION?.customerCopy;
+    expect(number).toEqual(expect.any(Number));
+    const schemaHead = which === 'none' ? null : `${String(which === 'current' ? number : (number as number) - 1).padStart(14, '0')}_customer_account_copy`;
+    setFacilityRelease(FACILITY, { schemaHead });
+  };
+
+  it('a customer account at a server with the customer copy, past the limit, is closed onto the start screen (Product 2026-11-26)', async () => {
     await openApp('customer');
+    releaseOf('current');
+    await halfDone();
+    await phoneDate(CONFIRMED + 31 * DAY);
+
+    await resumeOffline();
+
+    shownClosed();
+  });
+
+  it.each(['older', 'none'] as const)('a customer account at a server with %s release (no customer copy, PQ5), past the limit, keeps its screens', async which => {
+    await openApp('customer');
+    releaseOf(which);
     await halfDone();
     await phoneDate(CONFIRMED + 31 * DAY);
 

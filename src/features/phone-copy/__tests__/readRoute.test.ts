@@ -46,7 +46,7 @@ describe('copyRoute', () => {
     expect(both()).toEqual(COPY);
   });
 
-  it('a customer account always reads the server, even over a copy that is ready', async () => {
+  it('a customer session never reads a copy that was loaded for a warehouse role', async () => {
     const w = await bootWarehouse();
     await loadCopy(w);
     w.setRole('customer' satisfies Role);
