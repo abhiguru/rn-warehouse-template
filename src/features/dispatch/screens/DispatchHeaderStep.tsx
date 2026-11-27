@@ -237,6 +237,8 @@ function FieldError({ message, styles, color }: { message?: string; styles: Styl
     );
 }
 
+import { useFormNumberMode, useNumberModeHelp } from '@/features/unsent/formNumberMode';
+
 export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
@@ -320,7 +322,10 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     // Why they are locked: shown under them, and the hint a screen reader gives for each of the two locked fields.
     const lockedReason = dateAndNumberLocked ? tr('dispatch.refusal.invoiced', { invoice: formatIdentifier(invoicedNumber || '—') }) : undefined;
     // Why the number box is empty, when the facility's numbering offered no number (typed by hand, or the series is used up).
-    const numberNote = isCreateMode && !isGeneratingNumber && !header.disp_no && !validationErrors.disp_no ? numberBoxNote('dispatch', numberReason) : null;
+    const numberMode = useFormNumberMode('dispatch');
+    const numberPending = isCreateMode && numberMode === 'pending';
+    const modeHelp = useNumberModeHelp('dispatch');
+    const numberNote = (isCreateMode ? modeHelp : null) ?? (isCreateMode && !isGeneratingNumber && !header.disp_no && !validationErrors.disp_no ? numberBoxNote('dispatch', numberReason) : null);
 
     const openDatePicker = () => {
         if (dateAndNumberLocked) return;
@@ -427,7 +432,17 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 </Text>
                                 {/* The box, its error and its note, the block the wizard bar keeps above itself: in a row beside the date this group can be stretched, so not the group's own View. */}
                                 <View nativeID={FIELD_BLOCK_ID}>
-                                    {isCreateMode && isGeneratingNumber ? (
+                                    {numberPending ? (
+                                        <View
+                                            style={[styles.inputContainer, styles.inputContainerLocked]}
+                                            testID="dispatch-header-number-pending"
+                                            accessible
+                                            accessibilityLabel={`${tr('common.dispatchNumber')}, ${tr('offline.offlineNew.numberPending')}`}
+                                        >
+                                            <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
+                                            <Text style={[styles.input, { color: t.text.secondary }]}>{tr('offline.offlineNew.numberPending')}</Text>
+                                        </View>
+                                    ) : isCreateMode && isGeneratingNumber ? (
                                         <View
                                             style={styles.loadingInputContainer}
                                             accessibilityLabel={tr('dispatch.form.generatingNumber')}

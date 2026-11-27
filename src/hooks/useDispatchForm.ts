@@ -103,6 +103,7 @@ import {
   validateDispatchDateVsGRNDates,
   dateRuleScope,
 } from '@/features/dispatch/schemas/dispatchValidation';
+import { decideFormNumberMode, getFormNumberMode, setFormNumberMode, typedNumberUsed } from '@/features/unsent/formNumberMode';
 import {
   getNextDispatchNumber,
   createDispatch,
@@ -434,8 +435,12 @@ export function useDispatchForm({
     // it was reset on, and the app stays open overnight); a date the person picked is left alone.
     dispatch(refreshDefaultDate(toLocalISODate(new Date())));
 
+    // How the number box works for this form: today's fetch, or none when it is given at send (WH-161).
+    const numberMode = await decideFormNumberMode('dispatch');
+    if (currentDispatchFormSession() !== currentSessionId) return;
+
     // Generate dispatch number
-    if (!header.disp_no && !hasGeneratedDispNo.current) {
+    if (!header.disp_no && !hasGeneratedDispNo.current && numberMode === 'online') {
       hasGeneratedDispNo.current = true;
       setIsGeneratingNumber(true);
       const request = ++dateNumberRequest.current;
@@ -517,7 +522,7 @@ export function useDispatchForm({
    * form's number was fetched for, not the previous date: a request that failed is asked again on the next change.
    */
   const askNumberForDate = useCallback(async (newDate: unknown) => {
-    if (!isCreateMode || typeof newDate !== 'string' || !newDate || dispNoTypedRef.current) return;
+    if (!isCreateMode || typeof newDate !== 'string' || !newDate || dispNoTypedRef.current || getFormNumberMode('dispatch') !== 'online') return;
     const year = calculateFinancialYear(newDate);
     if (numberYear.current === year) {
       // The number the form holds is right for this date: an answer still on its way for another year is out of date.
@@ -602,6 +607,16 @@ export function useDispatchForm({
       await new Promise(r => setTimeout(r, 750));
       if (signal.aborted) {
         log.debug('Number check dropped after the wait');
+        return;
+      }
+
+      // No connection, or older entries still unsent (WH-161): the phone's copy answers, and the server decides at send.
+      if (getFormNumberMode('dispatch') !== 'online') {
+        if ((await typedNumberUsed('dispatch', newDispNo)) && !signal.aborted) {
+          const used = t('dispatch.wizard.numberTaken', { number: formatIdentifier(newDispNo) });
+          dispatch(setTakenNumberError(used));
+          setLocalValidationErrors((prev) => ({ ...prev, disp_no: used }));
+        }
         return;
       }
 
@@ -759,6 +774,12 @@ export function useDispatchForm({
           },
         };
       }
+    }
+
+    // The server gives the number at send (WH-161): the empty box is not a missing number.
+    if (getFormNumberMode('dispatch') === 'pending') {
+      const errors = Object.fromEntries(Object.entries(result.errors).filter(([field]) => field !== 'disp_no'));
+      result = { ...result, isValid: Object.keys(errors).length === 0, errors };
     }
 
     // A number another dispatch holds keeps step 1 from passing until it is changed.
@@ -1195,6 +1216,7 @@ export function useDispatchForm({
     // End the form's session to invalidate any pending async operations across all hook instances
     console.log('[useDispatchForm] Form session ended; new session:', endDispatchFormSession());
 
+    setFormNumberMode('dispatch', 'online');
     setLocalValidationErrors({});
     releaseFormPhotoFiles(formImagesRef.current);
     dispatch(resetForm());
