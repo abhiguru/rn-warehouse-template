@@ -41,7 +41,8 @@ function subscribeOverlayVersion(listener: () => void): () => void {
 const readOverlayVersion = (): number => overlayVersion;
 
 // What an overlay that does not say anything about markers means: no marker, no changed field, no other person's bags.
-const WITHOUT_MARKERS: Pick<UnsentOverlay, 'marker' | 'changedFields' | 'lessOthersUnsent'> = {
+const WITHOUT_MARKERS: Pick<UnsentOverlay, 'marker' | 'changedFields' | 'lessOthersUnsent' | 'newDocuments'> = {
+  newDocuments: () => [],
   marker: () => null,
   changedFields: () => [],
   lessOthersUnsent: () => 0,
@@ -95,12 +96,15 @@ export function UnsentFootnote({ marker, testID, inline = false, text }: { marke
  * Design 2.3: the strip under a details page's header. `fields` are the locale keys of the labels of what was changed,
  * joined by ", ". Not a live region as a whole, but its change from "not sent" to "sending" to gone is announced.
  */
-export function UnsentStrip({ marker, fields, testID }: { marker: Marker | null; fields: string[]; testID: string }) {
+export function UnsentStrip({ marker, fields, testID, wholeDocument = false }: { marker: Marker | null; fields: string[]; testID: string; wholeDocument?: boolean }) {
   if (marker === null) return null;
+  // A document that exists only on this phone is new as a whole (WH-161, Design 10.3): its own words, not the changed fields'.
   const text =
     marker === 'sending'
       ? tr('components.offlineRead.changesSending')
-      : tr('components.offlineRead.changesNotSent', { fields: fields.map(field => tr(field as TranslationKey)).join(', ') });
+      : wholeDocument
+        ? tr('offline.offlineNew.docNotSent')
+        : tr('components.offlineRead.changesNotSent', { fields: fields.map(field => tr(field as TranslationKey)).join(', ') });
   return <InfoStrip text={text} testID={testID} />;
 }
 
@@ -123,7 +127,8 @@ export function InfoStrip({ text, testID }: { text: string; testID: string }) {
 export function UnsentDetailsStrip({ kind, id, lotIds = [], testID }: { kind: 'grn' | 'dispatch'; id: string; lotIds?: string[]; testID: string }) {
   const overlay = useUnsentOverlay();
   const marker = overlay.marker(kind, id) ?? lotIds.map(lotId => overlay.marker('lot', lotId)).find(found => found !== null) ?? null;
-  return <UnsentStrip marker={marker} fields={overlay.changedFields(kind, id)} testID={testID} />;
+  const wholeDocument = overlay.newDocuments(kind).some(doc => doc.localId === id);
+  return <UnsentStrip marker={marker} fields={overlay.changedFields(kind, id)} testID={testID} wholeDocument={wholeDocument} />;
 }
 
 /** A lot row's unsent footnote (Design 2.2) and its deduction lines (Design 2.4), under the lot's item name. */
@@ -163,5 +168,23 @@ export function DeductionLines({ lotId }: { lotId: string }) {
         </Text>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Design 10.7 (PQ3): the line directly under a total that counts bags of GRNs not sent yet. Nothing when there are none. The
+ * screen puts the same words at the end of the total's spoken label (`includesUnsentText`).
+ */
+export const includesUnsentText = (count: number | undefined): string | null =>
+  count !== undefined && count > 0 ? tr('offline.offlineNew.includesUnsent', { count }) : null;
+
+export function IncludesUnsentLine({ count, testID }: { count: number | undefined; testID: string }) {
+  const styles = useThemedStyles(makeStyles);
+  const text = includesUnsentText(count);
+  if (text === null) return null;
+  return (
+    <Text style={styles.line} testID={`${testID}-includes-unsent`}>
+      {text}
+    </Text>
   );
 }
