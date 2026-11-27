@@ -66,6 +66,7 @@ import { sourceColumnWidth, sourceText } from '@/components/dispatch-details/Dis
 import { getLanguage } from '@/i18n/language';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
@@ -153,8 +154,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Success dialog state (create mode)
     const [showSuccessDialog, setShowSuccessDialog] = useState(false);
     const [successDialogData, setSuccessDialogData] = useState<DocumentData | null>(null);
-    // A new dispatch kept on the phone and not sent (WH-161): the dialog that says so, with what it needs.
-    // Offline, the order-effects preview is not asked: the note says the changes come after the send (PQ5).
+    // A dispatch is recorded only with the server (WH-381): with no connection the form stays as typed and its button waits.
+    const needsConnection = useNeedsConnection();
     const [isShareLoading, setIsShareLoading] = useState(false);
     const [shareError, setShareError] = useState<string | null>(null);
 
@@ -883,6 +884,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     loadingLabel={submitBusyLabel}
                     nextDisabled={orderEmpty}
                     isLoading={isBusy}
+                    needsConnectionTestID={needsConnection ? 'dispatch-form-bottom-bar-needs-connection' : undefined}
                 />
             </View>
 

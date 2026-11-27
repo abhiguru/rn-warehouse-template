@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Stack, router } from 'expo-router';
+import { OfflineFormGate } from '@/features/phone-copy/components/OfflineFormGate';
+import { t as tr } from '@/i18n';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAppStore } from '@/store/hooks';
 import {
@@ -52,16 +54,18 @@ export default function InvoiceFormLayout() {
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        // The steps are left by their own Back and Cancel, which ask first and keep the form in step.
-        gestureEnabled: false,
-      }}
-    >
-      <Stack.Screen name="step1" />
-      <Stack.Screen name="step2" />
-      <Stack.Screen name="step3" />
-    </Stack>
+    <OfflineFormGate title={tr('common.invoice')} testID="invoice-form-needs-connection">
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          // The steps are left by their own Back and Cancel, which ask first and keep the form in step.
+          gestureEnabled: false,
+        }}
+      >
+        <Stack.Screen name="step1" />
+        <Stack.Screen name="step2" />
+        <Stack.Screen name="step3" />
+      </Stack>
+    </OfflineFormGate>
   );
 }

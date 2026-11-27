@@ -289,11 +289,6 @@ const makeStyles = (t: ThemeTokens) => ({
     borderLeftWidth: 4,
     borderLeftColor: t.brand.tint,
   },
-  unsentNote: {
-    ...typography.footnote,
-    color: t.text.secondary,
-    marginTop: space.xs,
-  },
   grnHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -576,10 +571,7 @@ const GRNListItem = memo<GRNListItemProps>(({
 
   const grnDate = useMemo(() => formatDate(item.date), [item.date]);
 
-  // A GRN that exists only on this phone cannot be dispatched from until it is sent (WH-161, spec step 19).
-  const unsent = item.unsent === true;
-  const numberText = item.gr_no === '' ? tr('offline.offlineNew.heroNumberPending') : formatIdentifier(item.gr_no);
-  const unsentNote = tr('offline.offlineNew.grnUnsentInPicker');
+  const numberText = formatIdentifier(item.gr_no);
   const handlePress = useCallback(() => onSelect(item), [item, onSelect]);
   const handleViewDetails = useCallback(() => onViewDetails(item), [item, onViewDetails]);
 
@@ -604,8 +596,6 @@ const GRNListItem = memo<GRNListItemProps>(({
     >
       <Pressable
         onPress={handlePress}
-        disabled={unsent}
-        testID={unsent ? `grn-picker-unsent-${item.id}` : undefined}
         style={({ pressed }) => [
           styles.grnCard,
           isLast && styles.grnCardLast,
@@ -613,8 +603,8 @@ const GRNListItem = memo<GRNListItemProps>(({
           isSelected && styles.grnCardSelected,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={`${tr('dispatch.grnSheet.rowLabel', { number: String(numberText), date: formatSpokenDate(item.date), customer: item.customer_name })}${unsent ? `. ${unsentNote}` : ''}`}
-        accessibilityState={{ selected: isSelected, disabled: unsent }}
+        accessibilityLabel={`${tr('dispatch.grnSheet.rowLabel', { number: String(numberText), date: formatSpokenDate(item.date), customer: item.customer_name })}`}
+        accessibilityState={{ selected: isSelected }}
         accessibilityActions={[{ name: 'viewGRN', label: tr('dispatch.grnSheet.viewGrn') }]}
         onAccessibilityAction={(e) => {
           if (e.nativeEvent.actionName === 'viewGRN') handleViewDetails();
@@ -642,7 +632,6 @@ const GRNListItem = memo<GRNListItemProps>(({
             </Text>
           </View>
         </View>
-        {unsent ? <Text style={styles.unsentNote} numberOfLines={2}>{unsentNote}</Text> : null}
       </Pressable>
     </ReanimatedSwipeable>
   );
@@ -729,7 +718,6 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
         gr_no: item.grNo,
         date: item.grnDate,
         customer_name: item.customerName,
-        ...(item.unsent ? { unsent: true } : {}),
       }));
       if (requestId !== defaultsRequestRef.current) return;
       setDefaultGrnList(converted);
