@@ -113,7 +113,7 @@ describe('merge and order (section 3.3)', () => {
     const body = JSON.parse(rows[0].body);
     expect(body.lots.l06.rack).toEqual({ from: 'D-4', to: 'E-9' });
     expect(body.header.note).toEqual({ from: null, to: 'x' });
-    expect(rows[0].what).toBe('GRN B1: Note, Rack changed');
+    expect(rows[0].what).toBe('GRN B1: Notes, Rack changed');
     expect(phone.store.getUnsentSummary().count).toBe(1);
   });
 
