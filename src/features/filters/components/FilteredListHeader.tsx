@@ -11,19 +11,19 @@
  * changed or cleared: while loading, on an error and when nothing matches.
  */
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
-import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
-import { listRefreshAccessibility } from '@/components/lists/listRefreshAccessibility';
+import { iconSize, radius, touchTarget, type ThemeTokens } from '@/theme/tokens';
 import { FioriLinearProgress } from '@/components/FioriLinearProgress';
 import { FILTER_CONFIGS } from '../configs';
 import type { FilterListDefinition } from '../types';
 import type { useListFilters } from '../useListFilters';
 import { FilterBar } from './FilterBar';
 import { ListSearchField } from './ListSearchField';
+import { ListTitleRow } from './ListTitleRow';
 
 /**
  * The lists that have "nothing matches" and "expand all" texts, by the English
@@ -58,20 +58,6 @@ export interface FilteredListHeaderProps {
 }
 
 const makeStyles = (t: ThemeTokens) => ({
-  header: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingLeft: layout.marginCompact,
-    paddingRight: space.sm,
-    paddingVertical: space.xs,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  // Top-level tab title (guide §13.8): large title on every tab.
-  title: { ...typography.largeTitle, color: t.text.primary, flexShrink: 1 },
-  actions: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.xs },
   iconButton: {
     width: touchTarget,
     height: touchTarget,
@@ -80,7 +66,6 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'center' as const,
   },
   iconButtonPressed: { backgroundColor: t.surface.cardPressed },
-  slot: { backgroundColor: t.surface.header },
   barSlot: { position: 'relative' as const },
   busy: { position: 'absolute' as const, left: 0, right: 0, bottom: 0 },
 });
@@ -95,37 +80,33 @@ export function FilteredListHeader({ title, config, filters, loading, busy = fal
 
   return (
     <>
-      <View style={styles.header}>
-        <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} {...(onRefresh ? listRefreshAccessibility(onRefresh) : null)}>{title}</Text>
-        <View style={styles.actions}>
-          {expand ? (
-            <Pressable
-              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-              onPress={expand.onToggle}
-              disabled={expand.disabled}
-              accessibilityRole="button"
-              accessibilityLabel={translate(`filters.header.${expand.expanded ? 'collapseAll' : 'expandAll'}.${LIST_NOUNS[expand.nounPlural]}`)}
-              accessibilityState={{ disabled: Boolean(expand.disabled), expanded: expand.expanded }}
-            >
-              <Icon
-                name={expand.expanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
-                size={iconSize.lg}
-                color={t.icon.primary}
-              />
-            </Pressable>
-          ) : null}
-          {actions}
-          <Pressable
-            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-            onPress={() => router.push('/settings')}
-            accessibilityRole="button"
-            accessibilityLabel={translate('common.toolsAndSettings')}
-          >
-            <Icon name="cog-outline" size={iconSize.lg} color={t.icon.primary} />
-          </Pressable>
-        </View>
-      </View>
-      {children ? <View style={styles.slot}>{children}</View> : null}
+      <ListTitleRow
+        title={title}
+        onRefresh={onRefresh}
+        actions={
+          <>
+            {expand ? (
+              <Pressable
+                style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                onPress={expand.onToggle}
+                disabled={expand.disabled}
+                accessibilityRole="button"
+                accessibilityLabel={translate(`filters.header.${expand.expanded ? 'collapseAll' : 'expandAll'}.${LIST_NOUNS[expand.nounPlural]}`)}
+                accessibilityState={{ disabled: Boolean(expand.disabled), expanded: expand.expanded }}
+              >
+                <Icon
+                  name={expand.expanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
+                  size={iconSize.lg}
+                  color={t.icon.primary}
+                />
+              </Pressable>
+            ) : null}
+            {actions}
+          </>
+        }
+      >
+        {children}
+      </ListTitleRow>
       {config.search ? (
         <ListSearchField
           listKey={config.listKey}
