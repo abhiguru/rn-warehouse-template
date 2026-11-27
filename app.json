@@ -67,6 +67,7 @@
       "./plugins/with-ios-linking-manager",
       "./plugins/with-ios-usb",
       "./plugins/with-ios-transport-policy",
+      "./plugins/with-ios-backup-exclusion",
       "./plugins/with-android-lan-cleartext",
       "./plugins/with-data-extraction-rules",
       "expo-secure-store",

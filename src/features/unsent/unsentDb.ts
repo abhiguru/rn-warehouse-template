@@ -64,7 +64,7 @@ function wrap(db: SqliteDatabase): UnsentDb {
 }
 
 async function openFile(): Promise<UnsentDb> {
-  // In the platform's own database folder (`files/SQLite/`, already outside every backup), apart from the phone copy's file.
+  // In the platform's own database folder (Android `files/SQLite/`, iOS `Documents/SQLite/`; both kept out of backups by the plugins named in unsentSchema.ts), apart from the phone copy's file.
   const db = await ExpoSqlite.openDatabaseAsync(UNSENT_FILE);
   try {
     await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = OFF;');

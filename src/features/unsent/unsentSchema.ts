@@ -2,7 +2,7 @@
  * The file of work saved on the phone and not yet sent (WH-301, product/tech/app-offline-unsent-work.md section 1).
  *
  * Not encrypted (owner, 2026-11-26): it is the only copy of the work, and a lost key would lose it. It lives in the app's
- * private documents folder, is excluded from backups (plugins/with-data-extraction-rules.js) and is never erased by a
+ * private documents folder, is excluded from backups (Android: plugins/with-data-extraction-rules.js; iOS: plugins/with-ios-backup-exclusion.js) and is never erased by a
  * sign-out, a facility switch or a key problem. Later versions migrate in place, never erase.
  */
 export const UNSENT_SCHEMA_VERSION = 1;
