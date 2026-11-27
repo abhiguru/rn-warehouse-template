@@ -23,6 +23,7 @@ import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 import { allItems, deleteItems, itemsOfScope, photosOf, updateItem, type ItemRow } from '@/features/unsent/unsentRows';
 import { cannotSendUnsent, currentPersonRole } from '@/features/unsent/unsentRole';
 import { heldWhatOf } from './heldWhat';
+import { sendHeldPhotos } from './heldPhotos';
 
 const logger = createLogger('[holding-handover]');
 
@@ -250,7 +251,10 @@ export async function handOverRefused(scope: string): Promise<HandOverResult> {
       }
       if (transient) break;
     }
-    return { stop: false, transient, deferMs };
+    // Files of the photos items the server now holds go up under their held id; the row is held when they are all up (contract 3).
+    const photos = await sendHeldPhotos(await itemsOfScope(scope));
+    if (photos.stop) return { stop: true, transient, deferMs };
+    return { stop: false, transient: transient || photos.transient, deferMs };
   } catch (error) {
     logger.warn('A hand-over failed', loggableError(error));
     return { ...NOTHING, transient: true };
@@ -270,8 +274,8 @@ const MOVABLE: readonly string[] = ['saved', 'sending', 'refused'];
 /**
  * The administrator's move of another person's unsent items to the holding list (spec step 27, Product PQ7): their items of this
  * facility go by `hold_items` with that person as the recorder, in `seq` order, and each is deleted from this phone once the
- * server holds it. A failure leaves the rest untouched. A photos item is left here: its files cannot be sent for another
- * person yet.
+ * server holds it. A failure leaves the rest untouched. The files of a photos item go up in this session first (contract 2.5);
+ * until they are all up, that item and what it follows stay on the phone, and the next move sends the rest of its files.
  */
 export async function moveOtherPersonToHolding(subject: string): Promise<MoveOutcome> {
   const own = async (): Promise<ItemRow[]> => (await subjectRows(subject)).filter(row => MOVABLE.includes(row.state));
@@ -279,7 +283,8 @@ export async function moveOtherPersonToHolding(subject: string): Promise<MoveOut
     const before = await own();
     if (normalizeRole(currentPersonRole()) !== 'admin') return { moved: 0, remaining: before.length, failed: 'adminOnly' };
     if (isCopyOffline()) return { moved: 0, remaining: before.length, failed: 'needsConnection' };
-    const movable = before.filter(row => row.kind !== 'photos');
+    // A row the server already holds (its photos still going up from an earlier move) is not handed over again.
+    const movable = before.filter(row => (row.held_id ?? null) === null);
     const byId = new Map(before.map(row => [row.id, row]));
     let moved = 0;
     let failed: string | undefined;
@@ -292,13 +297,33 @@ export async function moveOtherPersonToHolding(subject: string): Promise<MoveOut
       else if (result.kind === 'transient') failed = 'transient';
       else if (result.kind === 'refused') failed = result.code;
       else {
-        const done = chunk.filter(row => result.answered.get(row.request_key)?.reused === false);
-        const scope = chunk[0]?.scope;
-        if (scope !== undefined && done.length > 0) await deleteItems(scope, done.map(row => row.id));
-        moved += done.length;
-        if (done.length < chunk.length) failed = 'REQUEST_KEY_REUSED';
+        for (const row of chunk) {
+          const entry = result.answered.get(row.request_key);
+          if (!entry || entry.reused || entry.id === null) continue;
+          // A photos row stays `refused` while its files go up in this session (contract 2.5); the others wait to be deleted below.
+          await updateItem(row.id, { held_id: entry.id, ...(row.kind === 'photos' ? { state: 'refused' } : {}) });
+          moved += 1;
+        }
+        if (chunk.some(row => result.answered.get(row.request_key)?.reused !== false)) failed = 'REQUEST_KEY_REUSED';
       }
     }
+    // The files of the moved photos go up in the administrator's session; an item is deleted from this phone once all are up.
+    const handed = await subjectRows(subject);
+    const photoRows = handed.filter(row => row.kind === 'photos' && (row.held_id ?? null) !== null && MOVABLE.includes(row.state));
+    const sent = await sendHeldPhotos(photoRows, false);
+    if ((sent.stop || sent.transient) && failed === undefined) failed = 'transient';
+    const handedById = new Map(handed.map(row => [row.id, row]));
+    const keep = new Set<string>();
+    for (const row of photoRows) {
+      if (sent.finished.has(row.id)) continue;
+      // A photos item still to send keeps the record it follows, and what that follows, on the phone.
+      for (let at: ItemRow | undefined = row; at && !keep.has(at.id); at = at.depends_on === null ? undefined : handedById.get(at.depends_on)) keep.add(at.id);
+    }
+    const done = handed.filter(row => (row.held_id ?? null) !== null && MOVABLE.includes(row.state));
+    for (const row of done) if (keep.has(row.id) && row.kind !== 'photos') await updateItem(row.id, { state: 'held' });
+    const gone = done.filter(row => !keep.has(row.id));
+    const scope = gone[0]?.scope;
+    if (scope !== undefined) await deleteItems(scope, gone.map(row => row.id));
     const remaining = (await own()).length;
     return { moved, remaining, ...(failed === undefined ? {} : { failed }) };
   } catch (error) {
