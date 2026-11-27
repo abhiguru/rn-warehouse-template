@@ -547,6 +547,12 @@ describe('2. Stock overlays: server stock + newGrn + grnEdit deltas only, zero d
     expect(overlaidLot({ id: 'l03', qty: 100, stock: 19 }, overlay).stock).toBe(34);
     // Server stock 20 + (92 - 100) = 12
     expect(overlaidLot({ id: 'l04', qty: 100, stock: 20 }, overlay).stock).toBe(12);
+    // With real unsent GRN work in the queue (so the overlay is built, not the empty one), nothing is deducted from any lot.
+    for (const lotId of ['l03', 'l04']) {
+      expect(overlay.lessUnsent(lotId)).toBe(0);
+      expect(overlay.lessHeld(lotId)).toBe(0);
+    }
+    expect(overlay.deductions().size).toBe(0);
     // Unsent new GRN lot is present in newLots()
     expect(overlay.newLots()).toEqual([expect.objectContaining({ grn_id: '5f381000-0000-4000-8000-0000000000a3', qty: 25, stock: 25 })]);
   });
