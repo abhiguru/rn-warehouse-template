@@ -83,6 +83,8 @@ interface ReportScaffoldBaseProps<T> {
    * ("In 1 Sep – 30 Sep", "Right now"), in place of `kpis`. A group with no figures is left out.
    */
   kpiGroups?: ReportKpiGroup[];
+  /** A line directly under the figures (WH-161: "Includes … in GRNs not sent yet"). */
+  kpiNote?: React.ReactNode;
   /** How many figure tiles the first load shows. */
   kpiPlaceholders?: number;
   /** What the status line says. `updatedAt` and `refreshingKeptCopy` come from the query. */
@@ -179,6 +181,7 @@ function ReportScaffoldInner<T>({
   query,
   kpis,
   kpiGroups,
+  kpiNote,
   kpiPlaceholders = 2,
   status,
   children,
@@ -337,6 +340,7 @@ function ReportScaffoldInner<T>({
         </View>
       ) : null}
       {kpiGroups ? <KpiGroups groups={kpiGroups} /> : kpis && kpis.length > 0 ? <KPIGrid items={kpis} compact /> : null}
+      {kpiNote}
       <ReportStatusLine {...status} updatedAt={updatedAt} refreshingKeptCopy={Boolean(query.isKeptCopy) && isFetching} />
       {children}
     </>

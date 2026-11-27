@@ -50,6 +50,7 @@ import { useReportScope, type ReportScope } from '@/features/reports/useReportSc
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { generateCustomerStockPDF } from '@/services/pdf-service';
+import { IncludesUnsentLine, includesUnsentText } from '@/features/unsent/UnsentMarkers';
 import { getAllStockSummary, getCustomerStockSummary } from '@/services/reporting';
 import type { ReportCustomerRef } from '@/store/slices/reportPrefsSlice';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -167,7 +168,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
     () =>
       data && [
         { icon: 'cube-outline', value: data.summary.total_items, label: tr('common.items'), variant: 'primary' },
-        { icon: 'warehouse', value: data.summary.total_quantity, label: tr('common.stock'), variant: 'primary' },
+        { icon: 'warehouse', value: data.summary.total_quantity, label: tr('common.stock'), variant: 'primary', spokenNote: includesUnsentText(data.summary.includes_unsent) ?? undefined },
       ],
     [data]
   );
@@ -195,6 +196,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
       filters={{ config: STOCK_SUMMARY_CUSTOMERS, state: filters }}
       query={query}
       kpis={kpis}
+      kpiNote={<IncludesUnsentLine count={data?.summary.includes_unsent} testID="stock-summary-total" inset />}
       status={{ shown: rows.length, total: data?.customers.length }}
       rows={rows}
       renderRow={renderRow}
@@ -304,7 +306,8 @@ const rowKey = (row: CustomerListRow): string => {
       return itemRowKey(row.kind, row.item);
     case 'grn':
       return row.key;
-    default:
+    case 'emptiedHeader':
+    case 'nothingInStock':
       return row.kind;
   }
 };
@@ -345,10 +348,10 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   // The figures are today's whole stock, not what the search leaves. Nothing in stock: none (as before).
   const kpis = useMemo<KPIItem[] | undefined>(
     () =>
-      data && data.items.length > 0
+      data && (data.items.length > 0 || (data.summary.includes_unsent ?? 0) > 0)
         ? [
             // "Stock", as the item stock summary names the same figure.
-            { icon: 'warehouse', value: data.summary.total_quantity, label: tr('common.stock'), variant: 'primary' },
+            { icon: 'warehouse', value: data.summary.total_quantity, label: tr('common.stock'), variant: 'primary', spokenNote: includesUnsentText(data.summary.includes_unsent) ?? undefined },
             { icon: 'package-down', value: data.summary.grn_count, label: tr('reports.stockSummary.grnsWithStock'), variant: 'primary' },
           ]
         : undefined,
@@ -466,6 +469,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
       filters={{ config: STOCK_SUMMARY_CUSTOMER, state: filters }}
       query={query}
       kpis={kpis}
+      kpiNote={<IncludesUnsentLine count={data?.summary.includes_unsent} testID="stock-summary-customer-total" inset />}
       status={{ shown: items.length, total: data?.items.length }}
       rows={rows}
       renderRow={renderRow}
@@ -491,7 +495,7 @@ const toGrnRows = (item: StockItemSummary, outOfStock: boolean): StockGRNRowData
       key: `${grn.gr_no}-${index}`,
       grnId: grn.grn_id || null,
       grNo: grn.gr_no,
-      packageMark: grn.package_mark || null,
+      packageMark: grn.package_mark ?? null,
       receivedDate: grn.date,
       emptiedDate: emptiedOn,
       // An emptied GRN no longer holds a rack: its packaging and rack are not shown.

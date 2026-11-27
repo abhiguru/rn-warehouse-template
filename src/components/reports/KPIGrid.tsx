@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
-import { KPICard, KPIVariant } from './KPICard';
+import { KPICard, type KPIVariant } from './KPICard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, space, touchTarget, typography, type ThemeTokens, trackedText } from '@/theme/tokens';
@@ -33,6 +33,8 @@ export interface KPIItem {
   trendValue?: string;
   /** Whether a rising value is good for this KPI (colours the trend). */
   upIsGood?: boolean;
+  /** Said at the end of the tile's spoken label (WH-161: "Includes … in GRNs not sent yet"). */
+  spokenNote?: string;
 }
 
 interface KPIGridProps {
@@ -146,6 +148,7 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
               trend={item.trend}
               trendValue={item.trendValue}
               upIsGood={item.upIsGood}
+              spokenNote={item.spokenNote}
               isLoading={isLoading}
               compact={compact}
             />

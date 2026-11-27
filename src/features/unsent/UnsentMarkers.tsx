@@ -78,6 +78,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   stripText: { ...typography.footnote, color: t.status.informative.text, flexShrink: 1 },
   line: { ...typography.footnote, color: t.text.secondary },
+  lineInset: { paddingHorizontal: space.lg },
 });
 
 /** Design 2.2: a footnote at the bottom of a card or row, icon and words, never a tag. Nothing when there is no marker. */
@@ -179,12 +180,12 @@ export function DeductionLines({ lotId }: { lotId: string }) {
 export const includesUnsentText = (count: number | undefined): string | null =>
   count !== undefined && count > 0 ? tr('offline.offlineNew.includesUnsent', { count }) : null;
 
-export function IncludesUnsentLine({ count, testID }: { count: number | undefined; testID: string }) {
+export function IncludesUnsentLine({ count, testID, inset = false }: { count: number | undefined; testID: string; inset?: boolean }) {
   const styles = useThemedStyles(makeStyles);
   const text = includesUnsentText(count);
   if (text === null) return null;
   return (
-    <Text style={styles.line} testID={`${testID}-includes-unsent`}>
+    <Text style={[styles.line, inset && styles.lineInset]} testID={`${testID}-includes-unsent`}>
       {text}
     </Text>
   );
