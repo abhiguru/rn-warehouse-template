@@ -65,8 +65,8 @@ const INTRODUCED_BY_MIGRATION = {
   accountantPack: 204,
   /** `can_make_bills`, the GST_DETAILS_REQUIRED refusal of a new bill and `bills_allowed` in get_gst_details (WH-205; 206 is the number the migration takes at assembly). */
   billsNeedGst: 206,
-  /** `set_lot_rack_and_mark`: the quick change of a lot's rack and mark (WH-302; topic "lot rack and mark change", provisional number: written at assembly, BATCH.md). */
-  lotQuickChange: 209,
+  /** `set_lot_rack_and_mark`: the quick change of a lot's rack and mark (WH-302; migration 226, topic "lot rack and mark change"). */
+  lotQuickChange: 226,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 
