@@ -3,8 +3,13 @@
  * `offline.unsent.what*` and raw values, never a sentence, so a manager reads it in their own language. One function builds it
  * from a row of the unsent file (the same words `unsentList` uses for a photos title), and one function turns it back to text.
  */
+import { HEADER_FIELD_LABELS, LOT_FIELD_LABELS as EDIT_LOT_FIELD_LABELS } from '@/features/grn/offline-edit/grnEditChanges';
 import { LOT_FIELD_LABELS } from '@/features/unsent/lotChangeKind';
 import { t as tr, type TranslationKey, type TranslationParams } from '@/i18n';
+
+/** The ids that stand for the lines an edit added or removed, in a held item's list of changed fields. */
+export const LINES_ADDED_FIELD = 'linesAdded';
+export const LINES_REMOVED_FIELD = 'linesRemoved';
 
 export interface HeldWhat {
   key: string;
@@ -31,6 +36,8 @@ function changedFieldsOf(body: Fields): string[] {
   if (isFields(body.changes)) for (const field of Object.keys(body.changes)) out.add(field);
   if (isFields(body.header)) for (const field of Object.keys(body.header)) out.add(field);
   if (isFields(body.lots)) for (const lot of Object.values(body.lots)) if (isFields(lot)) for (const field of Object.keys(lot)) out.add(field);
+  if (Array.isArray(body.linesAdded) && body.linesAdded.length > 0) out.add(LINES_ADDED_FIELD);
+  if (Array.isArray(body.linesRemoved) && body.linesRemoved.length > 0) out.add(LINES_REMOVED_FIELD);
   return [...out];
 }
 
@@ -74,8 +81,21 @@ export function heldWhatOf(row: HeldWhatSource, photoCount: number): HeldWhat {
   }
 }
 
-/** The label of a lot field id ("rack" reads "Rack"); an id this app does not know is shown as it came. */
-const fieldLabel = (field: string): string => (field in LOT_FIELD_LABELS ? tr(LOT_FIELD_LABELS[field as keyof typeof LOT_FIELD_LABELS]) : field);
+/** The form's own label key of each field id a held change names: the lot's fields, the GRN's header fields, the lines. */
+const FIELD_LABEL_KEYS: Readonly<Record<string, TranslationKey>> = {
+  ...HEADER_FIELD_LABELS,
+  ...EDIT_LOT_FIELD_LABELS,
+  ...LOT_FIELD_LABELS,
+  [LINES_ADDED_FIELD]: 'offline.linesAdded',
+  [LINES_REMOVED_FIELD]: 'offline.linesRemoved',
+};
+
+/** The label of a field id ("rack" reads "Rack", "customer_id" reads "Customer"); an id this app does not know is shown as it came. */
+export const heldFieldLabel = (field: string): string => {
+  const key = Object.hasOwn(FIELD_LABEL_KEYS, field) ? FIELD_LABEL_KEYS[field] : undefined;
+  return key ? tr(key) : field;
+};
+const fieldLabel = heldFieldLabel;
 
 /** The text of a `what` in the reader's language: `fields` as ids are labelled and joined with ", ". */
 export function heldWhatText(what: unknown): string {
