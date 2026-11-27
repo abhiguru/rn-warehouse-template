@@ -475,8 +475,6 @@ export const components = {
     offline: 'Offline. Last updated {{time}}',
     updateFailed: "Couldn't update. Last updated {{time}}",
     firstLoad: 'Loading the warehouse onto this phone…',
-    olderLoading: 'Older records are still loading.',
-    olderPaused: 'Older records will load when you reconnect.',
     notReady: "This phone isn't ready yet. Connect to load the warehouse.",
     unsent: {
       one: '1 item not sent yet. Connect and send it by {{time}}.',

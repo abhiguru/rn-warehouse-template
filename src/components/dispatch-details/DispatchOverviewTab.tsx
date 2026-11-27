@@ -47,10 +47,6 @@ interface DispatchOverviewTabProps {
   is_share_loading?: boolean;
   onPrint?: () => void;
   is_print_loading?: boolean;
-  /** The phone is offline and reads its copy: every action needs the server (WH-299). */
-  needs_connection?: boolean;
-  /** Why they wait, when it is not "Needs a connection" (WH-161). */
-  needs_connection_note?: string;
 }
 
 export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
@@ -69,8 +65,6 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
   is_share_loading = false,
   onPrint,
   is_print_loading = false,
-  needs_connection = false,
-  needs_connection_note,
 }) => {
   const colorStyles = useOverviewColors();
   const overviewStyles = useOverviewStyles();
@@ -151,8 +145,6 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
         canDelete={can_delete}
         onDelete={onDelete}
         isDeleting={is_deleting}
-        needsConnectionTestId={needs_connection ? 'dispatch-details-bottom-bar-needs-connection' : undefined}
-        needsConnectionNote={needs_connection_note}
       />
 
       {/* Bottom Spacing */}

@@ -308,8 +308,6 @@ export interface GRNAutocompleteItem {
   gr_no: string;               // GRN number for display
   date: string;                // Date for display
   customer_name: string;
-  /** A GRN that exists only on this phone (WH-161): listed, disabled, until it is sent. */
-  unsent?: boolean;
 }
 
 /**

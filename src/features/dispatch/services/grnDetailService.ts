@@ -166,8 +166,6 @@ export interface CustomerGRNWithStock {
   totalStock: number;
   itemCount: number;
   lastDispatchDate: string | null;
-  /** A GRN that exists only on this phone (WH-161): listed disabled. */
-  unsent?: boolean;
 }
 
 /**
