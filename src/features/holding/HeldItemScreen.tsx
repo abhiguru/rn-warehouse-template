@@ -28,6 +28,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { formatIdentifier, t as tr } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import { queryKeys } from '@/lib/queryClient';
+import { getGRNDetails } from '@/services/grn-detail-service';
 import { layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatDate, formatLoadedAt, formatNumber } from '@/utils/formatters';
@@ -269,6 +270,15 @@ function ManagerHeldItem() {
   const client = useQueryClient();
   const query = useQuery({ queryKey: queryKeys.holding.detail(String(id)), queryFn: () => getHeldItem(String(id)), enabled: !offline, retry: false });
   const { refetch } = query;
+  // The GRN of a held rack and mark change, for the Correct sheet to name the lot (Design 7.11b); no lot found gives the GRN alone.
+  const lotBody = query.data && isLotChangeBody(query.data.body) ? query.data.body : null;
+  const grnQuery = useQuery({
+    queryKey: queryKeys.grn.detail(lotBody?.grnId ?? ''),
+    queryFn: () => getGRNDetails(lotBody?.grnId ?? ''),
+    enabled: !offline && lotBody !== null,
+    retry: false,
+  });
+  const lotItemName = grnQuery.data?.data?.grn.items?.find(line => line.id === lotBody?.lotId)?.item_name ?? '';
   // One decision key for this visit: a double tap, or a repeat after a lost answer, is one decision (the server keeps its first answer).
   const decisionKey = useRef(Crypto.randomUUID());
   const deciding = useRef(false);
@@ -368,7 +378,7 @@ function ManagerHeldItem() {
     const showAccept = open && (item.acceptPossible || waiting);
     // Correct opens the kind's own form where this app has one with a held mode: a new GRN, a new dispatch, and a rack and mark change.
     const showCorrect = open && (item.kind === 'newGrn' || item.kind === 'newDispatch' || item.kind === 'lotChange');
-    const lotTarget = correcting ? heldLotTarget(item) : null;
+    const lotTarget = correcting ? heldLotTarget(item, lotItemName) : null;
     const stacked = fontScale >= STACK_FONT_SCALE;
     const current = currentLine(item.current);
     const words = describeReason(item.reason, { kind: item.kind, what: item.what, customer: item.customerName, data: item.reasonData, followsWhat: null });

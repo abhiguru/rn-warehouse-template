@@ -112,7 +112,7 @@ export function UnsentItemsScreen() {
         tr('offline.moveHolding.message'),
         [
           { text: tr('common.cancel'), style: 'cancel', value: 'keep' as const },
-          { text: tr('offline.unsent.moveToHolding'), value: 'move' as const },
+          { text: tr('offline.moveHolding.confirm'), value: 'move' as const },
         ],
         'keep' as const
       );
@@ -120,7 +120,7 @@ export function UnsentItemsScreen() {
       setMoving(true);
       try {
         const outcome = await moveOtherPersonToHolding(subject);
-        if (outcome.failed !== undefined) showToast(tr('common.somethingWentWrong'));
+        if (outcome.failed !== undefined) showToast(tr('offline.moveHolding.failed'));
       } finally {
         setMoving(false);
       }

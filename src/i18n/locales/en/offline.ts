@@ -158,6 +158,8 @@ export const offline = {
   moveHolding: {
     title: "Move {{name}}'s items to the holding list?",
     message: 'A supervisor or administrator can then accept or reject each one there.',
+    confirm: 'Move',
+    failed: "Couldn't move the items. Check your connection and try again.",
   },
   quickChange: {
     action: 'Change rack or mark',

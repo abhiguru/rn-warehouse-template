@@ -161,6 +161,8 @@ export const offline: Translation<typeof source> = {
   moveHolding: {
     title: '{{name}} ની એન્ટ્રી રોકેલી યાદીમાં મૂકશો?',
     message: 'પછી સુપરવાઇઝર કે એડમિન ત્યાં દરેક સ્વીકારી કે નકારી શકશે.',
+    confirm: 'મૂકો',
+    failed: 'એન્ટ્રી રોકેલી યાદીમાં મૂકી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
   },
   quickChange: {
     action: 'રેક કે માર્કો બદલો',

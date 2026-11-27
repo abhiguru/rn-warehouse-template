@@ -15,15 +15,18 @@ function numberOfWhat(what: unknown): string {
   return typeof params.number === 'string' ? params.number : '';
 }
 
-/** The sheet's target for a held `lotChange`: what is shown is the held value of each field, else the value it was changed from. */
-export function heldLotTarget(item: HeldItemDetail): QuickChangeTarget | null {
+/**
+ * The sheet's target for a held `lotChange`: what is shown is the held value of each field, else the value it was changed from.
+ * `itemName` is the lot's item in its GRN (Design 7.11b); empty when the lot is gone, and the sheet then names the GRN only.
+ */
+export function heldLotTarget(item: HeldItemDetail, itemName = ''): QuickChangeTarget | null {
   if (item.kind !== 'lotChange' || !isLotChangeBody(item.body)) return null;
   const { changes } = item.body;
   const shown: LotValues = {
     rack: (changes.rack ? changes.rack.to : changes.rack) ?? null,
     package_mark: (changes.package_mark ? changes.package_mark.to : changes.package_mark) ?? null,
   };
-  return { lotId: item.body.lotId, grnId: item.body.grnId, grnNumber: numberOfWhat(item.what), customer: item.customerName, itemName: '', shown };
+  return { lotId: item.body.lotId, grnId: item.body.grnId, grnNumber: numberOfWhat(item.what), customer: item.customerName, itemName, shown };
 }
 
 /** The held body with the sheet's values as each field's `to`; a field the held change did not carry is added only when changed. */
