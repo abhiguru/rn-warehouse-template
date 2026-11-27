@@ -456,6 +456,33 @@ describe('S4: the Held item', () => {
   });
 });
 
+describe('S4 wording (Design 7.11a (c)): the Held item\'s header facts are labelled', () => {
+  const facts: [string, string, string][] = [
+    ['Customer', 'વેપારી', 'asha Traders'],
+    ['Recorded by', 'નોંધનાર', 'Ravi Fictional'],
+    ['Phone', 'ફોન', 'Fictional Android phone'],
+  ];
+
+  it('English: Customer, Recorded by, Recorded at and Phone, each label with its value', async () => {
+    await openItem(listRow('h1'), { accept_possible: false });
+    for (const [label, , value] of facts) {
+      expect(screen.getByText(label)).toBeOnTheScreen();
+      expect(screen.getByText(value)).toBeOnTheScreen();
+    }
+    expect(screen.getByText('Recorded at')).toBeOnTheScreen();
+  });
+
+  it('Gujarati: વેપારી, નોંધનાર, નોંધ્યાનો સમય and ફોન', async () => {
+    await setLanguage('gu');
+    await openItem(listRow('h1'), { accept_possible: false });
+    for (const [, label, value] of facts) {
+      expect(screen.getByText(label)).toBeOnTheScreen();
+      expect(screen.getByText(value)).toBeOnTheScreen();
+    }
+    expect(screen.getByText('નોંધ્યાનો સમય')).toBeOnTheScreen();
+  });
+});
+
 describe('S6: Reject', () => {
   it('asks for a reason (Reject disabled while empty), sends it, toasts "Rejected" and goes back', async () => {
     await openItem(listRow('h1'));
