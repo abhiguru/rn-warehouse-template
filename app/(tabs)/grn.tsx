@@ -15,6 +15,7 @@ import { useFindGoodsState } from '@/features/find-goods/findGoodsGate';
 import { useFindGoodsSession } from '@/features/find-goods/findGoodsSession';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
 import { HeldStrip } from '@/features/holding/HeldStrip';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import { useThemedStyles } from '@/hooks/useTheme';
 import type { ThemeTokens } from '@/theme/tokens';
 
@@ -47,6 +48,8 @@ export default function GRNTab() {
 
   return (
     <View style={styles.container}>
+      {/* A customer account reads when its copy was last updated here, once, above everything else (WH-306). */}
+      <CustomerAgeStrip />
       <HeldStrip />
       <ListErrorBoundary listName="GRN items">
         {offered && view === 'find-goods' ? (

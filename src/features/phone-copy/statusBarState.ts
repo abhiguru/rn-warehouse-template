@@ -57,6 +57,12 @@ export interface StatusBarView {
   actionDisabled: boolean;
 }
 
+/**
+ * A customer account's bar (WH-306, Design 9.1): drawn only while the first load is not done (rows 5 and 7 and the states
+ * before the copy is opened), and nowhere else; no line 2. Those rows are the ones of the two phases before the second stage.
+ */
+export const customerBarShown = (phase: CopyPhase): boolean => phase === 'empty' || phase === 'stage1';
+
 /** What the bar draws: a row of 1.5, or one of the two states before the copy is opened. */
 export type StatusBarContent = Pick<StatusBarView, 'tone' | 'icon' | 'line1' | 'line2' | 'action' | 'actionDisabled'>;
 

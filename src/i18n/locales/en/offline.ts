@@ -244,4 +244,10 @@ export const offline = {
     one: "1 photo couldn't be sent yet. It's kept on this phone and sent when the connection is better.",
     other: "{{count}} photos couldn't be sent yet. They're kept on this phone and sent when the connection is better.",
   },
+  // The "last updated" strip of a customer account (WH-306; product/design/offline-capture.md 9.3).
+  customerAge: {
+    current: 'Up to date, {{time}}',
+    today: 'Last updated today at {{time}}. Connect to see changes since.',
+    earlier: "Last updated {{dateTime}}. Your stock may have changed since. Connect to see today's.",
+  },
 };

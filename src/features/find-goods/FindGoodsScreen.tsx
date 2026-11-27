@@ -14,6 +14,7 @@ import { searchWords } from '@/features/filters/components/HighlightedText';
 import type { EntityName } from '@/features/phone-copy/copySchema';
 import { syncNow } from '@/features/phone-copy/syncEngine';
 import { useQuietReread } from '@/features/phone-copy/useQuietReread';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
 import type { GRNItem } from '@/services/grn-service';
@@ -85,6 +86,9 @@ export function FindGoodsScreen({ switcher }: FindGoodsScreenProps) {
   const t = useTokens();
   const gate = useFindGoodsState();
   const quickChange = useQuickChange();
+  // A customer account with one customer sees its own name on every row: the line is left out (Design 9.7, DQ9).
+  const { isCustomerAccount, assignedCustomerIds } = useRoleBasedAccess();
+  const showCustomer = !(isCustomerAccount && new Set(assignedCustomerIds).size === 1);
   const openLotSheet = quickChange.open;
   const { text } = useFindGoodsSession();
   const query = text.trim();
@@ -285,10 +289,11 @@ export function FindGoodsScreen({ switcher }: FindGoodsScreenProps) {
                 words={words}
                 onPress={openGrn}
                 divider={index < answer.rows.length - 1}
+                showCustomer={showCustomer}
                 onQuickChange={quickChange.available ? openQuickChange : undefined}
               />
             )}
-            extraData={[words, quickChange.available]}
+            extraData={[words, quickChange.available, showCustomer]}
             onEndReached={() => void loadMore()}
             onEndReachedThreshold={0.5}
             keyboardShouldPersistTaps="handled"

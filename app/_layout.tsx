@@ -76,7 +76,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { OfflineStatusBar } from '@/components/OfflineStatusBar';
 import { PhoneCopyLifecycle } from '@/features/phone-copy/components/PhoneCopyLifecycle';
-import { useCopyFeatureOn, useCopySession, useEraseCopyForRole } from '@/hooks/usePhoneCopyStatus';
+import { useCopyBarShown, useCopyFeatureOn, useCopySession, useEraseCopyForRole } from '@/hooks/usePhoneCopyStatus';
 import { BelowCopyBarContext, WindowInsetsContext, useBelowCopyBar } from '@/hooks/useBelowCopyBar';
 import UpgradingBanner from '@/components/UpgradingBanner';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
@@ -323,12 +323,14 @@ function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
   const upgrading = useUpgrading();
   // The phone copy's status bar (WH-298) is always there while the feature is on, and pads for the status bar itself.
   const copyBar = useCopyFeatureOn();
-  const padded = isOffline || upgrading || copyBar;
+  // A customer account's bar is drawn only in its first-load states (WH-306): the inset follows what is drawn.
+  const copyBarShown = useCopyBarShown();
+  const padded = upgrading || (copyBar ? copyBarShown : isOffline);
   const value = React.useMemo(() => (padded ? { ...insets, top: 0 } : insets), [insets, padded]);
   // A Modal covers the strip, the banner and the bar alike, so it reads the window's insets in each case (WH-347).
   return (
     <WindowInsetsContext.Provider value={padded ? insets : null}>
-      <BelowCopyBarContext.Provider value={copyBar ? insets : null}>
+      <BelowCopyBarContext.Provider value={copyBarShown ? insets : null}>
         <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>
       </BelowCopyBarContext.Provider>
     </WindowInsetsContext.Provider>
@@ -456,6 +458,7 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: (centralU
   // bar replaces the offline banner where the facility has the feature.
   const copySession = useCopySession();
   const copyBar = useCopyFeatureOn();
+  const copyBarShown = useCopyBarShown();
   useEraseCopyForRole();
 
   // Restore credentials before any route screen can redirect an initially
@@ -573,7 +576,7 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: (centralU
               {/* The phone copy's bar where the feature is on (WH-298), today's banner elsewhere. */}
               {copyBar ? <OfflineStatusBar /> : <OfflineBanner />}
               {copySession ? <PhoneCopyLifecycle /> : null}
-              <UpgradingBanner belowCopyBar={copyBar} />
+              <UpgradingBanner belowCopyBar={copyBarShown} />
               <BottomSheetModalProvider>
                 <BelowOfflineBanner>
                   <NavigationStack key={language} screenBackground={screenBackground} />

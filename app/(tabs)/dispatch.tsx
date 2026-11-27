@@ -15,6 +15,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { DispatchFlashList } from '@/components/lists';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { Fab } from '@/components/ui/Fab';
@@ -39,6 +40,7 @@ export default function DispatchTab() {
 
   return (
     <View style={styles.container}>
+      <CustomerAgeStrip />
       <HeldStrip />
       <ListErrorBoundary listName="dispatches">
         <DispatchFlashList />

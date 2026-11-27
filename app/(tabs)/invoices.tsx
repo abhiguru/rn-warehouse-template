@@ -11,6 +11,7 @@ import { View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { InvoiceFlashList } from '@/components/lists';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { Fab } from '@/components/ui/Fab';
@@ -63,6 +64,7 @@ export default function InvoicesTab() {
 
   return (
     <View style={styles.container}>
+      <CustomerAgeStrip />
       <ListErrorBoundary listName="invoices">
         <InvoiceFlashList />
       </ListErrorBoundary>

@@ -69,9 +69,11 @@ export interface FindGoodsRowProps {
   divider: boolean;
   /** Opens the quick change of this lot's rack and mark (WH-302); absent = no button. */
   onQuickChange?: (item: GRNItem) => void;
+  /** False for a customer account with one customer: the line would only repeat its own name (WH-306, Design 9.7). */
+  showCustomer?: boolean;
 }
 
-export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, divider, onQuickChange }: FindGoodsRowProps) {
+export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, divider, onQuickChange, showCustomer = true }: FindGoodsRowProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const lotId = String(item.grn_item_id);
@@ -79,7 +81,7 @@ export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, d
   const received = Number(item.qty) || 0;
   const rack = (item.rack ?? '').trim();
   const mark = (item.package_mark ?? '').trim();
-  const customer = item.customer_name ?? '';
+  const customer = showCustomer ? (item.customer_name ?? '') : '';
   const grn = translate('lists.grn.cardTitle', { number: formatIdentifier(item.gr_no) });
   const level = getStockValueLevel(stock, received);
   const colors = getStatusColors(level, t);
@@ -131,7 +133,7 @@ export const FindGoodsRow = memo(function FindGoodsRow({ item, words, onPress, d
 
         <View style={styles.main}>
           <HighlightedText style={styles.title} numberOfLines={2} text={item.item_name ?? ''} words={words} />
-          <HighlightedText style={styles.subtitle} numberOfLines={2} text={customer} words={words} />
+          {showCustomer ? <HighlightedText style={styles.subtitle} numberOfLines={2} text={customer} words={words} /> : null}
           <View style={styles.whereLine}>
             {rack ? (
               <HighlightedText style={styles.where} text={translate('grn.item.rackWithValue', { rack })} words={words} />

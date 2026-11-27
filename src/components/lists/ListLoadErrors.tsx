@@ -17,6 +17,7 @@ import { Text, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { useHideListTime } from '@/features/phone-copy/useCustomerAge';
 import { t as translate } from '@/i18n';
 import { formatLoadedAt, formatTime } from '@/utils/formatters';
 import {
@@ -119,6 +120,9 @@ interface LastUpdatedLineProps {
 
 export const LastUpdatedLine: React.FC<LastUpdatedLineProps> = ({ at, top = false, withDate = false, testID = 'last-updated' }) => {
   const styles = useThemedStyles(makeStyles);
+  // A customer account reads the time in the strip under its header, once (WH-306).
+  const hidden = useHideListTime();
+  if (hidden) return null;
   return (
     <Text style={[styles.updated, top && styles.updatedTop]} testID={testID}>
       {translate('lists.order.lastUpdated', { time: withDate ? formatLoadedAt(at) : formatTime(new Date(at)) })}

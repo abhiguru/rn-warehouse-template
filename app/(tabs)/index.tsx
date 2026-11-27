@@ -21,6 +21,7 @@ import { SegmentedControl } from '@/components/ui/RadioButton';
 import { ServerAlertBanner } from '@/components/ServerAlertBanner';
 import { t } from '@/i18n';
 import { GstStrip } from '@/features/gst/GstStrip';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 
 type OrdersView = 'orders' | 'queue';
 
@@ -72,6 +73,7 @@ export default function OrdersTab() {
       <ServerAlertBanner />
       {/* WH-151: administrators are asked for the GST details until they are saved. */}
       <GstStrip />
+      <CustomerAgeStrip />
       {/* A list that fails to draw shows "Try again" under the view switch; switching view clears it (keyed). */}
       <ListErrorBoundary key={view} listName="orders" header={viewSwitch}>
         {canManageOrders && view === 'queue' ? (

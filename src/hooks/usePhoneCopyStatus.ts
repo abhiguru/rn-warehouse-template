@@ -8,30 +8,35 @@ import { formatCopySize } from '@/features/phone-copy/copyStorage';
 import { getSyncSnapshot, subscribeSync, type SyncSnapshot } from '@/features/phone-copy/syncStore';
 import { t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
-import { isCopyRole } from '@/config/offlineStart';
+import { isCopyRole, isWarehouseCopyRole } from '@/config/offlineStart';
+import { copyKindOf } from '@/features/phone-copy/copyKind';
+import { customerBarShown } from '@/features/phone-copy/statusBarState';
 import { eraseCopy } from '@/features/phone-copy/copyDb';
 
 export function usePhoneCopyStatus(): SyncSnapshot {
   return useSyncExternalStore(subscribeSync, getSyncSnapshot, getSyncSnapshot);
 }
 
-/** A signed-in administrator, supervisor or staff member: the person the phone copy is for. */
+/** A signed-in administrator, supervisor, staff member or customer account: the person the phone copy is for. */
 export function useCopySession(): boolean {
   const role = useAppSelector(state => state.auth.userProfile?.role);
   return isCopyRole(role);
 }
 
 /**
- * A signed-in person whose role has no phone copy (a customer account, or a role changed to one) keeps none: the file
- * and its key are erased (contract section 1). A facility without the feature is PhoneCopyLifecycle's to erase; a
- * sign-out erases through the session teardown.
+ * A signed-in person whose role has no phone copy keeps none, and a copy is kept only for the kind of role it was loaded
+ * for (a warehouse copy holds every customer's rows, a customer account's only its own; WH-306): the file and its key are
+ * erased, and the next first load builds the copy for the new role. A facility without the feature is
+ * PhoneCopyLifecycle's to erase; a sign-out erases through the session teardown.
  */
 export function useEraseCopyForRole(): void {
   const role = useAppSelector(state => state.auth.userProfile?.role);
+  const kind = usePhoneCopyStatus().kind;
   useEffect(() => {
-    if (role === undefined || isCopyRole(role)) return;
+    if (role === undefined) return;
+    if (isCopyRole(role) && (kind === undefined || kind === copyKindOf(role))) return;
     void eraseCopy();
-  }, [role]);
+  }, [role, kind]);
 }
 
 /** The facility has the feature for this session and the server has not turned it off since. */
@@ -40,6 +45,17 @@ export function useCopyFeatureOn(): boolean {
   const capability = useFacilityCapabilities().sync === true;
   const feature = useSyncExternalStore(subscribeSync, () => getSyncSnapshot().feature, () => getSyncSnapshot().feature);
   return session && capability && feature !== 'off';
+}
+
+/**
+ * The status bar is drawn: for the warehouse roles whenever the feature is on, for a customer account only in its
+ * first-load states (WH-306, Design 9.1); the strip under its headers carries the time. Also the inset the bar reserves.
+ */
+export function useCopyBarShown(): boolean {
+  const on = useCopyFeatureOn();
+  const role = useAppSelector(state => state.auth.userProfile?.role);
+  const { phase } = usePhoneCopyStatus();
+  return on && (isWarehouseCopyRole(role) || customerBarShown(phase));
 }
 
 /**

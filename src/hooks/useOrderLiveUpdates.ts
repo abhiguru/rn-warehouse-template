@@ -4,7 +4,7 @@ import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
 import type { EntityName } from '@/features/phone-copy/copySchema';
 import { syncNow } from '@/features/phone-copy/syncEngine';
 import { getSyncSnapshot } from '@/features/phone-copy/syncStore';
-import { isCopyRole } from '@/config/offlineStart';
+import { isWarehouseCopyRole } from '@/config/offlineStart';
 import { useAppSelector } from '@/store/hooks';
 
 export type OrderLiveUpdatesOptions = LiveUpdatesOptions;
@@ -29,7 +29,7 @@ export function useOrderLiveUpdates(
   options: OrderLiveUpdatesOptions = {},
 ) {
   const role = useAppSelector(state => state.auth.userProfile?.role);
-  const fromCopy = isCopyRole(role) && getSyncSnapshot().feature === 'on';
+  const fromCopy = isWarehouseCopyRole(role) && getSyncSnapshot().feature === 'on';
   const refreshRef = useRef(refresh);
   useEffect(() => {
     refreshRef.current = refresh;
