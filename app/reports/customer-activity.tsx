@@ -233,6 +233,8 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
       notHere={money.notHere}
       periodChip={money.periodChip}
       ageLine={money.ageLine}
+      // Customer activity is a money screen: its own kept-answer age (WH-305, Design 9.7 DQ4), never CustomerAgeStrip.
+      hideCustomerAgeStrip
     >
       {lastCustomer && !filters.search ? (
         <ReportLastCustomer customer={lastCustomer} onPress={openCustomer} accessibilityHint={tr('reports.customerActivity.customerHint')} />
@@ -437,6 +439,8 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
       notHere={money.notHere}
       periodChip={money.periodChip}
       ageLine={money.ageLine}
+      // Customer activity is a money screen: its own kept-answer age (WH-305, Design 9.7 DQ4), never CustomerAgeStrip.
+      hideCustomerAgeStrip
     />
   );
 }

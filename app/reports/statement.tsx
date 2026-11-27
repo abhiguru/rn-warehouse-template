@@ -279,6 +279,8 @@ function StatementBody({ customerId, customerName, canOpenLeft, onChangeCustomer
       reportId={REPORT_ID}
       ageLine={kept?.age ? <MoneyAgeLine {...kept.age} refreshFailed={kept.refreshFailed} onRetry={kept.retry} /> : undefined}
       notHere={kept?.notHere ? { testID: 'statement-not-here', title: tr('money.statementNotHereTitle'), text: tr('money.statementNotHereText') } : undefined}
+      // Statement is a money screen: its own kept-answer age (WH-305, Design 9.7 DQ2), never CustomerAgeStrip.
+      hideCustomerAgeStrip
     >
       {data ? (
         <DuesFigures

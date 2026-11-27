@@ -44,6 +44,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { LostAnswerNotice } from '@/features/grn/components/LostAnswerNotice';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import type { RpcGrnRate } from '@/types/rpc-canonical.types';
 import { useGRNDetailTab } from '@/hooks/useGRNDetailTab';
 import { ImageOverlay, ImageData } from '@/components/ImageOverlay';
@@ -851,29 +852,32 @@ function GRNDetailScreen() {
             headerShadowVisible: false,
           }}
         />
-        <View style={styles.centerContainer}>
-          {loading ? (
-            <DetailSkeleton tabCount={4} cardCount={4} />
-          ) : displayError ? (
-            <ErrorStateView
-              title={tr('grn.details.loadFailedTitle')}
-              message={displayError}
-              onRetry={() => {
-                setLoading(true);
-                fetchGRNDetails();
-              }}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          ) : (
-            <ErrorStateView
-              icon="package-down"
-              title={tr('grn.details.notFoundTitle')}
-              message={tr('grn.details.notFoundMessage')}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          )}
+        <View style={styles.container}>
+          <CustomerAgeStrip />
+          <View style={styles.centerContainer}>
+            {loading ? (
+              <DetailSkeleton tabCount={4} cardCount={4} />
+            ) : displayError ? (
+              <ErrorStateView
+                title={tr('grn.details.loadFailedTitle')}
+                message={displayError}
+                onRetry={() => {
+                  setLoading(true);
+                  fetchGRNDetails();
+                }}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            ) : (
+              <ErrorStateView
+                icon="package-down"
+                title={tr('grn.details.notFoundTitle')}
+                message={tr('grn.details.notFoundMessage')}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            )}
+          </View>
         </View>
       </>
     );
@@ -992,6 +996,7 @@ function GRNDetailScreen() {
         style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
         pointerEvents={deleteChecking ? 'none' : 'auto'}
       >
+        <CustomerAgeStrip />
         {deleteChecking ? <LostAnswerNotice message={tr('errors.lostAnswer.checkingDelete')} /> : null}
 
         {/* Hero Header - Quick Stats */}

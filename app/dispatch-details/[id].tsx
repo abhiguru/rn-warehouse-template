@@ -38,6 +38,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { LostAnswerStrip } from '@/features/dispatch/components/LostAnswerStrip';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import {
   DispatchHeroHeader,
   DispatchTabNavigator,
@@ -459,30 +460,33 @@ function DispatchDetailScreen() {
           }}
         />
         <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
-        <View style={styles.centerContainer}>
-          {loading ? (
-            <DetailSkeleton tabCount={5} cardCount={3} />
-          ) : error ? (
-            <ErrorStateView
-              title={tr('dispatch.details.loadFailedTitle')}
-              message={error}
-              onRetry={() => {
-                setLoading(true);
-                fetchDispatchDetails();
-              }}
-              retryAccessibilityLabel={tr('dispatch.details.retryLoad')}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          ) : (
-            <ErrorStateView
-              icon="truck-delivery-outline"
-              title={tr('dispatch.details.notFoundTitle')}
-              message={tr('dispatch.details.notFoundMessage')}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          )}
+        <View style={styles.container}>
+          <CustomerAgeStrip />
+          <View style={styles.centerContainer}>
+            {loading ? (
+              <DetailSkeleton tabCount={5} cardCount={3} />
+            ) : error ? (
+              <ErrorStateView
+                title={tr('dispatch.details.loadFailedTitle')}
+                message={error}
+                onRetry={() => {
+                  setLoading(true);
+                  fetchDispatchDetails();
+                }}
+                retryAccessibilityLabel={tr('dispatch.details.retryLoad')}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            ) : (
+              <ErrorStateView
+                icon="truck-delivery-outline"
+                title={tr('dispatch.details.notFoundTitle')}
+                message={tr('dispatch.details.notFoundMessage')}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            )}
+          </View>
         </View>
       </>
     );
@@ -638,6 +642,7 @@ function DispatchDetailScreen() {
         style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
         pointerEvents={isCheckingDelete ? 'none' : 'auto'}
       >
+        <CustomerAgeStrip />
         {/* Hero Header - Quick Stats Only */}
         <DispatchHeroHeader
           disp_no={dispatch.disp_no}

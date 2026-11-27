@@ -38,6 +38,7 @@ import { invoiceFileName, invoiceLabelOf } from '@/utils/invoiceLabel';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { useAppSelector } from '@/store/hooks';
 import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import {
@@ -530,30 +531,33 @@ function InvoiceDetailScreen() {
             headerTintColor: t.brand.tint,
           }}
         />
-        <View style={styles.centerContainer}>
-          {loading ? (
-            <DetailSkeleton tabCount={3} cardCount={3} />
-          ) : loadFailed ? (
-            <ErrorStateView
-              title={tr('invoice.details.loadFailedTitle')}
-              message={loadFailedText || tr('common.checkConnection')}
-              onRetry={() => {
-                setLoadFailed(false);
-                setLoading(true);
-                void fetchInvoiceDetails();
-              }}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          ) : (
-            <ErrorStateView
-              icon="file-document-outline"
-              title={tr(gone ? 'invoice.details.deletedGoneTitle' : 'invoice.details.notFoundTitle')}
-              message={tr(gone ? 'invoice.details.deletedGoneMessage' : 'invoice.details.notFoundMessage')}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          )}
+        <View style={styles.container}>
+          <CustomerAgeStrip />
+          <View style={styles.centerContainer}>
+            {loading ? (
+              <DetailSkeleton tabCount={3} cardCount={3} />
+            ) : loadFailed ? (
+              <ErrorStateView
+                title={tr('invoice.details.loadFailedTitle')}
+                message={loadFailedText || tr('common.checkConnection')}
+                onRetry={() => {
+                  setLoadFailed(false);
+                  setLoading(true);
+                  void fetchInvoiceDetails();
+                }}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            ) : (
+              <ErrorStateView
+                icon="file-document-outline"
+                title={tr(gone ? 'invoice.details.deletedGoneTitle' : 'invoice.details.notFoundTitle')}
+                message={tr(gone ? 'invoice.details.deletedGoneMessage' : 'invoice.details.notFoundMessage')}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            )}
+          </View>
         </View>
       </>
     );
@@ -652,6 +656,7 @@ function InvoiceDetailScreen() {
         style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
         pointerEvents={isCancelling || lostDelete ? 'none' : 'auto'}
       >
+        <CustomerAgeStrip />
         {/* Hero header */}
         <InvoiceHeroHeader
           invoice_number={invoiceLabelOf(invoice.invoice_label, invoice.invoice_number || 0)}

@@ -15,6 +15,7 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, radius, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { getOrderScreenCustomer } from '@/services/order-service';
 import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { isWarehouseUser } from '@/config/roles';
@@ -241,6 +242,7 @@ export default function CustomerOrderScreen() {
     return (
       <View style={styles.screen}>
         {header}
+        <CustomerAgeStrip />
         <DetailSkeleton tabCount={1} cardCount={3} />
       </View>
     );
@@ -251,6 +253,7 @@ export default function CustomerOrderScreen() {
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       {header}
       <View style={styles.screen}>
+        <CustomerAgeStrip />
         {/* Main Content Area */}
         <View style={styles.container}>
           <OrderManagement

@@ -28,7 +28,9 @@ import type { CountableFilterList } from '@/features/filters/configs';
 import type { useListFilters } from '@/features/filters/useListFilters';
 import type { ReportQuery } from '@/features/reports/useReportQuery';
 import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
+import { useHideListTime } from '@/features/phone-copy/useCustomerAge';
 import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
@@ -126,6 +128,11 @@ interface ReportScaffoldBaseProps<T> {
   periodChip?: { label: string; accessibilityLabel: string };
   /** Kept answers (WH-305): how old the figures are, the first thing under the header (Design offline-capture.md 8.1). */
   ageLine?: React.ReactNode;
+  /**
+   * Money screens (Statement, Customer activity) show their own kept-answer age (`money.asOf*`, WH-305 / Design 9.7 DQ2 &
+   * DQ4), never `CustomerAgeStrip`.
+   */
+  hideCustomerAgeStrip?: boolean;
 }
 
 /** The search, filters, sort and period, and what the rows are for "No GRNs match ...": the noun is needed only with filters. */
@@ -199,15 +206,18 @@ function ReportScaffoldInner<T>({
   notHere,
   periodChip,
   ageLine,
+  hideCustomerAgeStrip = false,
 }: ReportScaffoldProps<T>) {
   const t = useTokens();
   const phoneNeedsConnection = useNeedsConnectionV3();
+  const hideListTime = useHideListTime();
+  const showCustomerAge = !needsConnectionId && !hideCustomerAgeStrip;
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { phase, error, retry, refresh, isRefreshing, isFetching } = query;
-  // The phone copy's time is the status bar's: a report read from it shows none of its own.
+  // The phone copy's time is the status bar's (warehouse) or CustomerAgeStrip (customer account): never two times on screen.
   const fromPhoneCopy = Boolean(query.fromPhoneCopy);
-  const updatedAt = fromPhoneCopy ? undefined : query.updatedAt;
+  const updatedAt = fromPhoneCopy || (showCustomerAge && hideListTime) ? undefined : query.updatedAt;
   // Sharing needs the server: with no connection the icons stay, disabled, and one line under the header says why.
   const offline = useCopyOffline();
   const sharingNeedsConnection = fromPhoneCopy && offline && Boolean(actions?.length);
@@ -224,6 +234,7 @@ function ReportScaffoldInner<T>({
   const head = (
     <>
       <ReportHeader title={title} subtitle={subtitle} onBack={onBack} actions={headerActions} />
+      {showCustomerAge ? <CustomerAgeStrip /> : null}
       {sharingNeedsConnection ? (
         <Text style={styles.needsConnection} testID={reportId ? `${reportId}-header-needs-connection` : undefined}>
           {tr('reports.shared.reportActionsNeedConnection')}
