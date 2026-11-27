@@ -34,7 +34,7 @@ export interface StatusBarInput {
 
 export type StatusBarRow = 1 | 2 | 3 | 4 | 5 | 7;
 export type OfflineStatusKey =
-  | 'upToDate' | 'updating' | 'offline' | 'updateFailed' | 'firstLoad' | 'olderLoading' | 'olderPaused' | 'notReady'
+  | 'upToDate' | 'updating' | 'offline' | 'updateFailed' | 'firstLoad' | 'notReady'
   | 'storageLow' | 'opening' | 'openFailed';
 export type StatusBarIcon =
   | 'check-circle-outline' | 'sync' | 'cloud-off-outline' | 'cloud-refresh-outline' | 'cloud-download-outline'
@@ -43,8 +43,6 @@ export type StatusBarIcon =
 export interface StatusBarView {
   /** The line-1 row of Design 1.5. */
   row: StatusBarRow;
-  /** Row 6: the second stage of the first load. */
-  olderLoading: boolean;
   /** Row 8: unsent work past 2 hours. */
   limit: boolean;
   /** Row 9: storage running short. */
@@ -59,7 +57,7 @@ export interface StatusBarView {
 
 /**
  * A customer account's bar (WH-306, Design 9.1): drawn only while the first load is not done (rows 5 and 7 and the states
- * before the copy is opened), and nowhere else; no line 2. Those rows are the ones of the two phases before the second stage.
+ * before the copy is opened), and nowhere else; no line 2. Those rows are the ones of the two phases before the copy is ready.
  */
 export const customerBarShown = (phase: CopyPhase): boolean => phase === 'empty' || phase === 'stage1';
 
@@ -112,10 +110,6 @@ export function deriveStatusBar(input: StatusBarInput): StatusBarView {
     line1 = [timed('updating', input.asOf)];
   }
 
-  const olderLoading = input.phase === 'stage2';
-  // Offline nothing loads, so the second sentence says when it will (Design's answer to P9).
-  if (olderLoading) line1 = [...line1, { key: input.offline ? 'olderPaused' : 'olderLoading' }];
-
   let action: StatusBarView['action'] = row === 4 || row === 7 ? 'retry' : null;
   const storage = input.storageLow;
   if (storage) {
@@ -147,7 +141,6 @@ export function deriveStatusBar(input: StatusBarInput): StatusBarView {
 
   return {
     row,
-    olderLoading,
     limit,
     storage,
     tone: limit || storage ? 'critical' : 'neutral',

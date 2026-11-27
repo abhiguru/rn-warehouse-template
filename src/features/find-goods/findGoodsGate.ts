@@ -15,7 +15,7 @@ export function findGoodsState(): FindGoodsState {
   // `copyEligible` has ruled out feature 'off'; before the first load the feature is still 'unknown': the skeleton shows.
   const { format, phase } = getSyncSnapshot();
   if (format !== undefined && format < READ_FORMAT) return 'hidden';
-  return phase === 'stage2' || phase === 'ready' ? 'ready' : 'loading';
+  return phase === 'ready' ? 'ready' : 'loading';
 }
 
 function subscribe(listener: () => void): () => void {

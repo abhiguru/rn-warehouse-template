@@ -6,7 +6,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { facilityPagesGrnsByReceipt, subscribeFacilityGrnPaging } from '@/config/facilityGrnPaging';
 import { hasCapability, subscribeFacilityCapabilities } from '@/config/facilityCapabilities';
-import { useOlderRecordsAbsent } from '@/features/phone-copy/useOlderRecordsAbsent';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { backendHasFeature } from '@/config/backendFeatures';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -54,7 +54,8 @@ export function useFilterContext(): FilterContext {
   // The facility's capability and release, read from the stores directly (like `usePaymentsVisible`, which the list's tags use).
   const payments = useSyncExternalStore(subscribePayments, paymentsOn, paymentsOn);
   const grnInvoiceFilter = useSyncExternalStore(subscribePayments, grnInvoiceFilterOn, grnInvoiceFilterOn);
-  const grnInvoiceWaiting = useOlderRecordsAbsent();
+  // Offline the copy cannot tell what is invoiced (WH-381, Design 13.3); the Invoicing filter, offered to warehouse roles only, waits.
+  const grnInvoiceWaiting = useNeedsConnection();
   return useMemo(() => {
     const role = profile?.role ?? null;
     const isWarehouseRole = role === 'admin' || role === 'supervisor' || role === 'staff';

@@ -4,7 +4,7 @@
  */
 import type { CopyKind } from './copyKind';
 
-export type CopyPhase = 'empty' | 'stage1' | 'stage2' | 'ready';
+export type CopyPhase = 'empty' | 'stage1' | 'ready';
 
 export interface SyncSnapshot {
   /** 'unknown' until the capability and the format are known for this session. */

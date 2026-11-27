@@ -7,9 +7,8 @@ import { searchTerms } from '@/features/filters/searchMatch';
 import { currentCopy } from './copyDb';
 import type { CopyDriver, SqlValue } from './copyDriver';
 import { isCopyReadable } from './syncEngine';
-import { getSyncSnapshot } from './syncStore';
 
-/** The copy is not readable yet (nothing loaded, or the first stage still loading): read the server as before. */
+/** The copy is not readable yet (nothing loaded, or the first load still running): read the server as before. */
 export class CopyNotReadableError extends Error {
   constructor() {
     super('the phone copy is not readable');
@@ -49,7 +48,7 @@ const phrase = (word: string): string => `"${word.replace(/"/g, '""')}"`;
 export async function searchLots(
   query: string,
   options: { limit?: number; after?: LotCursor | null } = {}
-): Promise<{ rows: CopyLot[]; next: LotCursor | null; olderLoading: boolean }> {
+): Promise<{ rows: CopyLot[]; next: LotCursor | null }> {
   const db = readable();
   const limit = Math.max(1, Math.min(options.limit ?? MAX_ROWS, MAX_ROWS));
   const where: string[] = [];
@@ -84,7 +83,6 @@ export async function searchLots(
   return {
     rows: page.map(r => ({ lotId: r.lot_id, grId: r.gr_id, grn: parseRow(r.grn_row), lot: parseRow(r.lot_row) })),
     next: found.length > limit && last ? { date: last.d, grId: last.gr_id, lotId: last.lot_id } : null,
-    olderLoading: getSyncSnapshot().phase === 'stage2',
   };
 }
 

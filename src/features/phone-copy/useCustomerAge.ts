@@ -41,7 +41,7 @@ export function useCustomerAge(): CustomerAgeView | null {
   );
   const phoneDay = useSyncExternalStore(watching ? subscribeDay : noSubscribe, phoneDayNow, phoneDayNow);
   if (role !== 'customer' || snapshot.feature !== 'on' || snapshot.asOf === null) return null;
-  const readable = snapshot.phase === 'ready' || (snapshot.phase === 'stage2' && offline);
+  const readable = snapshot.phase === 'ready';
   if (!readable) return null;
   const asOf = Date.parse(snapshot.asOf);
   if (!Number.isFinite(asOf)) return null;

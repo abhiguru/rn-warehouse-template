@@ -31,7 +31,6 @@ import {
 } from '@/services/grn-service';
 import { syncNow } from '@/features/phone-copy/syncEngine';
 import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
-import { useOlderRecordsAbsent } from '@/features/phone-copy/useOlderRecordsAbsent';
 import { useQuietReread, type QuietReread } from '@/features/phone-copy/useQuietReread';
 import type { EntityName } from '@/features/phone-copy/copySchema';
 import { useAppSelector } from '@/store/hooks';
@@ -637,9 +636,9 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange, subHead
   const sortedByNumber = sort?.field === 'gr_no';
   const linesHidden = useMemo(() => grnLinesHidden(request), [request]);
   const words = useMemo(() => searchWords(readSearch(GRN_FILTERS, filters.values).text), [filters.values]);
-  // Offline while older records load, the copy has no invoice state and not every GRN (WH-299, Design 2.6 and 2.10a).
-  const olderAbsent = useOlderRecordsAbsent() && !isCustomerAccount;
-  const invoiceFilterWaits = olderAbsent && request.p_filters?.invoiced !== undefined;
+  // Offline, the copy cannot tell what is invoiced: the Invoicing filter waits for a connection (WH-381, Design 13.3).
+  const offlineNow = useNeedsConnection();
+  const invoiceFilterWaits = offlineNow && !isCustomerAccount && request.p_filters?.invoiced !== undefined;
   const listRef = useRef<FlashListRef<FlattenedItem<GRNGroupData>>>(null);
 
   // Open cells
@@ -1097,15 +1096,13 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange, subHead
   // Offline with no failed refresh: the top of the list says when the cards were loaded (§14.9). A failed
   // refresh says it in its strip instead. Rows of the phone copy have their time in the status bar (WH-299).
   const offlineUpdatedAt = (isOffline || fromSavedCopy) && !refreshError && !fromPhoneCopy ? loadedAt : undefined;
-  const olderNote = olderAbsent && filters.search.trim() !== '' ? translate('grn.offline.olderLoadingSearch') : null;
   const renderListHeader = useCallback(
     () => (
       <>
-        {olderNote ? <Text style={styles.listNote} testID="grn-search-older-loading">{olderNote}</Text> : null}
         {offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top withDate testID="grn-last-updated" /> : null}
       </>
     ),
-    [offlineUpdatedAt, olderNote, styles]
+    [offlineUpdatedAt, styles]
   );
 
   // While the Invoicing filter waits there are no rows to show, whatever was loaded before.
@@ -1217,7 +1214,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange, subHead
         emptyTitle={translate('lists.grn.emptyTitle')}
         emptySubtitle={canCreateGRN ? translate('lists.grn.emptyCreator') : translate('lists.grn.emptyViewer')}
         showCreateButton={canCreateGRN}
-        footnote={olderNote ? { text: olderNote, testID: 'grn-search-older-loading' } : undefined}
         createButtonLabel={translate('lists.grn.create')}
         onCreatePress={handleCreateGRN}
       />

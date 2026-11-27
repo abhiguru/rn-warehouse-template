@@ -11,7 +11,7 @@ import type { SqlValue } from '../copyDriver';
 import type { RankKind } from '../copySchema';
 import { parseTimestampUs, pgSearchTerms } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
-import { getUnsentOverlay, netStock } from '../unsentOverlay';
+import { getUnsentOverlay } from '../unsentOverlay';
 import { unsentGrnPart } from './newDocuments';
 
 export interface GrnItemsPage {
@@ -24,9 +24,7 @@ export interface GrnItemsPage {
 export type GrnItemsAnswer =
   | { kind: 'page'; page: GrnItemsPage }
   /** The server refuses these list parameters. */
-  | { kind: 'invalid' }
-  /** An Invoicing filter while the copy has no invoice state yet (Product's PR12): no rows, and not "no match". */
-  | { kind: 'invoice-waiting' };
+  | { kind: 'invalid' };
 
 type SortField = NonNullable<GRNListParams['p_sort_by']> | 'weight' | 'package_mark';
 
@@ -196,7 +194,7 @@ export function listRow(record: LineRecord): GRNItem {
   const t = parseRow(record.lot_row);
   const pick = (from: Record<string, unknown>, key: string) => from[key] ?? null;
   const overlay = getUnsentOverlay();
-  const stock = netStock(overlay, record.lot_id, typeof t.stock === 'number' ? t.stock : null);
+  const stock = typeof t.stock === 'number' ? t.stock : null;
   // What this phone changed on the lot and has not sent replaces the copy's value (WH-302; Design 2.2).
   const changed = overlay.lot(record.lot_id);
   const lotValue = (key: string): unknown => (changed !== null && key in changed ? changed[key] : pick(t, key));
@@ -298,7 +296,6 @@ export async function totalsOf(q: CopyReader, params: GRNListParams, c: Conditio
 export async function readGrnItems(q: CopyReader, params: GRNListParams): Promise<GrnItemsAnswer> {
   const byReceipt = params.p_filters?.page_by === 'receipt';
   if (byReceipt && params.p_sort_by !== undefined && !RECEIPT_SORTS.includes(params.p_sort_by)) return { kind: 'invalid' };
-  if (params.p_filters?.invoiced !== undefined && q.phase !== 'ready') return { kind: 'invoice-waiting' };
   const limit = params.p_limit ?? PAGINATION.DEFAULT_LIMIT;
   const offset = params.p_offset ?? 0;
   const c = conditionsOf(params, getUnsentOverlay().lotValues?.());

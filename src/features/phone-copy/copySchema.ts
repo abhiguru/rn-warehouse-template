@@ -8,13 +8,16 @@ import { documentNumberSortKey } from '@/utils/documentNumber';
 import type { CopyDriver, SqlValue } from './copyDriver';
 import { mobileDigits, mobileKey, parseTimestampUs } from './pgCompat';
 
-export const SCHEMA_VERSION = 4;
+/** 5 (WH-381): the dispatch, order, invoice and payment tables are gone; a phone holding schema 4 starts a fresh copy. */
+export const SCHEMA_VERSION = 5;
 /** The format from which Customer dues, Statement and Customer activity are kept as the server answered (WH-305; the feed's money marks). */
 export const MONEY_FORMAT = 6;
 /** The format from which a customer account's copy is read: WH-303 is 4, WH-304 5, WH-305 6, WH-306 7 (contract 15). */
 export const CUSTOMER_COPY_FORMAT = 7;
+/** The format from which the feed carries no dispatch, order, invoice or payment entity (WH-381, migration sync_scope_grn_and_stock_only). */
+export const SCOPE_CUT_FORMAT = 8;
 /** The payload formats of the change-log feed this build reads (feed formats follow build order). */
-export const SYNC_FORMATS: readonly number[] = [1, 2, 3, 4, 5, MONEY_FORMAT, CUSTOMER_COPY_FORMAT];
+export const SYNC_FORMATS: readonly number[] = [1, 2, 3, 4, 5, MONEY_FORMAT, CUSTOMER_COPY_FORMAT, SCOPE_CUT_FORMAT];
 /** The format from which the screens may read the copy: it carries what their rows need (WH-299, section 6). */
 export const READ_FORMAT = 2;
 /** The format from which the WH-348 screens (invoices, rates, users, settings) read the copy; the one constant (contract section 2). */
@@ -24,9 +27,8 @@ export const COPY_FORMAT_V4 = 4;
 
 export type EntityName =
   | 'customers' | 'items' | 'settings' | 'people' | 'goodsreceived' | 'goodsreceived_trl' | 'grn_images'
-  | 'dispatch' | 'dispatch_trl' | 'dispatch_images' | 'invoice' | 'invoice_trl' | 'grn_lock' | 'user_profiles'
-  | 'users_customers_new' | 'grn_rates' | 'item_storage_prices' | 'standard_rate_tiers' | 'item_price_history' | 'payments'
-  | 'orders' | 'order_items' | 'grn_replacements' | 'held_items';
+  | 'grn_lock' | 'user_profiles' | 'users_customers_new' | 'grn_rates' | 'item_storage_prices' | 'standard_rate_tiers'
+  | 'item_price_history' | 'grn_replacements' | 'held_items';
 
 /**
  * A column copied out of the row: `from` are the row keys tried in order; `lower` keeps it lower-cased for search;
@@ -79,22 +81,6 @@ export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
     indexes: ['gr_id', 'item_id', 'stock'],
   },
   grn_images: { columns: [col('grn_id', 'grn_id', 'gr_id'), col('grn_item_id')], indexes: ['grn_id'] },
-  dispatch: {
-    columns: [col('disp_no'), col('disp_date'), col('customer_id'), col('deleted_at'), col('source_order_id'), micros('disp_date_us', 'disp_date'),
-      micros('created_at_us', 'created_at'), sortKey('disp_no_sk', 'disp_no'), lower('disp_no_lc', 'disp_no'),
-      lower('customer_name_lc', 'customer_name'), lower('registration_lc', 'registration')],
-    indexes: ['customer_id', 'disp_date', 'disp_date_us', 'disp_no_sk', 'source_order_id'],
-  },
-  dispatch_trl: { columns: [col('disp_id'), col('gr_id'), col('gr_trl_id'), col('disp_qty')], indexes: ['disp_id', 'gr_trl_id', 'gr_id'] },
-  dispatch_images: { columns: [col('dispatch_id')], indexes: ['dispatch_id'] },
-  invoice: {
-    columns: [col('customer_id'), col('gr_id'), col('deleted_at'), col('cancelled_at'),
-      computed('inv_no_sk', row => documentNumberSortKey(typeof row.inv_no === 'number' ? String(row.inv_no) : textOf(row.inv_no))),
-      micros('inv_date_us', 'inv_date'), lower('customer_name_lc', 'customer_name'), computed('inv_no_lc', row => `${textOf(row.inv_prefix) ?? ''}${typeof row.inv_no === 'number' ? String(row.inv_no) : textOf(row.inv_no) ?? ''}`.toLowerCase()),
-      col('doc_type'), col('total')],
-    indexes: ['customer_id', 'gr_id', 'inv_date_us', 'inv_no_sk'],
-  },
-  invoice_trl: { columns: [col('invoice_id'), col('disp_trl_id'), col('storage_amount')], indexes: ['invoice_id', 'disp_trl_id'] },
   grn_lock: { columns: [col('invoice_state')], indexes: [] },
   grn_rates: { columns: [col('gr_id')], indexes: ['gr_id'] },
   // WH-303: the entries that replaced someone's newer value and are not checked yet, in the server's row shape (staff roles only).
@@ -102,17 +88,6 @@ export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
   item_storage_prices: { columns: [col('item_id'), col('customer_id'), micros('effective_from_us', 'effective_from')], indexes: ['item_id', 'customer_id'] },
   standard_rate_tiers: { columns: [], indexes: [] },
   item_price_history: { columns: [col('item_id'), micros('changed_at_us', 'changed_at')], indexes: ['item_id'] },
-  payments: { columns: [col('invoice_id'), col('paid_on'), micros('payment_date_us', 'payment_date'), col('payment_no')], indexes: ['invoice_id'] },
-  // WH-328 (product/tech/app-offline-orders-payments.md section 4): the order and its lines, with the columns the list sorts and searches by.
-  orders: {
-    columns: [col('customer_id'), col('status'), col('deleted_at'), micros('created_at_us', 'created_at'), micros('updated_at_us', 'updated_at')],
-    indexes: ['customer_id'],
-  },
-  order_items: {
-    columns: [col('order_id'), col('item_status'), col('grn_items_id'), col('sort_order'), micros('created_at_us', 'created_at'),
-      lower('item_name_lc', 'grn_items_item_name'), lower('package_mark_lc', 'grn_items_package_mark'), lower('gr_no_lc', 'grns_gr_no')],
-    indexes: ['order_id', 'grn_items_id'],
-  },
   // WH-304 (product/tech/app-offline-holding-list.md 11.7): held items, in the shape the reader's role gets (the recorder's own
   // rows carry `body`; a manager's and staff's carry the state and the bags of a held dispatch only). Never a customer account's.
   held_items: { columns: [col('kind'), col('state')], indexes: [] },
@@ -132,9 +107,6 @@ export const rankMetaKey = (kind: RankKind): string => `rank:${kind}`;
 
 export const isEntityName = (name: unknown): name is EntityName =>
   typeof name === 'string' && Object.prototype.hasOwnProperty.call(ENTITY_SPECS, name);
-
-/** The last entity of the first stage: after it the phone is usable (spec step 2). */
-export const LAST_STAGE_ONE_ENTITY: EntityName = 'grn_images';
 
 /** The extracted column names of an entity, in table order. */
 export const extractedColumns = (entity: EntityName): string[] => ENTITY_SPECS[entity].columns.map(c => c.name);
@@ -174,8 +146,8 @@ function entityTableSql(entity: EntityName): string {
 }
 
 /**
- * Tables of a new copy: bookkeeping, every entity, the two search tables with their FTS indexes (lots filled at the
- * stage switch, dispatches when the load ends), the text ranks and the list of photos kept on the phone.
+ * Tables of a new copy: bookkeeping, every entity, the lot search table with its FTS index (filled at the
+ * end of the load), the text ranks and the list of photos kept on the phone.
  */
 export async function createSchema(tx: CopyDriver): Promise<void> {
   await tx.exec([
@@ -186,8 +158,6 @@ export async function createSchema(tx: CopyDriver): Promise<void> {
     ...ENTITY_NAMES.map(entityTableSql),
     'CREATE TABLE IF NOT EXISTS lot_search (rowid INTEGER PRIMARY KEY, lot_id TEXT NOT NULL UNIQUE, gr_id TEXT NOT NULL, haystack TEXT NOT NULL);',
     "CREATE VIRTUAL TABLE IF NOT EXISTS lot_fts USING fts5(haystack, content='lot_search', content_rowid='rowid', tokenize='trigram');",
-    'CREATE TABLE IF NOT EXISTS dispatch_search (rowid INTEGER PRIMARY KEY, disp_id TEXT NOT NULL UNIQUE, haystack TEXT NOT NULL);',
-    "CREATE VIRTUAL TABLE IF NOT EXISTS dispatch_fts USING fts5(haystack, content='dispatch_search', content_rowid='rowid', tokenize='trigram');",
     'CREATE TABLE IF NOT EXISTS text_rank (kind TEXT NOT NULL, value TEXT NOT NULL, rank INTEGER NOT NULL, PRIMARY KEY (kind, value));',
     'CREATE TABLE IF NOT EXISTS photo_files (storage_path TEXT PRIMARY KEY, file TEXT NOT NULL, bytes INTEGER NOT NULL, kept_at INTEGER NOT NULL);',
   ].join('\n'));
@@ -241,33 +211,6 @@ export async function rebuildSearchFor(tx: CopyDriver, lotIds: readonly string[]
     const marks = ids.map(() => '?').join(', ');
     await tx.run(`DELETE FROM lot_search WHERE gr_id IN (${marks})`, ids);
     await tx.run(`${LOT_INSERT} WHERE t.gr_id IN (${marks})`, ids);
-  }
-}
-
-/**
- * The search row of a dispatch: its number, customer and vehicle, then for every line its lot's item, mark and rack and
- * that lot's GRN number, as they are now (the server's search reads the lot and the GRN as they are now).
- */
-const DISPATCH_INSERT = `INSERT INTO dispatch_search (disp_id, haystack) SELECT d.id,
-  coalesce(d.disp_no_lc, '') || char(31) || coalesce(d.customer_name_lc, '') || char(31) || coalesce(d.registration_lc, '') ||
-  coalesce((SELECT group_concat(char(31) || coalesce(t.item_name_lc, '') || char(31) || coalesce(t.package_mark_lc, '') ||
-      char(31) || coalesce(t.rack_lc, '') || char(31) || coalesce(g.gr_no_lc, ''), '')
-    FROM dispatch_trl dt LEFT JOIN goodsreceived_trl t ON t.id = dt.gr_trl_id LEFT JOIN goodsreceived g ON g.id = t.gr_id
-    WHERE dt.disp_id = d.id), '')
-  FROM dispatch d`;
-
-/** Builds the whole dispatch search table and its index (end of the first load, full reloads). */
-export async function rebuildAllDispatchSearch(tx: CopyDriver): Promise<void> {
-  await rebuildSearchTable(tx, 'dispatch_search', 'dispatch_fts', DISPATCH_INSERT);
-}
-
-/** Rebuilds the search rows of the given dispatches (a deleted one loses its row). */
-export async function rebuildDispatchSearchFor(tx: CopyDriver, dispatchIds: readonly string[]): Promise<void> {
-  for (let i = 0; i < dispatchIds.length; i += 500) {
-    const ids = dispatchIds.slice(i, i + 500);
-    const marks = ids.map(() => '?').join(', ');
-    await tx.run(`DELETE FROM dispatch_search WHERE disp_id IN (${marks})`, ids);
-    await tx.run(`${DISPATCH_INSERT} WHERE d.id IN (${marks})`, ids);
   }
 }
 

@@ -14,7 +14,8 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { noteGrnPagingUnit } from '@/config/facilityGrnPaging';
 import { grnLineKey } from '@/features/grn/utils/grnLineKey';
-import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
+import { copyRoute, forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
+import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { readGrnItems } from '@/features/phone-copy/reads/grnItems';
 import { readCustomerGrnItems } from '@/features/phone-copy/reads/customer/customerGrnItems';
 import { customerScope, ownIds } from '@/features/phone-copy/reads/customer/customerScope';
@@ -291,8 +292,15 @@ const getCopyGRNItems = async (params: GRNListParams, rpcParams: GRNRpcParams): 
   if ('restart' in copy) return { ...copyFailure(), copyRestart: true };
   const { value, source } = copy;
   if (value.kind === 'page') return { ...toListResponse(value.page, params), source };
-  return { ...copyFailure(), source, ...(value.kind === 'invoice-waiting' ? { invoiceFilterWaiting: true } : {}) };
+  return { ...copyFailure(), source };
 };
+
+/**
+ * An Invoicing filter with no connection (WH-381): the phone cannot tell what is invoiced, so the list answers no rows
+ * and says it is waiting, for every role (never a false "no match"), and asks the server nothing.
+ */
+const invoiceFilterWaits = (params: GRNListParams): boolean =>
+  params.p_filters?.invoiced !== undefined && copyRoute('stage1') === 'copy' && isCopyOffline();
 
 export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNListResponse> => {
   try {
@@ -889,6 +897,7 @@ export const getGRNListPage = async (
   params: GRNListParams,
   assignedCustomerIds: string[] | null
 ): Promise<GRNListResponse> => {
+  if (invoiceFilterWaits(params)) return { ...copyFailure(), invoiceFilterWaiting: true };
   const generation = getSessionGeneration();
   const scope = (params.p_offset || 0) === 0 ? await getSessionCacheScope() : null;
   const key = scope

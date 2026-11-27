@@ -14,15 +14,15 @@ import type { SqlValue } from './copyDriver';
 import { COPY_FORMAT_V3, CUSTOMER_COPY_FORMAT, READ_FORMAT, type RankKind } from './copySchema';
 import { ensureRanks } from './reads/textRank';
 import { CopyReadError, type DataSource } from './sourced';
-import { isCopyOffline } from './syncEngine';
 import { getSyncSnapshot, type CopyPhase } from './syncStore';
 
 const logger = createLogger('[phone-copy]');
 
-/** What a read needs: only the first stage's records (GRNs, lots, customers, items, ...), or every record. */
+/**
+ * What a read needs. The first load is one pass since WH-381, so 'stage1' and 'all' both mean a ready copy; the names stay
+ * so the readers keep saying what they read. An object also asks for a minimum feed format.
+ */
 export type CopyNeed = 'stage1' | 'all' | { stage: 'all'; format: number };
-
-const needsStage1Only = (need: CopyNeed): boolean => need === 'stage1';
 
 /** A read-only view of the open copy, one per `readVia` call; every statement sees the same records. */
 export interface CopyReader {
@@ -99,8 +99,7 @@ export function copyEligible(): boolean {
 }
 
 /**
- * 'copy' only for a warehouse role, on a facility with the feature, over a copy of format 2 that is complete, or that
- * holds what the read needs while the phone is offline and the older records have not arrived.
+ * 'copy' only for a role with a copy, on a facility with the feature, over a copy that is complete (phase 'ready').
  */
 export function copyRoute(need: CopyNeed): 'copy' | 'server' {
   if (!copyEligible()) return 'server';
@@ -108,8 +107,7 @@ export function copyRoute(need: CopyNeed): 'copy' | 'server' {
   if (format === undefined) return 'server';
   // A read that needs a newer format stays on the server over an older copy (WH-348, contract section 2).
   if (typeof need === 'object' && format < need.format) return 'server';
-  if (phase === 'ready') return 'copy';
-  return phase === 'stage2' && needsStage1Only(need) && isCopyOffline() ? 'copy' : 'server';
+  return phase === 'ready' ? 'copy' : 'server';
 }
 
 /** True when the copy in use is of format 3 or newer: the rates and invoice amounts are on the phone (WH-348). */
@@ -121,10 +119,10 @@ const copyRoleOf = (role: unknown): CopyReader['role'] | null =>
   role === 'admin' || role === 'supervisor' || role === 'staff' || role === 'customer' ? role : null;
 
 const isPhase = (value: string | undefined): value is CopyPhase =>
-  value === 'empty' || value === 'stage1' || value === 'stage2' || value === 'ready';
+  value === 'empty' || value === 'stage1' || value === 'ready';
 
 /** Runs `fromCopy` over this session's copy in one transaction, so no sync write falls between its statements. */
-async function readCopy<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<T>): Promise<{ answer: CopyAnswer<T>; copyId: string }> {
+async function readCopy<T>(fromCopy: (q: CopyReader) => Promise<T>): Promise<{ answer: CopyAnswer<T>; copyId: string }> {
   const scope = await getSessionCacheScope();
   const db = currentCopy();
   const role = copyRoleOf(signedInRole());
@@ -137,8 +135,7 @@ async function readCopy<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<
     const copyId = meta.get('copy');
     const asOf = meta.get('as_of');
     // The copy may have been replaced since the route was decided.
-    const holds = phase === 'ready' || (needsStage1Only(need) && phase === 'stage2');
-    if (meta.get('scope') !== scope || !copyId || !asOf || !isPhase(phase) || !holds) throw new CopyReadError();
+    if (meta.get('scope') !== scope || !copyId || !asOf || !isPhase(phase) || phase !== 'ready') throw new CopyReadError();
     // Only the kind of role the copy was loaded for reads it (WH-306).
     if (storedCopyKind(meta.get('kind'), meta.has('format')) !== copyKindOf(role)) throw new CopyReadError();
     const reader: CopyReader = {
@@ -158,7 +155,7 @@ async function readCopy<T>(need: CopyNeed, fromCopy: (q: CopyReader) => Promise<
 }
 
 /**
- * A read that has no server path (Find goods, WH-300): the copy in its second stage or complete, whatever the
+ * A read that has no server path (Find goods, WH-300): the copy complete, whatever the
  * connection. `not-ready`: no copy of this session, or one that does not hold the records yet when the transaction
  * starts. `failed`: any other error, logged once by its name.
  */
@@ -166,7 +163,7 @@ export async function readCopyOnly<T>(
   fromCopy: (q: CopyReader) => Promise<T>
 ): Promise<{ kind: 'answer'; answer: CopyAnswer<T> } | { kind: 'not-ready' } | { kind: 'failed' }> {
   try {
-    return { kind: 'answer', answer: (await readCopy('stage1', fromCopy)).answer };
+    return { kind: 'answer', answer: (await readCopy(fromCopy)).answer };
   } catch (error) {
     if (error instanceof CopyReadError) return { kind: 'not-ready' };
     // The error's name only: a database message can quote a row.
@@ -201,7 +198,7 @@ export async function readVia<T>(
     return null;
   }
   try {
-    const { answer, copyId } = await readCopy(need, fromCopy);
+    const { answer, copyId } = await readCopy(fromCopy);
     if (first?.source === 'copy' && first.copyId !== copyId) return { restart: true };
     if (chain && !later) recordChain(chain.key, { source: 'copy', copyId });
     return answer;

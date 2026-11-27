@@ -1,6 +1,6 @@
 /**
  * The sync engine of the phone copy (WH-298, product/tech/app-offline-copy-and-sync.md section 6): the first load in
- * two stages, the changes, the server-ordered reloads, the daily comparison, one run at a time, and the schedule that
+ * one pass, the changes, the server-ordered reloads, the daily comparison, one run at a time, and the schedule that
  * PhoneCopyLifecycle switches on. Never in the background. Every page is stored in one local transaction with its
  * position or cursor, so a kill resumes and nothing shows half a page.
  *
@@ -24,8 +24,7 @@ import { CopyKeyUnreadableError, eraseCopyFiles, openCopy, replaceWithEmptyCopy,
 import type { CopyDriver } from './copyDriver';
 import { recordCopyKeyReadTry, resetCopyKeyReadTries } from './copyKeyReadTries';
 import {
-  ALL_ENTITIES, CUSTOMER_COPY_FORMAT, LAST_STAGE_ONE_ENTITY, SYNC_FORMATS, createIndexes, isEntityName, rebuildAllDispatchSearch,
-  rebuildAllSearch, type EntityName,
+  ALL_ENTITIES, CUSTOMER_COPY_FORMAT, SYNC_FORMATS, createIndexes, isEntityName, rebuildAllSearch, type EntityName,
 } from './copySchema';
 import { isDiskFull, isSpaceShort, readCopyStorage } from './copyStorage';
 import {
@@ -143,7 +142,7 @@ function parseJson<T>(raw: string | null): T | null {
   }
 }
 const isPhase = (value: string | null): value is CopyPhase =>
-  value === 'empty' || value === 'stage1' || value === 'stage2' || value === 'ready';
+  value === 'empty' || value === 'stage1' || value === 'ready';
 const phaseOf = async (db: CopyDriver): Promise<CopyPhase> => {
   const value = await meta(db, 'phase');
   return isPhase(value) ? value : 'empty';
@@ -209,8 +208,8 @@ function noteStorage(db: CopyDriver, writeWorked: boolean): void {
   publish(patch);
 }
 
-/** Enough of the copy is on the phone to be read: the second stage of the first load, or all of it. */
-const isReadablePhase = (phase: CopyPhase): boolean => phase === 'stage2' || phase === 'ready';
+/** Enough of the copy is on the phone to be read: all of it (the first load is one pass, WH-381). */
+const isReadablePhase = (phase: CopyPhase): boolean => phase === 'ready';
 
 /**
  * What the open copy holds. A readable copy, or any copy without a connection, is the bar's state at once; otherwise
@@ -232,7 +231,7 @@ async function publishFromMeta(db: CopyDriver, offline: boolean): Promise<void> 
 /** Empties the copy's data, keeping its file, key, schema and scope. */
 async function clearData(tx: CopyDriver): Promise<void> {
   for (const entity of ALL_ENTITIES) await tx.run(`DELETE FROM ${entity}`);
-  await tx.exec('DELETE FROM lot_search; DELETE FROM dispatch_search; DELETE FROM text_rank; DELETE FROM stage_rows; DELETE FROM money_stale; DELETE FROM money_answers;');
+  await tx.exec('DELETE FROM lot_search; DELETE FROM text_rank; DELETE FROM stage_rows; DELETE FROM money_stale; DELETE FROM money_answers;');
   await tx.run("DELETE FROM meta WHERE k NOT IN ('schema_version', 'scope')");
   await setMeta(tx, 'phase', 'empty');
 }
@@ -258,8 +257,6 @@ async function startLoad(run: Run): Promise<void> {
   if (!readableStart(start) || !start.entities.every(isEntityName)) throw new FeatureOffError();
   // A name listed twice would send the page cursor round in a circle: each entity is loaded once, at its first place.
   const entities: EntityName[] = [...new Set(start.entities)];
-  const boundary = entities.indexOf(LAST_STAGE_ONE_ENTITY);
-  const stageOne = boundary < 0 ? entities : entities.slice(0, boundary + 1);
   await write(run, async tx => {
     await clearData(tx);
     await setMeta(tx, 'format', String(start.format));
@@ -268,7 +265,6 @@ async function startLoad(run: Run): Promise<void> {
     await setMeta(tx, 'start_position', start.position);
     await setMeta(tx, 'as_of', start.asOf);
     await setMeta(tx, 'entities', JSON.stringify(entities));
-    await setMeta(tx, 'stage1_entities', JSON.stringify(stageOne));
     await setMeta(tx, 'phase', 'stage1');
     if (entities.length) await setMeta(tx, 'load_cursor', JSON.stringify({ entity: entities[0], after: null }));
   });
@@ -286,46 +282,23 @@ async function fetchPage(run: Run, cursor: Cursor): Promise<SyncPage> {
 
 async function firstLoad(run: Run): Promise<void> {
   publish({ running: 'first-load', pending: false });
-  let phase = await phaseOf(run.db);
-  if (phase === 'empty') {
-    await startLoad(run);
-    phase = 'stage1';
-  }
+  if ((await phaseOf(run.db)) === 'empty') await startLoad(run);
   const db = run.db;
   const entities = entityList(await meta(db, 'entities'));
-  const stageOne = entityList(await meta(db, 'stage1_entities'));
   const copy = await meta(db, 'copy');
-  const stageTwo = entities.filter(e => !stageOne.includes(e));
   let cursor = parseJson<Cursor>(await meta(db, 'load_cursor'));
   const nextOf = (entity: EntityName, nextAfter: string | null): Cursor | null => {
     if (nextAfter) return { entity, after: nextAfter };
     const index = entities.indexOf(entity);
     return index >= 0 && index + 1 < entities.length ? { entity: entities[index + 1], after: null } : null;
   };
-  const inStageTwo = (c: Cursor | null) => c === null || !stageOne.includes(c.entity);
-
-  const switchStage = async () => {
-    // The phone is usable from here: indexes, the search table and its index, and the phase move together.
-    await write(run, async tx => {
-      await createIndexes(tx, stageOne);
-      await rebuildAllSearch(tx);
-      await setMeta(tx, 'phase', 'stage2');
-    });
-    phase = 'stage2';
-    publish({ phase: 'stage2' });
-    noteCopyChange(stageOne);
-    noteStorage(db, true);
-  };
-
-  if (phase === 'stage1' && inStageTwo(cursor)) await switchStage();
   let pending = cursor ? fetchPage(run, cursor) : null;
   while (cursor && pending) {
     const page = await pending;
     if (page.copy !== copy) throw new RestartLoadError();
     const next = nextOf(cursor.entity, page.nextAfter);
-    // The next page is asked for while this one is written; not across the stage switch, which comes first.
-    const crossing = phase === 'stage1' && inStageTwo(next);
-    pending = next && !crossing ? fetchPage(run, next) : null;
+    // The next page is asked for while this one is written.
+    pending = next ? fetchPage(run, next) : null;
     pending?.catch(() => undefined);
     const entity = cursor.entity;
     await write(run, async tx => {
@@ -334,15 +307,12 @@ async function firstLoad(run: Run): Promise<void> {
       else await deleteMeta(tx, 'load_cursor');
     });
     cursor = next;
-    if (crossing) {
-      await switchStage();
-      pending = cursor ? fetchPage(run, cursor) : null;
-    }
   }
   const startPosition = await meta(db, 'start_position');
   await write(run, async tx => {
-    await createIndexes(tx, stageTwo);
-    await rebuildAllDispatchSearch(tx);
+    // The phone is usable from here: the indexes, the lot search table and its index, and the phase move together.
+    await createIndexes(tx, entities);
+    await rebuildAllSearch(tx);
     await setMeta(tx, 'phase', 'ready');
     await deleteMeta(tx, 'load_cursor');
     if (startPosition) await setMeta(tx, 'position', startPosition);
@@ -350,6 +320,7 @@ async function firstLoad(run: Run): Promise<void> {
   });
   publish({ phase: 'ready' });
   noteCopyChange(entities);
+  noteStorage(db, true);
 }
 
 // ---------- reloads (contract 6.4) ----------
@@ -777,10 +748,10 @@ export async function syncNow(trigger: SyncTrigger): Promise<SyncOutcome> {
   return outcome;
 }
 
-/** Phase 'stage2' or 'ready', and the feature not off. */
+/** Phase 'ready', and the feature not off. */
 export function isCopyReadable(): boolean {
   const snapshot = getSyncSnapshot();
-  return snapshot.feature !== 'off' && (snapshot.phase === 'stage2' || snapshot.phase === 'ready');
+  return snapshot.feature !== 'off' && snapshot.phase === 'ready';
 }
 
 /** PhoneCopyLifecycle: the interval and the waits after a failure run only while it is mounted. */
