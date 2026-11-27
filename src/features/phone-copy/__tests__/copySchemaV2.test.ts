@@ -44,9 +44,10 @@ async function syncChanges(phone: Phone, changes: unknown[]) {
 const upsert = (e: string, id: string, row: unknown) => ({ e, id, op: 'upsert', v: 'a3f09c2b11d4e5f6', row });
 
 describe('the version and the feed format', () => {
-  it('the schema is version 3, and a copy of version 1 is erased and loaded again', async () => {
+  // Later cards raise the version (WH-303: 4); this card needs at least 3, and the stored version follows the build's.
+  it('the schema is version 3 or later, and a copy of version 1 is erased and loaded again', async () => {
     const schema = require('@/features/phone-copy/copySchema') as typeof import('@/features/phone-copy/copySchema');
-    expect(schema.SCHEMA_VERSION).toBe(3);
+    expect(schema.SCHEMA_VERSION).toBeGreaterThanOrEqual(3);
     const phone = await loaded();
     const db = await phone.copyDb.openCopy((await phone.scope())!);
     await db.run("UPDATE meta SET v = '1' WHERE k = 'schema_version'");
@@ -55,7 +56,7 @@ describe('the version and the feed format', () => {
     await updated.engine.startPhoneCopy();
     expect(updated.syncStore.getSyncSnapshot().phase).toBe('empty');
     expect(await idsOf(updated, 'goodsreceived')).toEqual([]);
-    expect(await metaOf(updated, 'schema_version')).toBe('3');
+    expect(await metaOf(updated, 'schema_version')).toBe(String(schema.SCHEMA_VERSION));
     expect(await updated.engine.syncNow('open')).toBe('done');
     expect((await idsOf(updated, 'goodsreceived')).length).toBe(7);
   });
@@ -67,8 +68,9 @@ describe('the version and the feed format', () => {
     expect(await metaOf(phone, 'format')).toBe(String(format));
   });
 
-  it('a format this build does not know (4) turns the feature off', async () => {
-    env.feed.format = 4;
+  it('a format this build does not know (one above its newest) turns the feature off', async () => {
+    const schema = require('@/features/phone-copy/copySchema') as typeof import('@/features/phone-copy/copySchema');
+    env.feed.format = Math.max(...schema.SYNC_FORMATS) + 1;
     const phone = bootPhone();
     await phone.engine.startPhoneCopy();
     expect(await phone.engine.syncNow('open')).toBe('off');
