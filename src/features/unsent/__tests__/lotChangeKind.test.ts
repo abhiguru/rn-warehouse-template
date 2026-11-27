@@ -414,3 +414,90 @@ describe('K8: an unsent GRN edit of the same lot', () => {
     expect(bodyOf(rows[1]).changes).toEqual({ rack: { to: 'E-5', from: 'D-4' } });
   });
 });
+
+describe('WH-302 Medium: an answer that did not come through is LOST, never a plain failure', () => {
+  // Real postgrest-js puts the HTTP status on the answer itself, beside data and error (not inside error).
+  const unreadable200 = { data: null, error: { message: 'Unexpected character at position 0' }, status: 200 };
+  const empty200 = { data: null, error: null, status: 200 };
+  const badGateway = { data: null, error: { message: 'upstream sent an invalid answer' }, status: 502 };
+  const gatewayTimeout = { data: null, error: { message: 'upstream sent no answer' }, status: 504 };
+  const cannotAsk: RpcAnswer = { data: null, error: { message: 'No internet connection', code: 'NETWORK' } };
+
+  it.each<[string, unknown]>([
+    ['an unreadable 200', unreadable200],
+    ['an empty 200', empty200],
+    ['a 502 page', badGateway],
+    ['a 504 page', gatewayTimeout],
+  ])('%s: the item stays tried, is checked by its request key, and is not marked sent', async (_name, reply) => {
+    const phone = await start();
+    await offline(phone);
+    const saved = await change({ rack: 'B-2' });
+    server.answers[RPC] = () => reply as RpcAnswer;
+    server.answers.get_submission_result = () => cannotAsk;
+    await online(phone);
+    await pass(phone, 20_000); // the check waits 10 s after the send
+    const [row] = await items();
+    expect(row.state).toBe('sending');
+    expect(row.attempts).toBeGreaterThan(0);
+    expect(server.calls.filter(c => c.name === 'get_submission_result').map(c => c.args.p_key)).toContain(saved.requestKey);
+    expect(phone.store.getUnsentSummary().count).toBe(1);
+  });
+
+  it.each<[string, unknown]>([
+    ['an unreadable 200', unreadable200],
+    ['an empty 200', empty200],
+    ['a 502 page', badGateway],
+    ['a 504 page', gatewayTimeout],
+  ])('after %s a later change to the same lot is a new item that depends on the lost one, not merged into it', async (_name, reply) => {
+    const phone = await start();
+    await offline(phone);
+    const first = await change({ rack: 'B-2' });
+    server.answers[RPC] = () => reply as RpcAnswer;
+    server.answers.get_submission_result = () => cannotAsk;
+    await online(phone);
+    await pass(phone, 1_000);
+    await offline(phone);
+    const second = await change({ rack: 'C-3' });
+    const rows = await items();
+    expect(rows).toHaveLength(2);
+    expect(second.merged).toBe(false);
+    expect(second.requestKey).not.toBe(first.requestKey);
+    expect(rows[1].depends_on).toBe(rows[0].id);
+    expect(bodyOf(rows[0]).changes).toEqual({ rack: { to: 'B-2', from: 'A-1' } });
+    expect(bodyOf(rows[1]).changes).toEqual({ rack: { to: 'C-3', from: 'B-2' } });
+  });
+
+  it('server applied A, its answer was unreadable, the person changed again: B is sent under its own key and is not marked sent by A\'s replay', async () => {
+    const phone = await start();
+    await offline(phone);
+    // A faithful server: applies a request once, keeps its answer under the request key, and replays it (idempotent) for the same key.
+    const stored = new Map<string, RpcAnswer>();
+    let rackOnServer = 'A-1';
+    let firstAnswerLost = true;
+    server.answers[RPC] = args => {
+      const key = args.p_key ?? args.p_request_key;
+      const replay = stored.get(key);
+      if (replay) return { data: { ...(replay.data as object), idempotent: true }, error: null };
+      rackOnServer = (args.p_changes as { rack: { to: string } }).rack.to;
+      const done = answer(rackOnServer);
+      stored.set(key, done);
+      if (firstAnswerLost) { firstAnswerLost = false; return unreadable200 as RpcAnswer; }
+      return done;
+    };
+    server.answers.get_submission_result = args => (stored.has(args.p_key) ? { data: { found: true, response: stored.get(args.p_key)!.data }, error: null } : { data: { found: false }, error: null });
+    const a = await change({ rack: 'B-2' });
+    await online(phone);
+    await pass(phone, 1_000); // A applied on the server, the answer unreadable
+    expect(rackOnServer).toBe('B-2');
+    await offline(phone);
+    const b = await change({ rack: 'C-3' });
+    await online(phone);
+    await pass(phone);
+    const bCalls = calls().filter(c => c.args.p_request_key === b.requestKey);
+    expect(b.requestKey).not.toBe(a.requestKey);
+    expect(bCalls.length).toBeGreaterThan(0);
+    expect(bodyOf((await items())[1]).changes.rack).toEqual({ to: 'C-3', from: 'B-2' });
+    expect(rackOnServer).toBe('C-3');
+    expect((await items()).map(r => r.state)).toEqual(['sent', 'sent']);
+  });
+});
