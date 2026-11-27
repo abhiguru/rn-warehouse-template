@@ -209,3 +209,76 @@ describe('a form whose photo list is empty but whose text names the file (owner\
     expect(exists(file)).toBe(true);
   });
 });
+
+describe('the form text and the kept form row keep their files (WH-301p, sweep fix d5c32a48)', () => {
+  const formsMod = () => require('@/features/unsent/formDrafts') as typeof import('@/features/unsent/formDrafts');
+  const textNaming = (uri: string) => JSON.stringify({ header: { gr_no: 'RV15001', gr_images: [{ uri }] }, items: [] });
+  const emptyForm = { header: { gr_no: 'RV15001', gr_images: [] }, items: [] };
+  const photosColumn = async () => JSON.parse((await rawRows<{ photos: string }>('forms'))[0].photos) as string[];
+
+  it('a form turned into items keeps its photo file in the kept form row, and giving it back names a full current address that exists', async () => {
+    const phone = await firstStart();
+    const queue = phone.queue as unknown as Queue;
+    await formsMod().saveFormDraft({ kind: 'grn', state: { header: { gr_no: 'RV15001', gr_images: [{ uri: addPhoto('pick.jpg') }] }, items: [] } });
+    const [formCopy] = keptPhotoFiles();
+    const [record] = await queue.enqueueAll([{ kind: 'testRecord', body: {}, what: 'GRN 1 for Asha Fictional Traders' }], { kind: 'grn' });
+    expect(await rawRows('forms')).toHaveLength(0);
+    expect(exists(formCopy)).toBe(true);
+
+    await queue.returnToForm(record.id);
+
+    const draft = await formsMod().loadFormDraft('grn');
+    const [uri] = (draft?.state as { header: { gr_images: { uri: string }[] } }).header.gr_images.map(image => image.uri);
+    expect(uri.startsWith(PHOTOS)).toBe(true);
+    expect(exists(uri)).toBe(true);
+  });
+
+  it('saving again a form whose text names its file by a stale absolute address does not delete the file and keeps it in the photo list', async () => {
+    await firstStart();
+    const { saveFormDraft } = formsMod();
+    await saveFormDraft({ kind: 'grn', state: emptyForm });
+    const file = plant('form-x.jpg');
+    await rawRun(`UPDATE forms SET photos = '${JSON.stringify(['unsent-work/photos/form-x.jpg'])}' WHERE kind = 'grn'`);
+
+    expect(await saveFormDraft({ kind: 'grn', state: JSON.parse(textNaming(`${LEGACY_ROOT}unsent-work/photos/form-x.jpg`)) })).toBe(true);
+
+    expect(exists(file)).toBe(true);
+    expect(await photosColumn()).toEqual(['unsent-work/photos/form-x.jpg']);
+  });
+
+  it('saving a form whose photo list had been left empty still names the file its text names', async () => {
+    await firstStart();
+    const { saveFormDraft } = formsMod();
+    await saveFormDraft({ kind: 'grn', state: emptyForm });
+    const file = plant('form-x.jpg');
+    await rawRun(`UPDATE forms SET photos = '[]' WHERE kind = 'grn'`);
+
+    await saveFormDraft({ kind: 'grn', state: JSON.parse(textNaming(`${LEGACY_ROOT}unsent-work/photos/form-x.jpg`)) });
+
+    expect(exists(file)).toBe(true);
+    expect(await photosColumn()).toEqual(['unsent-work/photos/form-x.jpg']);
+  });
+
+  it('reading a form rebuilds its photo list from its text', async () => {
+    await firstStart();
+    const { saveFormDraft, loadFormDraft } = formsMod();
+    await saveFormDraft({ kind: 'grn', state: emptyForm });
+    plant('form-x.jpg');
+    await rawRun(`UPDATE forms SET state = '${textNaming(`${LEGACY_ROOT}unsent-work/photos/form-x.jpg`)}', photos = '[]' WHERE kind = 'grn'`);
+
+    await loadFormDraft('grn');
+
+    expect(await photosColumn()).toEqual(['unsent-work/photos/form-x.jpg']);
+  });
+
+  it('removes nothing when a kept form row cannot be read', async () => {
+    const phone = await firstStart();
+    const record = await phone.queue.enqueue({ kind: 'testRecord', body: {}, what: 'GRN 1 for Asha Fictional Traders' });
+    const orphan = plant('form-orphan.jpg');
+    await rawRun(`UPDATE items SET form_row = 'not json {' WHERE id = '${record.id}'`);
+
+    await expect(restart()).resolves.toBeDefined();
+
+    expect(exists(orphan)).toBe(true);
+  });
+});
