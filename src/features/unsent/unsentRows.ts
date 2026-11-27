@@ -186,10 +186,13 @@ export async function insertItems(db: UnsentDb, items: readonly NewItem[], form?
       const first = items[0];
       if (form && first) {
         const [row] = await tx.all<Record<string, SqlValue>>('SELECT * FROM forms WHERE scope = ? AND kind = ? AND grn_id = ?', [form.scope, form.kind, '']);
-        await tx.run('UPDATE items SET form_row = ? WHERE id = ?', [JSON.stringify({ ...(row ?? {}), hadForm: row !== undefined, taken: moved.map(entry => ({ from: entry.from, to: toStored(entry.to) })) }), first.id]);
+        const keptRow = JSON.stringify({ ...(row ?? {}), hadForm: row !== undefined, taken: moved.map(entry => ({ from: entry.from, to: toStored(entry.to) })) });
+        await tx.run('UPDATE items SET form_row = ? WHERE id = ?', [keptRow, first.id]);
         if (row) {
           await tx.run('DELETE FROM forms WHERE id = ?', [String(row.id)]);
-          leftovers = formFiles(row.photos);
+          // WH-301: a file the kept form_row's text still names stays, so returnToForm can give the form back with its photo.
+          const stillNamed = new Set(ownFilesInText(keptRow));
+          leftovers = formFiles(row.photos).filter(file => !stillNamed.has(file));
         }
       }
     });
