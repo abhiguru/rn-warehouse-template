@@ -185,6 +185,7 @@ function OperationsDashboardReport() {
   return (
     <ReportScaffold
       needsConnectionId={`${REPORT_ID}-needs-connection`}
+      serverOnly
       title={tr('reports.titles.operationsDashboard')}
       filters={{ config: OPERATIONS_DASHBOARD, state: filters }}
       query={query}

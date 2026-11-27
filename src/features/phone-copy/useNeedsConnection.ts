@@ -30,20 +30,6 @@ export function useNeedsConnectionV3(): boolean {
   return needs && v3;
 }
 
-/**
- * `useNeedsConnection` for the screens only the server can give (WH-381): true offline with no copy open yet (a cold start) as well
- * as over a copy of format 3 or newer. Only a copy of format 1 or 2 keeps today's screen with its offline messages.
- */
-const formatIsOld = (): boolean => {
-  const format = getSyncSnapshot().format;
-  return format !== undefined && format < COPY_FORMAT_V3;
-};
-export function useServerOnlyNeedsConnection(): boolean {
-  const needs = useNeedsConnection();
-  const old = useSyncExternalStore(subscribeSync, formatIsOld, formatIsOld);
-  return needs && !old;
-}
-
 /** "<label>, needs a connection": the screen-reader label of a disabled action (Design 2.5 and 2.7). */
 export function needsConnectionLabel(label: string): string {
   const reason = t('components.offlineRead.needsConnection');

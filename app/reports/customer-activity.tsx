@@ -220,6 +220,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   return (
     <ReportScaffold
       needsConnectionId={serverOnly ? `${REPORT_ID}-needs-connection` : undefined}
+      serverOnly
       reportId={REPORT_ID}
       title={tr('reports.titles.customerActivity')}
       subtitle={tr('reports.shared.allCustomers')}
@@ -428,6 +429,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
   return (
     <ReportScaffold
       needsConnectionId={serverOnly ? `${REPORT_ID}-needs-connection` : undefined}
+      serverOnly
       reportId={REPORT_ID}
       title={tr('reports.titles.customerActivity')}
       subtitle={name || undefined}

@@ -31,7 +31,7 @@ import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
 import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
 import { useHideListTime } from '@/features/phone-copy/useCustomerAge';
-import { useNeedsConnectionV3, useServerOnlyNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { useNeedsConnection, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -118,6 +118,8 @@ interface ReportScaffoldBaseProps<T> {
    * with no kept rows, no "Try again" and no export icons (Design offline-capture.md 13.1 A).
    */
   needsConnectionId?: string;
+  /** The report is only the server's (WH-381): its needs-a-connection state shows whatever format the copy is. */
+  serverOnly?: boolean;
   /**
    * Kept answers (WH-305): nothing was ever kept for this screen and the phone is offline. The centred "not on this phone yet"
    * state under the header, with no "Try again" (Design offline-capture.md 8.2).
@@ -204,6 +206,7 @@ function ReportScaffoldInner<T>({
   empty,
   errorTitle,
   needsConnectionId,
+  serverOnly = false,
   notHere,
   periodChip,
   ageLine,
@@ -211,7 +214,10 @@ function ReportScaffoldInner<T>({
 }: ReportScaffoldProps<T>) {
   const t = useTokens();
   const phoneNeedsConnection = useNeedsConnectionV3();
-  const serverOnlyOffline = useServerOnlyNeedsConnection() && Boolean(needsConnectionId);
+  // A report only the server can give (WH-381, `serverOnly`) needs a connection whatever the copy holds; sensors and the
+  // temperature report keep today's rule, a copy of format 3 or newer.
+  const phoneOffline = useNeedsConnection();
+  const serverOnlyOffline = Boolean(needsConnectionId) && (serverOnly ? phoneOffline : phoneNeedsConnection);
   const hideListTime = useHideListTime();
   const showCustomerAge = !needsConnectionId && !hideCustomerAgeStrip;
   const styles = useThemedStyles(makeStyles);
