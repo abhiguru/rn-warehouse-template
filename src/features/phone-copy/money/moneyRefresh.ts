@@ -8,14 +8,15 @@ import { AppState } from 'react-native';
 import { createLogger } from '@/utils/logger';
 import type { CustomerDues } from '@/services/reporting/statement-service';
 import { mapKeptDues } from '@/services/reporting/statement-service';
+import { copyKindOf, signedInRole } from '../copyKind';
 import { businessDate } from '../pgCompat';
 import { isCopyOffline, subscribeSyncRunEnd } from '../syncEngine';
 import { getSyncSnapshot, subscribeSync } from '../syncStore';
 import { fetchDues, fetchStatement, type MoneyFetched } from './moneyFetch';
 import { moneyOn } from './moneyGate';
 import {
-  clearMark, deleteMarks, deleteMoneyAnswer, eraseMoney, isDuesStale, keptStatementIds, putMark, readMarks, readMoneyAnswer,
-  restoreMark, writeMoneyAnswer,
+  clearMark, copyCustomerIds, deleteMarks, deleteMoneyAnswer, eraseMoney, isDuesStale, keptStatementIds, putMark, readMarks,
+  readMoneyAnswer, restoreMark, writeMoneyAnswer,
 } from './moneyStore';
 
 const logger = createLogger('[money-refresh]');
@@ -61,11 +62,12 @@ async function keep<T extends { as_of: string; today: string }>(kind: 'dues' | '
   return 'failed';
 }
 
-async function runPass(id: number): Promise<void> {
-  if (!moneyOn() || getSyncSnapshot().phase !== 'ready' || !canGo(id)) return;
+/**
+ * Rule 3, then rule 2 for the warehouse: the dues are brought up to date, and the wanted set is the dues list's customers (in
+ * its order) with every kept statement. Null when the pass must end.
+ */
+async function warehouseWanted(id: number): Promise<{ wanted: string[]; failures: number } | null> {
   let failures = 0;
-
-  // Rule 3: dues.
   let dues = await readMoneyAnswer('dues', '');
   const phoneDay = businessDate(Date.now());
   const refetch =
@@ -75,16 +77,25 @@ async function runPass(id: number): Promise<void> {
   if (refetch) {
     await clearMark('dues', '');
     const outcome = await keep('dues', '', await fetchDues());
-    if (outcome === 'stop') return;
+    if (outcome === 'stop') return null;
     if (outcome === 'failed') failures += 1;
     dues = await readMoneyAnswer('dues', '');
-    if (!canGo(id)) return;
+    if (!canGo(id)) return null;
   }
-  if (!dues) return;
+  if (!dues) return null;
 
-  // Rule 2: the wanted set, the dues list's order first.
   const listed = mapKeptDues(dues.body).customers.map((row: CustomerDues['customers'][number]) => row.customer_id);
-  const wanted = [...new Set([...listed, ...(await keptStatementIds())])];
+  return { wanted: [...new Set([...listed, ...(await keptStatementIds())])], failures };
+}
+
+async function runPass(id: number): Promise<void> {
+  if (!moneyOn() || getSyncSnapshot().phase !== 'ready' || !canGo(id)) return;
+
+  // A customer account has no dues (the server refuses it them): its wanted set is the customers of its own copy (WH-306).
+  const start = copyKindOf(signedInRole()) === 'customer' ? { wanted: await copyCustomerIds(), failures: 0 } : await warehouseWanted(id);
+  if (!start) return;
+  const { wanted } = start;
+  let { failures } = start;
 
   // Rule 1: a mark "all" becomes one mark per wanted customer; marks outside the wanted set go.
   const marks = await readMarks();

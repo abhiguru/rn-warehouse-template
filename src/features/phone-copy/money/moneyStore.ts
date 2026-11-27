@@ -165,6 +165,11 @@ export async function restoreMark(kind: 'dues' | 'statement', key: string): Prom
   else await putMark(key);
 }
 
+/** The customers the copy holds that are not deleted: for a customer account, its own (WH-306). */
+export async function copyCustomerIds(): Promise<string[]> {
+  return (await withCopy(async tx => (await tx.all<{ id: string }>('SELECT id FROM customers WHERE deleted_at IS NULL ORDER BY name_lc, id')).map(r => r.id))) ?? [];
+}
+
 /** The copy holds a lot with stock on a GRN that is not deleted: of one customer, or of any (`customerId` null). */
 export async function copyHasStock(customerId: string | null): Promise<boolean> {
   const found = await withCopy(async tx => {

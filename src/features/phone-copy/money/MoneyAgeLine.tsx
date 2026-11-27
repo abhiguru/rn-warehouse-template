@@ -1,8 +1,9 @@
 /**
  * How old the figures on screen are (WH-305, Design offline-capture.md 8.1 and 8.6): the first line under the header of
  * Customer dues, a Statement and Customer activity. Figures computed today are a footnote line; figures from an earlier day
- * are an `info` message strip, because a past day's balance is short of today's. When a refresh failed (DQ3) the sentence and
- * "Try again" follow at the end. The time is the answer's own, never the time it reached the phone.
+ * are an `info` message strip, because a past day's balance is short of today's. A customer account reads the strip in every
+ * state (WH-306, Design 9.1 and 9.7 DQ2, DQ4). When a refresh failed (DQ3) the sentence and "Try again" follow at the end.
+ * The time is the answer's own, never the time it reached the phone.
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -11,6 +12,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatLoadedAt, formatSpokenDateTime } from '@/utils/formatters';
+import { copyKindOf, signedInRole } from '../copyKind';
 import { businessDate } from '../pgCompat';
 import { moneyAge, phoneBusinessDay } from './moneyAge';
 
@@ -54,9 +56,14 @@ export function MoneyAgeLine({ asOf, today, hasStock, refreshFailed = false, onR
   const phoneDay = phoneBusinessDay();
   const age = moneyAge({ asOf, today: today !== null && today !== '' ? today : businessDate(asOf), phoneDay, hasStock });
   const dateTime = formatLoadedAt(when.getTime());
+  const footnote = age === 'today' && copyKindOf(signedInRole()) !== 'customer';
+  const words = (spoken: string): string =>
+    age === 'today'
+      ? tr('money.asOfToday', { time: dateTime })
+      : tr(age === 'earlier' ? 'money.asOfEarlier' : 'money.asOfEarlierNoStock', { dateTime: spoken });
   return (
     <View style={styles.wrap}>
-      {age === 'today' ? (
+      {footnote ? (
         <View style={styles.line} testID="money-age-line" accessible accessibilityLabel={tr('money.asOfToday', { time: dateTime })}>
           <Icon name="clock-outline" size={iconSize.sm} color={tokens.icon.secondary} importantForAccessibility="no" />
           <Text style={styles.lineText}>{tr('money.asOfToday', { time: dateTime })}</Text>
@@ -66,12 +73,10 @@ export function MoneyAgeLine({ asOf, today, hasStock, refreshFailed = false, onR
           style={styles.strip}
           testID="money-age-strip"
           accessible
-          accessibilityLabel={tr(age === 'earlier' ? 'money.asOfEarlier' : 'money.asOfEarlierNoStock', {
-            dateTime: `${formatSpokenDateTime(when)}`,
-          })}
+          accessibilityLabel={words(formatSpokenDateTime(when))}
         >
           <Icon name="clock-outline" size={iconSize.sm} color={tokens.status.informative.text} importantForAccessibility="no" />
-          <Text style={styles.stripText}>{tr(age === 'earlier' ? 'money.asOfEarlier' : 'money.asOfEarlierNoStock', { dateTime })}</Text>
+          <Text style={styles.stripText}>{words(dateTime)}</Text>
         </View>
       )}
       {refreshFailed ? (
