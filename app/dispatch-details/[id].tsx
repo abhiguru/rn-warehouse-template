@@ -66,9 +66,8 @@ import { photoAddFailure } from '@/utils/photoUploadError';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
 import type { EntityName } from '@/features/phone-copy/copySchema';
-import { UnsentDetailsStrip } from '@/features/unsent/UnsentMarkers';
+import { onceSentLabel, UnsentDetailsStrip, useFollowSentRoute, useNewDocumentActions } from '@/features/unsent/UnsentMarkers';
 import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
-import { onceSentLabel, useNewDocumentActions } from '@/features/unsent/UnsentMarkers';
 
 /** The records this page reads from the phone copy: a sync that changed one of them reads the page again. */
 const DISPATCH_PAGE_KINDS: readonly EntityName[] = [
@@ -126,6 +125,7 @@ function DispatchDetailScreen() {
   const [amountsNeedServer, setAmountsNeedServer] = useState(false);
   const fromCopyRef = useRef(false);
   // A dispatch that exists only on this phone: its actions wait for the server, whatever the connection (WH-161, Design 10.3).
+  useFollowSentRoute('dispatch', String(id));
   const newDocument = useNewDocumentActions('dispatch', String(id));
   const needsConnection = useNeedsConnection() || newDocument.isNew;
   const [isDeletingImage, setIsDeletingImage] = useState(false);

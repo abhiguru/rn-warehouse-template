@@ -121,8 +121,9 @@ export function unsentGrnPart(params: GRNListParams): UnsentListPart {
   return part;
 }
 
-/** The unsent GRN with this local id, or undefined. */
-export const unsentGrnById = (localId: string): NewDocRow | undefined => documentsOf().find(doc => doc.localId === localId);
+/** The unsent (or just-sent, pre-sync) GRN with this local or server id, or undefined. */
+export const unsentGrnById = (id: string): NewDocRow | undefined =>
+  documentsOf().find(doc => doc.localId === id || doc.serverId === id);
 
 /** `get_grn_details` for an unsent GRN, from the copy and the overlay alone (no server call; rates and invoices need one). */
 export async function readNewGrnDetails(q: CopyReader, doc: NewDocRow): Promise<Row> {
@@ -133,7 +134,7 @@ export async function readNewGrnDetails(q: CopyReader, doc: NewDocRow): Promise<
   const supervisor = await supervisorDetails(q, undefined, supervisorName);
   const qty = lines.reduce((sum, line) => sum + (numberOf(line.qty) ?? 0), 0);
   return {
-    id: doc.localId,
+    id: doc.serverId ?? doc.localId,
     gr_no: typeof doc.number === 'string' ? doc.number : null,
     date: header.date ?? null,
     registration: header.registration ?? null,

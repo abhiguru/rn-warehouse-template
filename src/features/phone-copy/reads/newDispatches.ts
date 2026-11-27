@@ -14,8 +14,9 @@ const asRow = (value: unknown): Row => (typeof value === 'object' && value !== n
 const overlay = (): Partial<UnsentOverlay> => getUnsentOverlay();
 const documents = (): readonly NewDocRow[] => overlay().newDocuments?.('dispatch') ?? [];
 
-/** The unsent dispatch with this local id, or undefined. */
-export const unsentDispatchById = (localId: string): NewDocRow | undefined => documents().find(doc => doc.localId === localId);
+/** The unsent (or just-sent, pre-sync) dispatch with this local or server id, or undefined. */
+export const unsentDispatchById = (id: string): NewDocRow | undefined =>
+  documents().find(doc => doc.localId === id || doc.serverId === id);
 
 interface LotLine {
   lot: Row;
@@ -66,7 +67,7 @@ function matches(doc: NewDocRow, lines: readonly LotLine[], request: DispatchLis
 function listRow(doc: NewDocRow, lines: readonly LotLine[], includeItems: boolean): Row {
   const header = asRow(doc.header);
   return {
-    id: doc.localId,
+    id: doc.serverId ?? doc.localId,
     disp_no: typeof doc.number === 'string' ? doc.number : null,
     imported: false,
     dispatch_date: header.date ?? null,
@@ -108,7 +109,7 @@ export async function readNewDispatchDetails(q: CopyReader, doc: NewDocRow): Pro
   const lines = await linesOf(q, doc);
   const supervisorName = typeof header.supervisor_name === 'string' ? header.supervisor_name : undefined;
   return {
-    id: doc.localId,
+    id: doc.serverId ?? doc.localId,
     disp_no: typeof doc.number === 'string' ? doc.number : null,
     imported: false,
     disp_date: header.date ?? null,

@@ -3,13 +3,14 @@
  * top of a details page, and the deduction lines under a lot's stock. They read the overlay (`unsentOverlay.ts`) and draw
  * again when it changes.
  */
-import React, { useSyncExternalStore } from 'react';
+import React, { useEffect, useSyncExternalStore } from 'react';
 import { Text, View } from 'react-native';
+import { router } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { subscribeSyncRunEnd } from '@/features/phone-copy/syncEngine';
 import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
 import { getUnsentOverlay, type UnsentOverlay } from '@/features/phone-copy/unsentOverlay';
-import { subscribeUnsent } from './unsentStore';
+import { currentUnsentScope, loadedUnsentRows, subscribeUnsent } from './unsentStore';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { iconSize, radius, space, typography } from '@/theme/tokens';
@@ -224,9 +225,52 @@ export function OrderChangesLater() {
 export function useNewDocumentActions(kind: 'grn' | 'dispatch', id: string): { isNew: boolean; note: string | undefined } {
   const overlay = useUnsentOverlay();
   const offline = useCopyOffline();
-  const isNew = overlay.newDocuments(kind).some(doc => doc.localId === id);
+  const isNew = overlay.newDocuments(kind).some(doc => doc.localId === id && doc.state !== 'sent');
   return { isNew, note: isNew && !offline ? tr('offline.offlineNew.onceSent') : undefined };
 }
 
 /** "<label>, available once this is sent": the spoken label of a disabled action while the phone is reachable. */
 export const onceSentLabel = (label: string, note: string): string => `${label}, ${note.charAt(0).toLowerCase()}${note.slice(1)}`;
+
+const parseJsonObject = (text: string | null): Record<string, unknown> | null => {
+  if (!text) return null;
+  try {
+    const value: unknown = JSON.parse(text);
+    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** The server id assigned to a sent new record whose local id is `localId`, even if a sync already removed it from the overlay. */
+export function sentServerIdOf(kind: 'grn' | 'dispatch', localId: string, overlay: UnsentOverlay): string | null {
+  const fromOverlay = overlay.newDocuments(kind).find(doc => doc.localId === localId)?.serverId;
+  if (fromOverlay) return fromOverlay;
+  const scope = currentUnsentScope();
+  if (scope === null) return null;
+  const itemKind = kind === 'grn' ? 'newGrn' : 'newDispatch';
+  const targetKey = kind === 'grn' ? 'grnId' : 'dispatchId';
+  const resultKey = kind === 'grn' ? 'grn_id' : 'dispatch_id';
+  for (const row of loadedUnsentRows()) {
+    if (row.scope !== scope || row.kind !== itemKind || row.state !== 'sent') continue;
+    const target = parseJsonObject(row.target_ref);
+    if (target?.[targetKey] !== localId) continue;
+    const result = parseJsonObject(row.result);
+    const serverId = result?.[resultKey];
+    if (typeof serverId === 'string' && serverId.length > 0) return serverId;
+  }
+  return null;
+}
+
+/**
+ * WH-161 (§6): an open details page on a local id follows the record to its server id once sent.
+ */
+export function useFollowSentRoute(kind: 'grn' | 'dispatch', id: string): void {
+  const overlay = useUnsentOverlay();
+  const serverId = sentServerIdOf(kind, id, overlay);
+  useEffect(() => {
+    if (serverId && serverId !== id) {
+      router.replace(kind === 'grn' ? `/grn-details/${serverId}` : `/dispatch-details/${serverId}`);
+    }
+  }, [kind, id, serverId]);
+}

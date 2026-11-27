@@ -88,7 +88,7 @@ import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
 import { ReplacedStrip } from '@/components/grn-details/ReplacedStrip';
 import { markGrnReplacementsChecked } from '@/services/replacedEntriesService';
-import { onceSentLabel, UnsentDetailsStrip, useNewDocumentActions, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
+import { onceSentLabel, UnsentDetailsStrip, useFollowSentRoute, useNewDocumentActions, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
 import { useQuickChange } from '@/features/quick-change/useQuickChange';
 
 const log = createLogger('grn');
@@ -211,6 +211,7 @@ function GRNDetailScreen() {
   const [ratesNeedServer, setRatesNeedServer] = useState(false);
   const fromCopyRef = useRef(false);
   // A GRN that exists only on this phone: its actions wait for the server, whatever the connection (WH-161, Design 10.3).
+  useFollowSentRoute('grn', String(id));
   const newDocument = useNewDocumentActions('grn', String(id));
   const phoneNeedsConnection = useNeedsConnection();
   const needsConnection = phoneNeedsConnection || newDocument.isNew;
