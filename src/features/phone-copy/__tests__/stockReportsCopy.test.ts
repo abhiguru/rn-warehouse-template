@@ -14,9 +14,27 @@ import { eraseEverything, env, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { grnNamed, grnFeedRow, lotNamed, seedWarehouse } from '@/tests/phoneCopy/grnDataset';
 import { bootWarehouse, copySource, loadCopy, sourceOf } from '@/tests/phoneCopy/wh299Phone';
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+function stripDroppedFromFeed() {
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
+}
+
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
+  stripDroppedFromFeed();
 });
 afterEach(async () => {
   jest.useRealTimers();
@@ -119,7 +137,11 @@ describe('P7, PR4: the age of stock', () => {
     phoneClock('2026-11-25T06:00:00Z');
     const result = await ageing().getCustomerStockAging({ customerId: 'c1', agingBuckets: [3, 4, 10] });
     expect(w.serverCalls).toEqual([]);
-    expect(result.data!.summary).toMatchObject({ total_items: 3, total_quantity: 30, oldest_stock_days: 5, average_age_days: 4, items_over_365_days: 0, items_no_recent_dispatch: 3 });
+    expect(result.data!.summary).toMatchObject({
+      total_items: 3, total_quantity: 30, oldest_stock_days: 5, average_age_days: 4, items_over_365_days: 0,
+      avg_dispatch_velocity_days: null, items_no_recent_dispatch: 0,
+    });
+    for (const item of result.data!.items) expect(item.dispatch_info).toBeUndefined();
     expect(result.data!.by_bucket['0-3']).toMatchObject({ item_count: 1, total_quantity: 2, percentage: 33.3 });
     expect(result.data!.by_bucket['4-4']).toMatchObject({ item_count: 1, total_quantity: 9 });
     expect(result.data!.by_bucket['5-10']).toMatchObject({ item_count: 1, total_quantity: 19 });

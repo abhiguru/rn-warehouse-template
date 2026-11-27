@@ -26,9 +26,24 @@ const both = () => ({ stage1: route().copyRoute('stage1'), all: route().copyRout
 const SERVER = { stage1: 'server', all: 'server' };
 const COPY = { stage1: 'copy', all: 'copy' };
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -96,20 +111,23 @@ describe('copyRoute', () => {
     await load.finish();
   });
 
-  it('second stage with the server reachable reads the server', async () => {
+  it('WH-381 single-stage load: stays stage1 past grn_images (reads server online and offline), then moves straight to ready (copy)', async () => {
     const w = await bootWarehouse();
-    const load = await loadUpTo(w, 'dispatch');
-    expect(both()).toEqual(SERVER);
-    await load.finish();
+    const gate = env.feed.hold(call => call.name === 'get_sync_page' && call.args.p_entity === 'grn_lock');
+    await w.phone.engine.startPhoneCopy();
+    const run = w.phone.engine.syncNow('open');
+    await Promise.race([gate.opened, run]);
+    try {
+      expect(w.phone.syncStore.getSyncSnapshot().phase).toBe('stage1');
+      expect(both()).toEqual(SERVER);
+      await goOffline(w);
+      expect(both()).toEqual(SERVER);
+    } finally {
+      gate.release();
+      await run;
+    }
+    expect(w.phone.syncStore.getSyncSnapshot().phase).toBe('ready');
     expect(both()).toEqual(COPY);
-  });
-
-  it('second stage offline: the copy only for what the first stage holds', async () => {
-    const w = await bootWarehouse();
-    const load = await loadUpTo(w, 'dispatch');
-    await goOffline(w);
-    expect(both()).toEqual({ stage1: 'copy', all: 'server' });
-    await load.finish();
   });
 });
 

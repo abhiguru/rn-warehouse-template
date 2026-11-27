@@ -26,6 +26,26 @@ import { fakeDatabaseNames } from '@/tests/phoneCopy/fakeExpoSqlite';
 import { CUSTOMER_ENTITIES, NEVER_FOR_CUSTOMER, seedCustomerAccount } from '@/tests/phoneCopy/customerAccountFeed';
 import { bootWarehouse, copySource, goOffline, loadCopy, sourceOf, tryLoadCopy } from '@/tests/phoneCopy/wh299Phone';
 
+const DROPPED_ENTITIES = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+const KEPT_CUSTOMER_ENTITIES = CUSTOMER_ENTITIES.filter(e => !DROPPED_ENTITIES.has(e));
+
+function seedKeptCustomerAccount(own: string[], format?: number): void {
+  seedCustomerAccount(own, format);
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED_ENTITIES.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED_ENTITIES.has(e.e)) } };
+    }
+    return answer;
+  };
+}
+
 const grn = () => require('@/services/grn-service') as typeof import('@/services/grn-service');
 const dispatch = () => require('@/services/dispatch-service') as typeof import('@/services/dispatch-service');
 const invoices = () => require('@/services/invoice-service') as typeof import('@/services/invoice-service');
@@ -56,21 +76,21 @@ describe('O1: roles', () => {
 });
 
 describe('O2 to O4: turning the copy on', () => {
-  it('first load over the account\'s 14 entities only; staff-only entities are never asked', async () => {
-    seedCustomerAccount(['c1']);
+  it('first load over the account\'s 6 kept entities only (WH-381); staff-only and dropped entities are never asked', async () => {
+    seedKeptCustomerAccount(['c1']);
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     expect(w.phone.syncStore.getSyncSnapshot()).toMatchObject({ feature: 'on', phase: 'ready' });
     expect(w.phone.syncStore.getSyncSnapshot().format).toBeGreaterThanOrEqual(7);
     const asked = new Set(env.feed.named('get_sync_page').map(c => String(c.args.p_entity)));
-    expect([...asked].sort()).toEqual(expect.arrayContaining(['customers', 'goodsreceived', 'dispatch', 'invoice']));
+    expect([...asked].sort()).toEqual([...KEPT_CUSTOMER_ENTITIES].sort());
     for (const entity of NEVER_FOR_CUSTOMER) expect(asked.has(entity)).toBe(false);
-    for (const entity of asked) expect(CUSTOMER_ENTITIES as readonly string[]).toContain(entity);
+    for (const dropped of DROPPED_ENTITIES) expect(asked.has(dropped)).toBe(false);
     expect(await idsOf(w.phone, 'customers')).toEqual(['c1']);
   });
 
   it('copyRoute is the copy for a customer account, online and offline', async () => {
-    seedCustomerAccount(['c1']);
+    seedKeptCustomerAccount(['c1']);
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     expect([route().copyRoute('stage1'), route().copyRoute('all')]).toEqual(['copy', 'copy']);
@@ -79,7 +99,7 @@ describe('O2 to O4: turning the copy on', () => {
   });
 
   it('a feed below format 7: the feature is off, no copy file, every read stays on the server', async () => {
-    seedCustomerAccount(['c1'], 6);
+    seedKeptCustomerAccount(['c1'], 6);
     const w = await bootWarehouse({ role: 'customer' });
     await tryLoadCopy(w);
     expect(w.phone.syncStore.getSyncSnapshot().feature).toBe('off');
@@ -91,7 +111,7 @@ describe('O2 to O4: turning the copy on', () => {
   });
 
   it('the capability off: today\'s server read, no copy', async () => {
-    seedCustomerAccount(['c1']);
+    seedKeptCustomerAccount(['c1']);
     const w = await bootWarehouse({ role: 'customer', capability: false });
     await tryLoadCopy(w);
     expect(route().copyRoute('all')).toBe('server');
@@ -99,9 +119,9 @@ describe('O2 to O4: turning the copy on', () => {
   });
 });
 
-describe('R1, R4, R7, R9: the services read the account\'s own rows from the copy, offline, asking the server nothing', () => {
+describe('R1, R4, R7, R9: the services read the account\'s own kept rows from the copy, offline, asking the server nothing', () => {
   it('one customer: the GRN list holds only its GRNs', async () => {
-    seedCustomerAccount(['c1']);
+    seedKeptCustomerAccount(['c1']);
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     await goOffline(w);
@@ -113,7 +133,7 @@ describe('R1, R4, R7, R9: the services read the account\'s own rows from the cop
   });
 
   it('three customers (one soft-deleted, so out of scope): the merged list holds the other two, no more', async () => {
-    seedCustomerAccount(['c1', 'c2']); // c3 left the feed with its deletion
+    seedKeptCustomerAccount(['c1', 'c2']); // c3 left the feed with its deletion
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     await goOffline(w);
@@ -123,7 +143,7 @@ describe('R1, R4, R7, R9: the services read the account\'s own rows from the cop
   });
 
   it('a customer not in the copy is refused with today\'s text and no row, and the server is not asked', async () => {
-    seedCustomerAccount(['c1']);
+    seedKeptCustomerAccount(['c1']);
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     await goOffline(w);
@@ -135,7 +155,7 @@ describe('R1, R4, R7, R9: the services read the account\'s own rows from the cop
   });
 
   it('the list rows carry none of the hidden or staff-only keys', async () => {
-    seedCustomerAccount(['c1']);
+    seedKeptCustomerAccount(['c1']);
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     const result = await grn().getGRNListPage({ p_limit: 50, p_offset: 0 }, ['c1']);
@@ -147,7 +167,7 @@ describe('R1, R4, R7, R9: the services read the account\'s own rows from the cop
   });
 
   it('stock is the row\'s figure, with no unsent deduction', async () => {
-    seedCustomerAccount(['c1']);
+    seedKeptCustomerAccount(['c1']);
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     const result = await grn().getGRNListPage({ p_limit: 50, p_offset: 0 }, ['c1']);
@@ -155,37 +175,28 @@ describe('R1, R4, R7, R9: the services read the account\'s own rows from the cop
     expect([stockOf('l02'), stockOf('l03'), stockOf('l06'), stockOf('l08')]).toEqual([0, 19, 9, 2]);
   });
 
-  it('the dispatch list: only its customers\' dispatches', async () => {
-    seedCustomerAccount(['c1']);
+  it('WH-381: customer dispatch list never reads from the copy offline (calls server)', async () => {
+    seedKeptCustomerAccount(['c1']);
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     await goOffline(w);
     const result = await dispatch().getAssignedCustomerDispatchList(['c1'], { p_limit: 50 });
-    expect(result.success).toBe(true);
-    const text = JSON.stringify(result.data);
-    expect(text).toContain('D1');
-    expect(text).toContain('D3');
-    expect(text).not.toContain('D2');
-    expect(text).not.toContain('D10');
-    expect(text).not.toContain('created_by');
-    expect(w.serverCalls).toEqual([]);
+    expect(sourceOf(result)).toBeUndefined();
+    expect(w.serverCalls.map(c => c.name)).toContain('get_customer_dispatch_list');
   });
 
-  it('the invoices list: its customer\'s invoice only, from the copy', async () => {
-    seedCustomerAccount(['c2']);
+  it('WH-381: customer invoices list never reads from the copy offline (calls server)', async () => {
+    seedKeptCustomerAccount(['c2']);
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     await goOffline(w);
     const result = await invoices().getAssignedCustomerInvoices(['c2'], { p_limit: 50 });
-    expect(result.success).toBe(true);
-    expect(JSON.stringify(result.data)).toContain('7001');
-    expect(w.serverCalls).toEqual([]);
-    const other = await invoices().getAssignedCustomerInvoices(['c1'], { p_limit: 50 });
-    expect(JSON.stringify(other.data)).not.toContain('7001');
+    expect(sourceOf(result)).toBeUndefined();
+    expect(w.serverCalls.map(c => c.name)).toContain('get_customer_invoice_summary');
   });
 
   it('the stock summary of its customer: its items only, from the copy', async () => {
-    seedCustomerAccount(['c1']);
+    seedKeptCustomerAccount(['c1']);
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     await goOffline(w);
@@ -201,7 +212,7 @@ describe('R1, R4, R7, R9: the services read the account\'s own rows from the cop
 
 describe('access change and a deleted customer (PQ4, L5)', () => {
   it('a deleted customer: the reload answers ACCESS_CHANGED, its rows leave the copy and its reads refuse', async () => {
-    seedCustomerAccount(['c1', 'c2']);
+    seedKeptCustomerAccount(['c1', 'c2']);
     const w = await bootWarehouse({ role: 'customer' });
     await loadCopy(w);
     expect(await idsOf(w.phone, 'customers')).toEqual(['c1', 'c2']);
@@ -233,7 +244,7 @@ describe('access change and a deleted customer (PQ4, L5)', () => {
 function resetFeedTo(own: string[]) {
   const { copy, startPosition, asOf } = env.feed;
   env.feed = createFakeFeed(); // a new server feed only: resetEnv would close the phone's copy database mid-test
-  seedCustomerAccount(own);
+  seedKeptCustomerAccount(own);
   Object.assign(env.feed, { copy, startPosition, asOf });
 }
 

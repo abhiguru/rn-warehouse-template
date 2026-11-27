@@ -24,7 +24,9 @@ const line1 = (patch: Partial<StatusBarInput> = {}) => view(patch).line1.map(l =
 
 describe('deriveStatusBar: the rows of Design 1.5', () => {
   it('row 1: current is "Up to date", neutral, no action', () => {
-    expect(view()).toMatchObject({ row: 1, tone: 'neutral', icon: 'check-circle-outline', action: null, line2: null, olderLoading: false, limit: false, storage: false });
+    const v = view();
+    expect(v).toMatchObject({ row: 1, tone: 'neutral', icon: 'check-circle-outline', action: null, line2: null, limit: false, storage: false });
+    expect((v as { olderLoading?: boolean }).olderLoading).toBeFalsy();
     expect(line1()).toEqual(['upToDate']);
   });
 
@@ -77,31 +79,22 @@ describe('deriveStatusBar: the rows of Design 1.5', () => {
   });
 });
 
-describe('deriveStatusBar: row 6, the second stage of the first load', () => {
-  it('online: the row\'s own line, then "Older records are still loading."', () => {
-    const v = view({ phase: 'stage2', current: false, running: true });
-    expect(v.row).toBe(2);
-    expect(v.olderLoading).toBe(true);
-    expect(v.icon).toBe('sync');
-    expect(v.line1.map(l => l.key)).toEqual(['updating', 'olderLoading']);
-    expect(v.tone).toBe('neutral');
-  });
-
-  it('offline: the offline line, then "Older records will load when you reconnect." (Design\'s answer to P9)', () => {
-    const v = view({ phase: 'stage2', offline: true, current: false });
-    expect(v.icon).toBe('cloud-off-outline');
-    expect(v.line1.map(l => l.key)).toEqual(['offline', 'olderPaused']);
-  });
-
-  it('a failed run in stage two keeps the failure line and the retry action', () => {
-    const v = view({ phase: 'stage2', lastRunFailed: true, current: false });
-    expect(v.line1.map(l => l.key)).toEqual(['updateFailed', 'olderLoading']);
-    expect(v.action).toBe('retry');
-  });
-
-  it('is not shown once the copy is ready', () => {
-    expect(view({ phase: 'ready', current: false }).olderLoading).toBe(false);
-    expect(line1({ phase: 'ready', current: false })).not.toContain('olderLoading');
+describe('deriveStatusBar: WH-381 removes row 6 (olderLoading / olderPaused)', () => {
+  it('never returns olderLoading or olderPaused online, offline, or on a failed run', () => {
+    const cases: Partial<StatusBarInput>[] = [
+      { phase: 'ready', current: false, running: true },
+      { phase: 'ready', offline: true, current: false },
+      { phase: 'ready', lastRunFailed: true, current: false },
+      { phase: 'stage2' as StatusBarInput['phase'], current: false, running: true },
+      { phase: 'stage2' as StatusBarInput['phase'], offline: true, current: false },
+      { phase: 'stage2' as StatusBarInput['phase'], lastRunFailed: true, current: false },
+    ];
+    for (const patch of cases) {
+      const v = view(patch);
+      expect((v as { olderLoading?: boolean }).olderLoading).toBeFalsy();
+      expect(v.line1.map(l => l.key)).not.toContain('olderLoading');
+      expect(v.line1.map(l => l.key)).not.toContain('olderPaused');
+    }
   });
 });
 

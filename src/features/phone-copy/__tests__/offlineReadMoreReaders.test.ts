@@ -23,15 +23,26 @@ const feedRow = (entity: string, id: string) => {
   return found.row;
 };
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
   seedDocuments();
   env.feed.format = 3;
-  Object.assign(feedRow('invoice', 'inv1'), {
-    customer_name: 'Bhavin Foods', inv_prefix: 'INV-', inv_fin_year: 2026, cancelled_at: null, doc_type: 'invoice',
-    payment_state: { paid_amount: 1000, due_amount: 8999, payment_status: 'part_paid' },
-  });
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -42,46 +53,12 @@ async function ready(role: Role): Promise<Warehouse> {
 }
 const names = (w: Warehouse) => w.serverCalls.map(call => call.name);
 
-describe('Invoices list: restart and the staff payment-status filter', () => {
-  const page = (offset: number) => invoices().getInvoicesList({ p_limit: 1, p_offset: offset });
-
-  it('first page from the copy, copy erased: page 2 asks for a restart and asks the server nothing, then page 1 asks the server', async () => {
-    const w = await ready('admin');
-    expect(sourceOf(await page(0))).toEqual(copySource());
-    await w.phone.copyDb.eraseCopy();
-    const later = await page(1);
-    expect(later).toMatchObject({ success: false, copyRestart: true, data: { invoices: [] } });
-    expect(sourceOf(later)).toBeUndefined();
-    expect(w.serverCalls).toEqual([]);
-    const again = await page(0);
+describe('WH-381: Invoices list always calls the server (never the phone copy)', () => {
+  it.each(['admin', 'staff'] as const)('%s: getInvoicesList calls get_invoices_list on server, never reads copy', async role => {
+    const w = await ready(role);
+    const result = await invoices().getInvoicesList({ p_limit: 20, p_offset: 0 });
     expect(names(w)).toEqual(['get_invoices_list']);
-    expect((again as { copyRestart?: boolean }).copyRestart).toBeUndefined();
-  });
-
-  it('admin: the payment-status filter is answered from the copy', async () => {
-    const w = await ready('admin');
-    const result = await invoices().getInvoicesList({ p_limit: 20, p_payment_status: 'part_paid' });
-    expect(w.serverCalls).toEqual([]);
-    expect(sourceOf(result)).toEqual(copySource());
-    expect(result.data.invoices.map(i => String(i.invoice_number))).toEqual(['7001']);
-    const none = await invoices().getInvoicesList({ p_limit: 20, p_payment_status: 'paid' });
-    expect(none.data.invoices).toEqual([]);
-  });
-
-  it('staff: the payment-status filter goes to the server, which answers (the copy is not read)', async () => {
-    const w = await ready('staff');
-    w.answers.get_invoices_list = () => ({ data: { success: true, data: { invoices: [], pagination: { total_count: 0, limit: 20, offset: 0, has_more: false } } }, error: null });
-    const result = await invoices().getInvoicesList({ p_limit: 20, p_payment_status: 'part_paid' });
-    expect(names(w)).toEqual(['get_invoices_list']);
-    expect(w.serverCalls[0].args).toMatchObject({ p_payment_status: 'part_paid' });
     expect(sourceOf(result)).toBeUndefined();
-  });
-
-  it('staff without the filter still reads the copy', async () => {
-    const w = await ready('staff');
-    const result = await invoices().getInvoicesList({ p_limit: 20 });
-    expect(w.serverCalls).toEqual([]);
-    expect(sourceOf(result)).toEqual(copySource());
   });
 });
 
@@ -129,57 +106,16 @@ describe('readItemStoragePrices: the rates list from the copy', () => {
   });
 });
 
-describe('Invoice details: the server\'s line totals are copied, never worked out', () => {
-  const TOTALS = { items_total_amount: 9999.99, discount_set_by_name: 'Meera Fictional', discount_reason: 'Fictional goodwill', zero_charge_set_by_name: null };
-  const LINE = { storage_amount: 777.5, line_amounts: { tax_amount: 123.45, total_amount: 9999.99 } };
-  const withTotals = () => { Object.assign(feedRow('invoice', 'inv1'), TOTALS); };
-  const withLine = () => { Object.assign(feedRow('invoice_trl', 'invl1'), LINE); };
-  const SERVER_DATA = { header: { invoice_id: 'inv1', from: 'server' }, items: [] };
-
-  it('with both, the lines and the total are the feed\'s figures (not charge x quantity), and the server is not asked', async () => {
-    withTotals();
-    withLine();
+describe('WH-381: Invoice details, items detailed, and reasons always ask the server (never the phone copy)', () => {
+  it('calls get_invoice_items_detailed, get_invoice_data, and get_invoice_detail on the server over a ready copy', async () => {
     const w = await ready('admin');
     const detailed = await invoices().getInvoiceItemsDetailed('inv1');
-    expect(w.serverCalls).toEqual([]);
-    expect(detailed.success).toBe(true);
-    expect(detailed.data?.summary.total_amount).toBe(9999.99);
-    expect(detailed.data?.items[0]).toMatchObject({ taxAmount: 123.45, totalAmount: 9999.99 });
     const data = await invoices().getInvoiceDetails('inv1');
-    expect(w.serverCalls).toEqual([]);
-    expect(data.data?.header).toMatchObject({ invoice_id: 'inv1', paid_amount: 1000, due_amount: 8999, payment_status: 'part_paid' });
-    expect(data.data?.items[0]).toMatchObject({ item_id: 'invl1', storage_amount: 777.5 });
-  });
-
-  it('the reasons are keys of the invoice row', async () => {
-    withTotals();
-    withLine();
-    const w = await ready('admin');
-    expect(await invoices().getInvoiceReasons('inv1')).toMatchObject({ discountReason: 'Fictional goodwill', discountSetByName: 'Meera Fictional' });
-    expect(w.serverCalls).toEqual([]);
-  });
-
-  it.each([
-    ['the invoice has no total', () => withLine()],
-    ['a line has no amounts', () => withTotals()],
-    ['neither has them', () => undefined],
-  ])('%s: the server answers, with what the server sends', async (_why, arrange) => {
-    arrange();
-    const w = await ready('admin');
-    w.answers.get_invoice_items_detailed = () => ({ data: { success: true, data: { items: [], summary: { total_items: 0, total_quantity: 0, total_amount: 42 } } }, error: null });
-    w.answers.get_invoice_data = () => ({ data: { success: true, data: SERVER_DATA }, error: null });
-    const detailed = await invoices().getInvoiceItemsDetailed('inv1');
-    expect(detailed.data?.summary.total_amount).toBe(42);
-    const data = await invoices().getInvoiceDetails('inv1');
-    expect(data.data).toEqual(SERVER_DATA);
-    expect(names(w)).toEqual(['get_invoice_items_detailed', 'get_invoice_data']);
-  });
-
-  it('no totals and no connection: a failure the screen can show, not a total made up on the phone', async () => {
-    const w = await ready('admin');
-    const detailed = await invoices().getInvoiceItemsDetailed('inv1');
-    expect(detailed.success).toBe(false);
-    expect(names(w)).toEqual(['get_invoice_items_detailed']);
+    const reasons = await invoices().getInvoiceReasons('inv1');
+    expect(names(w)).toEqual(['get_invoice_items_detailed', 'get_invoice_data', 'get_invoice_detail']);
+    expect(sourceOf(detailed)).toBeUndefined();
+    expect(sourceOf(data)).toBeUndefined();
+    expect(reasons).toBeNull();
   });
 });
 

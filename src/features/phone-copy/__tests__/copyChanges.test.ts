@@ -17,9 +17,24 @@ import { grnNamed, lotNamed, seedWarehouse } from '@/tests/phoneCopy/grnDataset'
 type Published = { seq: number; kinds: Set<string> };
 type CopyChanges = { subscribeCopyChanges: (listener: (change: Published) => void) => () => void };
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -55,11 +70,11 @@ describe('subscribeCopyChanges', () => {
 
   it('names only what changed, with a later number each time', async () => {
     const { phone, heard } = await watching();
-    page([upsert('dispatch', 'd9', { id: 'd9', disp_no: 'D9', customer_id: 'c1' })]);
+    page([upsert('items', 'i9', { id: 'i9', name: 'Fictional Lentil', packaging: 'Bag', active: true })]);
     await phone.engine.syncNow('pull-to-refresh');
     page([upsert('goodsreceived', 'g-B1', grnNamed('B1'))], false, '1048601');
     await phone.engine.syncNow('pull-to-refresh');
-    expect(heard.map(kindsOf)).toEqual([['dispatch'], ['goodsreceived']]);
+    expect(heard.map(kindsOf)).toEqual([['items'], ['goodsreceived']]);
     expect(heard[1].seq).toBeGreaterThan(heard[0].seq);
   });
 

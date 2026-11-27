@@ -22,9 +22,24 @@ import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import type { GRNListParams } from '@/services/grn-service';
 import type { FilterContext } from '@/features/filters/types';
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -310,15 +325,14 @@ describe('changes reach the list (C1 to C4)', () => {
   });
 });
 
-describe('DS2: offline while older records load', () => {
-  it('lists the GRNs with no invoice state, since the copy does not hold it yet', async () => {
+describe('DS2 (WH-381): offline over a ready copy lists all GRNs with grn_lock invoice_state', () => {
+  it('lists every GRN from the copy with zero server calls', async () => {
     const w = await bootWarehouse();
-    const load = await loadUpTo(w, 'dispatch');
+    await loadCopy(w);
     await goOffline(w);
     const result = await list(w);
     expect(sortedIds(result)).toEqual(ALL_LOTS);
-    // The key is present and null (contract section 5).
-    for (const item of result.data.items) expect(item).toHaveProperty('invoice_state', null);
-    await load.finish();
+    expect(result.data.items.find(i => i.grn_item_id === 'l01')).toHaveProperty('invoice_state', 'invoiced');
+    expect(result.data.items.find(i => i.grn_item_id === 'l02')).toHaveProperty('invoice_state', 'partly_invoiced');
   });
 });

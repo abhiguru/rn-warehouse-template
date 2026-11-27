@@ -28,6 +28,9 @@ const page = (position: string, changes: Change[], more = false, extra: Record<s
   position, as_of: '2026-11-25T05:30:00.000+00:00', more, reload_all: null, reload: [] as string[], changes, ...extra,
 }) as never;
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+const KEPT_ENTITIES = ENTITIES.filter(e => !DROPPED.has(e));
+
 beforeEach(() => {
   resetEnv();
   const f = env.feed;
@@ -43,11 +46,20 @@ beforeEach(() => {
   );
   f.rows.grn_images.push({ id: 'im1', row: { id: 'im1', grn_id: 'g1' } });
   f.rows.grn_lock.push({ id: 'g1', row: { grn_id: 'g1' } });
-  f.rows.dispatch.push({ id: 'd1', row: { id: 'd1', disp_no: 'D-1', customer_id: 'c1' } });
-  f.rows.dispatch_trl.push({ id: 'dl1', row: { id: 'dl1', disp_id: 'd1', gr_id: 'g1', gr_trl_id: 'l1', disp_qty: 2 } });
-  f.rows.dispatch_images.push({ id: 'dim1', row: { id: 'dim1', dispatch_id: 'd1' } });
-  f.rows.invoice.push({ id: 'i1', row: { id: 'i1', customer_id: 'c1' } });
-  f.rows.invoice_trl.push({ id: 'il1', row: { id: 'il1', invoice_id: 'i1' } });
+  f.rows.items.push({ id: 'it1', row: { id: 'it1', name: 'Fictional Peas', active: true } });
+  const rpc = f.rpc;
+  f.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -88,14 +100,6 @@ describe('T21 to T27: applying a page of changes', () => {
     expect(await idsOf(phone, 'grn_images')).toEqual([]);
     expect(await idsOf(phone, 'grn_lock')).toEqual([]);
     expect((await sql<{ lot_id: string }>(phone, 'SELECT lot_id FROM lot_search')).map(r => r.lot_id)).toEqual(['l3']);
-  });
-
-  it('T22: deleting a dispatch removes its lines and photos; deleting an invoice its lines', async () => {
-    const phone = await loaded();
-    env.feed.changeAnswers.push(page('1048600', [{ e: 'dispatch', id: 'd1', op: 'delete' }, { e: 'invoice', id: 'i1', op: 'delete' }]));
-    await phone.engine.syncNow('pull-to-refresh');
-    for (const entity of ['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl']) expect(await idsOf(phone, entity)).toEqual([]);
-    expect(await idsOf(phone, 'goodsreceived')).toEqual(['g1', 'g2']);
   });
 
   it('T22: a delete for a row the phone does not hold is ignored, and the rest of the page still applies', async () => {
@@ -184,51 +188,50 @@ describe('T21 to T27: applying a page of changes', () => {
     f.rows.goodsreceived_trl[2].v = hex('v-l4'); f.rows.goodsreceived_trl[3].v = hex('v-l5');
     await phone.engine.syncNow('pull-to-refresh');
     const afterChanges: Record<string, Array<{ id: string; v: string }>> = {};
-    for (const entity of ENTITIES) afterChanges[entity] = (await rowsOf(phone, entity)).map(r => ({ id: r.id, v: r.v }));
+    for (const entity of KEPT_ENTITIES) afterChanges[entity] = (await rowsOf(phone, entity)).map(r => ({ id: r.id, v: r.v }));
 
     env.subject = 'user-2';                      // another person's phone: a fresh first load of the same server
     const fresh = bootPhone();
     await fresh.engine.startPhoneCopy();
     expect(await fresh.engine.syncNow('open')).toBe('done');
-    for (const entity of ENTITIES) expect((await rowsOf(fresh, entity)).map(r => ({ id: r.id, v: r.v }))).toEqual(afterChanges[entity]);
+    for (const entity of KEPT_ENTITIES) expect((await rowsOf(fresh, entity)).map(r => ({ id: r.id, v: r.v }))).toEqual(afterChanges[entity]);
   });
 });
 
 describe('T28: "reload" of named entities', () => {
-  it('keeps the old rows readable until the new set is complete, then replaces them, moves the position, and marks money stale', async () => {
+  it('keeps the old rows readable until the new set is complete, then replaces them and moves the position', async () => {
     const phone = await loaded();
-    env.feed.rows.invoice = [{ id: 'i2', row: { id: 'i2', customer_id: 'c2' } }];
-    env.feed.rows.invoice_trl = [];
-    env.feed.changeAnswers.push(page('1048800', [], false, { reload: ['invoice', 'invoice_trl'] }));
-    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'invoice');
+    env.feed.rows.grn_lock = [{ id: 'g2', row: { grn_id: 'g2', invoice_state: 'invoiced' } }];
+    env.feed.rows.items = [{ id: 'it2', row: { id: 'it2', name: 'Fictional Rice', active: true } }];
+    env.feed.changeAnswers.push(page('1048800', [], false, { reload: ['grn_lock', 'items'] }));
+    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'grn_lock');
     const run = phone.engine.syncNow('pull-to-refresh');
     await gate.opened;
-    expect(await idsOf(phone, 'invoice')).toEqual(['i1']);                 // the old set is still shown
+    expect(await idsOf(phone, 'grn_lock')).toEqual(['g1']);                // the old set is still shown
     expect(await metaOf(phone, 'position')).toBe(env.feed.startPosition);  // and the position has not moved
     expect(await metaOf(phone, 'pending_reload')).not.toBeNull();
     gate.release();
     await run;
-    expect(await idsOf(phone, 'invoice')).toEqual(['i2']);
-    expect(await idsOf(phone, 'invoice_trl')).toEqual([]);
+    expect(await idsOf(phone, 'grn_lock')).toEqual(['g2']);
+    expect(await idsOf(phone, 'items')).toEqual(['it2']);
     expect(await idsOf(phone, 'goodsreceived')).toEqual(['g1', 'g2']);     // other tables untouched
     expect(await metaOf(phone, 'position')).toBe('1048800');
     expect(await metaOf(phone, 'pending_reload')).toBeNull();
-    expect((await sql<{ customer_id: string }>(phone, 'SELECT customer_id FROM money_stale ORDER BY customer_id')).map(r => r.customer_id)).toEqual(['c1', 'c2']);
     expect(env.feed.named('get_sync_start')).toHaveLength(0);
   });
 
   it('a kill in the middle of a reload resumes it; the old rows stay until it ends', async () => {
     const first = await loaded();
-    env.feed.rows.invoice = [{ id: 'i2', row: { id: 'i2', customer_id: 'c2' } }];
-    env.feed.changeAnswers.push(page('1048800', [], false, { reload: ['invoice'] }));
-    env.feed.failWhen = c => c.name === 'get_sync_page' && c.args.p_entity === 'invoice';
+    env.feed.rows.grn_lock = [{ id: 'g2', row: { grn_id: 'g2', invoice_state: 'invoiced' } }];
+    env.feed.changeAnswers.push(page('1048800', [], false, { reload: ['grn_lock'] }));
+    env.feed.failWhen = c => c.name === 'get_sync_page' && c.args.p_entity === 'grn_lock';
     expect(await first.engine.syncNow('pull-to-refresh')).toBe('failed');
-    expect(await idsOf(first, 'invoice')).toEqual(['i1']);
+    expect(await idsOf(first, 'grn_lock')).toEqual(['g1']);
     env.feed.failWhen = null;
     const second = bootPhone();
     await second.engine.startPhoneCopy();
     expect(await second.engine.syncNow('open')).toBe('done');
-    expect(await idsOf(second, 'invoice')).toEqual(['i2']);
+    expect(await idsOf(second, 'grn_lock')).toEqual(['g2']);
     expect(await metaOf(second, 'position')).toBe('1048800');
   });
 
@@ -266,7 +269,7 @@ describe('T29: "reload_all" (Product\'s answer to P1)', () => {
     env.feed.rows.goodsreceived = [grnRow('g9', { gr_no: 'G-009', customer_id: 'c1', customer_name: 'Fictional Customer 1', date: '2026-11-25' })];
     env.feed.rows.goodsreceived_trl = []; env.feed.rows.grn_images = []; env.feed.rows.grn_lock = [];
     env.feed.changeAnswers.push(reloadAll(reason));
-    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'dispatch');
+    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'grn_lock');
     const run = phone.engine.syncNow('pull-to-refresh');
     await gate.opened;
     expect(phone.engine.isCopyReadable()).toBe(true);
@@ -294,7 +297,7 @@ describe('T29: "reload_all" (Product\'s answer to P1)', () => {
     const phone = await loaded();
     const oldAsOf = phone.syncStore.getSyncSnapshot().asOf;
     env.feed.changeAnswers.push(reloadAll('BULK_IMPORT'));
-    env.feed.failWhen = c => c.name === 'get_sync_page' && c.args.p_entity === 'dispatch';
+    env.feed.failWhen = c => c.name === 'get_sync_page' && c.args.p_entity === 'grn_lock';
     expect(await phone.engine.syncNow('pull-to-refresh')).toBe('failed');
     expect(phone.engine.isCopyReadable()).toBe(true);
     expect(await idsOf(phone, 'goodsreceived')).toEqual(['g1', 'g2']);

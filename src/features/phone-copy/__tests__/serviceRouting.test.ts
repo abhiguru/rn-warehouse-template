@@ -17,15 +17,27 @@ import {
   bootWarehouse, copySource, goOffline, loadCopy, loadUpTo, settleWrites, sourceOf, tryLoadCopy, type Warehouse,
 } from '@/tests/phoneCopy/wh299Phone';
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
-  env.feed.rows.dispatch.push({ id: 'd1', row: { id: 'd1', disp_no: 'D1', customer_id: 'c1', customer_name: 'asha Traders',
-    disp_date: '2026-11-23T05:00:00+00:00', created_at: '2026-11-23T05:00:00+00:00', registration: 'GJ01AB1234', deleted_at: null } });
-  env.feed.rows.dispatch_trl.push({ id: 'dt1', row: { id: 'dt1', disp_id: 'd1', gr_id: 'g-A2', gr_trl_id: 'l02', disp_qty: 100 } });
   env.feed.rows.people.push({ id: 'p1', row: { id: 'p1', name: 'Meera Fictional', display_name: 'Meera', role: 'staff' } });
   env.feed.rows.user_profiles.push({ id: 'p1', row: { id: 'p1', name: 'Meera Fictional', display_name: 'Meera', role: 'staff', mobile: '9000000009', active: true, is_service_account: false } });
   env.feed.rows.settings.push({ id: 'rack_presets', row: { floor: ['F-1'], chamber: ['C-1', 'C-2'], version: 3, max_label_length: 12, max_per_list: 20 } });
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -42,22 +54,27 @@ const dispatchActivity = () => require('@/services/reporting/dispatch-activity-s
 
 const period = { fromDate: '2026-11-01', toDate: '2026-11-25' };
 
-/** Services whose result is an object: it carries `source` (contract section 2). */
+/** Kept copy-backed services whose result carries `source` (WH-381). */
 const SOURCED: [string, () => Promise<unknown>][] = [
   ['getAllGRNItems', () => grn().getAllGRNItems({})],
   ['getGRNListPage', () => grn().getGRNListPage({ p_limit: 20, p_offset: 0 }, null)],
   ['getGRNDetails', () => grnDetail().getGRNDetails('g-A2')],
-  ['getDispatchListWithItems', () => dispatch().getDispatchListWithItems({})],
-  ['getDispatchDetails', () => dispatchDetail().getDispatchDetails('d1')],
   ['getAllStockSummary', () => stockSummary().getAllStockSummary()],
   ['getCustomerStockSummary', () => stockSummary().getCustomerStockSummary('c1')],
   ['StockService.getItemWiseStockList', () => (require('@/services/stock-service') as typeof import('@/services/stock-service')).StockService.getItemWiseStockList({})],
   ['getAllStockAging', () => aging().getAllStockAging()],
   ['getCustomerStockAging', () => aging().getCustomerStockAging({ customerId: 'c1' })],
-  ['getAllGRNActivity', () => grnActivity().getAllGRNActivity(period)],
-  ['getCustomerGRNActivity', () => grnActivity().getCustomerGRNActivity({ customerId: 'c1', ...period })],
-  ['getAllDispatchActivity', () => dispatchActivity().getAllDispatchActivity(period)],
-  ['getCustomerDispatchActivity', () => dispatchActivity().getCustomerDispatchActivity({ customerId: 'c1', ...period })],
+];
+
+/** Server-only services under WH-381: never read from the phone copy. */
+const SERVER_ONLY: [string, string, () => Promise<unknown>][] = [
+  ['getDispatchListWithItems', 'get_dispatch_list_with_items', () => dispatch().getDispatchListWithItems({})],
+  ['getDispatchDetails', 'get_dispatch_details', () => dispatchDetail().getDispatchDetails('d1')],
+  ['getGRNItemDispatches', 'get_grn_item_dispatches', () => grnDetail().getGRNItemDispatches('l02')],
+  ['getAllGRNActivity', 'get_all_grn_activity', () => grnActivity().getAllGRNActivity(period)],
+  ['getCustomerGRNActivity', 'get_grn_activity_report', () => grnActivity().getCustomerGRNActivity({ customerId: 'c1', ...period })],
+  ['getAllDispatchActivity', 'get_all_dispatch_activity', () => dispatchActivity().getAllDispatchActivity(period)],
+  ['getCustomerDispatchActivity', 'get_dispatch_activity_report', () => dispatchActivity().getCustomerDispatchActivity({ customerId: 'c1', ...period })],
 ];
 
 /** Services whose result has no place for `source`: proved by what they answer and by the silence on the network. */
@@ -116,37 +133,39 @@ describe('R1: with a ready copy every routed service reads the copy and asks the
   });
 });
 
-describe('R2: while the second stage loads', () => {
-  it('reachable: the GRN list asks the server', async () => {
-    const w = await bootWarehouse();
-    const load = await loadUpTo(w, 'dispatch');
-    const result = await grn().getAllGRNItems({});
-    expect(w.serverCalls.map(c => c.name)).toEqual(['get_all_grn_items']);
-    expect(sourceOf(result)).toBeUndefined();
-    await load.finish();
-  });
-
-  it('offline: the GRN list comes from the copy', async () => {
-    const w = await bootWarehouse();
-    const load = await loadUpTo(w, 'dispatch');
+describe('WH-381: server-only services never read from the phone copy (online or offline)', () => {
+  it.each(SERVER_ONLY)('%s calls server (%s), never the copy', async (_name, rpc, read) => {
+    const w = await ready();
     await goOffline(w);
-    const result = await grn().getAllGRNItems({});
-    expect(result.success).toBe(true);
-    expect(result.data.items).toHaveLength(8);
-    expect(sourceOf(result)).toEqual(copySource());
+    const result = await read();
+    expect(w.serverCalls.map(c => c.name)).toContain(rpc);
+    expect(sourceOf(result)).toBeUndefined();
+  });
+});
+
+describe('R2: while single-stage initial load is in progress (WH-381)', () => {
+  it('stays on server while loading past grn_images, then serves GRNs from copy once ready', async () => {
+    const w = await bootWarehouse();
+    const gate = env.feed.hold(call => call.name === 'get_sync_page' && call.args.p_entity === 'grn_lock');
+    await w.phone.engine.startPhoneCopy();
+    const run = w.phone.engine.syncNow('open');
+    await Promise.race([gate.opened, run]);
+    try {
+      expect(w.phone.syncStore.getSyncSnapshot().phase).toBe('stage1');
+      const whileLoading = await grn().getAllGRNItems({});
+      expect(w.serverCalls.map(c => c.name)).toEqual(['get_all_grn_items']);
+      expect(sourceOf(whileLoading)).toBeUndefined();
+    } finally {
+      gate.release();
+      await run;
+    }
+    w.serverCalls.length = 0;
+    await goOffline(w);
+    const afterReady = await grn().getAllGRNItems({});
+    expect(afterReady.success).toBe(true);
+    expect(afterReady.data.items).toHaveLength(8);
+    expect(sourceOf(afterReady)).toEqual(copySource());
     expect(w.serverCalls).toEqual([]);
-    await load.finish();
-  });
-
-  it('offline: the Dispatch list, which the copy does not hold yet, answers as today', async () => {
-    const w = await bootWarehouse();
-    const load = await loadUpTo(w, 'dispatch');
-    await goOffline(w);
-    const result = await dispatch().getDispatchListWithItems({});
-    expect(w.serverCalls.map(c => c.name)).toEqual(['get_dispatch_list_with_items']);
-    expect(result.success).toBe(false);
-    expect(sourceOf(result)).toBeUndefined();
-    await load.finish();
   });
 });
 

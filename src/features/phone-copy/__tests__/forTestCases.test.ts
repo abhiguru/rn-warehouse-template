@@ -26,11 +26,26 @@ beforeAll(() => { mockFactories.fileSystem = fileSystemModule as never; });
 afterAll(() => { mockFactories.fileSystem = plainFiles; });
 jest.mock('expo-file-system/legacy', () => require('@/tests/phoneCopy/fakeFiles').fileSystemModule(), { virtual: true });
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   resetEnv();
   files.reset();
   seedWarehouse();
   seedDocuments();
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -56,83 +71,27 @@ async function sync(w: Awaited<ReturnType<typeof ready>>, changes: unknown[]) {
 }
 const imageOf = (result: any, id: string) => result.data.dispatch.processed_images.find((image: any) => image.id === id);
 
-describe('kept dispatch photos, offline', () => {
-  beforeEach(() => {
-    env.feed.rows.dispatch_images.push({ id: 'ph-disp-2', row: photoRow('ph-disp-2', { dispatch_id: 'd-D2', display_order: 2 }) });
-  });
-
-  it('a dispatch photo viewed before is shown from the phone; one never viewed says it needs a connection', async () => {
+describe('WH-381: dispatch details and dispatch list always use the server (never the phone copy)', () => {
+  it('getDispatchDetails calls get_dispatch_details on the server offline over a ready copy', async () => {
     const w = await ready();
-    await photoStore().keepPhoto('dispatch-images/fictional/ph-disp.jpg', 'https://warehouse.example.test/signed/ph-disp.jpg');
-    const file = await photoStore().photoFile('dispatch-images/fictional/ph-disp.jpg');
-    expect(file).toMatch(/phone-copy-photos\//);
     await goOffline(w);
     w.serverCalls.length = 0;
     const result: any = await dispatchDetails('d-D2');
-    expect(sourceOf(result)).toEqual(copySource());
-    expect(imageOf(result, 'ph-disp')).toMatchObject({ image_url: file });
-    expect(imageOf(result, 'ph-disp')).not.toHaveProperty('needs_connection');
-    expect(imageOf(result, 'ph-disp-2')).toMatchObject({ image_url: '', needs_connection: true });
-    expect(w.serverCalls).toEqual([]);
+    expect(sourceOf(result)).toBeUndefined();
+    expect(w.serverCalls.map(c => c.name)).toEqual(['get_dispatch_details']);
   });
 
-  it('a GRN photo kept under the same file name does not stand in for the dispatch photo', async () => {
+  it('getDispatchListWithItems calls get_dispatch_list_with_items on the server offline over a ready copy', async () => {
     const w = await ready();
-    // The GRN's photo has this very path; only the dispatch's own key (dispatch-images/...) keeps its photo.
-    await photoStore().keepPhoto('fictional/ph-disp.jpg', 'https://warehouse.example.test/signed/grn-photo.jpg');
     await goOffline(w);
-    const result: any = await dispatchDetails('d-D2');
-    expect(imageOf(result, 'ph-disp')).toMatchObject({ image_url: '', needs_connection: true });
-  });
-});
-
-describe('a copy-sourced Dispatch list leaves the saved dispatch pages alone', () => {
-  const savedKeys = async () => (await storage().getAllKeys()).filter(key => key.startsWith('dispatch_list_cache')).sort();
-  const saved = async () => Object.fromEntries(await Promise.all((await savedKeys()).map(async key => [key, await storage().getItem(key)])));
-
-  it('reads none, writes none, and does not answer from a page saved earlier', async () => {
-    const w = await bootWarehouse({ role: 'admin' });
-    // A page of the same request, saved while the server answered (the copy is not loaded yet).
-    w.answers.get_dispatch_list_with_items = () => ({
-      data: {
-        success: true,
-        data: { dispatches: [{ id: 'server-d', disp_no: 'S1', dispatch_date: '2026-11-25', customer_name: 'Server Fictional Traders', items: [] }], total_count: 1, current_page: 1, total_pages: 1, limit: 20 },
-      },
-      error: null,
-    });
-    const first = await dispatchList({});
-    expect(sourceOf(first)).toBeUndefined();
-    for (let i = 0; i < 6; i += 1) await settleWrites(); // the page's write is not waited for by the service
-    const before = await saved();
-    // The saved page and the cache's index.
-    expect(Object.keys(before)).toHaveLength(2);
-
-    await loadCopy(w);
-    await goOffline(w);
-    delete w.answers.get_dispatch_list_with_items;
     w.serverCalls.length = 0;
-    const read = jest.spyOn(storage(), 'getItem');
-    const readMany = jest.spyOn(storage(), 'multiGet');
-    const written = jest.spyOn(storage(), 'setItem');
-    const writtenMany = jest.spyOn(storage(), 'multiSet');
-    const removed = jest.spyOn(storage(), 'multiRemove');
-    // The storage mock's functions already hold the calls made before this point.
-    for (const spy of [read, readMany, written, writtenMany, removed]) spy.mockClear();
-
     const result: any = await dispatchList({});
-    await settleWrites();
-    expect(sourceOf(result)).toEqual(copySource());
-    expect(result.fromCache).toBeUndefined();
-    expect(result.data.dispatches.map((d: any) => d.disp_no)).toEqual(['D3', 'D2', 'D1', 'D10', 'D4']);
-    expect(w.serverCalls).toEqual([]);
-    const touched = [...read.mock.calls, ...readMany.mock.calls, ...written.mock.calls, ...writtenMany.mock.calls, ...removed.mock.calls]
-      .map(call => JSON.stringify(call)).filter(call => call.includes('dispatch_list_cache'));
-    expect(touched).toEqual([]);
-    expect(await saved()).toEqual(before);
+    expect(sourceOf(result)).toBeUndefined();
+    expect(w.serverCalls.map(c => c.name)).toEqual(['get_dispatch_list_with_items']);
   });
 });
 
-describe('fallbacks in GRN and dispatch details', () => {
+describe('fallbacks in GRN details', () => {
   it('a GRN with no supervisor id finds its supervisor by the name it carries', async () => {
     await ready();
     const { grn } = ((await grnDetails('g-A2')) as any).data;
@@ -147,16 +106,15 @@ describe('fallbacks in GRN and dispatch details', () => {
     expect(((await grnDetails('g-a3')) as any).data.grn.supervisor_details).toBeNull();
   });
 
-  it('a record with a supervisor id uses the id, whatever name it carries', async () => {
+  it('a GRN with a supervisor id uses the id, whatever name it carries', async () => {
     const w = await ready();
-    await sync(w, [{ e: 'dispatch', id: 'd-D2', op: 'upsert', v: 'b000000000000001', row: { ...require('@/tests/phoneCopy/documentsDataset').dispatchRow('D2'), supervisor_name: 'Another Name' } }]);
-    const { dispatch } = ((await dispatchDetails('d-D2')) as any).data;
-    expect(dispatch.supervisor_details).toMatchObject({ id: 'p1', name: 'Meera Fictional' });
+    await sync(w, [{ e: 'goodsreceived', id: 'g-A2', op: 'upsert', v: 'b000000000000001', row: { ...grnFeedRow(GRNS.find(g => g.id === 'g-A2')!), supervisor_id: 'p1', supervisor_name: 'Another Name' } }]);
+    const { grn } = ((await grnDetails('g-A2')) as any).data;
+    expect(grn.supervisor_details).toMatchObject({ id: 'p1', name: 'Meera Fictional' });
   });
 });
 
-describe('can_create_invoice is never true for an imported GRN', () => {
-  /** A2 with every other condition met: stock out, not invoiced, a dispatched line with no invoice. */
+describe('WH-381: can_create_invoice is always false from the phone copy', () => {
   const readyToInvoice = (imported: boolean) => {
     const a2 = GRNS.find(g => g.id === 'g-A2')!;
     const row = { ...grnFeedRow(a2), out_of_stock: true, invoiced: false, import_batch_id: imported ? 'batch-1' : null };
@@ -167,10 +125,10 @@ describe('can_create_invoice is never true for an imported GRN', () => {
   };
   const canCreate = async () => ((await grnDetails('g-A2')) as any).data.grn.invoices_summary.can_create_invoice;
 
-  it('control: the same GRN, not imported, may be invoiced', async () => {
+  it('non-imported GRN: can_create_invoice is false from the copy', async () => {
     const w = await ready();
     await sync(w, readyToInvoice(false));
-    expect(await canCreate()).toBe(true);
+    expect(await canCreate()).toBe(false);
   });
 
   it('imported: not offered', async () => {
@@ -182,10 +140,9 @@ describe('can_create_invoice is never true for an imported GRN', () => {
   });
 });
 
-describe('PR12: the Invoicing filter while older records load', () => {
-  it.each([[true], [false]])('invoiced = %s: no rows, and the answer says the filter is waiting, not "no match"', async invoiced => {
-    const w = await bootWarehouse({ role: 'admin' });
-    const load = await loadUpTo(w, 'dispatch');
+describe('PR12 (WH-381): the Invoicing filter offline over a ready copy', () => {
+  it.each([[true], [false]])('invoiced = %s offline: no rows, and the answer says the filter is waiting, not "no match"', async invoiced => {
+    const w = await ready();
     await goOffline(w);
     const result: any = await grnService().getGRNListPage({ p_limit: 20, p_offset: 0, p_filters: { invoiced } }, null);
     expect(result.data.items).toEqual([]);
@@ -195,6 +152,5 @@ describe('PR12: the Invoicing filter while older records load', () => {
     const plain: any = await grnService().getGRNListPage({ p_limit: 20, p_offset: 0 }, null);
     expect(plain.data.items.length).toBeGreaterThan(0);
     expect(plain.invoiceFilterWaiting).toBeUndefined();
-    await load.finish();
   });
 });

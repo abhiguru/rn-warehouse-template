@@ -18,7 +18,10 @@
  */
 import { bootPhone, env, eraseEverything, idsOf, metaOf, resetEnv, rowsOf, setReachable, type Phone } from '@/tests/phoneCopy/phoneEnv';
 import { failStatement, holdStatement } from '@/tests/phoneCopy/fakeExpoSqlite';
-import { ENTITIES, STAGE_TWO, defaultV, grnRow, hex, lotRow } from '@/tests/phoneCopy/fakeFeed';
+import { ENTITIES, defaultV, grnRow, hex, lotRow } from '@/tests/phoneCopy/fakeFeed';
+
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+const KEPT_ENTITIES = ENTITIES.filter(e => !DROPPED.has(e));
 
 beforeEach(() => {
   resetEnv();
@@ -33,8 +36,20 @@ beforeEach(() => {
     lotRow('l1', 'g1', { gr_id: 'g1', item_name: 'Fictional Peas', package_mark: 'PK-77', rack: 'A-1', stock: 10 }),
     lotRow('l2', 'g2', { gr_id: 'g2', item_name: 'Fictional Peas', package_mark: 'PK-88', rack: 'B-2', stock: 5 }),
   );
-  f.rows.dispatch.push({ id: 'd1', row: { id: 'd1', disp_no: 'D-1', customer_id: 'c1' } });
-  f.rows.invoice.push({ id: 'i1', row: { id: 'i1', customer_id: 'c1' } });
+  f.rows.grn_lock.push({ id: 'g1', row: { grn_id: 'g1', invoice_state: 'not_invoiced' } });
+  const rpc = f.rpc;
+  f.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -50,7 +65,7 @@ describe('T15: the order of the first load', () => {
     expect(await start(phone)).toBe('done');
     const names = env.feed.calls.map(c => c.name);
     expect(names[0]).toBe('get_sync_start');
-    expect([...new Set(pagesAsked())]).toEqual([...ENTITIES]);
+    expect([...new Set(pagesAsked())]).toEqual([...KEPT_ENTITIES]);
     expect(names.lastIndexOf('get_sync_page')).toBeLessThan(names.indexOf('get_sync_changes'));
     expect(env.feed.named('get_sync_changes')[0].args).toMatchObject({ p_position: env.feed.startPosition, p_copy: env.feed.copy });
   });
@@ -83,7 +98,7 @@ describe('T15: the order of the first load', () => {
   });
 });
 
-describe('two stages, and a phone that is usable after stage one (spec step 2)', () => {
+describe('single-stage initial load (spec step 2, WH-381)', () => {
   it('is in stage one while the first entities load: not readable yet', async () => {
     const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'goodsreceived');
     const phone = bootPhone();
@@ -96,43 +111,43 @@ describe('two stages, and a phone that is usable after stage one (spec step 2)',
     await run;
   });
 
-  it('after stage one the copy is readable while stage two still runs, and search says older records are loading', async () => {
-    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === STAGE_TWO[0]);
+  it('loads all kept entities in one pass straight to ready (never enters stage2) and search has no olderLoading', async () => {
+    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'grn_lock');
     const phone = bootPhone();
-    await phone.engine.startPhoneCopy();
-    const run = phone.engine.syncNow('open');
-    await gate.opened;
-    expect(phone.syncStore.getSyncSnapshot().phase).toBe('stage2');
-    expect(phone.engine.isCopyReadable()).toBe(true);
-    expect(await idsOf(phone, 'goodsreceived')).toEqual(['g1', 'g2']);
-    expect(await idsOf(phone, 'dispatch')).toEqual([]);                 // history is not here yet
-    const found = await phone.queries.searchLots('pk-77');
-    expect(found.olderLoading).toBe(true);
-    expect(found.rows.map(r => r.lotId)).toEqual(['l1']);
-    gate.release();
-    await run;
+    const seenPhases: string[] = [];
+    const unsubscribe = phone.syncStore.subscribeSync(() => { seenPhases.push(phone.syncStore.getSyncSnapshot().phase); });
+    try {
+      await phone.engine.startPhoneCopy();
+      const run = phone.engine.syncNow('open');
+      await gate.opened;
+      expect(phone.syncStore.getSyncSnapshot().phase).toBe('stage1');
+      expect(phone.engine.isCopyReadable()).toBe(false);
+      gate.release();
+      await run;
+    } finally {
+      unsubscribe();
+    }
+    expect(seenPhases).not.toContain('stage2');
     expect(phone.syncStore.getSyncSnapshot()).toMatchObject({ phase: 'ready', running: null });
-    expect((await phone.queries.searchLots('pk-77')).olderLoading).toBe(false);
-    expect(await idsOf(phone, 'dispatch')).toEqual(['d1']);
+    expect(phone.engine.isCopyReadable()).toBe(true);
+    const found = await phone.queries.searchLots('pk-77');
+    expect(found.rows.map(r => r.lotId)).toEqual(['l1']);
+    expect((found as { olderLoading?: boolean }).olderLoading).toBeFalsy();
+    expect(await idsOf(phone, 'grn_lock')).toEqual(['g1']);
   });
 
-  it('T17: at the stage switch the indexes, the search table and the FTS index are built, and the phase moves in the same step', async () => {
-    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === STAGE_TWO[0]);
+  it('T17: when the single-stage load finishes, indexes, the search table and the FTS index are built, and phase moves to ready', async () => {
     const phone = bootPhone();
-    await phone.engine.startPhoneCopy();
-    const run = phone.engine.syncNow('open');
-    await gate.opened;
+    expect(await start(phone)).toBe('done');
     const db = await phone.copyDb.openCopy((await phone.scope())!);
     expect((await db.all("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'goodsreceived_trl'")).length).toBeGreaterThan(0);
     expect(await db.all('SELECT lot_id FROM lot_search ORDER BY lot_id')).toEqual([{ lot_id: 'l1' }, { lot_id: 'l2' }]);
     expect(await db.all("SELECT rowid FROM lot_fts WHERE lot_fts MATCH '\"fictional peas\"'")).toHaveLength(2);
-    expect(await metaOf(phone, 'phase')).toBe('stage2');
-    gate.release();
-    await run;
+    expect(await metaOf(phone, 'phase')).toBe('ready');
   });
 
   it('the position is stored only when the load has ended, from the start answer, then moved by the catch-up', async () => {
-    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'invoice');
+    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'grn_lock');
     const phone = bootPhone();
     await phone.engine.startPhoneCopy();
     const run = phone.engine.syncNow('open');
@@ -186,7 +201,7 @@ describe('T16, T36: a load that does not finish', () => {
   });
 
   it('a kill between pages resumes at the next page: nothing already stored is asked for again, and the copy ends equal to the server', async () => {
-    env.feed.failWhen = c => c.name === 'get_sync_page' && c.args.p_entity === 'invoice';
+    env.feed.failWhen = c => c.name === 'get_sync_page' && c.args.p_entity === 'grn_lock';
     const first = bootPhone();
     expect(await start(first)).toBe('failed');
     const customerPages = env.feed.pagesOf('customers').length;
@@ -196,7 +211,7 @@ describe('T16, T36: a load that does not finish', () => {
     expect(await start(second)).toBe('done');
     expect(env.feed.pagesOf('customers')).toHaveLength(customerPages);
     expect(env.feed.pagesOf('goodsreceived')).toHaveLength(1);
-    for (const entity of ENTITIES) expect(await idsOf(second, entity)).toEqual(env.feed.ids(entity));
+    for (const entity of KEPT_ENTITIES) expect(await idsOf(second, entity)).toEqual(env.feed.ids(entity));
     expect(await metaOf(second, 'load_cursor')).toBeNull();
   });
 

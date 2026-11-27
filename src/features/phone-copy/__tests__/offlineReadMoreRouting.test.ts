@@ -18,17 +18,29 @@ import { bootWarehouse, copySource, loadCopy, sourceOf, tryLoadCopy, type Role, 
 /** The copy format whose readers WH-348 adds (contract section 2, "Format gate"). */
 const WH348_FORMAT = 3;
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
   seedDocuments();
   env.feed.format = WH348_FORMAT;
-  // The columns the Invoices list shows (contract section 0 lists `invoice`, `invoice_trl` as feed entities already).
-  const invoice = env.feed.rows.invoice.find(r => r.id === 'inv1');
-  if (invoice) Object.assign(invoice.row, { customer_name: 'Bhavin Foods', inv_prefix: 'INV-', inv_fin_year: 2026, cancelled_at: null, doc_type: 'invoice' });
   env.feed.rows.user_profiles.push({
     id: 'p2', row: { id: 'p2', name: 'Nilesh Fictional', display_name: 'Nilesh', role: 'supervisor', mobile: '9000000010', active: true, is_service_account: false },
   });
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -45,12 +57,7 @@ type Read = { name: string; role: Role[]; rpc: string; run: () => Promise<unknow
 const READS: Read[] = [
   { name: 'Customers list', role: ['admin', 'supervisor', 'staff'], rpc: 'from:customers', shows: 'Bhavin Foods', run: () => customers().getCustomerList({ active: null }, 20, 0) },
   { name: 'Items list', role: ['admin', 'supervisor', 'staff'], rpc: 'get_items', shows: 'Beans', run: () => items().getItemList({ active: null }, 20, 0) },
-  { name: 'Invoices list', role: ['admin', 'supervisor', 'staff'], rpc: 'get_invoices_list', shows: '7001', run: () => invoices().getInvoicesList({ p_limit: 20, p_offset: 0 }) },
   { name: 'Users list', role: ['admin', 'supervisor'], rpc: 'get_users_list', shows: 'Meera Fictional', run: () => users().getUsersList({}, 20, 0) },
-  // The invoices of one GRN (GRN details, the "Invoices" tab): the same list, filtered to the GRN.
-  { name: 'GRN invoice rows', role: ['admin', 'supervisor', 'staff'], rpc: 'get_invoices_list', shows: '7001',
-    run: () => invoices().getGrnInvoiceRows({ grnId: 'g-A10', grnNo: 'A10', customerId: 'c2', warehouseRole: true }) },
-  // No price history is seeded (its feed entity is not in the fake feed yet): only where the answer comes from is checked.
   { name: 'Item price history', role: ['admin', 'supervisor'], rpc: 'get_item_price_history', shows: null,
     run: () => pricing().getItemPriceHistory({ itemId: 'i1' }) },
 ];
@@ -72,58 +79,15 @@ describe('R1: with a ready copy each list reads the copy and asks the server not
     });
   }
 
-  it('the Invoices list names every invoice of the copy, and the offline phone gives the same answer', async () => {
-    const w = await ready('staff');
-    const online = await invoices().getInvoicesList({ p_limit: 20, p_offset: 0 });
+  it.each(['admin', 'supervisor', 'staff'] as const)('WH-381 (%s): Invoices list and GRN invoice rows always call server (never the copy), online and offline', async role => {
+    const w = await ready(role);
     const { goOffline } = require('@/tests/phoneCopy/wh299Phone') as typeof import('@/tests/phoneCopy/wh299Phone');
     await goOffline(w);
-    const offline = await invoices().getInvoicesList({ p_limit: 20, p_offset: 0 });
-    expect(w.serverCalls).toEqual([]);
-    expect(JSON.stringify(offline)).toEqual(JSON.stringify(online));
-  });
-});
-
-describe('stored figures (decision 4): the phone shows what the server stored and works out no money (contract 14.1)', () => {
-  const STATE = { paid_amount: 1000, due_amount: 3321, payment_status: 'part_paid' };
-  const withState = (on: boolean) => {
-    const invoice = env.feed.rows.invoice.find(r => r.id === 'inv1');
-    if (!invoice) throw new Error('no seeded invoice');
-    invoice.row.total = 4321;
-    if (on) invoice.row.payment_state = STATE;
-    else delete invoice.row.payment_state;
-  };
-  const firstRow = async () => {
-    const result = (await invoices().getInvoicesList({ p_limit: 20, p_offset: 0 })) as unknown as { data?: { invoices: Array<Record<string, unknown>> } };
-    const row = result.data?.invoices.find(r => String(r.invoice_number) === '7001');
-    if (!row) throw new Error('the seeded invoice is not in the list');
-    return row;
-  };
-
-  it.each(['admin', 'supervisor'] as const)('%s: total, paid, due and status are the feed\'s figures', async role => {
-    withState(true);
-    const w = await ready(role);
-    const row = await firstRow();
-    expect(w.serverCalls).toEqual([]);
-    expect(row).toMatchObject({ total: 4321, ...STATE });
-  });
-
-  it('staff: the total is there and the payment keys are absent', async () => {
-    withState(false);
-    const w = await ready('staff');
-    const row = await firstRow();
-    expect(w.serverCalls).toEqual([]);
-    expect(row.total).toBe(4321);
-    for (const key of ['paid_amount', 'due_amount', 'payment_status']) expect(row[key] ?? null).toBeNull();
-  });
-
-  it('a total changed on the server is the total shown after the next sync (no recomputing)', async () => {
-    withState(true);
-    const w = await ready('admin');
-    expect((await firstRow()).total).toBe(4321);
-    env.feed.changeAnswers.push({ position: '1048600', as_of: env.feed.asOf, more: false, reload_all: null, reload: [],
-      changes: [{ e: 'invoice', id: 'inv1', op: 'upsert', v: 'b000000000000001', row: { ...env.feed.rows.invoice[0].row, total: 5000, payment_state: STATE } }] });
-    expect(await w.phone.engine.syncNow('interval')).toBe('done');
-    expect((await firstRow()).total).toBe(5000);
+    const invList = await invoices().getInvoicesList({ p_limit: 20, p_offset: 0 });
+    const grnInv = await invoices().getGrnInvoiceRows({ grnId: 'g-A10', grnNo: 'A10', customerId: 'c2', warehouseRole: true });
+    expect(w.serverCalls.map(c => c.name)).toEqual(['get_invoices_list', 'get_invoices_list']);
+    expect(sourceOf(invList)).toBeUndefined();
+    expect(sourceOf(grnInv)).toBeUndefined();
   });
 });
 

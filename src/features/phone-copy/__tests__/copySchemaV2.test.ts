@@ -16,12 +16,24 @@ import { bootPhone, env, eraseEverything, idsOf, metaOf, resetEnv, type Phone } 
 import { grnNamed, lotNamed, seedWarehouse } from '@/tests/phoneCopy/grnDataset';
 import { documentNumberSortKey } from '@/utils/documentNumber';
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
-  env.feed.rows.dispatch.push({ id: 'd1', row: { id: 'd1', disp_no: 'D-7', customer_id: 'c1', customer_name: 'asha Traders',
-    disp_date: '2026-11-23T10:30:00.123456+05:30', created_at: '2026-11-23T05:01:02+00:00', registration: 'GJ09ZZ0007', deleted_at: null } });
-  env.feed.rows.dispatch_trl.push({ id: 'dt1', row: { id: 'dt1', disp_id: 'd1', gr_id: 'g-A2', gr_trl_id: 'l02', disp_qty: 100 } });
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -102,15 +114,6 @@ describe('columns copied out of the rows', () => {
     expect(await one(phone, 'goodsreceived_trl', 'emptied_us', 'l02')).toEqual({ emptied_us: null });
   });
 
-  it('dispatch: both times in microseconds, the number\'s sort key and the lower-cased texts', async () => {
-    const phone = await loaded();
-    expect(await one(phone, 'dispatch', 'disp_date_us, created_at_us, disp_no_sk, disp_no_lc, customer_name_lc, registration_lc', 'd1')).toEqual({
-      disp_date_us: Date.parse('2026-11-23T05:00:00Z') * 1000 + 123456,
-      created_at_us: Date.parse('2026-11-23T05:01:02Z') * 1000,
-      disp_no_sk: documentNumberSortKey('D-7'), disp_no_lc: 'd-7', customer_name_lc: 'asha traders', registration_lc: 'gj09zz0007',
-    });
-  });
-
   it('grn_lock: the invoice state the server sent', async () => {
     const phone = await loaded();
     expect(await query(phone, 'SELECT id, invoice_state FROM grn_lock WHERE id IN (?, ?, ?) ORDER BY id', ['g-A2', 'g-B1', 'g-X1'])).toEqual([
@@ -144,7 +147,6 @@ describe('columns copied out of the rows', () => {
 
 describe('new tables and indexes', () => {
   it.each([
-    ['dispatch_search', ['rowid', 'disp_id', 'haystack']],
     ['text_rank', ['kind', 'value', 'rank']],
     ['photo_files', ['storage_path', 'file', 'bytes', 'kept_at']],
   ])('%s exists with its columns', async (table, columns) => {
@@ -153,8 +155,8 @@ describe('new tables and indexes', () => {
   });
 
   it.each([
-    ['goodsreceived', 'date_us'], ['goodsreceived', 'gr_no_sk'], ['goodsreceived_trl', 'stock'], ['dispatch', 'disp_date_us'],
-    ['dispatch', 'disp_no_sk'], ['customers', 'name_lc'], ['items', 'name_lc'],
+    ['goodsreceived', 'date_us'], ['goodsreceived', 'gr_no_sk'], ['goodsreceived_trl', 'stock'],
+    ['customers', 'name_lc'], ['items', 'name_lc'],
   ])('%s is indexed on %s', async (table, column) => {
     const phone = await loaded();
     const indexes = await query<{ name: string }>(phone, `PRAGMA index_list(${table})`);
@@ -162,43 +164,12 @@ describe('new tables and indexes', () => {
     for (const index of indexes) leading.push((await query<{ name: string }>(phone, `PRAGMA index_info(${index.name})`))[0]?.name);
     expect(leading).toContain(column);
   });
-});
 
-describe('the dispatch search table', () => {
-  const SEP = String.fromCharCode(31);
-  const parts = async (phone: Phone) => {
-    const [row] = await query<{ haystack: string }>(phone, "SELECT haystack FROM dispatch_search WHERE disp_id = 'd1'");
-    return row?.haystack.split(SEP) ?? [];
-  };
-  const matching = async (phone: Phone, word: string) => (await query<{ disp_id: string }>(phone,
-    'SELECT s.disp_id FROM dispatch_search s WHERE s.rowid IN (SELECT rowid FROM dispatch_fts WHERE dispatch_fts MATCH ?)', [`"${word}"`])).map(r => r.disp_id);
-
-  it('holds the number, customer and vehicle, then each line\'s item, mark, rack and GRN number', async () => {
+  it('WH-381: dispatch, dispatch_search and dispatch_fts tables are absent in schema 5', async () => {
     const phone = await loaded();
-    const held = await parts(phone);
-    expect(held.slice(0, 3)).toEqual(['d-7', 'asha traders', 'gj09zz0007']);
-    expect(held.slice(3).sort()).toEqual(['a2', 'b-2', 'peas', 'pk-78']);
-    expect(await matching(phone, 'pk-78')).toEqual(['d1']);
-  });
-
-  it.each([
-    ['the dispatch', upsert('dispatch', 'd1', { id: 'd1', disp_no: 'D-7', customer_id: 'c1', customer_name: 'Renamed Depot', registration: 'GJ09ZZ0007' }), 'renamed depot'],
-    ['a line of it', upsert('dispatch_trl', 'dt1', { id: 'dt1', disp_id: 'd1', gr_id: 'g-A2', gr_trl_id: 'l03', disp_qty: 1 }), 'beans'],
-    ['a lot it names', upsert('goodsreceived_trl', 'l02', { ...lotNamed('l02'), rack: 'Q-42' }), 'q-42'],
-    ['that lot\'s GRN', upsert('goodsreceived', 'g-A2', { ...grnNamed('A2'), gr_no: 'M777' }), 'm777'],
-  ])('is rebuilt when %s changes', async (_name, change, word) => {
-    const phone = await loaded();
-    expect(await matching(phone, word)).toEqual([]);
-    await syncChanges(phone, [change]);
-    expect(await parts(phone)).toContain(word);
-    expect(await matching(phone, word)).toEqual(['d1']);
-  });
-
-  it('loses a deleted dispatch', async () => {
-    const phone = await loaded();
-    expect(await matching(phone, 'pk-78')).toEqual(['d1']);
-    await syncChanges(phone, [{ e: 'dispatch', id: 'd1', op: 'delete' }]);
-    expect(await matching(phone, 'pk-78')).toEqual([]);
-    expect(await query(phone, 'SELECT disp_id FROM dispatch_search')).toEqual([]);
+    const tables = (await query<{ name: string }>(phone, "SELECT name FROM sqlite_master WHERE type = 'table'")).map(r => r.name);
+    for (const dropped of ['dispatch', 'dispatch_trl', 'dispatch_images', 'dispatch_search', 'dispatch_fts']) {
+      expect(tables).not.toContain(dropped);
+    }
   });
 });

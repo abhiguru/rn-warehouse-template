@@ -22,6 +22,8 @@ const reports: unknown[][] = [];
 const HOUR = 3_600_000;
 const NOW = Date.parse('2026-11-25T07:00:00Z');
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW, advanceTimers: true });
   resetEnv();
@@ -32,7 +34,20 @@ beforeEach(() => {
     { ...grnRow('g1', { gr_no: 'G-001' }), v: 'ffffffffffffffff' }, { ...grnRow('g2', { gr_no: 'G-002' }), v: 'f0f0f0f0f0f0f0f0' }, { ...grnRow('g3', { gr_no: 'G-003' }), v: '8000000000000001' },
   );
   f.rows.customers.push({ id: 'c1', row: { id: 'c1', name: 'Fictional Customer' }, v: '123456789abcdef0' });
-  f.rows.dispatch.push({ id: 'd1', row: { id: 'd1', disp_no: 'D-1' } });
+  f.rows.items.push({ id: 'it1', row: { id: 'it1', name: 'Fictional Peas', active: true } });
+  const rpc = f.rpc;
+  f.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); jest.useRealTimers(); });
 
@@ -76,7 +91,7 @@ describe('T41: a difference', () => {
     await fullSync(phone);
     expect(env.feed.pagesOf('goodsreceived').length).toBe(2);               // the first load and the reload
     expect(env.feed.pagesOf('customers')).toHaveLength(1);
-    expect(env.feed.pagesOf('dispatch')).toHaveLength(1);
+    expect(env.feed.pagesOf('items')).toHaveLength(1);
     const [report] = mismatches();
     expect(report).toBeDefined();
     const text = JSON.stringify(report);

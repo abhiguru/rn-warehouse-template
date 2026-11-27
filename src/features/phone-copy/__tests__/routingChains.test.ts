@@ -19,14 +19,24 @@ import {
   bootWarehouse, copySource, goOffline, loadCopy, loadUpTo, settleWrites, sourceOf, type Warehouse,
 } from '@/tests/phoneCopy/wh299Phone';
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
-  for (const n of [1, 2]) {
-    env.feed.rows.dispatch.push({ id: `d${n}`, row: { id: `d${n}`, disp_no: `D${n}`, customer_id: 'c1', customer_name: 'asha Traders',
-      disp_date: '2026-11-23T05:00:00+00:00', created_at: '2026-11-23T05:00:00+00:00', registration: null, deleted_at: null } });
-    env.feed.rows.dispatch_trl.push({ id: `dt${n}`, row: { id: `dt${n}`, disp_id: `d${n}`, gr_id: 'g-A2', gr_trl_id: 'l02', disp_qty: 1 } });
-  }
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -42,7 +52,6 @@ const lotIds = (result: { data: { items: { grn_item_id?: string }[] } }) => resu
 const PAGED: [string, (offset: number) => Promise<unknown>][] = [
   ['getAllGRNItems', offset => grn().getAllGRNItems({ p_limit: 1, p_offset: offset })],
   ['getGRNListPage', offset => grn().getGRNListPage({ p_limit: 1, p_offset: offset }, null)],
-  ['getDispatchListWithItems', offset => dispatch().getDispatchListWithItems({ p_limit: 1, offset })],
   ['getItemWiseStockList', offset => stock().getItemWiseStockList({ limit: 1, offset })],
 ];
 
@@ -65,7 +74,7 @@ describe('R4: a later page never comes from another source than the first', () =
 
   it.each(PAGED)('%s: first page from the server, copy becomes ready: page 2 asks for a restart, then page 1 reads the copy', async (_name, page) => {
     const w = await bootWarehouse({ role: 'admin' });
-    const load = await loadUpTo(w, 'dispatch');
+    const load = await loadUpTo(w, 'goodsreceived');
     await page(0);
     expect(w.serverCalls).toHaveLength(1);
     await load.finish();
@@ -177,35 +186,33 @@ describe('a first page the copy cannot read', () => {
   });
 });
 
-describe('PR12: the Invoicing filter offline while older records load', () => {
+describe('PR12 (WH-381): the Invoicing filter offline over a ready copy', () => {
   const REQUEST = { p_limit: 20, p_offset: 0, p_filters: { invoiced: false } };
 
   it.each([[true], [false], ['partly_invoiced']] as const)(
-    'invoiced = %s answers no rows, from neither the server nor a saved page', async invoiced => {
+    'invoiced = %s offline answers no rows and invoiceFilterWaiting, from neither the server nor a saved page', async invoiced => {
       const w = await bootWarehouse();
-      const load = await loadUpTo(w, 'dispatch');
       const request = { ...REQUEST, p_filters: { invoiced } };
-      // A server page of this very request, saved while reachable.
+      // A server page of this very request, saved while copy was not ready yet.
       w.answers.get_all_grn_items = () => ({
         data: { success: true, data: [{ id: 'server-grn', grn_item_id: 'server-lot' }], pagination: { total_count: 1, limit: 20, offset: 0 } }, error: null,
       });
       await grn().getGRNListPage(request, null);
       await settleWrites();
       delete w.answers.get_all_grn_items;
+      await loadCopy(w);
       await goOffline(w);
       w.serverCalls.length = 0;
-      const result = await grn().getGRNListPage(request, null);
+      const result: any = await grn().getGRNListPage(request, null);
       expect(w.serverCalls).toEqual([]);
       expect(result.fromCache).toBeUndefined();
       expect(result.data.items).toEqual([]);
-      await load.finish();
+      expect(result.invoiceFilterWaiting).toBe(true);
     });
 
-  it('works from the copy once the older records have loaded', async () => {
+  it('works from the copy when online', async () => {
     const w = await bootWarehouse();
-    const load = await loadUpTo(w, 'dispatch');
-    await goOffline(w);
-    await load.finish();
+    await loadCopy(w);
     const result = await grn().getGRNListPage(REQUEST, null);
     expect(lotIds(result).sort()).toEqual(['l04', 'l05', 'l06', 'l07', 'l08']);
     expect(sourceOf(result)).toEqual(copySource());

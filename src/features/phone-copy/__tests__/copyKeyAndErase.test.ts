@@ -201,8 +201,9 @@ describe('T11, T13: erasing with the session (spec step 26, decision 7)', () => 
   });
 
   it('T12: an erase while a page is being written ends it first (the write finishes or rolls back), then the file is gone and nothing is written after', async () => {
+    filterKeptFeed();
     env.feed.rows.goodsreceived.push(grnRow('g1'));
-    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'dispatch');
+    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'grn_lock');
     const phone = bootPhone();
     await phone.engine.startPhoneCopy();
     const run = phone.engine.syncNow('open');
@@ -218,10 +219,28 @@ describe('T11, T13: erasing with the session (spec step 26, decision 7)', () => 
   });
 });
 
+const DROPPED_ENTITIES = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+function filterKeptFeed() {
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED_ENTITIES.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED_ENTITIES.has(e.e)) } };
+    }
+    return answer;
+  };
+}
+
 describe('T14: a token refresh is not a new person', () => {
   it('a refresh (session generation advances, same scope) neither erases the copy nor stops a run', async () => {
+    filterKeptFeed();
     env.feed.rows.goodsreceived.push(grnRow('g1'));
-    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'dispatch');
+    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'grn_lock');
     const phone = bootPhone();
     await phone.engine.startPhoneCopy();
     const run = phone.engine.syncNow('open');
@@ -234,8 +253,9 @@ describe('T14: a token refresh is not a new person', () => {
   });
 
   it('a change of scope (another person) stops the run before its next write, and writes nothing for the new person', async () => {
+    filterKeptFeed();
     env.feed.rows.goodsreceived.push(grnRow('g1'));
-    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'dispatch');
+    const gate = env.feed.hold(c => c.name === 'get_sync_page' && c.args.p_entity === 'grn_lock');
     const phone = bootPhone();
     await phone.engine.startPhoneCopy();
     const run = phone.engine.syncNow('open');

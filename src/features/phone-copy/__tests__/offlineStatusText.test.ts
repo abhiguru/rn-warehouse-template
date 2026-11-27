@@ -20,8 +20,6 @@ describe('English (Design 1.4)', () => {
     ['offline', { time: '10:42 am' }, 'Offline. Last updated 10:42 am'],
     ['updateFailed', { time: '10:42 am' }, "Couldn't update. Last updated 10:42 am"],
     ['firstLoad', {}, 'Loading the warehouse onto this phone…'],
-    ['olderLoading', {}, 'Older records are still loading.'],
-    ['olderPaused', {}, 'Older records will load when you reconnect.'],
     ['notReady', {}, "This phone isn't ready yet. Connect to load the warehouse."],
     ['storageLow', {}, 'Phone storage is almost full. Free some space so records can be kept.'],
     ['retryLabel', {}, 'Try updating again'],
@@ -46,8 +44,6 @@ describe('Gujarati (Design 1.4, P8 and P9)', () => {
   it.each([
     ['upToDate', {}, 'અપડેટ છે'],
     ['firstLoad', {}, 'વખારની માહિતી આ ફોનમાં લોડ થઈ રહી છે…'],
-    ['olderLoading', {}, 'જૂની માહિતી હજુ લોડ થઈ રહી છે.'],
-    ['olderPaused', {}, 'જૂની માહિતી ફરી જોડાશો ત્યારે લોડ થશે.'],
     ['notReady', {}, 'આ ફોન હજુ તૈયાર નથી. વખારની માહિતી લોડ કરવા ઇન્ટરનેટ જોડો.'],
     ['storageLow', {}, 'ફોનમાં જગ્યા લગભગ ભરાઈ ગઈ છે. માહિતી સાચવી શકાય તે માટે થોડી જગ્યા ખાલી કરો.'],
     ['retryLabel', {}, 'ફરી અપડેટ કરવાનો પ્રયાસ કરો'],

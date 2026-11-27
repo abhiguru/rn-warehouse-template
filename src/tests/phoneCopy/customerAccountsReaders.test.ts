@@ -23,10 +23,14 @@ const pricing = () => require('@/services/item-pricing-service') as typeof impor
 const stockService = () => require('@/services/stock-service') as typeof import('@/services/stock-service');
 const grnActivity = () => require('@/services/reporting/grn-activity-service') as typeof import('@/services/reporting/grn-activity-service');
 const dispatchActivity = () => require('@/services/reporting/dispatch-activity-service') as typeof import('@/services/reporting/dispatch-activity-service');
+const stockSummary = () => require('@/services/reporting/stock-summary-service') as typeof import('@/services/reporting/stock-summary-service');
+const stockAging = () => require('@/services/reporting/stock-aging-service') as typeof import('@/services/reporting/stock-aging-service');
 const searchService = () => require('@/services/search-service') as typeof import('@/services/search-service');
 const itemSearchService = () => require('@/services/item-search-service') as typeof import('@/services/item-search-service');
 const customerService = () => require('@/services/customer-service') as typeof import('@/services/customer-service');
 const rowsMod = () => require('@/features/phone-copy/reads/rows') as typeof import('@/features/phone-copy/reads/rows');
+
+const DROPPED_ENTITIES = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
 
 const FORBIDDEN_STAFF_KEYS = [
   'created_by', 'updated_by', 'deleted_by', 'supervisor_id', 'sender_id', 'import_batch_id', 'uploaded_by',
@@ -64,66 +68,10 @@ const feedRow = (entity: string, id: string) => {
   return found.row;
 };
 
-/** Seeds a customer-scoped feed including orders, payments, invoice figures, and lot rates for `own`. */
+/** Seeds a WH-381 kept customer-scoped feed (6 kept entities, no dispatch/order/invoice/payment entities). */
 function seedFullCustomerFeed(own: string[]) {
   seedCustomerAccount(own);
   const feed = env.feed;
-  const ownOrders = ORDER_ROWS.filter(o => own.includes(String(o.customer_id)));
-  const ownOrderIds = new Set(ownOrders.map(o => o.id));
-  for (const row of ownOrders) {
-    // Deliberately include staff-only keys on the feed row to verify `answerFor` strips them for customer accounts.
-    feed.rows.orders.push({
-      id: row.id,
-      row: {
-        ...row,
-        created_by: 'p1',
-        updated_by: 'p1',
-        updated_by_name: 'Meera Fictional',
-        updated_by_display_name: 'Meera',
-        cancelled_by: 'p1',
-        cancelled_by_name: 'Meera Fictional',
-        ignored_by: 'p1',
-      },
-    });
-  }
-  for (const row of LINE_ROWS.filter(l => ownOrderIds.has(String(l.order_id)))) {
-    feed.rows.order_items.push({ id: row.id, row: { ...row } });
-  }
-  if (own.includes('c2')) {
-    Object.assign(feedRow('invoice', 'inv1'), {
-      customer_name: 'Bhavin Foods',
-      inv_prefix: 'INV-',
-      inv_fin_year: 2026,
-      cancelled_at: null,
-      doc_type: 'invoice',
-      items_total_amount: 4321,
-      discount_reason: 'Fictional goodwill',
-      discount_set_by_name: 'Meera Fictional',
-      zero_charge_set_by_name: null,
-      payment_state: { paid_amount: 1500, due_amount: 2821, payment_status: 'part_paid' },
-      created_by: 'p1',
-      created_by_display_name: 'Meera',
-      created_by_role: 'admin',
-      cancelled_by: 'p1',
-      cancelled_by_name: 'Meera Fictional',
-      ignored_by: 'p1',
-      discount_set_by: 'p1',
-      zero_charge_set_by: 'p1',
-      zero_charge_reason: 'Fictional waiver',
-    });
-    Object.assign(feedRow('invoice_trl', 'invl1'), {
-      storage_amount: 777.5,
-      line_amounts: { tax_amount: 123.45, total_amount: 4321 },
-    });
-    Object.assign(feedRow('dispatch', 'd-D2'), {
-      source_order_id: 'o-2',
-      created_by_name: 'Meera Fictional',
-      user_access: 'full',
-    });
-    for (const pay of PAYMENT_ROWS) {
-      feed.rows.payments.push({ id: pay.id, row: { ...pay, created_by: 'p1' } });
-    }
-  }
   if (own.includes('c1')) {
     Object.assign(feedRow('goodsreceived', 'g-A2'), {
       sender_name: 'Kiran Sender',
@@ -136,11 +84,20 @@ function seedFullCustomerFeed(own: string[]) {
     Object.assign(feedRow('goodsreceived_trl', 'l03'), {
       item_rate: { source: 'grn', unit_price: 8, labour_rate: 2.5, tax_percent: 12, weight_min: 0, weight_max: 40, varies: false },
     });
-    Object.assign(feedRow('dispatch', 'd-D1'), {
-      created_by_name: 'Meera Fictional',
-      updated_by_name: 'Meera Fictional',
-    });
   }
+  const rpc = feed.rpc;
+  feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED_ENTITIES.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED_ENTITIES.has(e.e)) } };
+    }
+    return answer;
+  };
 }
 
 async function readyCustomer(own: string[]): Promise<Warehouse> {
@@ -156,7 +113,7 @@ afterEach(async () => { await eraseEverything(); });
 
 describe('unknown-role copy load refusal (67f79a73)', () => {
   it('refuses to start a copy load when the signed-in role is unknown, calls no sync RPC, and never writes kind=warehouse', async () => {
-    seedCustomerAccount(['c1']);
+    seedFullCustomerFeed(['c1']);
     const w = await bootWarehouse({ role: 'customer' });
     const { store } = require('@/store') as typeof import('@/store');
     const auth = require('@/store/slices/authSlice') as typeof import('@/store/slices/authSlice');
@@ -184,7 +141,7 @@ describe('unknown-role copy load refusal (67f79a73)', () => {
   });
 
   it('refuses a non-copy role without writing kind=warehouse', async () => {
-    seedCustomerAccount(['c1']);
+    seedFullCustomerFeed(['c1']);
     const w = await bootWarehouse({ role: 'customer' });
     const { store } = require('@/store') as typeof import('@/store');
     const auth = require('@/store/slices/authSlice') as typeof import('@/store/slices/authSlice');
@@ -277,11 +234,10 @@ describe('customer-copy parity & staff-key stripping on details, rates, stock, a
     expect(other.notFound).toBe(true);
     expect(w.serverCalls).toEqual([]);
 
+    // WH-381: lot dispatches always ask the server (never read from the phone copy).
     const lotDispatches = await grnDetail().getGRNItemDispatches('l02');
-    expect(lotDispatches.success).toBe(true);
-    expect(sourceOf(lotDispatches)).toEqual(copySource());
-    expect(lotDispatches.data?.dispatches.map(d => d.disp_no)).toEqual(['D1']);
-    expect(w.serverCalls).toEqual([]);
+    expect(sourceOf(lotDispatches)).toBeUndefined();
+    expect(w.serverCalls.map(c => c.name)).toEqual(['get_grn_item_dispatches']);
   });
 
   it('getGrnItemRates: reads each lot item_rate from the customer copy offline with 0 server calls', async () => {
@@ -295,146 +251,37 @@ describe('customer-copy parity & staff-key stripping on details, rates, stock, a
     ]);
   });
 
-  it('dispatch details: reads own dispatch with invoice amounts offline, keeps supervisor name only, strips staff keys', async () => {
-    const w = await readyCustomer(['c2']);
-    const result = await dispatchDetail().getDispatchDetails('d-D2');
-    expect(result.success).toBe(true);
-    expect(sourceOf(result)).toEqual(copySource());
-    expect(w.serverCalls).toEqual([]);
-    const dispatch = result.data!.dispatch;
-    expect(dispatch).toMatchObject({
-      id: 'd-D2',
-      disp_no: 'D2',
-      supervisor_details: { name: 'Meera Fictional' },
-    });
-    expect(Object.keys(dispatch.supervisor_details ?? {})).toEqual(['name']);
-    expect(dispatch.items[0].invoice_details).toMatchObject({
-      invoice_no: 7001,
-      charge: 12.5,
-      tax: 18,
-      labour_rate: 2,
-      total: 4321,
-    });
-    expectNoStaffKeys(dispatch);
-  });
-
-  it('invoice details, items, payments & reasons: reads own invoice offline with payment figures and zero staff keys', async () => {
-    const w = await readyCustomer(['c2']);
-
-    const details = await invoices().getInvoiceDetails('inv1');
-    expect(details.success).toBe(true);
-    expect(w.serverCalls).toEqual([]);
-    expect(details.data?.header).toMatchObject({
-      invoice_id: 'inv1',
-      invoice_number: 7001,
-      paid_amount: 1500,
-      due_amount: 2821,
-      payment_status: 'part_paid',
-    });
-    expectNoStaffKeys(details.data);
-
-    const detailed = await invoices().getInvoiceItemsDetailed('inv1');
-    expect(detailed.success).toBe(true);
-    expect(detailed.data?.summary.total_amount).toBe(4321);
-    expect(detailed.data?.items[0]).toMatchObject({ taxAmount: 123.45, totalAmount: 4321 });
-
-    const pay = await payments().getInvoicePayments('inv1');
-    expect(pay).toMatchObject({ paidAmount: 1500, dueAmount: 2821, status: 'part_paid' });
-    expect(pay.payments.map(p => [p.id, p.amount])).toEqual([['pay-1', 500], ['pay-2', 1000]]);
-    expectNoStaffKeys(pay);
-
-    const reasons = await invoices().getInvoiceReasons('inv1');
-    // The server answers a customer account none of the reasons (WH-306 373df336), though the copy holds them.
-    // The reader answers {}, so the service maps every reason field to null: no goodwill text, no setter name.
-    expect(reasons).toEqual({
-      discountReason: null, discountSetAt: null, discountSetByName: null,
-      zeroChargeReason: null, zeroChargeSetAt: null, zeroChargeSetByName: null,
-    });
-    expectNoStaffKeys(reasons);
-    expect(w.serverCalls).toEqual([]);
-  });
-
-  it('invoice and order reads: carry none of the cancelled/ignored/discount/zero-charge staff keys at any depth, though the copy holds them', async () => {
+  it('WH-381: dispatch details, invoice details/items/payments/reasons, orders, and activity reports never read from the customer copy offline', async () => {
     const w = await readyCustomer(['c1', 'c2']);
-    expect(Object.keys(feedRow('invoice', 'inv1'))).toEqual(expect.arrayContaining([...NEWLY_FORBIDDEN_KEYS]));
-    const reads = [
+    const results = [
+      await dispatchDetail().getDispatchDetails('d-D2'),
       await invoices().getInvoiceDetails('inv1'),
       await invoices().getInvoiceItemsDetailed('inv1'),
       await invoices().getInvoiceReasons('inv1'),
-      await payments().getInvoicePayments('inv1'),
+      await payments().getInvoicePayments('inv1').catch(() => null),
       await orders().getOrdersList({ has_items: true }),
       await orders().getOrderWithItems('o-1'),
-      await dispatchDetail().getDispatchDetails('d-D2'),
+      await orders().OrderService.getCustomerOrder('c1'),
+      await orders().getOrderScreenCustomer('c1').catch(() => null),
+      await grnActivity().getCustomerGRNActivity({ customerId: 'c1', fromDate: '2026-01-01', toDate: '2026-12-31' }),
+      await dispatchActivity().getCustomerDispatchActivity({ customerId: 'c1', fromDate: '2026-01-01', toDate: '2026-12-31' }),
     ];
-    for (const read of reads) {
-      const keys = collectKeys(read);
-      for (const key of NEWLY_FORBIDDEN_KEYS) expect(keys.has(key)).toBe(false);
-    }
-    expect(reads[0]).toMatchObject({ success: true });
-    expect(w.serverCalls).toEqual([]);
+    for (const r of results) expect(sourceOf(r)).toBeUndefined();
+    expect(w.serverCalls.map(c => c.name)).toEqual(expect.arrayContaining([
+      'get_dispatch_details',
+      'get_invoice_data',
+      'get_invoice_items_detailed',
+      'get_invoice_detail',
+      'get_orders_list',
+      'get_order_with_items',
+      'get_customer_order',
+      'from:customers',
+      'get_grn_activity_report',
+      'get_dispatch_activity_report',
+    ]));
   });
 
-  it('customer dispatch list: carries total_items (line count), supervisor_name and total_weight rounded half away from zero, and no staff keys', async () => {
-    // D2 has two lines (l04 x30, l05 x4); 30 x 40.55 = 1216.5 must be answered as 1217, never 1216.5.
-    seedFullCustomerFeed(['c2']);
-    Object.assign(feedRow('goodsreceived_trl', 'l04'), { weight: 40.55 });
-    // The shared D4 line points at c3's lot l07; a real dispatch carries only its own customer's lots, so use c2's l04.
-    Object.assign(feedRow('dispatch_trl', 't4'), { gr_id: feedRow('goodsreceived_trl', 'l04').gr_id, gr_trl_id: 'l04' });
-    const w = await bootWarehouse({ role: 'customer' });
-    await loadCopy(w);
-    await goOffline(w);
-    const { readVia, forCustomerAccounts } = require('@/features/phone-copy/readRoute') as typeof import('@/features/phone-copy/readRoute');
-    const { readCustomerDispatchList } = require('@/features/phone-copy/reads/customer/customerDispatchList') as typeof import('@/features/phone-copy/reads/customer/customerDispatchList');
-    const answer = await readVia('all', forCustomerAccounts(q => readCustomerDispatchList(q, 'c2', 50, 0, true)));
-    const d2 = answer?.value.dispatches.find(d => d.disp_no === 'D2');
-    expect(d2).toMatchObject({ total_items: 2, supervisor_name: 'Meera Fictional', total_weight: 1217 });
-    // D4 is re-pointed to c2's own lot l04 above (a real dispatch carries only its own customer's lots): one line, 2 x 40.55 = 81.1.
-    const d4 = answer?.value.dispatches.find(d => d.disp_no === 'D4');
-    expect(d4).toMatchObject({ total_items: 1, supervisor_name: 'Meera Fictional', total_weight: 81 });
-    expectNoStaffKeys(answer?.value);
-    expect(w.serverCalls).toEqual([]);
-  });
-
-  it('orders list, order with items, customer open order & order screen customer: reads own orders offline and strips staff keys', async () => {
-    const w = await readyCustomer(['c1']);
-
-    const list = await orders().getOrdersList({ has_items: true });
-    expect(list.success).toBe(true);
-    expect(sourceOf(list)).toEqual(copySource());
-    expect(list.data?.map(o => o.id)).toEqual(['o-1']);
-    expectNoStaffKeys(list.data);
-
-    const listScoped = await orders().getOrdersList({ customer_id: 'c1', has_items: true });
-    expect(listScoped.success).toBe(true);
-    expect(listScoped.data?.map(o => o.id)).toEqual(['o-1']);
-
-    const one = await orders().getOrderWithItems('o-1');
-    expect(one.success).toBe(true);
-    expect(sourceOf(one)).toEqual(copySource());
-    expect(one.data?.items?.map(i => i.id)).toEqual(['ol-1', 'ol-2']);
-    // Service maps optional fields from stripped reader data as undefined (never carrying staff values).
-    expect(one.data?.updated_by).toBeUndefined();
-    expect(one.data?.updated_by_name).toBeUndefined();
-    expect(one.data?.updated_by_display_name).toBeUndefined();
-    // Reader itself strips the staff-only keys completely from `order_data`.
-    const { readVia, forCustomerAccounts } = require('@/features/phone-copy/readRoute') as typeof import('@/features/phone-copy/readRoute');
-    const { readOrderWithItems } = require('@/features/phone-copy/reads/orders') as typeof import('@/features/phone-copy/reads/orders');
-    const rawOrder = await readVia('all', forCustomerAccounts(q => readOrderWithItems(q, 'o-1')));
-    expect(rawOrder?.value.kind).toBe('found');
-    if (rawOrder?.value.kind === 'found') expectNoStaffKeys(rawOrder.value.order_data);
-
-    const open = await orders().OrderService.getCustomerOrder('c1');
-    expect(open.success).toBe(true);
-    expect(sourceOf(open)).toEqual(copySource());
-    expect(open.data).toEqual({ order_id: 'o-1', order_no: 101, item_count: 2 });
-
-    const customer = await orders().getOrderScreenCustomer('c1');
-    // Same shape as the server branch (`select('name, active, deleted_at')`): no id on this answer.
-    expect(customer).toEqual({ name: 'asha Traders', active: true, deleted_at: null });
-    expect(w.serverCalls).toEqual([]);
-  });
-
-  it('item stock, GRN activity & dispatch activity: reads own customer offline with supervisor_name from GRN row', async () => {
+  it('item stock & stock aging: reads own customer offline from the copy with 0 server calls', async () => {
     const w = await readyCustomer(['c1']);
 
     const items = await stockService().StockService.getItemWiseStockList({ customerId: 'c1' });
@@ -444,17 +291,12 @@ describe('customer-copy parity & staff-key stripping on details, rates, stock, a
     expect(itemNames).toEqual(['Beans', 'Peas']);
     expect(itemNames).not.toContain('Rice');
 
-    const grnAct = await grnActivity().getCustomerGRNActivity({ customerId: 'c1', fromDate: '2026-01-01', toDate: '2026-12-31' });
-    expect(grnAct.success).toBe(true);
-    expect(sourceOf(grnAct)).toEqual(copySource());
-    expect(grnAct.data?.grns.map(g => g.gr_no).sort()).toEqual(['A2', 'B1', 'GR-1']);
-    // Customer copy holds no people/user_profiles: supervisor_name comes from the GRN row itself.
-    expect(grnAct.data?.grns.find(g => g.gr_no === 'A2')?.supervisor_name).toBe('Meera Fictional');
-
-    const dispAct = await dispatchActivity().getCustomerDispatchActivity({ customerId: 'c1', fromDate: '2026-01-01', toDate: '2026-12-31' });
-    expect(dispAct.success).toBe(true);
-    expect(sourceOf(dispAct)).toEqual(copySource());
-    expect(dispAct.data?.dispatches.map(d => d.disp_no).sort()).toEqual(['D1', 'D3']);
+    const aging = await stockAging().getCustomerStockAging({ customerId: 'c1' });
+    expect(aging.success).toBe(true);
+    expect(sourceOf(aging)).toEqual(copySource());
+    expect(aging.data?.summary.avg_dispatch_velocity_days).toBeNull();
+    expect(aging.data?.summary.items_no_recent_dispatch).toBe(0);
+    for (const item of aging.data?.items ?? []) expect(item.dispatch_info).toBeUndefined();
     expect(w.serverCalls).toEqual([]);
   });
 
@@ -500,25 +342,17 @@ describe('unmarked reads stay on the server for a customer account (ee238b62)', 
 });
 
 describe('unassigned-customer refusal & single-transaction ownership (7d43015a)', () => {
-  it('refuses unassigned customers on orders, item stock, GRN activity and dispatch activity with 0 server calls', async () => {
+  it('refuses unassigned customers on kept stock services (item stock, stock summary, stock aging) with 0 server calls', async () => {
     const w = await readyCustomer(['c1']);
-
-    const openOrder = await orders().OrderService.getCustomerOrder('c3');
-    expect(openOrder).toMatchObject({ success: false, message: 'Customer access denied', error: 'CUSTOMER_ACCESS_DENIED' });
-
-    const ordersList = await orders().getOrdersList({ customer_id: 'c3' });
-    expect(ordersList).toMatchObject({ success: false, message: 'Customer access denied', error: 'CUSTOMER_ACCESS_DENIED', data: [] });
 
     const itemStock = await stockService().StockService.getItemWiseStockList({ customerId: 'c3' });
     expect(itemStock).toMatchObject({ success: false, message: 'Customer access denied', error: 'CUSTOMER_ACCESS_DENIED' });
 
-    const grnAct = await grnActivity().getCustomerGRNActivity({ customerId: 'c3', fromDate: '2026-01-01', toDate: '2026-12-31' });
-    expect(grnAct).toMatchObject({ success: false, message: 'Customer access denied', error: 'CUSTOMER_ACCESS_DENIED' });
-    expect(grnAct.data?.grns).toEqual([]);
+    const summary = await stockSummary().getCustomerStockSummary('c3');
+    expect(summary).toMatchObject({ success: false, message: 'Customer access denied', error: 'CUSTOMER_ACCESS_DENIED' });
 
-    const dispAct = await dispatchActivity().getCustomerDispatchActivity({ customerId: 'c3', fromDate: '2026-01-01', toDate: '2026-12-31' });
-    expect(dispAct).toMatchObject({ success: false, message: 'Customer access denied', error: 'CUSTOMER_ACCESS_DENIED' });
-    expect(dispAct.data?.dispatches).toEqual([]);
+    const aging = await stockAging().getCustomerStockAging({ customerId: 'c3' });
+    expect(aging).toMatchObject({ success: false, message: 'Customer access denied', error: 'CUSTOMER_ACCESS_DENIED' });
 
     expect(w.serverCalls).toEqual([]);
   });
@@ -527,12 +361,12 @@ describe('unassigned-customer refusal & single-transaction ownership (7d43015a)'
     const w = await readyCustomer(['c1']);
     const spy = jest.spyOn(w.phone.copyDb, 'currentCopy');
 
-    const own = await grnActivity().getCustomerGRNActivity({ customerId: 'c1', fromDate: '2026-01-01', toDate: '2026-12-31' });
+    const own = await stockAging().getCustomerStockAging({ customerId: 'c1' });
     expect(own.success).toBe(true);
     expect(spy).toHaveBeenCalledTimes(1);
 
     spy.mockClear();
-    const refused = await grnActivity().getCustomerGRNActivity({ customerId: 'c3', fromDate: '2026-01-01', toDate: '2026-12-31' });
+    const refused = await stockAging().getCustomerStockAging({ customerId: 'c3' });
     expect(refused).toMatchObject({ success: false, error: 'CUSTOMER_ACCESS_DENIED' });
     expect(spy).toHaveBeenCalledTimes(1);
   });

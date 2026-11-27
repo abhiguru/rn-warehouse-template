@@ -15,10 +15,25 @@ import { lotNamed, seedWarehouse } from '@/tests/phoneCopy/grnDataset';
 import { seedDocuments } from '@/tests/phoneCopy/documentsDataset';
 import { bootWarehouse, copySource, goOffline, loadCopy, sourceOf } from '@/tests/phoneCopy/wh299Phone';
 
+const DROPPED = new Set(['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items']);
+
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
   seedDocuments();
+  const rpc = env.feed.rpc;
+  env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await rpc(name, args);
+    const data = answer.data as { entities?: unknown[] } | null;
+    if (!data?.entities) return answer;
+    if (name === 'get_sync_start') {
+      return { ...answer, data: { ...data, entities: (data.entities as string[]).filter(e => !DROPPED.has(e)) } };
+    }
+    if (name === 'get_sync_checksums') {
+      return { ...answer, data: { ...data, entities: (data.entities as Array<{ e: string }>).filter(e => !DROPPED.has(e.e)) } };
+    }
+    return answer;
+  };
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -60,13 +75,24 @@ describe('P6: GRN details from the copy', () => {
     });
   });
 
-  it('counts the GRN as the server does and names its dispatches', async () => {
+  it('counts the GRN as WH-381 specifies: total_dispatched = SUM(MAX(0, qty - stock)), empty dispatches_summary & invoices_summary with grn_lock invoice_state', async () => {
     await ready();
     const { grn } = ((await grnDetails('g-A2')) as any).data;
+    // l02: max(0, 100 - 0) = 100, l03: max(0, 100 - 19) = 81 -> 181
     expect(grn.statistics).toMatchObject({
-      total_items: 2, total_qty: 200, total_stock: 19, total_weight: 5500, total_dispatched: 100, has_out_of_stock: true,
+      total_items: 2, total_qty: 200, total_stock: 19, total_weight: 5500, total_dispatched: 181, has_out_of_stock: true,
     });
-    expect(grn.dispatches_summary).toEqual({ total_dispatches: 1, dispatch_numbers: ['D1'] });
+    expect(grn.dispatches_summary).toEqual({ total_dispatches: 0, dispatch_numbers: [] });
+    expect(grn.invoices_summary).toEqual({
+      total_invoices: 0,
+      invoice_state: 'partly_invoiced',
+      can_create_invoice: false,
+      invoices: [],
+      cancelled_count: 0,
+      total_amount: 0,
+      invoice_labels: [],
+      invoice_numbers: [],
+    });
   });
 
   it('lists the header photos in their display order and each lot its own photos', async () => {
@@ -110,81 +136,38 @@ describe('P6: GRN details from the copy', () => {
   });
 });
 
-describe('P6: dispatch details from the copy', () => {
-  it('gives the dispatch with its customer, lines and photos', async () => {
+describe('WH-381: dispatch details always use the server, never the phone copy', () => {
+  it('calls get_dispatch_details on the server online and offline over a ready copy', async () => {
     const w = await ready();
-    const result: any = await dispatchDetails('d-D2');
-    expect(w.serverCalls).toEqual([]);
-    expect(sourceOf(result)).toEqual(copySource());
-    const dispatch = result.data.dispatch;
-    expect(dispatch).toMatchObject({
-      id: 'd-D2', disp_no: 'D2', disp_date: '2026-11-23T05:00:00+00:00', registration: null, note: 'Fictional dispatch note',
-      customer_details: { id: 'c2', name: 'Bhavin Foods' },
-      supervisor_details: expect.objectContaining({ name: 'Meera Fictional' }),
-    });
-    expect(ids(dispatch.images)).toEqual(['ph-disp']);
-    const lines = [...dispatch.items].sort((a: any, b: any) => (a.id < b.id ? -1 : 1));
-    expect(ids(lines)).toEqual(['t2a', 't2b']);
-    expect(lines[0]).toMatchObject({
-      disp_qty: 30, grn_id: 'g-A10', grn_item_id: 'l04',
-      grn_item_details: { id: 'l04', qty: 100, stock: 20, weight: 40, rack: 'C-1', item_name: 'Beans' },
-      grn_details: { id: 'g-A10', gr_no: 'A10', customer_name: 'Bhavin Foods' },
-      item_details: { id: 'i2', name: 'Beans' },
-    });
-  });
+    const online: any = await dispatchDetails('d-D2');
+    expect(w.serverCalls.map(c => c.name)).toEqual(['get_dispatch_details']);
+    expect(sourceOf(online)).toBeUndefined();
 
-  it('counts the dispatch and orders its GRN numbers as the server does', async () => {
-    await ready();
-    const { dispatch } = ((await dispatchDetails('d-D2')) as any).data;
-    expect(dispatch.statistics).toMatchObject({ total_items: 2, total_dispatched_qty: 34, unique_grns: 2 });
-    // en_US order: "A10" before "a3".
-    expect(dispatch.grns_summary).toEqual({ total_grns: 2, grn_numbers: ['A10', 'a3'] });
-  });
-
-  it('PR1: leaves each line without invoice amounts and says they need the server', async () => {
-    await ready();
-    const result: any = await dispatchDetails('d-D2');
-    expect(sourceOf(result)).toEqual(copySource());
-    for (const line of result.data.dispatch.items) {
-      for (const amount of ['charge', 'tax', 'labour_rate', 'total']) {
-        expect(line.invoice_details ?? {}).not.toHaveProperty(amount);
-      }
-    }
-    expect(needsServer(result)).toEqual(['invoiceAmounts']);
-  });
-
-  it('C3: a dispatch deleted on the server is "not found" after the sync', async () => {
-    const w = await ready();
-    await sync(w, [{ e: 'dispatch', id: 'd-D2', op: 'delete' }]);
-    expect(await dispatchDetails('d-D2')).toMatchObject({ success: false, notFound: true });
-    expect(w.serverCalls).toEqual([]);
+    w.serverCalls.length = 0;
+    await goOffline(w);
+    const offline: any = await dispatchDetails('d-D2');
+    expect(w.serverCalls.map(c => c.name)).toEqual(['get_dispatch_details']);
+    expect(sourceOf(offline)).toBeUndefined();
   });
 });
 
-describe('the unsent-work seam (contract 10.4)', () => {
+describe('the unsent-work seam (WH-381: no dispatch deductions)', () => {
   const overlayModule = () => require(`@/features/phone-copy/${'unsentOverlay'}`) as { getUnsentOverlay: () => any };
 
-  it('returns nothing in this card', async () => {
+  it('returns nothing when no unsent GRN work exists and has zero deductions', async () => {
     await ready();
     const overlay = overlayModule().getUnsentOverlay();
     expect(overlay.grn('g-A2')).toBeNull();
     expect(overlay.lot('l03')).toBeNull();
-    expect(overlay.dispatch('d-D2')).toBeNull();
     expect(overlay.lessUnsent('l03')).toBe(0);
     expect(overlay.lessHeld('l03')).toBe(0);
   });
 
-  it('is applied by the readers: stock is the copy\'s less the unsent and the held', async () => {
+  it('lot stock stays at the copy figure with no unsent/held dispatch deduction', async () => {
     await ready();
-    const seam = overlayModule();
-    jest.spyOn(seam, 'getUnsentOverlay').mockReturnValue({
-      grn: () => null, lot: () => null, dispatch: () => null,
-      lessUnsent: (lot: string) => (lot === 'l03' ? 4 : 0),
-      lessHeld: (lot: string) => (lot === 'l03' ? 1 : 0),
-    });
     const { grn } = ((await grnDetails('g-A2')) as any).data;
-    expect(grn.items.map((item: any) => item.stock)).toEqual([0, 14]);
+    expect(grn.items.map((item: any) => item.stock)).toEqual([0, 19]);
     const list = await grnService().getAllGRNItems({ p_filters: { grn_ids: ['g-A2'] } } as never);
-    expect(Object.fromEntries(list.data.items.map((item: any) => [item.grn_item_id, item.stock]))).toEqual({ l02: 0, l03: 14 });
+    expect(Object.fromEntries(list.data.items.map((item: any) => [item.grn_item_id, item.stock]))).toEqual({ l02: 0, l03: 19 });
   });
 });
