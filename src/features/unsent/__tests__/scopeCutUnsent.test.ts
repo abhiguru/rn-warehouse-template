@@ -32,11 +32,8 @@ import { bootHolding, heldDispatchFeedRow, recorderHeldFeedRow } from '@/tests/u
 
 const HOUR = 3_600_000;
 
-const plantPhoto = (name: string, bytes = 1200): string => {
-  const uri = `${DOCUMENT_PHOTOS}${name}`;
-  files.held.set(uri, bytes);
-  return uri;
-};
+/** The address of a photo file in the unsent folder. */
+const photoUri = (name: string): string => `${DOCUMENT_PHOTOS}${name}`;
 
 const sampleNewGrnBody = (localId: string, qty = 20) => ({
   v: 1,
@@ -85,7 +82,7 @@ const sampleDispatchBody = (localId = '5f381000-0000-4000-8000-0000000000d1', lo
 });
 
 /** Seeds a schema-2 `unsent-work.db` directly so reopening exercises the 2 -> 3 in-place migration. */
-async function seedSchema2Db(seed: (helpers: { scope: string; insertItem: (row: {
+async function seedSchema2Db(plant: readonly string[], seed: (helpers: { scope: string; insertItem: (row: {
   id: string;
   seq: number;
   kind: string;
@@ -102,6 +99,7 @@ async function seedSchema2Db(seed: (helpers: { scope: string; insertItem: (row: 
   grnId?: string;
   state: unknown;
   photos?: string[];
+  rawPhotos?: string;
 }) => Promise<void>; setClockLedger: (t: number, wall: number) => Promise<void> }) => Promise<void>): Promise<void> {
   const first = await bootUnsent();
   await first.store.initUnsent();
@@ -114,6 +112,8 @@ async function seedSchema2Db(seed: (helpers: { scope: string; insertItem: (row: 
   await db.runAsync('DELETE FROM item_photos');
   await db.runAsync('DELETE FROM items');
   await db.runAsync('DELETE FROM forms');
+  // The files are planted only now: the first start's sweep (above) would remove unnamed form-* files planted earlier.
+  for (const name of plant) files.held.set(photoUri(name), 1200);
   await db.runAsync("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '2')");
 
   const insertItem = async (row: {
@@ -153,7 +153,7 @@ async function seedSchema2Db(seed: (helpers: { scope: string; insertItem: (row: 
       [itemId, storedPath, clientPhotoId, role],
     );
   };
-  const insertForm = async (row: { id: string; kind: string; grnId?: string; state: unknown; photos?: string[] }) => {
+  const insertForm = async (row: { id: string; kind: string; grnId?: string; state: unknown; photos?: string[]; rawPhotos?: string }) => {
     await db.runAsync(
       `INSERT INTO forms (id, scope, kind, grn_id, state, photos, customer, started_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 'Asha Fictional Traders', ?, ?)`,
@@ -163,7 +163,7 @@ async function seedSchema2Db(seed: (helpers: { scope: string; insertItem: (row: 
         row.kind,
         row.grnId ?? '',
         JSON.stringify(row.state),
-        JSON.stringify(row.photos ?? []),
+        row.rawPhotos ?? JSON.stringify(row.photos ?? []),
         Date.now(),
         Date.now(),
       ],
@@ -204,14 +204,14 @@ describe('1. unsent-work.db schema upgrade 2 -> 3 in-place (never wipes GRN work
   });
 
   it('upgrades schema-2 DB in-place: deletes legacy dispatch forms, items, item_photos and photo files while preserving all GRN work and files', async () => {
-    const legacyFormPhoto = plantPhoto('form-legacy-disp.jpg');
-    const legacyDispPhoto = plantPhoto('legacy-disp-direct.jpg');
-    const legacyDispDepPhoto = plantPhoto('legacy-disp-dep.jpg');
-    const legacyDispStandalonePhoto = plantPhoto('legacy-disp-standalone.jpg');
-    const keptFormPhoto = plantPhoto('form-kept-grn.jpg');
-    const keptGrnPhoto = plantPhoto('kept-grn-photo.jpg');
+    const legacyFormPhoto = photoUri('form-legacy-disp.jpg');
+    const legacyDispPhoto = photoUri('legacy-disp-direct.jpg');
+    const legacyDispDepPhoto = photoUri('legacy-disp-dep.jpg');
+    const legacyDispStandalonePhoto = photoUri('legacy-disp-standalone.jpg');
+    const keptFormPhoto = photoUri('form-kept-grn.jpg');
+    const keptGrnPhoto = photoUri('kept-grn-photo.jpg');
 
-    await seedSchema2Db(async ({ insertItem, insertPhoto, insertForm }) => {
+    await seedSchema2Db(['form-legacy-disp.jpg', 'legacy-disp-direct.jpg', 'legacy-disp-dep.jpg', 'legacy-disp-standalone.jpg', 'form-kept-grn.jpg', 'kept-grn-photo.jpg'], async ({ insertItem, insertPhoto, insertForm }) => {
       // Legacy dispatch rows that MUST be deleted by migration 2 -> 3
       await insertForm({
         id: 'form-disp-1',
@@ -333,14 +333,14 @@ describe('1. unsent-work.db schema upgrade 2 -> 3 in-place (never wipes GRN work
 
   it('WH-301 sweep case: a photo file named only in a form text or a kept form row survives for GRN work, goes for dispatch work, and a file both name survives', async () => {
     // Each file is named ONLY by text (a form's state, or an item's kept form_row): neither the photos column nor item_photos lists it.
-    const grnFormTextOnly = plantPhoto('form-grn-text-only.jpg');
-    const grnKeptRowOnly = plantPhoto('form-grn-kept-row-only.jpg');
-    const dispatchFormTextOnly = plantPhoto('form-disp-text-only.jpg');
-    const dispatchKeptRowOnly = plantPhoto('form-disp-kept-row-only.jpg');
-    const sharedByBoth = plantPhoto('form-shared-grn-and-disp.jpg');
-    const strayUnnamed = plantPhoto('form-stray-unnamed.jpg');
+    const grnFormTextOnly = photoUri('form-grn-text-only.jpg');
+    const grnKeptRowOnly = photoUri('form-grn-kept-row-only.jpg');
+    const dispatchFormTextOnly = photoUri('form-disp-text-only.jpg');
+    const dispatchKeptRowOnly = photoUri('form-disp-kept-row-only.jpg');
+    const sharedByBoth = photoUri('form-shared-grn-and-disp.jpg');
+    const strayUnnamed = photoUri('form-stray-unnamed.jpg');
 
-    await seedSchema2Db(async ({ insertItem, insertForm }) => {
+    await seedSchema2Db(['form-grn-text-only.jpg', 'form-grn-kept-row-only.jpg', 'form-disp-text-only.jpg', 'form-disp-kept-row-only.jpg', 'form-shared-grn-and-disp.jpg', 'form-stray-unnamed.jpg'], async ({ insertItem, insertForm }) => {
       await insertForm({
         id: 'form-grn-text',
         kind: 'grn',
@@ -386,9 +386,38 @@ describe('1. unsent-work.db schema upgrade 2 -> 3 in-place (never wipes GRN work
     expect(files.held.has(strayUnnamed)).toBe(false);
   });
 
+  it('when any row cannot be read, the 2 -> 3 step removes the dispatch rows but NO photo file at all (a file kept is harmless, a file lost is not)', async () => {
+    const dispatchFile = photoUri('legacy-disp-unreadable-case.jpg');
+    const dispatchFormFile = photoUri('legacy-disp-form-unreadable-case.jpg');
+    const grnFile = photoUri('kept-grn-unreadable-case.jpg');
+
+    await seedSchema2Db(['legacy-disp-unreadable-case.jpg', 'legacy-disp-form-unreadable-case.jpg', 'kept-grn-unreadable-case.jpg'], async ({ insertItem, insertPhoto, insertForm }) => {
+      await insertItem({ id: 'disp-u', seq: 1, kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch' });
+      await insertPhoto('disp-u', 'unsent-work/photos/legacy-disp-unreadable-case.jpg', 'cp-u-1', 'dispatch');
+      await insertForm({
+        id: 'form-disp-u',
+        kind: 'dispatch',
+        state: { images: [{ uri: 'app-doc:///unsent-work/photos/legacy-disp-form-unreadable-case.jpg' }] },
+        photos: ['unsent-work/photos/legacy-disp-form-unreadable-case.jpg'],
+      });
+      await insertItem({ id: 'grn-u', seq: 2, kind: 'newGrn', body: sampleNewGrnBody('5f381000-0000-4000-8000-0000000000a5'), what: 'New GRN' });
+      await insertPhoto('grn-u', 'unsent-work/photos/kept-grn-unreadable-case.jpg', 'cp-u-2', 'header');
+      // A GRN form whose photo list is not a list: the step cannot tell what it names.
+      await insertForm({ id: 'form-grn-unreadable', kind: 'grn', state: { header: {}, items: [] }, rawPhotos: '{"not":"a list"}' });
+    });
+
+    await restart();
+
+    expect((await rawRows<{ id: string }>('items')).map(i => i.id)).toEqual(['grn-u']);
+    expect((await rawRows<{ id: string }>('forms')).map(f => f.id)).toEqual(['form-grn-unreadable']);
+    expect(files.held.has(dispatchFile)).toBe(true);
+    expect(files.held.has(dispatchFormFile)).toBe(true);
+    expect(files.held.has(grnFile)).toBe(true);
+  });
+
   it('after upgrade, legacy dispatch items > 2 hours old do not count in ownUnsentCount(), do not block sign-out, and do not trip limitReached', async () => {
     const now = Date.now();
-    await seedSchema2Db(async ({ insertItem, setClockLedger }) => {
+    await seedSchema2Db([], async ({ insertItem, setClockLedger }) => {
       await setClockLedger(4 * HOUR, now);
       await insertItem({
         id: 'old-disp-1',
@@ -421,7 +450,7 @@ describe('1. unsent-work.db schema upgrade 2 -> 3 in-place (never wipes GRN work
 
   it('a > 2-hour legacy dispatch next to a recent newGrn is removed so sign-out counts only the GRN and the 2-hour gate stays clear', async () => {
     const now = Date.now();
-    await seedSchema2Db(async ({ insertItem, setClockLedger }) => {
+    await seedSchema2Db([], async ({ insertItem, setClockLedger }) => {
       await setClockLedger(4 * HOUR, now);
       await insertItem({
         id: 'old-disp-1',
@@ -475,7 +504,7 @@ describe('2. Stock overlays: server stock + newGrn + grnEdit deltas only, zero d
 
     expect(overlay.lessUnsent('l03')).toBe(0);
     expect(overlay.lessHeld('l03')).toBe(0);
-    expect(overlay.lessOthersUnsent?.('l03') ?? 0).toBe(0);
+    expect((overlay as { lessOthersUnsent?(l: string): number }).lessOthersUnsent?.('l03') ?? 0).toBe(0);
     expect(overlay.deductions().size).toBe(0);
     expect(netStock(overlay, 'l03', 19)).toBe(19);
   });
@@ -693,5 +722,26 @@ describe('3. Holding list: GRN-only held rows and HeldStrip on GRN tab only', ()
     const grnView = await rtl.render(React.createElement(GRNTab));
     expect(rtl.screen.getByTestId('holding-strip')).toHaveTextContent('2 held items need a decision');
     await grnView.unmount();
+  });
+});
+
+describe('4. A dispatch is made online only: nothing of it is kept or queued on the phone', () => {
+  it('a dispatch form is never kept as an unfinished form, while the GRN and Edit GRN forms still are', async () => {
+    await bootUnsent();
+    // react-redux is not transformed by this repo's Jest config; formOfPath never calls its hooks.
+    jest.doMock('react-redux', () => ({ useSelector: () => undefined, useDispatch: () => () => undefined, useStore: () => ({}) }));
+    jest.doMock('expo-router', () => ({ usePathname: () => '/', router: {} }));
+    const { formOfPath } = require('@/features/unsent/FormDraftHost') as typeof import('@/features/unsent/FormDraftHost');
+    expect(formOfPath('/dispatch-form')).toBeNull();
+    expect(formOfPath('/dispatch-form/step2')).toBeNull();
+    expect(formOfPath('/grn-form/step1')).toEqual({ kind: 'grn', grnId: null });
+    expect(formOfPath('/grn-edit/g-B1/step1')).toEqual({ kind: 'grnEdit', grnId: 'g-B1' });
+  });
+
+  it('there is no offline save for a dispatch: offlineNew offers only the GRN save', async () => {
+    await bootUnsent();
+    const offlineNew = require('@/features/unsent/offlineNew') as Record<string, unknown>;
+    expect(typeof offlineNew.saveNewGrn).toBe('function');
+    expect(offlineNew.saveNewDispatch).toBeUndefined();
   });
 });

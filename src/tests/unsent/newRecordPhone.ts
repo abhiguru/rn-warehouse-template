@@ -71,7 +71,6 @@ export async function bootNewRecords({ scheme = 'letters', withCopy = true }: { 
   }
   require('@/features/unsent/photosKind');
   require('@/features/unsent/newGrnKind');
-  require('@/features/unsent/newDispatchKind');
   await phone.store.initUnsent();
   const result: NewRecordPhone = {
     ...phone,

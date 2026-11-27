@@ -61,7 +61,7 @@ describe('WH-381 stock overlay: zero dispatch deductions on every role', () => {
 
     expect(overlay().lessHeld(LOT)).toBe(0);
     expect(overlay().lessUnsent(LOT)).toBe(0);
-    expect(overlay().lessOthersUnsent?.(LOT) ?? 0).toBe(0);
+    expect((overlay() as { lessOthersUnsent?(l: string): number }).lessOthersUnsent?.(LOT) ?? 0).toBe(0);
     expect(overlay().deductions().size).toBe(0);
     expect(netLotStock(LOT, LOT_STOCK)).toBe(LOT_STOCK);
   });

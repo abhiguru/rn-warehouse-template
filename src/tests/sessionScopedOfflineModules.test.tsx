@@ -73,14 +73,14 @@ describe('save waits (saveWait)', () => {
 
 describe('the number box mode (formNumberMode)', () => {
   it('a kept or restored mode goes back to online, and a form that shows it is told', async () => {
-    setFormNumberMode('dispatch', 'typed');
+    setFormNumberMode('grn', 'typed');
     restoreFormNumberMode('grn', 'pending');
     const shown = await renderHook(() => useFormNumberMode('grn'));
     expect(shown.result.current).toBe('pending');
 
     await act(async () => { await endSession(); });
 
-    expect([getFormNumberMode('grn'), getFormNumberMode('dispatch')]).toEqual(['online', 'online']);
+    expect(getFormNumberMode('grn')).toBe('online');
     expect(shown.result.current).toBe('online');
   });
 });
@@ -114,35 +114,35 @@ describe('photo downloads (photoStore)', () => {
 describe('the overlay of unsent work (unsentOverlay, UnsentMarkers)', () => {
   const row = {
     id: 'item-a', seq: 1, scope: mockScope, recorder_name: 'Ravi Fictional', kind: 'sessionProbe', request_key: 'k-a', body: '{}', depends_on: null,
-    target_ref: null, what: 'New dispatch', customer: 'asha Traders', state: 'saved', attempts: 0, first_sent_at: null, last_sent_at: null,
+    target_ref: null, what: 'GRN B1: Rack changed', customer: 'asha Traders', state: 'saved', attempts: 0, first_sent_at: null, last_sent_at: null,
     last_error: null, recorded_at: 1, recorded_tick: 1, result: null, sent_day: null,
   };
   beforeAll(() => {
-    registerSendKind('sessionProbe', { lane: 'record', send: async () => ({ kind: 'sent' }) as never, overlay: () => ({ lessUnsent: { l03: 7 } }) });
+    registerSendKind('sessionProbe', { lane: 'record', send: async () => ({ kind: 'sent' }) as never, overlay: () => ({ lot: { l03: { rack: 'Z-9' } } }) });
   });
   beforeEach(() => { mockRows = [row]; });
 
   it('the cached overlay of the first person is dropped: the next read is built again from the rows it is given', async () => {
-    expect(getUnsentOverlay().lessUnsent('l03')).toBe(7);
+    expect(getUnsentOverlay().lot('l03')).toEqual({ rack: 'Z-9' });
     // The rows are emptied in place: the same array, so only a dropped cache can show it (control below).
     mockRows.splice(0);
-    expect(getUnsentOverlay().lessUnsent('l03')).toBe(7);
+    expect(getUnsentOverlay().lot('l03')).toEqual({ rack: 'Z-9' });
 
     await endSession();
 
-    expect(getUnsentOverlay().lessUnsent('l03')).toBe(0);
+    expect(getUnsentOverlay().lot('l03')).toBeNull();
   });
 
   it('a screen showing the markers is drawn again with the next person\'s overlay', async () => {
     const shown = await renderHook(() => useUnsentOverlay());
     const before = shown.result.current;
-    expect(before.lessUnsent('l03')).toBe(7);
+    expect(before.lot('l03')).toEqual({ rack: 'Z-9' });
     mockRows.splice(0);
 
     await act(async () => { await endSession(); });
 
     expect(shown.result.current).not.toBe(before);
-    expect(shown.result.current.lessUnsent('l03')).toBe(0);
+    expect(shown.result.current.lot('l03')).toBeNull();
   });
 });
 
