@@ -7,7 +7,7 @@ import * as Crypto from 'expo-crypto';
 import { businessDate } from '@/features/phone-copy/pgCompat';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { getUnsentDb } from './unsentDb';
-import { allItems, announceUnsentChange, deleteItems, giveBackForm, insertItem, insertItems, itemById, itemsOfScope, photosOf, UNSENT_STATES, type ItemRow, type ItemState } from './unsentRows';
+import { allItems, announceUnsentChange, deleteItems, giveBackForm, insertItem, insertItems, itemById, itemsOfScope, photosOf, replaceItemWithPhotos, UNSENT_STATES, type ItemRow, type ItemState } from './unsentRows';
 import { currentPersonName } from './unsentRole';
 import { DEPENDS_ON_REFUSED, sendNow } from './sendEngine';
 import { persistWorkClock, workNow } from './workClock';
@@ -221,6 +221,41 @@ function targetOf(raw: string | null): UnsentRowView['target'] {
   if (raw === null) return {};
   const { grnId, dispatchId } = JSON.parse(raw) as TargetRef;
   return { ...(grnId === undefined ? {} : { grnId }), ...(dispatchId === undefined ? {} : { dispatchId }) };
+}
+
+/**
+ * Replaces a waiting item's body and photos in place, keeping its id and request key (WH-161 §8).
+ * Returns false once the item is sending or has been attempted.
+ */
+export async function replaceItem(
+  id: string,
+  next: {
+    body: unknown;
+    targetRef?: TargetRef;
+    what: string;
+    customer?: string;
+    photos: { file: string; role: string; lineRef?: string }[];
+    photoDoc: 'grn' | 'dispatch';
+    photoWhat: string;
+    formGrnId?: string;
+  }
+): Promise<boolean> {
+  const scope = await ownScope();
+  const db = await getUnsentDb();
+  const ok = await replaceItemWithPhotos(db, scope, id, {
+    body: next.body,
+    targetRef: next.targetRef,
+    what: next.what,
+    customer: next.customer,
+    photos: next.photos.map(photo => ({ ...photo, clientPhotoId: Crypto.randomUUID() })),
+    photoDoc: next.photoDoc,
+    photoWhat: next.photoWhat,
+    newPhotosItemId: Crypto.randomUUID(),
+    newPhotosRequestKey: Crypto.randomUUID(),
+    formGrnId: next.formGrnId,
+  });
+  if (ok) void sendNow('saved');
+  return ok;
 }
 
 /** Deletes one of the signed-in person's items, the items that wait for it and their photo files. */

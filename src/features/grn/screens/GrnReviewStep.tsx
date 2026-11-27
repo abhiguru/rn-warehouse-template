@@ -136,6 +136,7 @@ import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConne
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { offlineEditOf } from '@/features/grn/offline-edit/grnEditSave';
 import { saveGrnEditAndWait, saveGrnEditOffline } from '@/features/grn/offline-edit/grnEditKind';
+import { saveEditedUnsentGrn, useUnsentGrnEditState } from '@/features/unsent/editUnsentGrn';
 import { getFormNumberMode } from '@/features/unsent/formNumberMode';
 import { OfflineSavedDialog } from '@/features/unsent/OfflineSavedDialog';
 import { ratesNotOnPhone, runQueuedGrnSave } from '@/features/unsent/queuedGrnSave';
@@ -222,6 +223,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const grnInvoiced = useAppSelector(selectGRNInvoiced) && !isCreateMode;
   // WH-180: an imported GRN opens here only to set its rates; the details, photos and items steps stay closed.
   const grnImported = useAppSelector(selectGRNImported) && !isCreateMode;
+  // WH-161 (§8): editing a new GRN still waiting on this phone replaces the waiting item in place with no server call.
+  const editTargetId = typeof id === 'string' ? id : Array.isArray(id) ? (id[0] ?? '') : grnId ?? '';
+  const unsentEditState = useUnsentGrnEditState(editTargetId);
+  const editingUnsent = !isCreateMode && unsentEditState !== 'not-new';
   // The GRN's version token as the edit form read it (get_grn_edit_state, backend migration 121); null on an older
   // server. Save sends it back, and the server refuses the save when someone else changed the GRN since (STALE_RECORD).
   const loadedUpdatedAt = useAppSelector(selectGRNLoadedUpdatedAt);
@@ -231,8 +236,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // The rates are not on the phone: the section keeps its heading and says so (Design DQ8), and Save does not wait for them.
   const ratesNeedServer = useAppSelector(selectGRNRatesNeedServer);
   /** This edit is saved as field changes (WH-303): the form came from the phone copy, or the phone has no connection. */
+  // Never for a new GRN still on this phone: its waiting item is replaced in place (WH-161).
   const savesAsFieldChanges = () =>
-    hasCapability('sync') && backendHasFeature('grnFieldChanges') && !grnImported && !!loadedBaseline && (loadedFrom === 'copy' || isCopyOffline());
+    !editingUnsent && hasCapability('sync') && backendHasFeature('grnFieldChanges') && !grnImported && !!loadedBaseline && (loadedFrom === 'copy' || isCopyOffline());
   // Set once this form has created its GRN. A further press of Create never creates again:
   // save_grn would answer the repeat with the same GRN and every photo would go up twice.
   const createdRef = useRef(false);
@@ -294,15 +300,15 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const stored = useGrnRates(canSetRates ? rateRowList.map((r) => r.item_id) : [], ctxKey);
   const standard = useStandardRate(canSetRates);
   // Offline with no rates on the phone: the section says they are checked at send, and Save is not stopped (WH-161, PQ1).
-  // A new GRN only: an offline edit is saved as field changes, which carry no rates (WH-303).
-  const ratesOffline = isCreateMode && ratesNotOnPhone(canSetRates, stored.status);
+  // A new GRN only (also while it waits on this phone): an offline edit is saved as field changes, which carry no rates (WH-303).
+  const ratesOffline = (isCreateMode || editingUnsent) && ratesNotOnPhone(canSetRates, stored.status);
   // Staff cannot read rates, so the server says which items have none for this customer and day (migration 133). Null:
   // not asked, or an older server; the notice after the save then tells them (noteItemsWithoutRate).
   const [noRateNames, setNoRateNames] = useState<string[] | null>(null);
   // An invoiced GRN is not asked: the save's own rate check skips it, so a strip would mislead.
   const noRateItemKey = canSetRates || grnInvoiced ? '' : JSON.stringify([rateCtx.customerId, rateCtx.day, rateCtx.priceType, rateRowList.map((r) => [r.item_id, r.weight]), mode === 'edit' ? grnId : null]);
   useEffect(() => {
-    if (canSetRates || grnInvoiced || !rateCtx.customerId || rateRowList.length === 0) {
+    if (canSetRates || grnInvoiced || editingUnsent || !rateCtx.customerId || rateRowList.length === 0) {
       setNoRateNames(null);
       return;
     }
@@ -490,7 +496,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const validateFormData = async (): Promise<boolean> => {
     // Same check as step Next (the stored number): an old GRN that passed Next must also save.
-    const validation = await checkGrnForm(3, { header, items }, { isCreateMode });
+    const validation = await checkGrnForm(3, { header, items }, { isCreateMode, numberPending: getFormNumberMode('grn') === 'pending' });
 
     if (!validation.isValid) {
       setLocalValidationErrors(validation.errors);
@@ -1206,7 +1212,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // tapped. An older server has no preview: null, and the question is asked as it always was.
   const effectsGrnId = Array.isArray(id) ? id[0] : id || grnId;
   const { effects: orderEffects, refresh: refreshOrderEffects } = useOrderEffectsPreview(
-    !isCreateMode && !grnImported && !!effectsGrnId && items.length > 0,
+    !isCreateMode && !grnImported && !editingUnsent && !!effectsGrnId && items.length > 0,
     JSON.stringify([header.customer_id, header.date, items.map((item) => [item.grn_trl_id, item.item_table_id, item.qty, item.stock])]),
     () => previewUpdateGrn(buildUpdateGRNRequest(effectsGrnId as string, buildUpdateRequest(), removedImages).rpcRequest)
   );
@@ -1290,6 +1296,42 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
     dispatch(setIsSaving(true));
     try {
+      // WH-161 (§8): an unsent new GRN is updated in place in the phone's queue, with no server call.
+      if (editingUnsent) {
+        const localId = String(editedGrnId);
+        const outcome = await saveEditedUnsentGrn(
+          localId,
+          {
+            header,
+            items: items.map((item) => ({
+              item_table_id: item.item_table_id,
+              item_name: item.item_name,
+              packaging: item.packaging,
+              qty: item.qty,
+              weight: item.weight,
+              rack: item.rack,
+              package_mark: item.package_mark,
+              trl_images: item.trl_images ?? [],
+            })),
+            rates: ratesToSave(),
+          },
+          { ratesNotOnPhone: ratesOffline, lineIds: items.map((item) => item.grn_trl_id) }
+        );
+        if (formLeft()) return;
+        if (outcome === 'replaced') {
+          void triggerSuccess();
+          showToast(header.gr_no ? tr('grn.review.savedWithNumber', { number: formatIdentifier(header.gr_no) }) : tr('grn.review.saved'));
+          resetFormState();
+          router.replace(`/grn-details/${localId}`);
+          return;
+        }
+        if (outcome === 'being-sent') {
+          void triggerError();
+          showAlert(saveFailedTitle(), tr('offline.offlineNew.beingSent'));
+          return;
+        }
+      }
+
       // Built once: a send after a lost answer is the identical request. Its request code is the edit session's key
       // for this body, kept until a save is answered (grnUpdateIdempotencyKey).
       const request = buildUpdateRequest();

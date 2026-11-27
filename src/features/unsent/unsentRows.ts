@@ -263,6 +263,159 @@ export async function giveBackForm(db: UnsentDb, scope: string, recordId: string
   await announceUnsentChange();
 }
 
+export interface ReplaceItemInput {
+  body: unknown;
+  targetRef?: unknown;
+  what: string;
+  customer?: string | undefined;
+  /** The replacement photos item's details; an empty `photos` array removes any dependent photos item. */
+  photos: { file: string; clientPhotoId: string; role: string; lineRef?: string | undefined }[];
+  photoDoc: 'grn' | 'dispatch';
+  photoWhat: string;
+  newPhotosItemId: string;
+  newPhotosRequestKey: string;
+  /** Unfinished `grnEdit` form id to clear in the same step, when present. */
+  formGrnId?: string;
+}
+
+/**
+ * Replaces the body and photo rows of an unsent record item that has not been attempted yet (`state = 'saved'`, `attempts = 0`),
+ * keeping the same `id` and `request_key` (WH-161 §8). Photos already kept in the unsent folder stay where they are; new files
+ * are moved in before the commit (and moved back if anything fails or the item started sending meanwhile); removed old files are
+ * deleted after the commit. Returns false when the item is gone, sending, or already attempted.
+ */
+export async function replaceItemWithPhotos(db: UnsentDb, scope: string, itemId: string, next: ReplaceItemInput): Promise<boolean> {
+  const [current] = await db.all<ItemRow>('SELECT * FROM items WHERE id = ? AND scope = ?', [itemId, scope]);
+  if (current?.state !== 'saved' || current.attempts > 0) return false;
+  const [existingPhotosItem] = await db.all<ItemRow>(
+    "SELECT * FROM items WHERE scope = ? AND depends_on = ? AND kind = 'photos' ORDER BY seq LIMIT 1",
+    [scope, itemId]
+  );
+  const existingPhotos = existingPhotosItem
+    ? await db.all<PhotoRow>('SELECT * FROM item_photos WHERE item_id = ? ORDER BY rowid', [existingPhotosItem.id])
+    : [];
+  const existingByFile = new Map(existingPhotos.map(photo => [photo.file, photo]));
+
+  const moved: { from: string; to: string }[] = [];
+  const prepared: { uri: string; clientPhotoId: string; role: string; lineRef?: string | undefined }[] = [];
+  let replaced = false;
+  let removedFormFiles: string[] = [];
+
+  try {
+    if (next.photos.some(photo => !existingByFile.has(photo.file))) {
+      unsentPhotoDirectory().create({ intermediates: true, idempotent: true });
+    }
+    for (const photo of next.photos) {
+      const kept = existingByFile.get(photo.file);
+      if (kept) {
+        prepared.push({ uri: kept.file, clientPhotoId: kept.client_photo_id, role: photo.role, lineRef: photo.lineRef });
+        continue;
+      }
+      const source = new File(photo.file);
+      if (!source.exists) throw new Error('A photo file is not on the phone any more');
+      const name = photo.file.slice(photo.file.lastIndexOf('/') + 1);
+      const target = new File(unsentPhotoDirectory(), `${photo.clientPhotoId}-${name}`);
+      await source.move(target);
+      moved.push({ from: photo.file, to: target.uri });
+      prepared.push({ uri: target.uri, clientPhotoId: photo.clientPhotoId, role: photo.role, lineRef: photo.lineRef });
+    }
+
+    await db.transaction(async tx => {
+      const [row] = await tx.all<ItemRow>('SELECT * FROM items WHERE id = ? AND scope = ?', [itemId, scope]);
+      if (row?.state !== 'saved' || row.attempts > 0) return;
+      const done = await tx.run(
+        `UPDATE items SET body = ?, target_ref = ?, what = ?, customer = ? WHERE id = ? AND scope = ? AND state = 'saved' AND attempts = 0`,
+        [
+          JSON.stringify(next.body ?? {}),
+          next.targetRef === undefined ? null : JSON.stringify(next.targetRef),
+          next.what,
+          next.customer ?? null,
+          itemId,
+          scope,
+        ]
+      );
+      if (done.changes === 0) return;
+
+      const [dep] = await tx.all<ItemRow>(
+        "SELECT * FROM items WHERE scope = ? AND depends_on = ? AND kind = 'photos' ORDER BY seq LIMIT 1",
+        [scope, itemId]
+      );
+      if (prepared.length === 0) {
+        if (dep) {
+          await tx.run('DELETE FROM item_photos WHERE item_id = ?', [dep.id]);
+          await tx.run('DELETE FROM items WHERE id = ?', [dep.id]);
+        }
+      } else if (dep) {
+        await tx.run('UPDATE items SET what = ?, customer = ? WHERE id = ?', [next.photoWhat, next.customer ?? null, dep.id]);
+        await tx.run('DELETE FROM item_photos WHERE item_id = ?', [dep.id]);
+        for (const photo of prepared) {
+          await tx.run(
+            'INSERT INTO item_photos (item_id, file, client_photo_id, role, line_ref, done, missing) VALUES (?, ?, ?, ?, ?, 0, 0)',
+            [dep.id, photo.uri, photo.clientPhotoId, photo.role, photo.lineRef ?? null]
+          );
+        }
+      } else {
+        const [counter] = await tx.all<{ value: string }>('SELECT value FROM meta WHERE key = ?', [SEQ_KEY]);
+        const [highest] = await tx.all<{ top: number | null }>('SELECT max(seq) AS top FROM items');
+        const seq = Math.max(Number(counter?.value ?? 0), highest?.top ?? 0) + 1;
+        await tx.run(
+          `INSERT INTO items (id, seq, scope, recorder_name, kind, request_key, body, depends_on, target_ref, what, customer,
+             state, attempts, recorded_at, recorded_tick) VALUES (?, ?, ?, ?, 'photos', ?, ?, ?, NULL, ?, ?, 'saved', 0, ?, ?)`,
+          [
+            next.newPhotosItemId,
+            seq,
+            scope,
+            row.recorder_name,
+            next.newPhotosRequestKey,
+            JSON.stringify({ doc: next.photoDoc }),
+            itemId,
+            next.photoWhat,
+            next.customer ?? null,
+            row.recorded_at,
+            row.recorded_tick,
+          ]
+        );
+        await tx.run('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', [SEQ_KEY, String(seq)]);
+        for (const photo of prepared) {
+          await tx.run(
+            'INSERT INTO item_photos (item_id, file, client_photo_id, role, line_ref, done, missing) VALUES (?, ?, ?, ?, ?, 0, 0)',
+            [next.newPhotosItemId, photo.uri, photo.clientPhotoId, photo.role, photo.lineRef ?? null]
+          );
+        }
+      }
+
+      if (next.formGrnId !== undefined) {
+        const [formRow] = await tx.all<Record<string, SqlValue>>(
+          "SELECT * FROM forms WHERE scope = ? AND kind = 'grnEdit' AND grn_id = ?",
+          [scope, next.formGrnId]
+        );
+        if (formRow) {
+          await tx.run('DELETE FROM forms WHERE id = ?', [String(formRow.id)]);
+          removedFormFiles = formFiles(formRow.photos);
+        }
+      }
+      replaced = true;
+    });
+  } catch (error) {
+    await moveBack(moved);
+    throw error;
+  }
+
+  if (!replaced) {
+    await moveBack(moved);
+    return false;
+  }
+  const keptUris = new Set(prepared.map(photo => photo.uri));
+  for (const old of existingPhotos) {
+    if (!keptUris.has(old.file)) removePhotoFile(old.file);
+  }
+  for (const uri of removedFormFiles) {
+    if (!keptUris.has(uri)) removePhotoFile(uri);
+  }
+  await announceUnsentChange();
+  return true;
+}
+
 export async function allItems(): Promise<ItemRow[]> {
   const db = await getUnsentDb();
   return db.all<ItemRow>('SELECT * FROM items ORDER BY seq');

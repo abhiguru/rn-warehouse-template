@@ -92,7 +92,8 @@ import { formatSectionDate, formatNumber, formatCount, formatCardDate, formatWei
 import { Fab } from '@/components/ui/Fab';
 import { t as translate, formatIdentifier } from '@/i18n';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
-import { markerText, UnsentFootnote, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
+import { beingSentLabel, useUnsentGrnEditState } from '@/features/unsent/editUnsentGrn';
+import { markerText, onceSentLabel, UnsentFootnote, useNewDocumentActions, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
 const logger = createLogger('GRNListFiori');
 
 /** Receipts on the first page and on each later one. A facility that pages lines gets 20, then 80 lines. */
@@ -322,8 +323,22 @@ const GRNCardFiori = memo<GRNCardProps>(({
   const matched = hiddenMatches(group, words);
   const swipeableRef = useRef<SwipeableMethods>(null);
   // Edit and Print need the server: with no connection they are disabled and say why (WH-299, Design 2.5).
+  // For an unsent new GRN: Print still waits until sent, while Edit works offline until sending starts (WH-161, Design 10.3 & 10.6 DQ4).
   const needsConnection = useNeedsConnection();
-  const reasoned = (label: string) => (needsConnection ? needsConnectionLabel(label) : label);
+  const newDocument = useNewDocumentActions('grn', group.grnId);
+  const unsentEditState = useUnsentGrnEditState(group.grnId);
+  const printDisabled = needsConnection || newDocument.isNew;
+  const editDisabled = unsentEditState === 'editable' ? false : unsentEditState === 'being-sent' ? true : needsConnection;
+  const printLabel = (label: string) =>
+    newDocument.isNew && newDocument.note ? onceSentLabel(label, newDocument.note) : printDisabled ? needsConnectionLabel(label) : label;
+  const editLabel = (label: string) =>
+    unsentEditState === 'being-sent'
+      ? beingSentLabel(label)
+      : unsentEditState === 'editable'
+        ? label
+        : needsConnection
+          ? needsConnectionLabel(label)
+          : label;
   // A change of this receipt or of one of its lots that this phone has not sent: "Not sent yet" or "Sending…" (WH-301, Design 2.2).
   const overlay = useUnsentOverlay();
   const unsentMarker = overlay.marker('grn', group.grnId) ?? group.items.map(item => overlay.marker('lot', String(item.grn_item_id))).find(marker => marker !== null) ?? null;
@@ -352,13 +367,14 @@ const GRNCardFiori = memo<GRNCardProps>(({
 
   // The same actions for the swipe and for a screen reader (style guide 13.6).
   const actions = [
-    onPrint ? { name: 'print', label: reasoned(translate('lists.grn.printLabel', { title })) } : null,
-    onEdit ? { name: 'edit', label: reasoned(translate('lists.grn.editLabel', { title })) } : null,
+    onPrint ? { name: 'print', label: printLabel(translate('lists.grn.printLabel', { title })) } : null,
+    onEdit ? { name: 'edit', label: editLabel(translate('lists.grn.editLabel', { title })) } : null,
   ].filter((action): action is { name: string; label: string } => action !== null);
 
   const runAction = (name: string) => {
     swipeableRef.current?.close();
-    if (needsConnection && (name === 'edit' || name === 'print')) return;
+    if (name === 'print' && printDisabled) return;
+    if (name === 'edit' && editDisabled) return;
     if (name === 'view') onPress(group);
     else if (name === 'edit') onEdit?.(group);
     else if (name === 'print') onPrint?.(group);
@@ -371,14 +387,14 @@ const GRNCardFiori = memo<GRNCardProps>(({
           style={({ pressed }) => [
             styles.swipeButton,
             styles.swipeSecondary,
-            pressed && !needsConnection && styles.swipeSecondaryPressed,
-            needsConnection && styles.swipeDisabled,
+            pressed && !printDisabled && styles.swipeSecondaryPressed,
+            printDisabled && styles.swipeDisabled,
           ]}
           onPress={() => runAction('print')}
-          disabled={needsConnection}
+          disabled={printDisabled}
           accessibilityRole="button"
-          accessibilityLabel={reasoned(translate('lists.grn.printLabel', { title }))}
-          accessibilityState={{ disabled: needsConnection }}
+          accessibilityLabel={printLabel(translate('lists.grn.printLabel', { title }))}
+          accessibilityState={{ disabled: printDisabled }}
         >
           <Icon name="printer-outline" size={iconSize.lg} color={t.icon.primary} />
           <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>{translate('common.print')}</Text>
@@ -398,14 +414,14 @@ const GRNCardFiori = memo<GRNCardProps>(({
           style={({ pressed }) => [
             styles.swipeButton,
             styles.swipePrimary,
-            pressed && !needsConnection && styles.swipePrimaryPressed,
-            needsConnection && styles.swipeDisabled,
+            pressed && !editDisabled && styles.swipePrimaryPressed,
+            editDisabled && styles.swipeDisabled,
           ]}
           onPress={() => runAction('edit')}
-          disabled={needsConnection}
+          disabled={editDisabled}
           accessibilityRole="button"
-          accessibilityLabel={reasoned(translate('lists.grn.editLabel', { title }))}
-          accessibilityState={{ disabled: needsConnection }}
+          accessibilityLabel={editLabel(translate('lists.grn.editLabel', { title }))}
+          accessibilityState={{ disabled: editDisabled }}
         >
           <Icon name="pencil-outline" size={iconSize.lg} color={t.brand.onFill} />
           <Text style={[styles.swipeText, styles.swipeTextOnFill]} maxFontSizeMultiplier={1.6}>{translate('common.edit')}</Text>

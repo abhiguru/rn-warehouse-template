@@ -68,6 +68,7 @@ import { Button } from '@/components/ui/Button';
 import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
 import type { EntityName } from '@/features/phone-copy/copySchema';
 import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
 import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUploadService';
 
 import { showAlert } from '@/utils/alert';
@@ -88,6 +89,7 @@ import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
 import { ReplacedStrip } from '@/components/grn-details/ReplacedStrip';
 import { markGrnReplacementsChecked } from '@/services/replacedEntriesService';
+import { beingSentLabel, useUnsentGrnEditState } from '@/features/unsent/editUnsentGrn';
 import { onceSentLabel, UnsentDetailsStrip, useFollowSentRoute, useNewDocumentActions, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
 import { useQuickChange } from '@/features/quick-change/useQuickChange';
 
@@ -115,6 +117,9 @@ const makeStyles = (t: ThemeTokens) => ({
     fontSize: typography.headline.fontSize,
     fontWeight: typography.headline.fontWeight,
     color: t.text.primary,
+  },
+  editNote: {
+    paddingHorizontal: space.lg,
   },
 });
 
@@ -213,6 +218,7 @@ function GRNDetailScreen() {
   // A GRN that exists only on this phone: its actions wait for the server, whatever the connection (WH-161, Design 10.3).
   useFollowSentRoute('grn', String(id));
   const newDocument = useNewDocumentActions('grn', String(id));
+  const unsentEditState = useUnsentGrnEditState(String(id));
   const phoneNeedsConnection = useNeedsConnection();
   const needsConnection = phoneNeedsConnection || newDocument.isNew;
   const unsentOverlay = useUnsentOverlay();
@@ -220,6 +226,21 @@ function GRNDetailScreen() {
   const [markingChecked, setMarkingChecked] = useState(false);
   // WH-303: with a server that takes the edit as field changes, Edit works with no connection (the form reads the phone copy).
   const editNeedsConnection = newDocument.isNew || (phoneNeedsConnection && !(hasCapability('sync') && backendHasFeature('grnFieldChanges')));
+  // Edit of an unsent GRN works offline while waiting, and is disabled while being sent (Design 10.3, 10.6 DQ4).
+  const editDisabled =
+    isDeleting ||
+    deleteChecking ||
+    (unsentEditState === 'editable' ? false : unsentEditState === 'being-sent' ? true : editNeedsConnection);
+  const editA11yLabel =
+    unsentEditState === 'being-sent'
+      ? beingSentLabel(tr('common.edit'))
+      : unsentEditState === 'editable'
+        ? undefined
+        : editNeedsConnection
+          ? newDocument.note
+            ? onceSentLabel(tr('common.edit'), newDocument.note)
+            : needsConnectionLabel(tr('common.edit'))
+          : undefined;
 
   // Check edit permissions
   useEffect(() => {
@@ -954,9 +975,10 @@ function GRNDetailScreen() {
             canEdit && grn.imported !== true ? (
               <Button
                 type="tertiary"
+                testID="grn-details-edit"
                 onPress={handleEditGRN}
-                disabled={isDeleting || deleteChecking || editNeedsConnection}
-                accessibilityLabel={editNeedsConnection ? (newDocument.note ? onceSentLabel(tr('common.edit'), newDocument.note) : needsConnectionLabel(tr('common.edit'))) : undefined}
+                disabled={editDisabled}
+                accessibilityLabel={editA11yLabel}
               >
                 {tr('common.edit')}
               </Button>
@@ -992,6 +1014,11 @@ function GRNDetailScreen() {
           repeatedItemNames={repeatedItemNames(items)}
         />
         <UnsentDetailsStrip kind="grn" id={String(id)} lotIds={items.map(item => String(item.id))} testID="grn-details-unsent-strip" />
+        {unsentEditState === 'being-sent' ? (
+          <View style={styles.editNote}>
+            <NeedsConnectionLine testID="grn-details-edit-needs-connection" text={tr('offline.offlineNew.beingSent')} />
+          </View>
+        ) : null}
 
         {/* Tab Navigator */}
         <GRNTabNavigator
