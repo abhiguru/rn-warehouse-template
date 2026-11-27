@@ -138,7 +138,10 @@ import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { offlineEditOf } from '@/features/grn/offline-edit/grnEditSave';
 import { saveGrnEditAndWait, saveGrnEditOffline } from '@/features/grn/offline-edit/grnEditKind';
 import { acceptWithChanges, heldIdOfRoute } from '@/features/holding/heldForm';
-import { correctedGrnBody, loadHeldGrn } from '@/features/holding/heldGrn';
+import { correctedGrnBody, loadHeldGrnOf } from '@/features/holding/heldGrn';
+import { correctedGrnEditBody } from '@/features/holding/heldGrnEdit';
+import { getHeldItem, type HeldItemDetail } from '@/features/holding/holdingApi';
+import { isGrnEditBody } from '@/features/grn/offline-edit/grnEditChanges';
 import { saveEditedUnsentGrn, useUnsentGrnEditState } from '@/features/unsent/editUnsentGrn';
 import { getFormNumberMode } from '@/features/unsent/formNumberMode';
 import { OfflineSavedDialog } from '@/features/unsent/OfflineSavedDialog';
@@ -1311,32 +1314,51 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     try {
       // WH-304: a held GRN's corrected form is the supervisor's decision on it, with nothing saved or queued here.
       if (heldId !== null) {
-        const held = await loadHeldGrn(heldId);
+        const heldItem = await getHeldItem(heldId);
         if (formLeft()) return;
-        if (held.kind !== 'loaded') {
-          void triggerError();
-          showAlert(saveFailedTitle(), tr('common.couldNotLoad'));
-          return;
+        let target: HeldItemDetail;
+        let body: unknown;
+        if (heldItem.kind === 'grnEdit') {
+          // A held edit: the form against what the server held when it opened, as field changes. Never update_grn, never the queue.
+          if (heldItem.state !== 'held' || !isGrnEditBody(heldItem.body) || !loadedBaseline) {
+            void triggerError();
+            showAlert(saveFailedTitle(), tr('common.couldNotLoad'));
+            return;
+          }
+          target = heldItem;
+          // A form equal to the server's values sends the smallest body (as an edit of photos only does); the server takes it as no change.
+          body =
+            correctedGrnEditBody(heldItem.body, loadedBaseline, { header, items }, loadedUpdatedAt) ??
+            { v: 1, grnId: heldItem.body.grnId, loadedAt: loadedUpdatedAt ?? heldItem.body.loadedAt, recordedAt: heldItem.body.recordedAt };
+        } else {
+          const held = await loadHeldGrnOf(heldItem);
+          if (formLeft()) return;
+          if (held.kind !== 'loaded') {
+            void triggerError();
+            showAlert(saveFailedTitle(), tr('common.couldNotLoad'));
+            return;
+          }
+          target = held.item;
+          body = correctedGrnBody(
+            held.held,
+            {
+              header,
+              items: items.map((item) => ({
+                item_table_id: item.item_table_id,
+                item_name: item.item_name,
+                packaging: item.packaging,
+                qty: item.qty,
+                weight: item.weight,
+                rack: item.rack,
+                package_mark: item.package_mark,
+                trl_images: item.trl_images ?? [],
+              })),
+              rates: ratesToSave(),
+            },
+            items.map((item) => item.grn_trl_id)
+          );
         }
-        const body = correctedGrnBody(
-          held.held,
-          {
-            header,
-            items: items.map((item) => ({
-              item_table_id: item.item_table_id,
-              item_name: item.item_name,
-              packaging: item.packaging,
-              qty: item.qty,
-              weight: item.weight,
-              rack: item.rack,
-              package_mark: item.package_mark,
-              trl_images: item.trl_images ?? [],
-            })),
-            rates: ratesToSave(),
-          },
-          items.map((item) => item.grn_trl_id)
-        );
-        const decided = await acceptWithChanges(held.item, body, heldDecisionKey.current);
+        const decided = await acceptWithChanges(target, body, heldDecisionKey.current);
         if (formLeft()) return;
         if (decided.kind === 'accepted' || decided.kind === 'alreadyDecided') {
           void triggerSuccess();

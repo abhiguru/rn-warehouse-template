@@ -23,7 +23,7 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
 import { syncNow } from '@/features/phone-copy/syncEngine';
 import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
-import { isLotChangeBody, LOT_FIELD_LABELS } from '@/features/unsent/lotChangeKind';
+import { isLotChangeBody } from '@/features/unsent/lotChangeKind';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { formatIdentifier, t as tr } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
@@ -39,7 +39,7 @@ import { correctedLotBody, heldLotTarget } from './heldLot';
 import { decideHeldItem, getHeldItem, type HeldCurrent, type HeldItemDetail, type HeldListRow } from './holdingApi';
 import { describeReason } from './heldReason';
 import { heldCopyRows, markHeldSeen } from './heldRows';
-import { heldWhatText } from './heldWhat';
+import { heldFieldLabel, heldWhatText } from './heldWhat';
 import { HeldPhotos } from './HeldPhotos';
 
 type Fields = Record<string, unknown>;
@@ -75,14 +75,44 @@ const makeStyles = (t: ThemeTokens) => ({
   grow: { flex: 1 },
 });
 
-/** The label of a changed field ("rack" reads "Rack"). */
-const fieldLabel = (field: string): string => (field in LOT_FIELD_LABELS ? tr(LOT_FIELD_LABELS[field as keyof typeof LOT_FIELD_LABELS]) : field);
+/** The label of a changed field ("rack" reads "Rack", "customer_id" reads "Customer"). */
+const fieldLabel = heldFieldLabel;
 
 const valueText = (value: unknown): string | null => {
   if (typeof value === 'string' && value !== '') return value;
   if (typeof value === 'number' && Number.isFinite(value)) return formatNumber(value);
+  // A customer, sender, supervisor or item as the edit holds it: `{ id, name }`.
+  if (isFields(value)) return textOf(value.name);
   return null;
 };
+
+/** One line per changed header field and lot field of a held edit, and per line added or removed (the form's own labels, Design 6.x). */
+function editLines(body: Fields): string[] {
+  const lines: string[] = [];
+  const fieldLine = (field: string, change: unknown) => {
+    const to = isFields(change) ? valueText(change.to) : null;
+    if (to !== null) lines.push(`${fieldLabel(field)} ${to}`);
+  };
+  if (isFields(body.header)) for (const [field, change] of Object.entries(body.header)) fieldLine(field, change);
+  if (isFields(body.lots)) {
+    for (const lot of Object.values(body.lots)) if (isFields(lot)) for (const [field, change] of Object.entries(lot)) fieldLine(field, change);
+  }
+  const lineText = (line: unknown): string | null => {
+    if (!isFields(line)) return null;
+    const name = textOf(line.item_name);
+    const qty = valueText(line.qty);
+    return name === null ? null : [name, qty].filter(part => part !== null).join(' ');
+  };
+  for (const line of Array.isArray(body.linesAdded) ? (body.linesAdded as unknown[]) : []) {
+    const text = lineText(line);
+    if (text !== null) lines.push(`${tr('offline.linesAdded')} ${text}`);
+  }
+  for (const line of Array.isArray(body.linesRemoved) ? (body.linesRemoved as unknown[]) : []) {
+    const text = lineText(line);
+    if (text !== null) lines.push(`${tr('offline.linesRemoved')} ${text}`);
+  }
+  return lines;
+}
 
 /** The lines of the record a held item holds, as its details page would name them (identifiers are never shown as words). */
 function recordLines(row: Pick<HeldListRow, 'kind' | 'reasonData'>, body: unknown): string[] {
@@ -99,7 +129,8 @@ function recordLines(row: Pick<HeldListRow, 'kind' | 'reasonData'>, body: unknow
       return name ? [`${name} ${formatNumber(line.disp_qty)}`] : [];
     });
   }
-  if ((row.kind === 'lotChange' || row.kind === 'grnEdit') && isFields(body.changes)) {
+  if (row.kind === 'grnEdit') return editLines(body);
+  if (row.kind === 'lotChange' && isFields(body.changes)) {
     return Object.entries(body.changes).flatMap(([field, change]) => {
       const to = isFields(change) ? valueText(change.to) : null;
       return to === null ? [] : [`${fieldLabel(field)} ${to}`];
@@ -355,7 +386,8 @@ function ManagerHeldItem() {
   );
 
   const correct = (item: HeldItemDetail) => {
-    if (item.kind === 'newGrn') router.push({ pathname: '/grn-edit/[id]/step1', params: { id: heldRouteId(item.id) } });
+    // A held edit of a GRN opens the same wizard on the held item's id; its layout reads the GRN and puts the held changes on top.
+    if (item.kind === 'newGrn' || item.kind === 'grnEdit') router.push({ pathname: '/grn-edit/[id]/step1', params: { id: heldRouteId(item.id) } });
     else if (item.kind === 'newDispatch') router.push({ pathname: '/dispatch-edit/[id]/step1', params: { id: heldRouteId(item.id) } });
     else if (item.kind === 'lotChange') {
       setSheetRefusal(null);
@@ -377,8 +409,8 @@ function ManagerHeldItem() {
     const open = item.state === 'held' && item.needsDecision;
     const waiting = open && !item.canAccept;
     const showAccept = open && (item.acceptPossible || waiting);
-    // Correct opens the kind's own form where this app has one with a held mode: a new GRN, a new dispatch, and a rack and mark change.
-    const showCorrect = open && (item.kind === 'newGrn' || item.kind === 'newDispatch' || item.kind === 'lotChange');
+    // Correct opens the kind's own form where this app has one with a held mode: a new GRN, a new dispatch, an edit of a GRN, and a rack and mark change.
+    const showCorrect = open && (item.kind === 'newGrn' || item.kind === 'newDispatch' || item.kind === 'grnEdit' || item.kind === 'lotChange');
     const lotTarget = correcting ? heldLotTarget(item, lotItemName) : null;
     const stacked = fontScale >= STACK_FONT_SCALE;
     const current = currentLine(item.current);
