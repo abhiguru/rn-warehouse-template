@@ -11,7 +11,7 @@
  * ===== AGREE WITH DEVELOPMENT (the contract is silent) =====
  *  - The footnote texts are Design 2.10b's words, English: "New orders need a connection." and "Creating a dispatch needs a connection."
  *  - The queue card's Edit button is found by its role and name `lists.orderGroup.editLabel`.
- *  - The line footnotes are the findGoods.lessNotSent / lessHeld words (Design: "no new words"); "other person" has no key yet and is not tested.
+ *  - The line footnotes are the findGoods.lessNotSent / lessHeld words (Design: "no new words"); the other person's is components.offlineRead.lessOtherPerson (order-line-less-others-<id>).
  *  - The order screen's one line is `order-actions-needs-connection`; OrderItemCard's own controls carry the testIDs of section 8.
  * ============================================================
  */
@@ -30,13 +30,14 @@ let mockOffline = false;
 jest.mock('@/features/phone-copy/useNeedsConnection', () => ({
   ...jest.requireActual('@/features/phone-copy/useNeedsConnection'),
   useNeedsConnection: () => mockOffline,
+  useNeedsConnectionV3: () => mockOffline,
 }));
-const mockOverlay = { lessUnsent: {} as Record<string, number>, lessHeld: {} as Record<string, number> };
+const mockOverlay = { lessUnsent: {} as Record<string, number>, lessHeld: {} as Record<string, number>, lessOthers: {} as Record<string, number> };
 jest.mock('@/features/phone-copy/unsentOverlay', () => ({
   ...jest.requireActual('@/features/phone-copy/unsentOverlay'),
   getUnsentOverlay: () => ({ grn: () => null, lot: () => null, dispatch: () => null,
     lessUnsent: (id: string) => mockOverlay.lessUnsent[id] ?? 0, lessHeld: (id: string) => mockOverlay.lessHeld[id] ?? 0,
-    lessOthersUnsent: () => 0, deductions: () => new Map() }),
+    lessOthersUnsent: (id: string) => mockOverlay.lessOthers[id] ?? 0, deductions: () => new Map() }),
 }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false, useNetworkStatus: () => ({ isConnected: true }) }));
 jest.mock('expo-router', () => ({
@@ -50,7 +51,7 @@ jest.mock('react-native-paper', () => Object.fromEntries(
 ));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: () => {} }));
-jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
+jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1, onSessionChange: () => () => undefined }));
 jest.mock('@/features/filters/configs', () => ({ ORDER_FILTERS: { listKey: 'order-list' }, ORDER_QUEUE_FILTERS: { listKey: 'order-queue' } }));
 jest.mock('@/features/filters/components/FilteredListHeader', () => ({
   FilteredListHeader: () => null,
@@ -88,6 +89,7 @@ beforeEach(() => {
   mockRole = 'supervisor';
   mockOverlay.lessUnsent = {};
   mockOverlay.lessHeld = {};
+  mockOverlay.lessOthers = {};
   for (const method of ['log', 'warn', 'error'] as const) jest.spyOn(console, method).mockImplementation(() => undefined);
   getOrdersList.mockReset().mockResolvedValue(list);
   getOrderWithItems.mockReset().mockResolvedValue({ success: true, message: '', data: { ...order, items: [line] } as Order });
@@ -187,7 +189,7 @@ describe('S2, S3b and O1-O3: an order line', () => {
     for (const control of CONTROLS) {
       const button = screen.getByTestId(`order-line-${control}-${line.id}`);
       expect(button).toBeDisabled();
-      expect(button).toHaveAccessibleName(expect.stringMatching(/, needs a connection$/));
+      expect(button).toHaveAccessibleName(/, needs a connection$/);
     }
   });
 
@@ -223,5 +225,20 @@ describe('S2, S3b and O1-O3: an order line', () => {
     await draw();
     expect(screen.queryByTestId(`order-line-less-unsent-${line.id}`, hidden)).not.toBeOnTheScreen();
     expect(screen.queryByTestId(`order-line-less-held-${line.id}`, hidden)).not.toBeOnTheScreen();
+  });
+
+  it('O4: another person\'s unsent dispatches are a footnote of their own under the line', async () => {
+    mockOverlay.lessOthers['lot-1'] = 12;
+    await draw();
+    expect(screen.getByTestId(`order-line-less-others-${line.id}`)).toHaveTextContent("Less 12 in another person's dispatches not sent yet");
+    expect(screen.queryByTestId(`order-line-less-unsent-${line.id}`, hidden)).not.toBeOnTheScreen();
+    expect(screen.queryByTestId(`order-line-less-held-${line.id}`, hidden)).not.toBeOnTheScreen();
+  });
+
+  it('O5: this phone\'s own unsent dispatch does not show the other person\'s footnote', async () => {
+    mockOverlay.lessUnsent['lot-1'] = 3;
+    await draw();
+    expect(screen.getByTestId(`order-line-less-unsent-${line.id}`)).toBeOnTheScreen();
+    expect(screen.queryByTestId(`order-line-less-others-${line.id}`, hidden)).not.toBeOnTheScreen();
   });
 });

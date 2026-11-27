@@ -32,6 +32,8 @@ jest.mock('expo-file-system', () => require('@/tests/phoneCopy/phoneEnv').mockFa
 jest.mock('@/config/supabaseConfig', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.supabase());
 jest.mock('@react-native-community/netinfo', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.netinfo());
 jest.mock('@/config/lanTransport', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.lan());
+// react-redux is not transformed by this repo's Jest config; PhoneCopyLifecycle mounts FormDraftHost, which renders nothing off a form route, so the hook is only a stand-in.
+jest.mock('@/store/hooks', () => ({ useAppSelector: () => false, useAppDispatch: () => jest.fn() }));
 
 const server = { origin: 'https://warehouse.example.test', instanceId: 'instance-a' };
 const changeCalls = () => env.feed.named('get_sync_changes').length;

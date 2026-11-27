@@ -94,7 +94,11 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
-jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn() }));
+jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSelection: jest.fn(), triggerMediumTap: jest.fn(), useHaptics: () => ({ selection: jest.fn(), light: jest.fn(), medium: jest.fn() }) }));
+jest.mock('@/components/PrintJobsBottomSheet', () => ({ __esModule: true, default: () => null }));
+// The A-Z rail's pan gesture needs a GestureHandlerRootView, which a screen test does not mount.
+jest.mock('react-native-gesture-handler', () => ({ ...jest.requireActual('react-native-gesture-handler'), GestureDetector: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => ({ __esModule: true, default: ({ children }: { children: React.ReactNode }) => children }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
 
 /** The copy format whose readers WH-348 adds (contract section 2, "Format gate"). */
@@ -230,5 +234,41 @@ describe('Sensors and the temperature report with no connection', () => {
     await render(<SensorsScreen />);
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeOnTheScreen();
     expect(screen.queryByTestId('sensors-needs-connection')).not.toBeOnTheScreen();
+  });
+});
+
+/** A change the server sends after the first load: one row of `entity` replaced (the feed's change answer). */
+async function syncRowChange(entity: string, id: string, patch: Record<string, unknown>) {
+  const old = env.feed.rows[entity].find(r => r.id === id);
+  if (!old) throw new Error(`no ${entity} ${id}`);
+  env.feed.changeAnswers.push({ position: '1048600', as_of: env.feed.asOf, more: false, reload_all: null, reload: [],
+    changes: [{ e: entity, id, op: 'upsert', v: 'b000000000000001', row: { ...old.row, ...patch } }] });
+  await act(async () => { expect(await engine.syncNow('interval')).toBe('done'); });
+}
+
+describe('the lists read again quietly after a sync (WH-348, contract 11.1)', () => {
+  // [list, its screen, the entity a change of which the rows are made of, the row's id, what to change, the row before, the row after]
+  const QUIET = [
+    ['Customers', CustomersScreen, 'customers', 'c2', { name: 'Bhavin Renamed Foods' }, 'Bhavin Foods', 'Bhavin Renamed Foods'],
+    ['Items', ItemsScreen, 'items', 'i2', { name: 'Beans Renamed' }, 'Beans', 'Beans Renamed'],
+    ['Users', UsersScreen, 'user_profiles', 'p1', { name: 'Meera Renamed' }, 'Meera Fictional', 'Meera Renamed'],
+  ] as const;
+
+  it.each(QUIET)('%s: a sync that changed a row it shows replaces the row, with no server call and no spinner', async (_name, Screen, entity, id, patch, before, after) => {
+    await load({ expectDone: true });
+    await render(<Screen />);
+    expect((await screen.findAllByText(new RegExp(before))).length).toBeGreaterThan(0);
+    await syncRowChange(entity, id, patch);
+    expect((await screen.findAllByText(new RegExp(after), undefined, { timeout: 3000 })).length).toBeGreaterThan(0);
+    expect(screen.queryByText(new RegExp(`^${before}$`))).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText('Loading')).not.toBeOnTheScreen();
+  });
+
+  it.each(QUIET)('%s: a sync that changed nothing it shows leaves the rows as they are', async (_name, Screen, _entity, _id, _patch, before) => {
+    await load({ expectDone: true });
+    await render(<Screen />);
+    await screen.findAllByText(new RegExp(before));
+    await syncRowChange('goodsreceived', 'g-A2', { note: 'Fictional note' });
+    expect(screen.getAllByText(new RegExp(before)).length).toBeGreaterThan(0);
   });
 });

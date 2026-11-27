@@ -113,8 +113,11 @@ jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: ({ children }: { children?: React.ReactNode }) => children,
 }));
 jest.mock('react-native-paper', () => ({ Portal: ({ children }: { children?: React.ReactNode }) => children, Snackbar: () => null, ActivityIndicator: 'ActivityIndicator' }));
+// A screen test does not mount a GestureHandlerRootView, which every GestureDetector needs.
+jest.mock('react-native-gesture-handler', () => ({ ...jest.requireActual('react-native-gesture-handler'), GestureDetector: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => ({ __esModule: true, default: ({ children }: { children: React.ReactNode }) => children }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
-jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ canCreate: true, canUpdate: true, canDelete: true, isCustomer: false }) }));
+jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ canCreate: true, canUpdate: true, canDelete: true, isCustomer: false, isAdmin: true, isSupervisor: false, isStaffRole: false }) }));
 jest.mock('@/hooks/useRoleBasedAccess', () => ({ useRoleBasedAccess: () => ({ role: 'admin', canManageOrders: true, assignedCustomerIds: [] }) }));
 jest.mock('@/hooks/useBackHandler', () => ({ useBackHandler: jest.fn() }));
 jest.mock('@/hooks/useCanPrint', () => ({ useCanPrint: () => true }));
@@ -158,8 +161,16 @@ function seedFormat3() {
       payment_state: { paid_amount: 1000, due_amount: 3321, payment_status: 'part_paid' },
     });
   }
+  // The server's worked-out figures travel with the rows (contract 15.2); without them invoice details read from the server.
+  if (invoice) Object.assign(invoice.row, { items_total_amount: 4321, discount_set_by_name: null, zero_charge_set_by_name: null });
   const line = feed.rows.invoice_trl.find(r => r.id === 'invl1');
-  if (line) line.row.storage_amount = 777.5;
+  if (line) Object.assign(line.row, { storage_amount: 777.5, line_amounts: { tax_amount: 150, total_amount: 4321 } });
+  // Each lot's rate as the server worked it out (contract 16.2).
+  const rateOf = (unit: number) => ({ source: 'grn', unit_price: unit, labour_rate: 2, tax_percent: 5, weight_min: 0, weight_max: 50, varies: false });
+  for (const [id, unit] of [['l02', 12.5], ['l03', 14]] as const) {
+    const lot = feed.rows.goodsreceived_trl.find(r => r.id === id);
+    if (lot) lot.row.item_rate = rateOf(unit);
+  }
   const put = (entity: string, id: string, row: Record<string, unknown>) => feed.rows[entity].push({ id, row: { id, ...row } });
   put('grn_rates', 'gr1', { gr_id: 'g-A2', item_id: 'i1', price_type: 'monthly', weight_min: 0, weight_max: 50, unit_price: 12.5, labour_rate: 2, tax_percent: 5 });
   put('grn_rates', 'gr2', { gr_id: 'g-A2', item_id: 'i2', price_type: 'monthly', weight_min: 0, weight_max: 50, unit_price: 14, labour_rate: 2, tax_percent: 5 });
@@ -230,10 +241,10 @@ async function connection(offline: boolean) {
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
 
 /** [what is opened, its route params, the testID of each control that needs the server, the testID of the one line, the line's text] */
-type Actions = { name: string; Screen: React.ComponentType; params: Record<string, string>; ready: string; controls: string[]; line: string; lineText: string };
+type Actions = { name: string; Screen: React.ComponentType; params: Record<string, string>; ready: string; controls: string[]; line: string; lineText: string; tab?: RegExp };
 const NEEDS_LINE = 'Needs a connection';
 const ACTION_SCREENS: Actions[] = [
-  { name: 'Invoice details', Screen: InvoiceDetailsScreen, params: { id: 'inv1' }, ready: 'invoice-details-edit',
+  { name: 'Invoice details', Screen: InvoiceDetailsScreen, params: { id: 'inv1' }, ready: 'invoice-details-cancel', tab: /overview/i,
     controls: ['invoice-details-edit', 'invoice-details-cancel', 'invoice-details-delete', 'invoice-details-share-pdf', 'invoice-details-print'],
     line: 'invoice-details-actions-needs-connection', lineText: NEEDS_LINE },
   { name: 'Customer details', Screen: CustomerDetailsScreen, params: { id: 'c2' }, ready: 'customer-details-edit',
@@ -242,12 +253,13 @@ const ACTION_SCREENS: Actions[] = [
     controls: ['item-details-edit'], line: 'item-details-actions-needs-connection', lineText: NEEDS_LINE },
 ];
 
-describe.each(ACTION_SCREENS)('$name', ({ Screen, params, ready, controls, line, lineText }) => {
+describe.each(ACTION_SCREENS)('$name', ({ Screen, params, ready, controls, line, lineText, tab }) => {
   it('with no connection: each action is disabled, says why in its label, and one line says it', async () => {
     mockParams = params;
     await load({ expectDone: true });
     await connection(true);
     await render(<Screen />);
+    if (tab) await userEvent.press(await screen.findByRole('tab', { name: tab }));
     await screen.findByTestId(ready);
     for (const id of controls) {
       expect(screen.getByTestId(id)).toBeDisabled();
@@ -260,6 +272,7 @@ describe.each(ACTION_SCREENS)('$name', ({ Screen, params, ready, controls, line,
     mockParams = params;
     await load({ expectDone: true });
     await render(<Screen />);
+    if (tab) await userEvent.press(await screen.findByRole('tab', { name: tab }));
     await screen.findByTestId(ready);
     for (const id of controls) {
       expect(screen.getByTestId(id)).toBeEnabled();
@@ -309,32 +322,40 @@ describe('GRN details, rates from the copy', () => {
     await userEvent.press(await screen.findByRole('tab', { name: /overview/i }));
   };
 
+  /** WH-348 contract 16.1: GRN details has no rate action (those are WH-303's), so no line and no error shows. */
+  const noRatesLine = () => {
+    for (const id of ['grn-rates-needs-connection', 'grn-item-rates-error', 'grn-item-rates-loading', 'grn-details-section-needs-connection-rates']) {
+      expect(screen.queryByTestId(id)).not.toBeOnTheScreen();
+    }
+  };
+
   it.each([[false], [true]])('(offline: %s) shows the stored rates as online, not WH-299\'s line', async offline => {
     await load({ expectDone: true });
     await connection(offline);
     await open();
-    expect(await screen.findByTestId('grn-rates-table')).toBeOnTheScreen();
-    expect(screen.getByTestId('grn-rate-row-0')).toHaveTextContent(/12\.5/);
-    expect(screen.queryByTestId('grn-details-section-needs-connection-rates')).not.toBeOnTheScreen();
+    expect(await screen.findByTestId('grn-item-rates')).toBeOnTheScreen();
+    expect(screen.getAllByTestId('grn-item-rates-header').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('grn-item-rate-row').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/12\.5/).length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('grn-item-rates-note').length).toBeGreaterThan(0);
+    noRatesLine();
   });
 
-  it('with no connection: the rate actions are disabled and one line says so', async () => {
+  it('with no connection: the rate rows are the copy\'s and no line says the rates need a connection', async () => {
     await load({ expectDone: true });
     await connection(true);
     await open();
-    await screen.findByTestId('grn-rates-table');
-    expect(screen.getByTestId('grn-rates-needs-connection')).toHaveTextContent(NEEDS_LINE);
-    const actions = screen.queryAllByTestId(/^grn-rate-(add|change|restore|undo)-\d+$/);
-    expect(actions.length).toBeGreaterThan(0);
-    for (const action of actions) expect(action).toBeDisabled();
+    await screen.findByTestId('grn-item-rates');
+    expect(screen.getAllByText(/14/).length).toBeGreaterThan(0);
+    noRatesLine();
   });
 
-  it('reachable: no rates line and the rate actions are live', async () => {
+  it('reachable: the rate rows show and no rates line shows', async () => {
     await load({ expectDone: true });
     await open();
-    await screen.findByTestId('grn-rates-table');
-    expect(screen.queryByTestId('grn-rates-needs-connection')).not.toBeOnTheScreen();
-    for (const action of screen.queryAllByTestId(/^grn-rate-(add|change|restore|undo)-\d+$/)) expect(action).toBeEnabled();
+    await screen.findByTestId('grn-item-rates');
+    expect(screen.getAllByTestId('grn-item-rate-row').length).toBeGreaterThan(0);
+    noRatesLine();
   });
 
   it('a format-2 copy keeps WH-299\'s line', async () => {
@@ -347,8 +368,8 @@ describe('GRN details, rates from the copy', () => {
 
 type Editor = { name: string; Screen: React.ComponentType; ready: string; shows: RegExp; disabled: string[]; line: string; save: RegExp | null };
 const EDITORS: Editor[] = [
-  { name: 'Standard rate', Screen: StandardRateScreen, ready: 'first-from', shows: /6/, line: 'standard-rate-bottom-bar-needs-connection',
-    disabled: ['first-from', 'band-0-from', 'add-band-start', 'band-0-remove'], save: /^Save.*, needs a connection$/ },
+  { name: 'Standard rate', Screen: StandardRateScreen, ready: 'band-0', shows: /6/, line: 'standard-rate-bottom-bar-needs-connection',
+    disabled: ['band-0-upTo', 'band-0-rent', 'band-0-labour', 'band-0-tax', 'add-band', 'band-0-remove'], save: /^Save.*, needs a connection$/ },
   { name: 'GST details', Screen: GstDetailsScreen, ready: 'gst-details-gstin', shows: /24AAAAA0000A1Z5/, line: 'gst-details-bottom-bar-needs-connection',
     disabled: ['gst-details-gstin', 'gst-details-address', 'gst-details-legal-name', 'gst-details-sac-storage', 'gst-details-sac-labour'], save: /^Save.*, needs a connection$/ },
   { name: 'Document numbering', Screen: DocumentNumberingScreen, ready: 'numbering-row-grn', shows: /G-/, line: 'numbering-needs-connection',
@@ -363,7 +384,7 @@ describe.each(EDITORS)('$name editor', ({ Screen, ready, shows, disabled, line, 
     await connection(true);
     await render(<Screen />);
     await screen.findByTestId(ready);
-    expect(screen.getAllByText(shows).length + screen.queryAllByDisplayValue(shows).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(shows).length + screen.queryAllByDisplayValue(shows).length).toBeGreaterThan(0);
     for (const id of disabled) expect(screen.getByTestId(id)).toBeDisabled();
     expect(screen.getByTestId(line)).toHaveTextContent(NEEDS_LINE);
     if (save) expect(screen.getByRole('button', { name: save })).toBeDisabled();

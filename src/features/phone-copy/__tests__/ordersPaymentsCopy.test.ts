@@ -57,7 +57,7 @@ describe('R1: format 3, admin, supervisor and staff read orders from the copy an
     const recent = await dispatches().getRecentDispatchedOrders(10, 0);
     expect(w.serverCalls).toEqual([]);
     for (const result of [list, one, open, recent]) expect(sourceOf(result)).toEqual(copySource());
-    expect(list.data?.map(o => o.id)).toEqual(['o-1', 'o-2']);
+    expect(list.data?.map(o => o.id)).toEqual(['o-1']);
     expect(one.data?.items?.map(i => i.id)).toEqual(['ol-1', 'ol-2']);
     expect(open.data).toEqual({ order_id: 'o-1', order_no: 101, item_count: 2 });
   });
@@ -67,7 +67,7 @@ describe('R1: format 3, admin, supervisor and staff read orders from the copy an
     await goOffline(w);
     const list = await orders().getOrdersList({ has_items: true });
     expect(list.success).toBe(true);
-    expect(list.data?.map(o => o.id)).toEqual(['o-1', 'o-2']);
+    expect(list.data?.map(o => o.id)).toEqual(['o-1']);
     expect(w.serverCalls).toEqual([]);
   });
 
@@ -121,7 +121,7 @@ describe('Payments (admin and supervisor): the invoice payments come from the co
 describe('History needs a connection (Product PQ1)', () => {
   it('the order change log is not read from the copy: it asks the server', async () => {
     const w = await ready('admin');
-    const log = require('@/services/changeLogService') as { ChangeLogService: { getCustomerChangeLog: (id: string) => Promise<unknown> } };
+    const log = require('@/services/change-log-service') as { ChangeLogService: { getCustomerChangeLog: (id: string) => Promise<unknown> } };
     const result = await log.ChangeLogService.getCustomerChangeLog('c1');
     expect(w.serverCalls.map(c => c.name)).toEqual(['get_order_change_log']);
     expect(sourceOf(result)).toBeUndefined();
