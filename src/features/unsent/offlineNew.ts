@@ -25,7 +25,7 @@ import { refreshNumbering, serverIssues } from './numberingCache';
 import { sendNow } from './sendEngine';
 import { getSendKind } from './sendKinds';
 import { enqueueAll, returnToForm, type EnqueueAllInput } from './unsentQueue';
-import { SAVE_WAIT_MS } from './saveWait';
+import { openSaveWait, SAVE_WAIT_MS } from './saveWait';
 import { itemById, onUnsentChange, type ItemRow } from './unsentRows';
 import { ownUnsentRows } from './unsentStore';
 
@@ -102,6 +102,7 @@ function numberFor(type: DocType, typed: string, form: NewRecordForm): { number:
 /** Waits for the item to be sent or refused; `cancel` ends the wait early. Null when it ended with no outcome. */
 function waitForItem(itemId: string, ms: number): { outcome: Promise<ItemRow | null>; cancel: () => void } {
   let cancel = (): void => undefined;
+  const closeWait = openSaveWait(itemId, ms);
   const outcome = new Promise<ItemRow | null>(resolve => {
     let done = false;
     let unsubscribe = (): void => undefined;
@@ -109,6 +110,7 @@ function waitForItem(itemId: string, ms: number): { outcome: Promise<ItemRow | n
     function finish(row: ItemRow | null): void {
       if (done) return;
       done = true;
+      closeWait();
       clearTimeout(timer);
       unsubscribe();
       resolve(row);

@@ -14,7 +14,7 @@ import { hasCapability } from '@/config/facilityCapabilities';
 import { normalizeRole } from '@/config/roles';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
-import { SAVE_WAIT_MS } from '@/features/unsent/saveWait';
+import { SAVE_WAIT_MS, saveWaitLeft } from '@/features/unsent/saveWait';
 import { answerFiguresOf, answerCodeOf } from '@/features/unsent/refusalAnswer';
 import { classify, DEPENDS_ON_REFUSED } from '@/features/unsent/sendEngine';
 import { getSessionCacheScope } from '@/utils/cacheManager';
@@ -222,7 +222,9 @@ export async function handOverRefused(scope: string): Promise<HandOverResult> {
     for (const group of groupsOf(rows, candidate)) {
       // A record saved by a form is still being waited for by that form for a few seconds: the form takes a refusal back first.
       const first = group[0];
-      const waiting = first && (first.form_row ?? null) !== null ? SAVE_WAIT_MS - (Date.now() - first.recorded_at) : 0;
+      const byRow = first && (first.form_row ?? null) !== null ? SAVE_WAIT_MS - (Date.now() - first.recorded_at) : 0;
+      // Any kind of item whose form still waits for its answer (a GRN edit, a lot change, a new record) is left to that form.
+      const waiting = Math.max(byRow, ...group.map(row => saveWaitLeft(row.id)));
       if (waiting > 0) {
         deferMs = deferMs === null ? waiting : Math.min(deferMs, waiting);
         continue;
