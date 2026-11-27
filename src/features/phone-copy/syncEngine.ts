@@ -260,7 +260,7 @@ async function startLoad(run: Run): Promise<void> {
   await write(run, async tx => {
     await clearData(tx);
     await setMeta(tx, 'format', String(start.format));
-    if (kind) await setMeta(tx, 'kind', kind);
+    await setMeta(tx, 'kind', kind ?? 'warehouse');
     await setMeta(tx, 'copy', start.copy);
     await setMeta(tx, 'start_position', start.position);
     await setMeta(tx, 'as_of', start.asOf);
@@ -269,7 +269,7 @@ async function startLoad(run: Run): Promise<void> {
     await setMeta(tx, 'phase', 'stage1');
     if (entities.length) await setMeta(tx, 'load_cursor', JSON.stringify({ entity: entities[0], after: null }));
   });
-  publish({ feature: 'on', phase: 'stage1', asOf: start.asOf, format: start.format, kind: kind ?? undefined });
+  publish({ feature: 'on', phase: 'stage1', asOf: start.asOf, format: start.format, kind: kind ?? 'warehouse' });
 }
 
 async function fetchPage(run: Run, cursor: Cursor): Promise<SyncPage> {

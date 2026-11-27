@@ -14,7 +14,7 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { noteGrnPagingUnit } from '@/config/facilityGrnPaging';
 import { grnLineKey } from '@/features/grn/utils/grnLineKey';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { readGrnItems } from '@/features/phone-copy/reads/grnItems';
 import { readCustomerGrnItems } from '@/features/phone-copy/reads/customer/customerGrnItems';
 import { customerScope, ownIds } from '@/features/phone-copy/reads/customer/customerScope';
@@ -435,7 +435,7 @@ const getCopyCustomerGRNItems = async (
   request.p_date_from = dates?.from;
   request.p_date_to = dates?.to;
   const chained = { ...request, p_limit: undefined, p_offset: undefined, customerId };
-  const copy = await readVia('stage1', q => readCustomerGrnItems(q, customerId, request), {
+  const copy = await readVia('stage1', forCustomerAccounts(q => readCustomerGrnItems(q, customerId, request)), {
     key: `grn-customer-items:${JSON.stringify(chained)}`,
     page: offset,
   });

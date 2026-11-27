@@ -18,9 +18,14 @@ export function copyKindOf(role: unknown): CopyKind | null {
  * otherwise bring the whole store, and its screens' hooks, into everything that imports them.
  */
 export function signedInRole(): unknown {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports -- loaded when first asked, see above
-  const { store } = require('@/store') as typeof import('@/store');
-  return store.getState().auth.userProfile?.role;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports -- loaded when first asked, see above
+    const { store } = require('@/store') as typeof import('@/store');
+    return store.getState().auth.userProfile?.role;
+  } catch {
+    // No store to read (a bare engine, as in a unit test): no role, so no kind.
+    return undefined;
+  }
 }
 
 /** Reads the kind written in the copy's meta; a copy from before WH-306 has none and was loaded for a warehouse role. */

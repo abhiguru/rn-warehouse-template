@@ -13,7 +13,7 @@ import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, trimCancelReason } from '@/featur
 import { createLogger } from '@/utils/logger';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { readCustomerInvoiceSummary } from '@/features/phone-copy/reads/customer/customerInvoiceSummary';
 import { customerScope, ownIds } from '@/features/phone-copy/reads/customer/customerScope';
 import { readInvoiceData, readInvoiceItemsDetailed, readInvoiceReasons } from '@/features/phone-copy/reads/invoiceDetails';
@@ -451,7 +451,7 @@ export const getAssignedCustomerInvoices = async (
         customerHistory<CustomerInvoiceHistory>(
           `invoices:${customerId}`,
           async () => {
-            const copy = scope ? await readVia('all', q => readCustomerInvoiceSummary(q, customerId)) : null;
+            const copy = scope ? await readVia('all', forCustomerAccounts(q => readCustomerInvoiceSummary(q, customerId))) : null;
             if (copy) return { success: true, rows: copy.value.invoices as unknown as CustomerInvoiceRow[] };
             const { data, error } = await (await getAuthenticatedClient()).rpc('get_customer_invoice_summary', {
               p_customer_uuid: customerId,

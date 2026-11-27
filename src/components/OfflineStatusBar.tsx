@@ -21,9 +21,8 @@ import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePhoneCopyStatus } from '@/hooks/usePhoneCopyStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { syncNow } from '@/features/phone-copy/syncEngine';
-import { customerBarShown, deriveOpeningBar, deriveStatusBar, joinSentences, line2OpensUnsent, type StatusBarContent } from '@/features/phone-copy/statusBarState';
+import { deriveOpeningBar, deriveStatusBar, joinSentences, line2OpensUnsent, type StatusBarContent } from '@/features/phone-copy/statusBarState';
 import { useUnsentSummary } from '@/features/unsent/unsentStore';
-import { useAppSelector } from '@/store/hooks';
 import { iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { formatLoadedAt } from '@/utils/formatters';
@@ -95,7 +94,6 @@ export function OfflineStatusBar() {
   const tokens = useTokens();
   const insets = useSafeAreaInsets();
   const snapshot = usePhoneCopyStatus();
-  const customerAccount = useAppSelector(state => state.auth.userProfile?.role === 'customer');
   const offline = useIsOffline();
   const { fontScale } = useWindowDimensions();
   const unsent = useUnsentSummary();
@@ -145,9 +143,6 @@ export function OfflineStatusBar() {
   const label = line2 ? joinSentences(line1, line2) : line1;
   // Line 2 opens "Unsent items" (Design 4.1); the opening states have no line 2.
   const opensUnsent = !empty && opening === null && line2OpensUnsent(view.line2);
-
-  // A customer account has the bar only in its first-load states; the strip under its headers carries the time (WH-306).
-  if (customerAccount && !customerBarShown(snapshot.phase)) return null;
 
   // The bar is two parts side by side on one background: the status (one screen-reader stop with the words) and,
   // when there is one, "Try again" (its own stop, so a screen reader reaches it on both platforms).

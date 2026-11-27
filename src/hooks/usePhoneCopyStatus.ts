@@ -8,9 +8,8 @@ import { formatCopySize } from '@/features/phone-copy/copyStorage';
 import { getSyncSnapshot, subscribeSync, type SyncSnapshot } from '@/features/phone-copy/syncStore';
 import { t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
-import { isCopyRole, isWarehouseCopyRole } from '@/config/offlineStart';
+import { isCopyRole } from '@/config/offlineStart';
 import { copyKindOf } from '@/features/phone-copy/copyKind';
-import { customerBarShown } from '@/features/phone-copy/statusBarState';
 import { eraseCopy } from '@/features/phone-copy/copyDb';
 
 export function usePhoneCopyStatus(): SyncSnapshot {
@@ -45,17 +44,6 @@ export function useCopyFeatureOn(): boolean {
   const capability = useFacilityCapabilities().sync === true;
   const feature = useSyncExternalStore(subscribeSync, () => getSyncSnapshot().feature, () => getSyncSnapshot().feature);
   return session && capability && feature !== 'off';
-}
-
-/**
- * The status bar is drawn: for the warehouse roles whenever the feature is on, for a customer account only in its
- * first-load states (WH-306, Design 9.1); the strip under its headers carries the time. Also the inset the bar reserves.
- */
-export function useCopyBarShown(): boolean {
-  const on = useCopyFeatureOn();
-  const role = useAppSelector(state => state.auth.userProfile?.role);
-  const { phase } = usePhoneCopyStatus();
-  return on && (isWarehouseCopyRole(role) || customerBarShown(phase));
 }
 
 /**

@@ -7,6 +7,7 @@
 
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { readVia } from '@/features/phone-copy/readRoute';
+import { readForCustomer } from '@/features/phone-copy/reads/customer/customerScope';
 import { readAllStockAging, readCustomerStockAging } from '@/features/phone-copy/reads/reports/stockAging';
 import { t } from '@/i18n';
 import { createLogger } from '@/utils/logger';
@@ -96,7 +97,10 @@ export async function getCustomerStockAging(
     }
 
     // The phone copy answers when it can (WH-299), in the function's own shape.
-    const copy = await readVia('all', q => readCustomerStockAging(q, params.customerId, params.agingBuckets));
+    const copy = await readForCustomer(params.customerId, 'all', q => readCustomerStockAging(q, params.customerId, params.agingBuckets));
+    if (copy && 'refused' in copy) {
+      return { success: false, data: EMPTY_RESPONSE, message: t('errors.customer.accessDenied'), error: 'CUSTOMER_ACCESS_DENIED' };
+    }
     const source = copy?.source;
     const { data, error } = copy
       ? { data: copy.value as unknown, error: null }

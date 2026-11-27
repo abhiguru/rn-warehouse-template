@@ -18,7 +18,7 @@ import { isUnsettledFailure, serverText } from '@/utils/serverText';
 import { waitForServer } from '@/utils/lostAnswer';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { readCustomerDispatchList, type CustomerDispatchListData } from '@/features/phone-copy/reads/customer/customerDispatchList';
 import { customerScope, ownIds, type CustomerScope } from '@/features/phone-copy/reads/customer/customerScope';
 import { readDispatchList } from '@/features/phone-copy/reads/dispatchList';
@@ -679,7 +679,7 @@ const readCopyCustomerDispatches = async (
   const scope = await customerScope('all');
   if (!scope) return null;
   if (!scope.names.has(customerId)) return { refused: scope.source };
-  const copy = await readVia('all', q => readCustomerDispatchList(q, customerId, limit, offset, includeItems));
+  const copy = await readVia('all', forCustomerAccounts(q => readCustomerDispatchList(q, customerId, limit, offset, includeItems)));
   return copy ? { page: copy.value, source: copy.source } : null;
 };
 

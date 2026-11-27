@@ -76,7 +76,8 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { OfflineStatusBar } from '@/components/OfflineStatusBar';
 import { PhoneCopyLifecycle } from '@/features/phone-copy/components/PhoneCopyLifecycle';
-import { useCopyBarShown, useCopyFeatureOn, useCopySession, useEraseCopyForRole } from '@/hooks/usePhoneCopyStatus';
+import { useCopyFeatureOn, useCopySession, useEraseCopyForRole } from '@/hooks/usePhoneCopyStatus';
+import { useCopyBarShown } from '@/features/phone-copy/useCopyBarShown';
 import { BelowCopyBarContext, WindowInsetsContext, useBelowCopyBar } from '@/hooks/useBelowCopyBar';
 import UpgradingBanner from '@/components/UpgradingBanner';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
@@ -574,7 +575,7 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: (centralU
             <GestureHandlerRootView style={{ flex: 1 }}>
               <ForceUpdateModal />
               {/* The phone copy's bar where the feature is on (WH-298), today's banner elsewhere. */}
-              {copyBar ? <OfflineStatusBar /> : <OfflineBanner />}
+              {copyBar ? copyBarShown ? <OfflineStatusBar /> : null : <OfflineBanner />}
               {copySession ? <PhoneCopyLifecycle /> : null}
               <UpgradingBanner belowCopyBar={copyBarShown} />
               <BottomSheetModalProvider>

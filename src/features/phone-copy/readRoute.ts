@@ -40,6 +40,18 @@ export interface CopyReader {
   readonly role: 'admin' | 'supervisor' | 'staff' | 'customer';
 }
 
+const FOR_CUSTOMER_ACCOUNTS = Symbol('forCustomerAccounts');
+
+/**
+ * Marks a reader as written for a customer account's copy (WH-306). A copy read by a customer account holds only its own
+ * rows and none of the settings, people or lock tables the warehouse readers lean on, so `readVia` serves a customer
+ * account from the copy only through a reader marked this way; every other read stays on the server for it.
+ */
+export function forCustomerAccounts<T extends (q: CopyReader) => unknown>(reader: T): T {
+  return Object.assign(reader, { [FOR_CUSTOMER_ACCOUNTS]: true });
+}
+const isForCustomerAccounts = (reader: object): boolean => (reader as { [FOR_CUSTOMER_ACCOUNTS]?: boolean })[FOR_CUSTOMER_ACCOUNTS] === true;
+
 export interface CopyAnswer<T> {
   value: T;
   source: DataSource;
@@ -76,8 +88,9 @@ function recordChain(key: string, record: ChainRecord): void {
  * not begun its first load (no format yet) is eligible: what it holds is a question of its phase.
  */
 export function copyEligible(): boolean {
+  if (!hasCapability('sync')) return false;
   const role = signedInRole();
-  if (!hasCapability('sync') || !isCopyRole(role)) return false;
+  if (!isCopyRole(role)) return false;
   const { feature, format, kind } = getSyncSnapshot();
   if (feature === 'off') return false;
   if (kind !== undefined && kind !== copyKindOf(role)) return false;
@@ -173,7 +186,9 @@ export async function readVia<T>(
   fromCopy: (q: CopyReader) => Promise<T>,
   chain?: PageChain
 ): Promise<CopyAnswer<T> | CopyRestart | null> {
-  const route = copyRoute(need);
+  const decided = copyRoute(need);
+  // A customer account's copy is read only by the readers written for it.
+  const route = decided === 'copy' && signedInRole() === 'customer' && !isForCustomerAccounts(fromCopy) ? 'server' : decided;
   const later = chain !== undefined && chain.page > 0;
   const first = later ? chains.get(chain.key) : undefined;
   if (first?.source === 'copy' && route === 'server') return { restart: true };

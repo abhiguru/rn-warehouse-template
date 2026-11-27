@@ -1,7 +1,7 @@
 import { discoverOperator, loadOperatorServer, saveOperatorServer, getActiveOperatorServer } from './operatorServer';
 import { setFacilityCapabilities } from './facilityCapabilities';
 import { noteBackendRelease } from './backendTooOld';
-import { setFacilityRelease } from './backendFeatures';
+import { getFacilityRelease, setFacilityRelease } from './backendFeatures';
 import { clearAppTooOld, isAppTooOld, reportAppTooOld } from './appTooOld';
 import { noteDiscoveryAnswered, noteDiscoveryUpgrading } from './upgradeNotice';
 import { UPGRADING_CODE } from '@/utils/serverText';
@@ -57,11 +57,13 @@ async function offlineStartConfig(
     onLimitPassed: role => { pastLimitRole = role; },
     onUnreadable: () => { profileUnreadable = true; },
   })) as { role?: unknown } | null;
+  // The release the kept config tells; one that does not say is read from what this run learnt of the facility (WH-306).
+  const schemaHead = config.schemaHead ?? getFacilityRelease().schemaHead;
   if (!profile) {
     if (profileUnreadable) return 'store-unreadable';
-    return opensOffline(pastLimitRole, config.schemaHead) ? 'past-limit' : 'profile-refused';
+    return opensOffline(pastLimitRole, schemaHead) ? 'past-limit' : 'profile-refused';
   }
-  return opensOffline(profile.role, config.schemaHead) ? config : null;
+  return opensOffline(profile.role, schemaHead) ? config : null;
 }
 
 // Discovery is public. Complete local cleanup before adopting a replacement
