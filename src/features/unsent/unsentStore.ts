@@ -13,7 +13,7 @@ import './photosKind';
 import { ownHeldCopyRows, subscribeHeldRows } from '@/features/holding/heldRows';
 import { startSendEngine } from './sendEngine';
 import { getUnsentDb } from './unsentDb';
-import { allItems, onUnsentChange, UNSENT_STATES, type ItemRow } from './unsentRows';
+import { allItems, onUnsentChange, sweepOrphanFormFiles, UNSENT_STATES, type ItemRow } from './unsentRows';
 import { cannotSendUnsent } from './unsentRole';
 import { startWorkClock, UNSENT_LIMIT_MS, workNow } from './workClock';
 
@@ -158,7 +158,8 @@ export function refreshUnsent(): Promise<void> {
  * the next change of session or write.
  */
 export async function initUnsent(): Promise<void> {
-  if (!state.started) {
+  const firstStart = !state.started;
+  if (firstStart) {
     state.started = true;
     startSendEngine();
     onUnsentChange(refreshUnsent);
@@ -176,6 +177,7 @@ export async function initUnsent(): Promise<void> {
   } catch (error) {
     logger.warn('The unsent-work file could not be opened at start', loggableError(error));
   }
+  if (firstStart) await sweepOrphanFormFiles();
   await refreshUnsent();
 }
 

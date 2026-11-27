@@ -522,6 +522,31 @@ export async function deleteItems(scope: string, ids: string[]): Promise<void> {
 }
 
 /**
+ * At start-up (no form is open yet): removes the `form-*` files of the unsent folder that no photo row, no unfinished form and
+ * no kept `form_row` names, such as a photo given back with no saved form when the app was then closed. Never touches any other
+ * file or a file a row names. Never throws.
+ */
+export async function sweepOrphanFormFiles(): Promise<void> {
+  try {
+    const db = await getUnsentDb();
+    const named = new Set<string>();
+    for (const row of await db.all<{ file: string }>('SELECT file FROM item_photos', [])) named.add(fileOfStored(row.file));
+    for (const row of await db.all<{ photos: string | null }>('SELECT photos FROM forms', [])) for (const file of formFiles(row.photos ?? undefined)) named.add(file);
+    for (const row of await db.all<{ form_row: string | null }>('SELECT form_row FROM items WHERE form_row IS NOT NULL', [])) {
+      const kept = JSON.parse(row.form_row ?? '{}') as { photos?: string };
+      for (const file of formFiles(kept.photos)) named.add(file);
+    }
+    const folder = unsentPhotoDirectory();
+    if (!folder.exists) return;
+    for (const entry of folder.list()) {
+      if (entry instanceof File && entry.name.startsWith('form-') && !named.has(entry.uri)) removePhotoFile(entry.uri);
+    }
+  } catch (error) {
+    logger.warn('The unsent folder could not be swept', loggableError(error));
+  }
+}
+
+/**
  * Removes the "Sent" rows of an earlier day (Product: a sent item stays listed, with its number, until the end of that day).
  * A sent item that others still wait for is kept: they need its answer.
  */
