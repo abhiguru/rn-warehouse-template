@@ -235,10 +235,19 @@ export async function giveBackForm(db: UnsentDb, scope: string, recordId: string
       const name = photo.file.slice(photo.file.lastIndexOf('/') + 1).replace(/^[0-9a-f-]{36}-/, '');
       const origin = taken?.find(entry => entry.to === photo.file)?.from;
       // No form was saved for it: the photo goes back where it came from.
-      const target = !form.hadForm && origin ? new File(origin) : new File(unsentPhotoDirectory(), `form-${name}`);
+      const inFolder = new File(unsentPhotoDirectory(), `form-${name}`);
       const source = new File(photo.file);
       if (!source.exists) continue;
-      await source.move(target);
+      let target = !form.hadForm && origin ? new File(origin) : inFolder;
+      try {
+        await source.move(target);
+      } catch (error) {
+        // The cache folder it came from is gone (as after an iOS update): the photo stays in the unsent folder and the form names that.
+        if (target === inFolder) throw error;
+        logger.warn('A photo could not go back to where it came from; it stays in the unsent folder');
+        target = inFolder;
+        await source.move(target);
+      }
       moved.push({ from: photo.file, to: target.uri });
       back.push(target.uri);
       // The cache file the form first named is no longer there: the form names the moved file instead.
