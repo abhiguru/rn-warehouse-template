@@ -35,6 +35,8 @@ import authReducer, { setUserProfile } from '@/store/slices/authSlice';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import themeReducer from '@/store/slices/themeSlice';
 import { setLanguage } from '@/i18n';
+import { OfflineStatusBar } from '@/components/OfflineStatusBar';
+import { useCopyBarShown } from '@/features/phone-copy/useCopyBarShown';
 import { resetScreenFocus } from '@/tests/components/focusHarness';
 
 jest.mock('expo-sqlite', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.sqlite(), { virtual: true });
@@ -169,11 +171,21 @@ async function connection(offline: boolean) {
     mockNet.set(offline);
   });
 }
-type Node = { props: Record<string, unknown> };
-const iconsOf = (testID: string) =>
-  (screen.getByTestId(testID) as unknown as { findAll(test: (node: Node) => boolean): Node[] })
-    .findAll(node => typeof node.props?.name === 'string')
-    .map(node => node.props.name as string);
+type Node = { props: Record<string, unknown>; children?: ReadonlyArray<Node | string> };
+/** Every icon name under a testID: the (mocked) Icon is a host element whose `name` prop is the icon. RNTL 14 has no `findAll`, so the tree is walked by `children`. */
+function iconsOf(testID: string): string[] {
+  const names: string[] = [];
+  const walk = (node: Node | string) => {
+    if (typeof node === 'string') return;
+    if (typeof node.props?.name === 'string') names.push(node.props.name);
+    node.children?.forEach(walk);
+  };
+  walk(screen.getByTestId(testID) as unknown as Node);
+  return names;
+}
+/** What `app/_layout.tsx` draws above the stack for a copy session: the bar, where `useCopyBarShown` says so. */
+const Bar = () => (useCopyBarShown() ? <OfflineStatusBar /> : null);
+const TabUnderBar = () => <><Bar /><Tab /></>;
 
 describe('the strip: three states (Design 9.2 with 9.7 DQ1, 9.3)', () => {
   it('current: "Up to date, <time>" with the check icon; no status bar; no list time line', async () => {
@@ -265,7 +277,7 @@ describe('the first load (Design 9.1 rows 5 and 7, DQ8)', () => {
     const run = engine.syncNow('open');
     await Promise.race([gate.opened, run]);
     expect(syncStore.getSyncSnapshot().phase).toBe('stage1');
-    await render(<Tab />);
+    await render(<TabUnderBar />);
     expect(await screen.findByTestId('grn-card-server-grn')).toBeOnTheScreen(); // today's server answer
     expect(screen.getByTestId('offline-status-bar')).toBeOnTheScreen();
     expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();

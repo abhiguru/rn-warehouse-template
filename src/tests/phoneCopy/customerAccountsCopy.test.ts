@@ -21,6 +21,7 @@
  * ==============================================
  */
 import { env, eraseEverything, idsOf, resetEnv } from '@/tests/phoneCopy/phoneEnv';
+import { createFakeFeed } from '@/tests/phoneCopy/fakeFeed';
 import { fakeDatabaseNames } from '@/tests/phoneCopy/fakeExpoSqlite';
 import { CUSTOMER_ENTITIES, NEVER_FOR_CUSTOMER, seedCustomerAccount } from '@/tests/phoneCopy/customerAccountFeed';
 import { bootWarehouse, copySource, goOffline, loadCopy, sourceOf, tryLoadCopy } from '@/tests/phoneCopy/wh299Phone';
@@ -231,7 +232,7 @@ describe('access change and a deleted customer (PQ4, L5)', () => {
 /** The server's feed again, for the account's customers `own` (what a changed assignment gives). */
 function resetFeedTo(own: string[]) {
   const { copy, startPosition, asOf } = env.feed;
-  resetEnv();
+  env.feed = createFakeFeed(); // a new server feed only: resetEnv would close the phone's copy database mid-test
   seedCustomerAccount(own);
   Object.assign(env.feed, { copy, startPosition, asOf });
 }

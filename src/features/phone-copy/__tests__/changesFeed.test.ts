@@ -19,6 +19,7 @@
  * ===========================================================================================
  */
 import { bootPhone, env, eraseEverything, idsOf, metaOf, resetEnv, rowsOf, type Phone } from '@/tests/phoneCopy/phoneEnv';
+import { SYNC_FORMATS } from '@/features/phone-copy/copySchema';
 import { failStatement } from '@/tests/phoneCopy/fakeExpoSqlite';
 import { ENTITIES, grnRow, hex, lotRow, type Change } from '@/tests/phoneCopy/fakeFeed';
 
@@ -317,7 +318,7 @@ describe('T29: "reload_all" (Product\'s answer to P1)', () => {
 
   it('FORMAT_CHANGED to a format the app does not know: the feature is off and the copy is erased', async () => {
     const phone = await loaded();
-    env.feed.format = 7;
+    env.feed.format = Math.max(...SYNC_FORMATS) + 1; // one above the newest format the app knows, read at run time
     env.feed.changeAnswers.push(reloadAll('FORMAT_CHANGED'));
     expect(await phone.engine.syncNow('pull-to-refresh')).toBe('off');
     expect(phone.syncStore.getSyncSnapshot().feature).toBe('off');
