@@ -3,7 +3,7 @@
  * A warehouse copy holds every customer's rows and a customer account's copy holds only its own, so a copy is read only
  * by the kind it was loaded for, and is erased when the signed-in role changes kind.
  */
-import { isWarehouseCopyRole } from '@/config/offlineStart';
+import { isWarehouseCopyRole } from '@/config/copyRoles';
 
 export type CopyKind = 'warehouse' | 'customer';
 

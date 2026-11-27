@@ -4,7 +4,7 @@
  * changes between two pages is told to start again (section 2.2), so rows of the two never mix.
  */
 import { hasCapability } from '@/config/facilityCapabilities';
-import { isCopyRole } from '@/config/offlineStart';
+import { isCopyRole } from '@/config/copyRoles';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger } from '@/utils/logger';

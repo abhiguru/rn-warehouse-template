@@ -20,13 +20,9 @@ import { registerSessionScoped } from './sessionScopedRegistry';
 
 const STORAGE_KEY = 'offline_start_v1';
 
-/** The roles that work in the warehouse: the staff-only surfaces of the phone copy are for them (WH-306). */
-export const WAREHOUSE_COPY_ROLES: readonly string[] = ['admin', 'supervisor', 'staff'];
-export const isWarehouseCopyRole = (role: unknown): boolean => typeof role === 'string' && WAREHOUSE_COPY_ROLES.includes(role);
-
-/** The roles the phone copy and the offline start are for: the warehouse roles and, from WH-306, customer accounts. */
-export const COPY_ROLES: readonly string[] = [...WAREHOUSE_COPY_ROLES, 'customer'];
-export const isCopyRole = (role: unknown): boolean => typeof role === 'string' && COPY_ROLES.includes(role);
+// The role lists live in copyRoles (no import-time work); re-exported so existing imports keep working.
+import { isWarehouseCopyRole } from './copyRoles';
+export { WAREHOUSE_COPY_ROLES, isWarehouseCopyRole, COPY_ROLES, isCopyRole } from './copyRoles';
 
 /**
  * True when a person of this role may open the app with no answer from the server: a warehouse role always; a customer
