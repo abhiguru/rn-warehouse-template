@@ -219,6 +219,8 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
 
   it('(b) a photo refused as not the person\'s is tried again, and marked missing (not_yours) once one full sync run has ended', async () => {
     const phone = await startStaff();
+    // PhoneCopyLifecycle starts it with the copy; it does not listen at import. The phone's modules are loaded fresh at boot.
+    (require('@/features/holding/heldPhotos') as typeof import('@/features/holding/heldPhotos')).startHeldPhotos();
     await refusedDispatchWithPhotos(phone);
     server.answers.register_held_photo_upload = () => serverRefusal('HELD_PHOTO_NOT_YOURS', 'not yours');
     server.answers.mark_held_photo_missing = () => okAnswer;
@@ -236,6 +238,21 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
     expect((await photoRows())[0]).toMatchObject({ missing: 1 });
     expect((await itemRows()).find(row => row.kind === 'photos')?.state).toBe('held');
     expect(phone.store.getUnsentSummary().count).toBe(0);
+  });
+
+  it('(b) nothing counts sync runs before startHeldPhotos(): a run that ends first does not release a refused photo', async () => {
+    const phone = await startStaff();
+    await refusedDispatchWithPhotos(phone);
+    server.answers.register_held_photo_upload = () => serverRefusal('HELD_PHOTO_NOT_YOURS', 'not yours');
+    server.answers.mark_held_photo_missing = () => okAnswer;
+
+    await phone.pass();
+    await phone.sync();
+    await phone.pass();
+    await phone.sync();
+    await phone.pass();
+    expect(missingCalls()).toHaveLength(0);
+    expect((await itemRows()).find(row => row.kind === 'photos')?.state).toBe('refused');
   });
 
   it('a report the server did not take is not marked: the photo stays waiting and is reported again next pass', async () => {

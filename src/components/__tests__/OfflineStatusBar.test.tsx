@@ -28,7 +28,11 @@ jest.mock('@/hooks/usePhoneCopyStatus', () => ({
   useCopyFeatureOn: () => true,
 }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => mockOffline }));
-jest.mock('@/features/phone-copy/syncEngine', () => ({ syncNow: jest.fn(async () => 'done') }));
+jest.mock('@/features/phone-copy/syncEngine', () => ({
+  syncNow: jest.fn(async () => 'done'),
+  subscribeSyncRunEnd: jest.fn(() => () => undefined),
+  isCopyReadable: jest.fn(() => false),
+}));
 jest.mock('@/hooks/useTheme', () => {
   const { getTokens: tokensOf } = jest.requireActual('@/theme/tokens');
   const current = () => tokensOf('orange', 'light');

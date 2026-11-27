@@ -540,3 +540,58 @@ describe('K9 (PQ7): administrator "Move to the holding list" (p_recorder)', () =
     expect(await allItemRows()).toHaveLength(2);
   });
 });
+
+describe('WH-303: an item whose form still waits for its save is not handed over yet', () => {
+  const saveWait = () => require('@/features/unsent/saveWait') as typeof import('@/features/unsent/saveWait');
+  const holdCalls = () => rpcCalls('hold_items').flatMap(call => (call.args.p_items as { request_key: string }[]).map(item => item.request_key));
+
+  async function twoRefused() {
+    const phone = await startStaff();
+    await phone.offline();
+    const waiting = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody('l03', 25), what: 'New dispatch', customer: 'asha Traders' });
+    const other = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody('l03', 26), what: 'New dispatch', customer: 'asha Traders' });
+    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+    server.answers.hold_items = holdOk('srv-held');
+    return { phone, waiting, other };
+  }
+
+  it('leaves the item with an open wait alone, hands over the other item of the same pass, and the waiting one once the wait is closed', async () => {
+    const { phone, waiting, other } = await twoRefused();
+    const closeWait = saveWait().openSaveWait(waiting.id);
+    await phone.online();
+    await phone.pass(1_000);
+
+    expect(holdCalls()).toEqual([other.requestKey]);
+    expect((await allItemRows()).map(r => [r.id === waiting.id ? 'waiting' : 'other', r.state])).toEqual([['waiting', 'refused'], ['other', 'held']]);
+
+    closeWait();
+    await phone.pass(1_000);
+    expect(holdCalls()).toEqual([other.requestKey, waiting.requestKey]);
+    expect((await allItemRows()).every(r => r.state === 'held')).toBe(true);
+  });
+
+  it('closeSaveWait (the form has handled the outcome) lets the item go at once, with the wait still running', async () => {
+    const { phone, waiting } = await twoRefused();
+    saveWait().openSaveWait(waiting.id, saveWait().SAVE_WAIT_MS + saveWait().SAVE_WAIT_SAFETY_MS);
+    await phone.online();
+    await phone.pass(1_000);
+    expect(holdCalls()).not.toContain(waiting.requestKey);
+
+    saveWait().closeSaveWait(waiting.id);
+    await phone.pass(1_000);
+    expect(holdCalls()).toContain(waiting.requestKey);
+  });
+
+  it('a form that never closes the wait does not hold the item for ever: after the 8 s wait and the safety time it goes', async () => {
+    const { phone, waiting } = await twoRefused();
+    saveWait().openSaveWait(waiting.id, saveWait().SAVE_WAIT_MS + saveWait().SAVE_WAIT_SAFETY_MS);
+    await phone.online();
+    await phone.pass(1_000);
+    await phone.pass(saveWait().SAVE_WAIT_MS); // the 8 s wait is over, the safety time is not
+    expect(holdCalls()).not.toContain(waiting.requestKey);
+
+    await phone.pass(saveWait().SAVE_WAIT_SAFETY_MS);
+    expect(holdCalls()).toContain(waiting.requestKey);
+    expect((await allItemRows()).find(r => r.id === waiting.id)?.state).toBe('held');
+  });
+});

@@ -405,3 +405,37 @@ describe('T16: off', () => {
     expect(w.phone.syncStore.getSyncSnapshot().format).toBeGreaterThanOrEqual(6);
   });
 });
+
+describe('WH-306: a customer account keeps nothing for a customer that left its copy', () => {
+  const kept = async (w: Warehouse, kind: string, key: string, body: unknown, asOf = iso()) =>
+    (await db(w)).run('INSERT OR REPLACE INTO money_answers (kind, key, as_of, today, body, used_at) VALUES (?, ?, ?, ?, ?, ?)', [kind, key, asOf, null, JSON.stringify(body), Date.now()]);
+  const keys = async (w: Warehouse) => (await money(w)).map(r => `${r.kind}:${r.key}`);
+
+  it('customer: the statement, the activity answer and the mark of a customer no longer in the copy go; those of copy customers stay', async () => {
+    env.feed.format = 7;
+    const w = await ready('customer');
+    await kept(w, 'statement', 'c9', statementBody('c9'));
+    await kept(w, 'activity', 'customer:c9|2026-10-29|2026-11-27', { success: true });
+    await kept(w, 'activity', 'customer:c2|2026-10-29|2026-11-27', { success: true });
+    await kept(w, 'activity', 'customers|2026-10-29|2026-11-27', { success: true });
+    await (await db(w)).run("INSERT OR IGNORE INTO money_stale (customer_id) VALUES ('c9')");
+    startPass();
+    await runEnd(w);
+    await until(async () => (await keys(w)).includes('statement:c3'), 15000);
+    const left = await keys(w);
+    expect(left).not.toContain('statement:c9');
+    expect(left).not.toContain('activity:customer:c9|2026-10-29|2026-11-27');
+    expect(left).toEqual(expect.arrayContaining(['activity:customer:c2|2026-10-29|2026-11-27', 'activity:customers|2026-10-29|2026-11-27', 'statement:c1', 'statement:c2', 'statement:c3']));
+    expect(await stale(w)).not.toContain('c9');
+  }, 25000);
+
+  it('staff is unaffected: the same kept rows are still there after a pass', async () => {
+    const w = await ready('staff');
+    await kept(w, 'statement', 'c9', statementBody('c9'));
+    await kept(w, 'activity', 'customer:c9|2026-10-29|2026-11-27', { success: true });
+    startPass();
+    await runEnd(w, [mark('c1')]);
+    await pause(2600);
+    expect(await keys(w)).toEqual(['activity:customer:c9|2026-10-29|2026-11-27', 'statement:c9']);
+  }, 20000);
+});
