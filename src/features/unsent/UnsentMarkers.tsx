@@ -188,3 +188,28 @@ export function IncludesUnsentLine({ count, testID }: { count: number | undefine
     </Text>
   );
 }
+
+/**
+ * Design 10.7 (PQ1): in place of the rates section's body when the rates are not on the phone. One footnote line with a
+ * cloud-off icon; it never blocks Next or Create GRN.
+ */
+export function RatesCheckedWhenSent() {
+  const styles = useThemedStyles(makeStyles);
+  const tokens = useTokens();
+  return (
+    <View style={styles.footnote} testID="grn-review-rates-checked-when-sent">
+      <Icon name="cloud-off-outline" size={iconSize.sm} color={tokens.text.secondary} importantForAccessibility="no" />
+      <Text style={styles.footnoteText}>{tr('offline.offlineNew.ratesCheckedWhenSent')}</Text>
+    </View>
+  );
+}
+
+/** Design 10.7 (PQ5): where the dispatch Review step shows the order-effects note online, offline it says the changes come after the send. */
+export function OrderChangesLater() {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <Text style={styles.line} testID="dispatch-review-order-changes-later">
+      {tr('offline.offlineNew.orderChangesLater')}
+    </Text>
+  );
+}

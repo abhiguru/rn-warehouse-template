@@ -136,6 +136,10 @@ import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConne
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { offlineEditOf } from '@/features/grn/offline-edit/grnEditSave';
 import { saveGrnEditAndWait, saveGrnEditOffline } from '@/features/grn/offline-edit/grnEditKind';
+import { getFormNumberMode } from '@/features/unsent/formNumberMode';
+import { OfflineSavedDialog } from '@/features/unsent/OfflineSavedDialog';
+import { ratesNotOnPhone, runQueuedGrnSave } from '@/features/unsent/queuedGrnSave';
+import { RatesCheckedWhenSent } from '@/features/unsent/UnsentMarkers';
 import { keepFailedPhotos } from '@/features/unsent/keepFailedPhotos';
 
 const log = createLogger('grn');
@@ -252,6 +256,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const [documentNumber, setDocumentNumber] = useState('');
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successDialogData, setSuccessDialogData] = useState<DocumentData | null>(null);
+  // A new GRN kept on the phone and not sent (WH-161): the dialog that says so.
+  const [offlineSaved, setOfflineSaved] = useState<{ localId: string; customer: string; number: string | undefined; afterEarlierEntries: boolean } | null>(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [showImageOverlay, setShowImageOverlay] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -287,6 +293,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const rateRowList = useMemo(() => groupRows(items), [items]);
   const stored = useGrnRates(canSetRates ? rateRowList.map((r) => r.item_id) : [], ctxKey);
   const standard = useStandardRate(canSetRates);
+  // Offline with no rates on the phone: the section says they are checked at send, and Save is not stopped (WH-161, PQ1).
+  // A new GRN only: an offline edit is saved as field changes, which carry no rates (WH-303).
+  const ratesOffline = isCreateMode && ratesNotOnPhone(canSetRates, stored.status);
   // Staff cannot read rates, so the server says which items have none for this customer and day (migration 133). Null:
   // not asked, or an older server; the notice after the save then tells them (noteItemsWithoutRate).
   const [noRateNames, setNoRateNames] = useState<string[] | null>(null);
@@ -530,13 +539,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
 
     // Every line needs a rate before the GRN is saved (and the rates must be known).
-    if (canSetRates && !savesAsFieldChanges() && stored.status !== 'ready') {
+    if (canSetRates && !savesAsFieldChanges() && stored.status !== 'ready' && !ratesOffline) {
       showAlert(tr('grn.review.ratesNotLoadedTitle'), tr('grn.review.ratesNotLoadedMessage'));
       scrollToRates();
       return;
     }
     // An invoiced GRN is not checked: its invoice keeps its own figures and the server skips the check too.
-    if (canSetRates && !savesAsFieldChanges() && !grnInvoiced && missingCount(pricedRows) > 0) {
+    if (canSetRates && !savesAsFieldChanges() && !ratesOffline && !grnInvoiced && missingCount(pricedRows) > 0) {
       showAlert(tr('grn.review.ratesMissingTitle'), tr('grn.review.ratesMissingMessage'));
       scrollToRates();
       return;
@@ -884,7 +893,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       // answer that never came, then sends the same body and gets the same idempotency key. (createGRN does not
       // ask for a number: a new one per press would save the GRN twice.)
       let grNo = carried?.grNo ?? header.gr_no;
-      if (!grNo) {
+      if (!grNo && getFormNumberMode('grn') !== 'pending') {
         try {
           grNo = await getNextGRNNumber(header.date);
         } catch (numberError) {
@@ -931,9 +940,25 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         warnDuplicate,
       };
 
+      // On the queue (offline, an older entry unsent, or no rates on the phone): the same Save, kept on the phone (WH-161).
+      const queued = await runQueuedGrnSave(request, { ratesNotOnPhone: ratesOffline, numberTyped: grNoTyped }, createGRN);
+      if (formLeft()) return;
+      if (queued.kind === 'alert') {
+        void triggerError();
+        showAlert(saveFailedTitle(), queued.message, [{ text: tr('common.ok'), onPress: leaveToNumberStep }]);
+        return;
+      }
+      if (queued.kind === 'saved') {
+        createdRef.current = true;
+        void triggerSuccess();
+        resetFormState();
+        setOfflineSaved({ localId: queued.localId, customer: header.customer_name || tr('common.unknown'), number: queued.number, afterEarlierEntries: queued.afterEarlierEntries });
+        return;
+      }
+
       const result = await sendUntilAnswered(
         (resend, storedAnswer) =>
-          createGRN({
+          queued.kind === 'result' ? Promise.resolve(queued.result) : createGRN({
             ...request,
             ...(storedAnswer === undefined ? {} : { storedAnswer }),
             ...(resend ? { resend } : {}),
@@ -1671,7 +1696,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                       />
                     </>
                   )
-                ) : (
+                ) : ratesOffline ? <RatesCheckedWhenSent /> : (
                 <GrnRatesSection
                   rows={pricedRows}
                   status={stored.status}
@@ -1760,6 +1785,23 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         variant="warning"
         icon="image-off-outline"
         dismissible={false}
+      />
+
+      <OfflineSavedDialog
+        isVisible={offlineSaved !== null}
+        document="grn"
+        customer={offlineSaved?.customer ?? ''}
+        number={offlineSaved?.number}
+        afterEarlierEntries={offlineSaved?.afterEarlierEntries ?? false}
+        onView={() => {
+          const localId = offlineSaved?.localId;
+          setOfflineSaved(null);
+          void router.replace(localId ? `/grn-details/${localId}` : '/grn');
+        }}
+        onCreateAnother={() => {
+          setOfflineSaved(null);
+          void router.replace('/grn-form/step1');
+        }}
       />
 
       <DocumentSuccessDialog

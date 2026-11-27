@@ -54,7 +54,8 @@ export interface NewRecordForm {
 export type SaveAnswer =
   | { path: 'direct'; result: unknown }
   | { path: 'sent'; result: Record<string, unknown> }
-  | { path: 'saved'; itemId: string }
+  /** `localId`: the document's id on this phone, for View (its details open by it). */
+  | { path: 'saved'; itemId: string; localId: string }
   | { path: 'refused'; answer: unknown }
   | { path: 'duplicate'; warning: unknown };
 
@@ -143,11 +144,11 @@ async function outcomeOf(row: ItemRow): Promise<SaveAnswer> {
 }
 
 /** Saves the inputs, then (the phone being reachable) waits for the record's outcome; offline it is saved at once. */
-async function saveAndWait(inputs: EnqueueAllInput[], formKind: DocType): Promise<SaveAnswer> {
+async function saveAndWait(inputs: EnqueueAllInput[], formKind: DocType, localId: string): Promise<SaveAnswer> {
   const wasOffline = isCopyOffline();
   const [record] = await enqueueAll(inputs, { kind: formKind });
   if (!record) throw new Error('Nothing was saved');
-  if (wasOffline) return { path: 'saved', itemId: record.id };
+  if (wasOffline) return { path: 'saved', itemId: record.id, localId };
   // The answer within 8 s, or the end of the send pass without one (lost, not sent yet, behind an older item): saved on the phone.
   const wait = waitForItem(record.id, SAVE_WAIT_MS);
   const passEnded = sendNow('saved').then(async () => {
@@ -156,7 +157,7 @@ async function saveAndWait(inputs: EnqueueAllInput[], formKind: DocType): Promis
   });
   const row = await Promise.race([wait.outcome, passEnded]);
   wait.cancel();
-  return row ? outcomeOf(row) : { path: 'saved', itemId: record.id };
+  return row ? outcomeOf(row) : { path: 'saved', itemId: record.id, localId };
 }
 
 const photoInput = (doc: DocType, photos: SavePhoto[] | undefined, what: string, customer: string): EnqueueAllInput[] =>
@@ -203,7 +204,8 @@ export function saveNewGrn(payload: CreateGRNPayload, form: NewRecordForm): Prom
         },
         ...photoInput('grn', form.photos, t('offline.unsent.whatPhotosNewGrn', { count }), customer),
       ],
-      'grn'
+      'grn',
+      localId
     );
   });
 }
@@ -244,7 +246,8 @@ export function saveNewDispatch(payload: CreateDispatchFormPayload, form: NewRec
         },
         ...photoInput('dispatch', form.photos, t('offline.unsent.whatPhotosNewDispatch', { count: form.photos?.length ?? 0 }), customer),
       ],
-      'dispatch'
+      'dispatch',
+      body.localId
     );
   });
 }
