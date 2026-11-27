@@ -4,7 +4,7 @@
  * search are never asked. With the offline feature off nothing is stopped (criterion 14).
  */
 import { hasCapability } from '@/config/facilityCapabilities';
-import { getUnsentSummary, oldestUnsentAgeMs, ownUnsentRows } from './unsentStore';
+import { getUnsentSummary, oldestUnsentAgeMs, ownUnsentCount } from './unsentStore';
 
 export type WorkGate = { ok: true } | { ok: false; count: number; oldestAgeMs: number | null };
 export type AccountGate = { ok: true } | { ok: false; count: number | null };
@@ -23,6 +23,6 @@ export function canStartWork(): WorkGate {
 export function accountActionAllowed(): AccountGate {
   if (!hasCapability('sync')) return { ok: true };
   if (getUnsentSummary().unreadable) return { ok: false, count: null };
-  const count = ownUnsentRows().length;
+  const count = ownUnsentCount();
   return count === 0 ? { ok: true } : { ok: false, count };
 }

@@ -60,6 +60,16 @@ const listeners = createListeners();
 export const ownUnsentRows = (): ItemRow[] =>
   state.scope === null ? [] : state.rows.filter(row => row.scope === state.scope && UNSENT_STATES.includes(row.state));
 
+/**
+ * How many entries the person sees: a photos item waiting for its record counts with the record, once (WH-161). The one count the
+ * bar, the 2-hour gate and the sign-out refusal all show and compare.
+ */
+export const countEntries = (rows: readonly ItemRow[]): number =>
+  rows.filter(row => !(row.kind === 'photos' && row.depends_on !== null && rows.some(other => other.id === row.depends_on))).length;
+
+/** The count of the person's own unsent entries. */
+export const ownUnsentCount = (): number => countEntries(ownUnsentRows());
+
 function build(): UnsentSummary {
   if (state.unreadable) return { count: 0, sendBy: 0, limitReached: true, unreadable: true, waitingForAdmin: 0 };
   const counted = ownUnsentRows();
@@ -73,9 +83,7 @@ function build(): UnsentSummary {
     limitReached = age >= UNSENT_LIMIT_MS;
     sendBy = Date.now() + (UNSENT_LIMIT_MS - age);
   }
-  // A photos item waiting for its record counts with the record, once (WH-161).
-  const own = counted.filter(row => !(row.kind === 'photos' && row.depends_on !== null && counted.some(other => other.id === row.depends_on)));
-  return { count: own.length, sendBy, limitReached, unreadable: false, waitingForAdmin: 0 };
+  return { count: countEntries(counted), sendBy, limitReached, unreadable: false, waitingForAdmin: 0 };
 }
 
 /** The summary now. The same object while nothing in it changed (for `useSyncExternalStore`). */
