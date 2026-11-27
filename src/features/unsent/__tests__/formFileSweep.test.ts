@@ -165,3 +165,47 @@ describe('giving a saved record back when the cache folder its photo came from i
     expect(row.state).toContain('app-doc:///unsent-work/photos/');
   });
 });
+
+describe('a form whose photo list is empty but whose text names the file (owner\'s iPhone: re-saved on the unfixed build after an update)', () => {
+  const textNaming = (uri: string) => JSON.stringify({ header: { gr_no: 'RV15001', gr_images: [{ uri }] }, items: [] });
+  const imageOf = (state: unknown) => (state as { header: { gr_images: { uri: string }[] } }).header.gr_images[0].uri;
+  const arrange = async (address: string) => {
+    const phone = await firstStart();
+    const { saveFormDraft } = require('@/features/unsent/formDrafts') as typeof import('@/features/unsent/formDrafts');
+    await saveFormDraft({ kind: 'grn', state: { header: { gr_no: 'RV15001', gr_images: [] }, items: [] } });
+    const file = plant('form-x.jpg');
+    await rawRun(`UPDATE forms SET state = '${textNaming(address)}', photos = '[]' WHERE kind = 'grn'`);
+    return { phone, file };
+  };
+  const loaded = async () => imageOf((await (require('@/features/unsent/formDrafts') as typeof import('@/features/unsent/formDrafts')).loadFormDraft('grn'))?.state);
+
+  it('keeps the file and gives back a current address when the text names it by a legacy absolute address of another container', async () => {
+    const { file } = await arrange(`${LEGACY_ROOT}unsent-work/photos/form-x.jpg`);
+
+    await restart();
+
+    expect(exists(file)).toBe(true);
+    expect(await loaded()).toBe(file);
+  });
+
+  it('keeps the file and gives back a current address when the text names it as app-doc:///', async () => {
+    const { file } = await arrange('app-doc:///unsent-work/photos/form-x.jpg');
+
+    await restart();
+
+    expect(exists(file)).toBe(true);
+    expect(await loaded()).toBe(file);
+  });
+
+  it('keeps the file a kept form_row names in its text although its photo list is empty', async () => {
+    const phone = await firstStart();
+    const record = await phone.queue.enqueue({ kind: 'testRecord', body: {}, what: 'GRN 1 for Asha Fictional Traders' });
+    const file = plant('form-x.jpg');
+    const formRow = JSON.stringify({ hadForm: true, state: textNaming(`${LEGACY_ROOT}unsent-work/photos/form-x.jpg`), photos: '[]' });
+    await rawRun(`UPDATE items SET form_row = '${formRow.replace(/'/g, "''")}' WHERE id = '${record.id}'`);
+
+    await restart();
+
+    expect(exists(file)).toBe(true);
+  });
+});
