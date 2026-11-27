@@ -59,6 +59,7 @@ import type { DataSource } from '@/features/phone-copy/sourced';
 import { activityMoneyOn } from '@/features/phone-copy/money/moneyGate';
 import { eraseMoney } from '@/features/phone-copy/money/moneyStore';
 import { isCopyOffline, syncNow } from '@/features/phone-copy/syncEngine';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useQuietReread, type QuietReread } from '@/features/phone-copy/useQuietReread';
 import { isAccessRefusal } from '@/utils/rpcRefusal';
 import { activityNotHere, keepActivity, keptActivityOf, readExactActivity, readOfflineActivity, type KeptActivity } from './keptActivity';
@@ -164,6 +165,11 @@ export interface ReportQueryOptions<T> {
    * last gave it and shown offline whatever its period, in place of the saved answer of `persist`. Default false.
    */
   keptWhenCopy?: boolean;
+  /**
+   * Only the server can give this report (WH-381): with the phone offline nothing is asked and nothing kept is shown (the
+   * screen draws its needs-a-connection state), and it is asked again by itself on reconnecting. Default false.
+   */
+  serverOnly?: boolean;
 }
 
 /** An answer younger than this is not asked for again on a return: a quick look elsewhere and back. */
@@ -344,7 +350,10 @@ export function useReportQuery<T>({
   revalidateOnReturn = true,
   copyKinds,
   keptWhenCopy = false,
+  serverOnly = false,
 }: ReportQueryOptions<T>): ReportQuery<T> {
+  const offlineNow = useNeedsConnection();
+  const askServer = enabled && !(serverOnly && offlineNow);
   const [isRefreshing, setRefreshing] = useState(false);
   const queryKey = ['report', ...key];
   const query = useQuery<T, Error>(
@@ -401,7 +410,7 @@ export function useReportQuery<T>({
         else if (persist && fromCopy === undefined) void writeReportCache(key, { data: result.data, updatedAt: Date.now() }, generation);
         return result.data;
       },
-      enabled,
+      enabled: askServer,
       // Reports are read for today's figures: show the last answer, and always ask again.
       staleTime: 0,
       refetchOnMount: 'always',
@@ -432,8 +441,8 @@ export function useReportQuery<T>({
   const inFront = focused && foreground;
   const wasInFront = useRef(inFront);
   // Read when the return happens, so the effect runs on a change of `inFront` alone.
-  const latest = useRef({ enabled, revalidateOnReturn, hasData: false, dataUpdatedAt: 0, refetch });
-  latest.current = { enabled, revalidateOnReturn, hasData: query.data !== undefined, dataUpdatedAt: query.dataUpdatedAt, refetch };
+  const latest = useRef({ enabled: askServer, revalidateOnReturn, hasData: false, dataUpdatedAt: 0, refetch });
+  latest.current = { enabled: askServer, revalidateOnReturn, hasData: query.data !== undefined, dataUpdatedAt: query.dataUpdatedAt, refetch };
   useEffect(() => {
     const returned = inFront && !wasInFront.current;
     wasInFront.current = inFront;

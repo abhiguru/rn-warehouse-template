@@ -184,6 +184,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const filters = useReportFilters(INVOICE_HISTORY_CUSTOMERS);
   const { period, view } = filters.request;
   const query = useReportQuery<AllInvoiceHistoryData>({
+    serverOnly: true,
     key: [REPORT_ID, 'customers', period.from, period.to],
     fetch: () => getAllInvoiceHistory({ fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.invoiceHistory.loadError'),
@@ -217,6 +218,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      needsConnectionId={`${REPORT_ID}-needs-connection`}
       reportId={REPORT_ID}
       title={tr('reports.titles.invoiceHistory')}
       subtitle={tr('reports.shared.allCustomers')}
@@ -309,6 +311,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const payments = filters.ctx.payments === true;
   const { period, view } = filters.request;
   const query = useReportQuery<InvoiceHistoryData>({
+    serverOnly: true,
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerInvoiceHistory({ customerId, fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.invoiceHistory.loadError'),
@@ -399,6 +402,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 
   return (
     <ReportScaffold
+      needsConnectionId={`${REPORT_ID}-needs-connection`}
       reportId={REPORT_ID}
       title={tr('reports.titles.invoiceHistory')}
       subtitle={customerName || undefined}

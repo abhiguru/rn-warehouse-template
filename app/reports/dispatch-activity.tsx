@@ -173,6 +173,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const filters = useReportFilters(DISPATCH_ACTIVITY_CUSTOMERS);
   const { period, view } = filters.request;
   const query = useReportQuery<AllDispatchActivityData>({
+    serverOnly: true,
     key: [REPORT_ID, 'customers', period.from, period.to],
     fetch: () => getAllDispatchActivity({ fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.dispatchActivity.loadError'),
@@ -204,6 +205,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      needsConnectionId={`${REPORT_ID}-needs-connection`}
       reportId={REPORT_ID}
       title={tr('reports.titles.dispatchActivity')}
       subtitle={tr('reports.shared.allCustomers')}
@@ -294,6 +296,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const filters = useReportFilters(DISPATCH_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period, view } = filters.request;
   const query = useReportQuery<DispatchActivityData>({
+    serverOnly: true,
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerDispatchActivity({ customerId, fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.dispatchActivity.loadError'),
@@ -376,6 +379,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 
   return (
     <ReportScaffold
+      needsConnectionId={`${REPORT_ID}-needs-connection`}
       reportId={REPORT_ID}
       title={tr('reports.titles.dispatchActivity')}
       subtitle={customerName || undefined}

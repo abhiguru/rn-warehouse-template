@@ -145,6 +145,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const filters = useReportFilters(GRN_ACTIVITY_CUSTOMERS);
   const { period, view } = filters.request;
   const query = useReportQuery<AllGRNActivityData>({
+    serverOnly: true,
     key: [REPORT_ID, 'customers', period.from, period.to],
     fetch: () => getAllGRNActivity({ fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.grnActivity.loadError'),
@@ -176,6 +177,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      needsConnectionId={`${REPORT_ID}-needs-connection`}
       reportId={REPORT_ID}
       title={tr('reports.titles.grnActivity')}
       subtitle={tr('reports.shared.allCustomers')}
@@ -262,6 +264,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const filters = useReportFilters(GRN_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period, view } = filters.request;
   const query = useReportQuery<GRNActivityData>({
+    serverOnly: true,
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerGRNActivity({ customerId, fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.grnActivity.loadError'),
@@ -332,6 +335,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 
   return (
     <ReportScaffold
+      needsConnectionId={`${REPORT_ID}-needs-connection`}
       reportId={REPORT_ID}
       title={tr('reports.titles.grnActivity')}
       subtitle={customerName || undefined}

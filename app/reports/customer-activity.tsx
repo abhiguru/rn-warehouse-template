@@ -55,6 +55,7 @@ import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportPrefs } from '@/features/reports/useReportPrefs';
 import { useActivityMoney } from '@/features/phone-copy/money/useActivityMoney';
+import { useActivityServerOnly } from '@/features/reports/useActivityServerOnly';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { clearDestinationFilters, useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -177,9 +178,11 @@ export default function CustomerActivityScreen() {
 const customerKey = (customer: CustomerActivityRow) => customer.customer_id;
 
 function CustomersReport({ scope }: { scope: ReportScope }) {
+  const serverOnly = useActivityServerOnly();
   const filters = useReportFilters(CUSTOMER_ACTIVITY_CUSTOMERS);
   const { period, view } = filters.request;
   const query = useReportQuery<AllCustomerActivityData>({
+    serverOnly: serverOnly,
     key: [REPORT_ID, 'customers', period.from, period.to],
     fetch: () => getAllCustomerActivity({ fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.customerActivity.listError'),
@@ -216,6 +219,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      needsConnectionId={serverOnly ? `${REPORT_ID}-needs-connection` : undefined}
       reportId={REPORT_ID}
       title={tr('reports.titles.customerActivity')}
       subtitle={tr('reports.shared.allCustomers')}
@@ -337,10 +341,12 @@ interface CustomerDashboardProps {
 
 function CustomerDashboard({ customerId, customerName, onChangeCustomer }: CustomerDashboardProps) {
   const styles = useThemedStyles(makeStyles);
+  const serverOnly = useActivityServerOnly();
   const filters = useReportFilters(CUSTOMER_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period } = filters.request;
   const payments = filters.ctx.payments === true;
   const query = useReportQuery<CustomerActivityDetailData>({
+    serverOnly: serverOnly,
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerActivityDetail({ customerId, fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.customerActivity.detailError'),
@@ -421,6 +427,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
 
   return (
     <ReportScaffold
+      needsConnectionId={serverOnly ? `${REPORT_ID}-needs-connection` : undefined}
       reportId={REPORT_ID}
       title={tr('reports.titles.customerActivity')}
       subtitle={name || undefined}

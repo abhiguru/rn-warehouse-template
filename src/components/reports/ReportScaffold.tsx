@@ -31,7 +31,7 @@ import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
 import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
 import { useHideListTime } from '@/features/phone-copy/useCustomerAge';
-import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { useNeedsConnection, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -113,8 +113,9 @@ interface ReportScaffoldBaseProps<T> {
   /** Title of the failure with nothing to show. The reason is shown under it. */
   errorTitle?: string;
   /**
-   * A report that only the server can give (sensors, the temperature report): testID of the "needs a connection" state
-   * shown, with no "Try again", while the phone is offline over a copy of format 3 (WH-348, Design 2.5).
+   * A report that only the server can give (sensors, the temperature report, the activity reports, WH-381): testID of the
+   * "needs a connection" state. While the phone is offline the header and this state are all that shows, in every phase,
+   * with no kept rows, no "Try again" and no export icons (Design offline-capture.md 13.1 A).
    */
   needsConnectionId?: string;
   /**
@@ -210,6 +211,7 @@ function ReportScaffoldInner<T>({
 }: ReportScaffoldProps<T>) {
   const t = useTokens();
   const phoneNeedsConnection = useNeedsConnectionV3();
+  const serverOnlyOffline = useNeedsConnection() && Boolean(needsConnectionId);
   const hideListTime = useHideListTime();
   const showCustomerAge = !needsConnectionId && !hideCustomerAgeStrip;
   const styles = useThemedStyles(makeStyles);
@@ -285,10 +287,10 @@ function ReportScaffoldInner<T>({
     );
   }
 
-  if (needsConnectionId && phoneNeedsConnection && (phase === 'loading' || phase === 'error')) {
+  if (needsConnectionId && serverOnlyOffline) {
     return (
       <View style={styles.container}>
-        {head}
+        <ReportHeader title={title} subtitle={subtitle} onBack={onBack} />
         <ScreenNeedsConnection testID={needsConnectionId} />
       </View>
     );
