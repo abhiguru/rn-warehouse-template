@@ -39,6 +39,8 @@ export interface ItemRow {
   recorded_tick: number;
   result: string | null;
   sent_day: string | null;
+  /** The unfinished form a saved new record came from (WH-161), as JSON; phone only, never sent. */
+  form_row?: string | null;
 }
 
 export interface PhotoRow {
@@ -101,57 +103,161 @@ const SEQ_KEY = 'seq_counter';
  * back when anything fails, so a failed save leaves no row and no moved file.
  */
 export async function insertItem(db: UnsentDb, item: NewItem): Promise<void> {
+  await insertItems(db, [item]);
+}
+
+/** Moves files back after a failed step; a file that cannot be moved back is logged, never thrown. */
+async function moveBack(moved: readonly { from: string; to: string }[]): Promise<void> {
+  for (const entry of moved) {
+    try {
+      await new File(entry.to).move(new File(entry.from));
+    } catch {
+      logger.warn('A photo file could not be put back after a failed save');
+    }
+  }
+}
+
+/**
+ * Saves several items, their photo rows and photo files as one step (WH-161). `form` names the unfinished form the items came
+ * from: its row is removed in the same step and kept as JSON on the first item (`form_row`, phone only), so `returnToForm` can
+ * give it back; the form's own photo files that were not taken over are removed after the commit. A failure writes nothing,
+ * leaves the form row and puts every moved file back.
+ */
+export async function insertItems(db: UnsentDb, items: readonly NewItem[], form?: { scope: string; kind: string }): Promise<void> {
   const moved: { from: string; to: string }[] = [];
-  const photoRows: { uri: string; clientPhotoId: string; role: string; lineRef?: string | undefined }[] = [];
+  const rowsOf = new Map<string, { uri: string; clientPhotoId: string; role: string; lineRef?: string | undefined }[]>();
+  let leftovers: string[] = [];
   try {
-    if (item.photos.length > 0) unsentPhotoDirectory().create({ intermediates: true, idempotent: true });
-    for (const photo of item.photos) {
-      const source = new File(photo.file);
-      const name = photo.file.slice(photo.file.lastIndexOf('/') + 1);
-      const target = new File(unsentPhotoDirectory(), `${photo.clientPhotoId}-${name}`);
-      await source.move(target);
-      moved.push({ from: photo.file, to: target.uri });
-      photoRows.push({ ...photo, uri: target.uri });
+    if (items.some(item => item.photos.length > 0)) unsentPhotoDirectory().create({ intermediates: true, idempotent: true });
+    for (const item of items) {
+      const photoRows: { uri: string; clientPhotoId: string; role: string; lineRef?: string | undefined }[] = [];
+      for (const photo of item.photos) {
+        const source = new File(photo.file);
+        if (!source.exists) throw new Error('A photo file is not on the phone any more');
+        const name = photo.file.slice(photo.file.lastIndexOf('/') + 1);
+        const target = new File(unsentPhotoDirectory(), `${photo.clientPhotoId}-${name}`);
+        await source.move(target);
+        moved.push({ from: photo.file, to: target.uri });
+        photoRows.push({ ...photo, uri: target.uri });
+      }
+      rowsOf.set(item.id, photoRows);
     }
     await db.transaction(async tx => {
       const [counter] = await tx.all<{ value: string }>('SELECT value FROM meta WHERE key = ?', [SEQ_KEY]);
       const [highest] = await tx.all<{ top: number | null }>('SELECT max(seq) AS top FROM items');
-      const seq = Math.max(Number(counter?.value ?? 0), highest?.top ?? 0) + 1;
-      await tx.run('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', [SEQ_KEY, String(seq)]);
-      await tx.run(
-        `INSERT INTO items (id, seq, scope, recorder_name, kind, request_key, body, depends_on, target_ref, what, customer,
-           state, attempts, recorded_at, recorded_tick) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saved', 0, ?, ?)`,
-        [
-          item.id,
-          seq,
-          item.scope,
-          item.recorderName,
-          item.kind,
-          item.requestKey,
-          JSON.stringify(item.body ?? {}),
-          item.dependsOn ?? null,
-          item.targetRef === undefined ? null : JSON.stringify(item.targetRef),
-          item.what,
-          item.customer ?? null,
-          item.recordedAt,
-          item.recordedTick,
-        ]
-      );
-      for (const photo of photoRows) {
+      let seq = Math.max(Number(counter?.value ?? 0), highest?.top ?? 0);
+      for (const item of items) {
+        seq += 1;
         await tx.run(
-          'INSERT INTO item_photos (item_id, file, client_photo_id, role, line_ref, done, missing) VALUES (?, ?, ?, ?, ?, 0, 0)',
-          [item.id, photo.uri, photo.clientPhotoId, photo.role, photo.lineRef ?? null]
+          `INSERT INTO items (id, seq, scope, recorder_name, kind, request_key, body, depends_on, target_ref, what, customer,
+             state, attempts, recorded_at, recorded_tick) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saved', 0, ?, ?)`,
+          [
+            item.id,
+            seq,
+            item.scope,
+            item.recorderName,
+            item.kind,
+            item.requestKey,
+            JSON.stringify(item.body ?? {}),
+            item.dependsOn ?? null,
+            item.targetRef === undefined ? null : JSON.stringify(item.targetRef),
+            item.what,
+            item.customer ?? null,
+            item.recordedAt,
+            item.recordedTick,
+          ]
         );
+        for (const photo of rowsOf.get(item.id) ?? []) {
+          await tx.run(
+            'INSERT INTO item_photos (item_id, file, client_photo_id, role, line_ref, done, missing) VALUES (?, ?, ?, ?, ?, 0, 0)',
+            [item.id, photo.uri, photo.clientPhotoId, photo.role, photo.lineRef ?? null]
+          );
+        }
+      }
+      await tx.run('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', [SEQ_KEY, String(seq)]);
+      const first = items[0];
+      if (form && first) {
+        const [row] = await tx.all<Record<string, SqlValue>>('SELECT * FROM forms WHERE scope = ? AND kind = ? AND grn_id = ?', [form.scope, form.kind, '']);
+        await tx.run('UPDATE items SET form_row = ? WHERE id = ?', [JSON.stringify({ ...(row ?? {}), hadForm: row !== undefined, taken: moved }), first.id]);
+        if (row) {
+          await tx.run('DELETE FROM forms WHERE id = ?', [String(row.id)]);
+          leftovers = formFiles(row.photos);
+        }
       }
     });
   } catch (error) {
-    for (const entry of moved) {
-      try {
-        await new File(entry.to).move(new File(entry.from));
-      } catch {
-        logger.warn('A photo file could not be put back after a failed save');
-      }
+    await moveBack(moved);
+    throw error;
+  }
+  for (const uri of leftovers) removePhotoFile(uri);
+  await announceUnsentChange();
+}
+
+/** The photo files a `forms.photos` column names. */
+function formFiles(raw: SqlValue | undefined): string[] {
+  if (typeof raw !== 'string') return [];
+  try {
+    const list: unknown = JSON.parse(raw);
+    return Array.isArray(list) ? list.filter((entry): entry is string => typeof entry === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Takes the record item `recordId` and its dependants back out of the queue and puts the unfinished form back (WH-161): the
+ * forms row from `form_row`, its state with the photo addresses now pointing at the photo files, which are moved back to the form's
+ * folder names. One step; a failure changes nothing (the files are moved back).
+ */
+export async function giveBackForm(db: UnsentDb, scope: string, recordId: string): Promise<void> {
+  const moved: { from: string; to: string }[] = [];
+  try {
+    const [record] = await db.all<{ id: string; form_row: string | null }>('SELECT id, form_row FROM items WHERE id = ? AND scope = ?', [recordId, scope]);
+    if (!record) throw new Error('The saved item is not there any more');
+    if (record.form_row === null) throw new Error('The saved item has no form to give back');
+    const form = JSON.parse(record.form_row) as Record<string, SqlValue> & { taken?: { from: string; to: string }[]; hadForm?: boolean };
+    const dependants = await db.all<{ id: string }>('SELECT id FROM items WHERE scope = ? AND depends_on = ?', [scope, recordId]);
+    const ids = [recordId, ...dependants.map(row => row.id)];
+    const photos = (await db.all<PhotoRow & { item_id: string }>(`SELECT * FROM item_photos WHERE item_id IN (${ids.map(() => '?').join(', ')}) ORDER BY rowid`, ids));
+    unsentPhotoDirectory().create({ intermediates: true, idempotent: true });
+    let state = typeof form.state === 'string' ? form.state : '{}';
+    const back: string[] = [];
+    for (const photo of photos) {
+      const name = photo.file.slice(photo.file.lastIndexOf('/') + 1).replace(/^[0-9a-f-]{36}-/, '');
+      const origin = form.taken?.find(entry => entry.to === photo.file)?.from;
+      // No form was saved for it: the photo goes back where it came from.
+      const target = !form.hadForm && origin ? new File(origin) : new File(unsentPhotoDirectory(), `form-${name}`);
+      const source = new File(photo.file);
+      if (!source.exists) continue;
+      await source.move(target);
+      moved.push({ from: photo.file, to: target.uri });
+      back.push(target.uri);
+      // The cache file the form first named is no longer there: the form names the moved file instead.
+      const first = form.taken?.find(entry => entry.to === photo.file);
+      if (first) state = state.split(first.from).join(target.uri);
     }
+    await db.transaction(async tx => {
+      if (form.hadForm) {
+        await tx.run('DELETE FROM forms WHERE scope = ? AND kind = ? AND grn_id = ?', [scope, String(form.kind), String(form.grn_id ?? '')]);
+        await tx.run('INSERT INTO forms (id, scope, kind, grn_id, state, photos, customer, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+          String(form.id),
+          scope,
+          String(form.kind),
+          String(form.grn_id ?? ''),
+          state,
+          JSON.stringify(back),
+          typeof form.customer === 'string' ? form.customer : null,
+          Number(form.started_at ?? Date.now()),
+          Date.now(),
+        ]);
+      }
+      for (const id of ids) {
+        await tx.run('DELETE FROM item_photos WHERE item_id = ?', [id]);
+        await tx.run('DELETE FROM items WHERE id = ?', [id]);
+      }
+    });
+  } catch (error) {
+    await moveBack(moved);
     throw error;
   }
   await announceUnsentChange();

@@ -139,11 +139,11 @@ async function markMissingPhotos(row: ItemRow): Promise<void> {
 export const DEPENDS_ON_REFUSED = 'dependsOnRefused';
 const dependsOnRefusedReason = (): string => DEPENDS_ON_REFUSED;
 
-/** What a refused item keeps: the server's whole answer (with the code when the kind found one), else the code alone. */
+/** What a refused item keeps, as `{ code, answer }`: the code when the kind found one and the server's whole answer. */
 function refusalResult(outcome: Extract<SendOutcome, { kind: 'refused' }>): string | null {
-  const answer = typeof outcome.answer === 'object' && outcome.answer !== null ? (outcome.answer as Record<string, unknown>) : null;
-  if (answer) return JSON.stringify(outcome.code ? { ...answer, code: outcome.code } : answer);
-  return outcome.code ? JSON.stringify({ code: outcome.code }) : null;
+  const { code, answer } = outcome;
+  if (!code && answer === undefined) return null;
+  return JSON.stringify({ ...(code ? { code } : {}), ...(answer !== undefined ? { answer } : {}) });
 }
 
 /** The outcome of one send, written to the item. */
@@ -196,7 +196,7 @@ async function resolveDoubt(id: string, byId: () => Promise<Map<string, ItemRow>
       if (!kind) return;
       const answer = await checkSubmission(row.request_key, row.last_sent_at ?? Date.now(), signal);
       if (answer.found) {
-        const outcome = classify(answer.response, null);
+        const outcome = kind.outcomeOf ? kind.outcomeOf(answer.response) : classify(answer.response, null);
         if (outcome.kind === 'sent' || outcome.kind === 'refused') {
           await apply(row, outcome, row);
           return;

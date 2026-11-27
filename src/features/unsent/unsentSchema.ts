@@ -5,7 +5,16 @@
  * private documents folder, is excluded from backups (Android: plugins/with-data-extraction-rules.js; iOS: plugins/with-ios-backup-exclusion.js) and is never erased by a
  * sign-out, a facility switch or a key problem. Later versions migrate in place, never erase.
  */
-export const UNSENT_SCHEMA_VERSION = 1;
+export const UNSENT_SCHEMA_VERSION = 2;
+
+/**
+ * In-place steps after version 1, each run once on a file below its version (never an erase). Version 2 is the one step
+ * WH-161 and WH-304 share: `form_row` (WH-161: the unfinished form a saved new record came from, kept on the phone so a refusal
+ * during the Save wait can hand it back; never sent, never part of a body) and `held_id` (WH-304) join it when assembled.
+ */
+export const SCHEMA_STEPS: readonly { version: number; statements: readonly string[] }[] = [
+  { version: 2, statements: ['ALTER TABLE items ADD COLUMN form_row TEXT'] },
+];
 
 /** The folder under the app's documents folder that holds the file and, in `photos/`, its photo files. */
 export const UNSENT_FOLDER = 'unsent-work';

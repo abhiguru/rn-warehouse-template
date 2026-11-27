@@ -7,7 +7,7 @@ import * as Crypto from 'expo-crypto';
 import { businessDate } from '@/features/phone-copy/pgCompat';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { getUnsentDb } from './unsentDb';
-import { allItems, announceUnsentChange, deleteItems, insertItem, itemById, itemsOfScope, photosOf, UNSENT_STATES, type ItemRow, type ItemState } from './unsentRows';
+import { allItems, announceUnsentChange, deleteItems, giveBackForm, insertItem, insertItems, itemById, itemsOfScope, photosOf, UNSENT_STATES, type ItemRow, type ItemState } from './unsentRows';
 import { currentPersonName } from './unsentRole';
 import { DEPENDS_ON_REFUSED, sendNow } from './sendEngine';
 import { persistWorkClock, workNow } from './workClock';
@@ -99,6 +99,55 @@ export async function enqueue(input: EnqueueInput): Promise<{ id: string; reques
   // Sent at once while reachable (contract section 4); a pass that finds nothing to do ends at once.
   void sendNow('saved');
   return { id, requestKey };
+}
+
+/** An input of `enqueueAll`: a later input names an earlier one by its position (`dependsOn: 0`), as no id exists yet. */
+export type EnqueueAllInput = Omit<EnqueueInput, 'dependsOn'> & { dependsOn?: number };
+
+/**
+ * Saves a record and the items that follow it (its photos) in one step, in input order, and removes the person's unfinished
+ * form of `form.kind` in the same step, taking over its photo files (WH-161). A failure writes nothing and leaves the form.
+ */
+export async function enqueueAll(inputs: readonly EnqueueAllInput[], form?: { kind: 'grn' | 'dispatch' }): Promise<{ id: string; requestKey: string }[]> {
+  const scope = await ownScope();
+  const db = await getUnsentDb();
+  const made = inputs.map(input => ({ id: Crypto.randomUUID(), requestKey: `warehouse-${input.kind}-${Crypto.randomUUID()}` }));
+  const recordedAt = Date.now();
+  const recordedTick = workNow();
+  await insertItems(
+    db,
+    inputs.map((input, index) => {
+      const earlier = input.dependsOn === undefined ? undefined : made[input.dependsOn];
+      if (input.dependsOn !== undefined && (!earlier || input.dependsOn >= index)) throw new Error('An item can only wait for one before it');
+      return {
+        id: made[index]?.id ?? '',
+        scope,
+        recorderName: currentPersonName(),
+        kind: input.kind,
+        requestKey: made[index]?.requestKey ?? '',
+        body: input.body,
+        dependsOn: earlier?.id,
+        targetRef: input.targetRef,
+        what: input.what,
+        customer: input.customer,
+        recordedAt,
+        recordedTick,
+        photos: (input.photos ?? []).map(photo => ({ ...photo, clientPhotoId: Crypto.randomUUID() })),
+      };
+    }),
+    form ? { scope, kind: form.kind } : undefined
+  );
+  await persistWorkClock(db).catch(() => undefined);
+  void sendNow('saved');
+  return made;
+}
+
+/**
+ * Takes a saved record and its photos item back out and gives the person's unfinished form back, photo files included
+ * (WH-161: a refusal during the Save wait is told on the form). One step; a failure throws and changes nothing.
+ */
+export async function returnToForm(itemId: string): Promise<void> {
+  await giveBackForm(await getUnsentDb(), await ownScope(), itemId);
 }
 
 /**

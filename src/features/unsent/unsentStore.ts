@@ -73,7 +73,9 @@ function build(): UnsentSummary {
     limitReached = age >= UNSENT_LIMIT_MS;
     sendBy = Date.now() + (UNSENT_LIMIT_MS - age);
   }
-  return { count: counted.length, sendBy, limitReached, unreadable: false, waitingForAdmin: 0 };
+  // A photos item waiting for its record counts with the record, once (WH-161).
+  const own = counted.filter(row => !(row.kind === 'photos' && row.depends_on !== null && counted.some(other => other.id === row.depends_on)));
+  return { count: own.length, sendBy, limitReached, unreadable: false, waitingForAdmin: 0 };
 }
 
 /** The summary now. The same object while nothing in it changed (for `useSyncExternalStore`). */

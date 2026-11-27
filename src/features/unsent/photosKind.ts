@@ -31,8 +31,7 @@ export interface PhotosBody {
 }
 
 /** The id of a line an edit added: its `clientLineId` mapped through the answer's `lines_added` (WH-303); other refs stay. */
-function lineIdOf(lineRef: string | null, resolved: Record<string, unknown>): string | null {
-  if (lineRef === null) return null;
+function addedLineIdOf(lineRef: string, resolved: Record<string, unknown>): string {
   for (const answer of Object.values(resolved)) {
     const added = typeof answer === 'object' && answer !== null ? (answer as { lines_added?: unknown }).lines_added : undefined;
     if (!Array.isArray(added)) continue;
@@ -63,6 +62,26 @@ function recordIdOf(body: PhotosBody, resolved: Record<string, unknown>): string
   return null;
 }
 
+/**
+ * The GRN item id a photo row names. A line of a GRN that was unsent has `index:<n>` (WH-161): the server's `item_mapping` of the
+ * record answer says which item that was. A line an edit added is mapped by `addedLineIdOf`; anything else is the item id
+ * itself. An `index:<n>` line that cannot be resolved gives undefined.
+ */
+function lineItemOf(lineRef: string | null, resolved: Record<string, unknown>): string | null | undefined {
+  if (lineRef === null) return null;
+  const index = /^index:(\d+)$/.exec(lineRef)?.[1];
+  if (index === undefined) return addedLineIdOf(lineRef, resolved);
+  for (const answer of Object.values(resolved)) {
+    const mapping = typeof answer === 'object' && answer !== null ? (answer as { item_mapping?: unknown }).item_mapping : undefined;
+    if (!Array.isArray(mapping)) continue;
+    for (const row of mapping as unknown[]) {
+      const fields = typeof row === 'object' && row !== null ? (row as { index?: unknown; item_id?: unknown }) : {};
+      if (fields.index === Number(index) && typeof fields.item_id === 'string') return fields.item_id;
+    }
+  }
+  return undefined;
+}
+
 const mimeOf = (name: string): string => (/\.webp$/i.test(name) ? 'image/webp' : /\.png$/i.test(name) ? 'image/png' : 'image/jpeg');
 
 type Client = Awaited<ReturnType<typeof getAuthenticatedClient>>;
@@ -79,7 +98,9 @@ const asOutcome = (answer: Answer): SendOutcome => {
 };
 
 /** One photo through register, upload and confirm. `sent` means it is attached. */
-async function uploadOne(client: Client, body: PhotosBody, recordId: string, photo: PhotoRow, lineId: string | null): Promise<SendOutcome> {
+async function uploadOne(client: Client, body: PhotosBody, recordId: string, photo: PhotoRow, resolved: Record<string, unknown>): Promise<SendOutcome> {
+  const itemId = lineItemOf(photo.line_ref, resolved);
+  if (itemId === undefined) return { kind: 'refused', reason: 'photos: the line of this photo is not known' };
   const file = new File(photo.file);
   const fileName = photo.file.slice(photo.file.lastIndexOf('/') + 1).replace(/^[0-9a-f-]{36}-/, '');
   const mimeType = mimeOf(fileName);
@@ -91,7 +112,7 @@ async function uploadOne(client: Client, body: PhotosBody, recordId: string, pho
           p_file_name: fileName,
           p_file_size: file.size,
           p_mime_type: mimeType,
-          p_grn_item_id: lineId,
+          p_grn_item_id: itemId,
         })
       : await client.rpc('register_dispatch_image_upload', {
           p_dispatch_id: recordId,
@@ -140,7 +161,7 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
   const outcomes = await Promise.all(
     rows.map(row =>
       limit(async () => {
-        const outcome = await uploadOne(client, rawBody, recordId, row, lineIdOf(row.line_ref, ctx.resolved));
+        const outcome = await uploadOne(client, rawBody, recordId, row, ctx.resolved);
         if (outcome.kind === 'sent') await markPhoto(row.item_id, row.client_photo_id, { done: 1 });
         return outcome;
       }).catch((error: unknown) => {

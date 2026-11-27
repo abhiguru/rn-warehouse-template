@@ -11,7 +11,7 @@
 import { Directory, Paths } from 'expo-file-system';
 import * as ExpoSqlite from 'expo-sqlite';
 import { createLogger, loggableError } from '@/utils/logger';
-import { SCHEMA_STATEMENTS, UNSENT_FILE, UNSENT_FOLDER, UNSENT_PHOTO_FOLDER, UNSENT_SCHEMA_VERSION } from './unsentSchema';
+import { SCHEMA_STATEMENTS, SCHEMA_STEPS, UNSENT_FILE, UNSENT_FOLDER, UNSENT_PHOTO_FOLDER, UNSENT_SCHEMA_VERSION } from './unsentSchema';
 
 const logger = createLogger('[unsent]');
 
@@ -69,8 +69,17 @@ async function openFile(): Promise<UnsentDb> {
   try {
     await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = OFF;');
     for (const statement of SCHEMA_STATEMENTS) await db.execAsync(statement);
-    // A later version migrates in place here (ALTER), never by erasing.
-    await db.runAsync("INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)", [String(UNSENT_SCHEMA_VERSION)]);
+    // A later version migrates in place here (ALTER), never by erasing. A new file starts at 1 and takes every step.
+    await db.runAsync("INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1')", []);
+    const [stored] = await db.getAllAsync<{ value: string }>("SELECT value FROM meta WHERE key = 'schema_version'", []);
+    const have = Number(stored?.value ?? 1);
+    for (const step of SCHEMA_STEPS) {
+      if (step.version <= have || step.version > UNSENT_SCHEMA_VERSION) continue;
+      await db.withTransactionAsync(async () => {
+        for (const statement of step.statements) await db.execAsync(statement);
+        await db.runAsync("UPDATE meta SET value = ? WHERE key = 'schema_version'", [String(step.version)]);
+      });
+    }
     await db.getAllAsync('SELECT count(*) AS n FROM items', []);
   } catch (error) {
     await db.closeAsync().catch(() => undefined);
