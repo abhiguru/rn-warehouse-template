@@ -2,22 +2,15 @@
  * What the server's answer to a new GRN or dispatch means (WH-161, product/tech/app-offline-new-records.md 17.1, 17.2): the
  * refusal code by one rule, and the flat result a photos item and the screens read. Shared by the two kinds and the Save path.
  */
+import { answerCodeOf } from './refusalAnswer';
 import { classify } from './sendEngine';
 import type { SendOutcome } from './sendKinds';
 
 type Fields = Record<string, unknown>;
 const isFields = (value: unknown): value is Fields => typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** The error code `refuse()` (migration 121) puts in every refusal; it names no reason, so the `reason` is the code. */
-const GENERIC_REFUSAL_CODE = 'WH409';
-
 /** The code of a refusal: its `reason` when it has one, else its `error_code` unless that is WH409 (one rule, 17.1). */
-export function refusalCodeOf(answer: unknown): string | null {
-  if (!isFields(answer)) return null;
-  if (typeof answer.reason === 'string' && answer.reason !== '') return answer.reason;
-  if (typeof answer.error_code === 'string' && answer.error_code !== '' && answer.error_code !== GENERIC_REFUSAL_CODE) return answer.error_code;
-  return null;
-}
+export const refusalCodeOf = answerCodeOf;
 
 /** The server's own sentence of a refusal, or its code when it said none. */
 const sentenceOf = (answer: Fields, code: string | null): string => {

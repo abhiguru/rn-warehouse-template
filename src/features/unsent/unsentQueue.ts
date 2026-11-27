@@ -6,6 +6,7 @@
 import * as Crypto from 'expo-crypto';
 import { businessDate } from '@/features/phone-copy/pgCompat';
 import { getSessionCacheScope } from '@/utils/cacheManager';
+import { holdingOn } from '@/features/holding/handOver';
 import { getUnsentDb } from './unsentDb';
 import { allItems, announceUnsentChange, deleteItems, giveBackForm, insertItem, insertItems, itemById, itemsOfScope, photosOf, replaceItemWithPhotos, UNSENT_STATES, type ItemRow, type ItemState } from './unsentRows';
 import { currentPersonName } from './unsentRole';
@@ -39,6 +40,9 @@ export interface UnsentRowView {
   /** "Not sent yet", "Held" (refused, with what depends on it) or "Sent today" (Design 4.2, 4.6). */
   section: 'unsent' | 'held' | 'sent';
   tag: 'refused' | null;
+  /** The id the server gave the item when it holds it (WH-304), and whether a hand-over attempt has failed (Design 7.11). */
+  heldId: string | null;
+  handoverFailed: boolean;
   /** The item this one waits for or follows, if any. */
   dependsOn: string | null;
   /** Why a held item was not sent: the server's reason, or `dependsOnRefused` for what follows a refused item. */
@@ -263,11 +267,24 @@ export async function deleteItem(id: string): Promise<void> {
   await deleteItems(await ownScope(), [id]);
 }
 
+/**
+ * The section of a row (Design 4.2, 4.6, 7.9). Sent rows are "Sent today"; a row the server holds is "Held"; a refused row is
+ * "Held" too, except while its hand-over is still to come and the holding list is on (Product PQ1: it is "Not sent yet", counted,
+ * until the server holds it).
+ */
+function sectionOf(row: ItemRow, handingOver: boolean): UnsentRowView['section'] {
+  if (row.state === 'sent') return 'sent';
+  if (row.state === 'held') return 'held';
+  if (row.state === 'refused') return handingOver && (row.held_id ?? null) === null ? 'unsent' : 'held';
+  return 'unsent';
+}
+
 /** The signed-in person's items, oldest first. Another person's are never listed. */
 export async function listItems(): Promise<UnsentRowView[]> {
   const scope = await getSessionCacheScope();
   if (!scope) return [];
   const today = businessDate(Date.now());
+  const handingOver = holdingOn();
   return (await itemsOfScope(scope))
     .filter(row => row.state !== 'sent' || row.sent_day === today)
     .map(row => ({
@@ -277,10 +294,12 @@ export async function listItems(): Promise<UnsentRowView[]> {
       what: row.what,
       customer: row.customer,
       recordedAt: row.recorded_at,
-      section: row.state === 'sent' ? ('sent' as const) : row.state === 'refused' ? ('held' as const) : ('unsent' as const),
+      section: sectionOf(row, handingOver),
       dependsOn: row.depends_on,
       reason: row.last_error,
-      tag: row.state === 'refused' ? ('refused' as const) : null,
+      tag: row.state === 'refused' || row.state === 'held' ? ('refused' as const) : null,
+      heldId: row.held_id ?? null,
+      handoverFailed: row.handover_failed === 1,
       result: row.result === null ? null : (JSON.parse(row.result) as unknown),
       targetNumber: targetNumberOf(row.target_ref),
       target: targetOf(row.target_ref),

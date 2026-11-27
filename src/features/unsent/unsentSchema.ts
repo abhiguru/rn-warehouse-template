@@ -10,10 +10,18 @@ export const UNSENT_SCHEMA_VERSION = 2;
 /**
  * In-place steps after version 1, each run once on a file below its version (never an erase). Version 2 is the one step
  * WH-161 and WH-304 share: `form_row` (WH-161: the unfinished form a saved new record came from, kept on the phone so a refusal
- * during the Save wait can hand it back; never sent, never part of a body) and `held_id` (WH-304) join it when assembled.
+ * during the Save wait can hand it back; never sent, never part of a body), `held_id` (WH-304: the id the server gave the item
+ * when it holds it) and `handover_failed` (WH-304: 1 once a hand-over attempt did not end held).
  */
 export const SCHEMA_STEPS: readonly { version: number; statements: readonly string[] }[] = [
-  { version: 2, statements: ['ALTER TABLE items ADD COLUMN form_row TEXT'] },
+  {
+    version: 2,
+    statements: [
+      'ALTER TABLE items ADD COLUMN form_row TEXT',
+      'ALTER TABLE items ADD COLUMN held_id TEXT',
+      'ALTER TABLE items ADD COLUMN handover_failed INTEGER NOT NULL DEFAULT 0',
+    ],
+  },
 ];
 
 /** The folder under the app's documents folder that holds the file and, in `photos/`, its photo files. */

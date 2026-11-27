@@ -16,6 +16,8 @@ import { onSessionChange } from '@/config/sessionLifecycle';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { checkSubmission, isAbortError, isLostAnswer } from '@/utils/lostAnswer';
 import { createLogger, loggableError } from '@/utils/logger';
+import { handOverRefused } from '@/features/holding/handOver';
+import { answerCodeOf } from './refusalAnswer';
 import { getSendKind, type SendContext, type SendKind, type SendOutcome } from './sendKinds';
 import { getUnsentDb } from './unsentDb';
 import { cannotSendUnsent } from './unsentRole';
@@ -84,11 +86,13 @@ export function classify(result: unknown, error: unknown): SendOutcome {
     return { kind: 'transient' };
   }
   if (typeof result === 'object' && result !== null) {
-    const answer = result as { success?: unknown; error?: unknown; message?: unknown; code?: unknown };
+    const answer = result as { success?: unknown; error?: unknown; message?: unknown };
     if (answer.success === true) return { kind: 'sent', result };
     if (answer.success === false) {
       const reason = typeof answer.error === 'string' ? answer.error : typeof answer.message === 'string' ? answer.message : '';
-      return { kind: 'refused', reason, ...(typeof answer.code === 'string' ? { code: answer.code } : {}), answer: result };
+      // The code by the one rule (`reason`, else `error_code` unless WH409, else `code`), and the whole answer kept with it.
+      const code = answerCodeOf(result);
+      return { kind: 'refused', reason, ...(code ? { code } : {}), answer: result };
     }
   }
   // An answer with nothing readable in it: the request may have been applied.
@@ -102,6 +106,17 @@ interface Pass {
   transient: boolean;
   stop: boolean;
   tasks: Set<Promise<void>>;
+  /** Look again after this many ms: a form is still waiting for the answer of a record (WH-304). */
+  deferMs: number | null;
+}
+
+/** Hands the refused items to the server's holding list (WH-304); a feature that is off hands over nothing. */
+async function handOver(pass: Pass): Promise<void> {
+  if (pass.stop) return;
+  const handed = await handOverRefused(pass.scope);
+  if (handed.stop) pass.stop = true;
+  if (handed.transient) pass.transient = true;
+  if (handed.deferMs !== null) pass.deferMs = pass.deferMs === null ? handed.deferMs : Math.min(pass.deferMs, handed.deferMs);
 }
 
 /** Whether an item may go now: its dependency is sent (`ready`), is not sent yet (`wait`), or ended in a refusal (`refused`). */
@@ -110,7 +125,8 @@ function settle(row: ItemRow, byId: Map<string, ItemRow>): 'ready' | 'wait' | 'r
   const dependency = byId.get(row.depends_on);
   if (!dependency) return 'refused';
   if (dependency.state === 'sent') return 'ready';
-  return dependency.state === 'refused' ? 'refused' : 'wait';
+  // What follows an item the server holds (WH-304) is handed over after it, never sent past it.
+  return dependency.state === 'refused' || dependency.state === 'held' ? 'refused' : 'wait';
 }
 
 const resolvedFor = (row: ItemRow, byId: Map<string, ItemRow>): Record<string, unknown> => {
@@ -332,11 +348,20 @@ async function onePass(): Promise<boolean> {
     return false;
   }
   await sweepSentRows(businessDate(Date.now()));
-  const pass: Pass = { scope, transient: false, stop: false, tasks: new Set() };
+  const pass: Pass = { scope, transient: false, stop: false, tasks: new Set(), deferMs: null };
+  // Refused items go to the server's holding list at the start of a pass (a hand-over that failed is tried again) and at its end.
+  await handOver(pass);
   await pumpPhotos(pass);
   await recordLane(pass);
   await pumpPhotos(pass);
   while (pass.tasks.size > 0) await Promise.all([...pass.tasks]);
+  if (!pass.transient && !pass.stop) await handOver(pass);
+  if (pass.deferMs !== null && !pass.transient && !pass.stop) {
+    // A form is still waiting for its record's answer: look again when that wait is over.
+    const timer = setTimeout(() => void sendNow('retry-timer'), pass.deferMs + 50);
+    (timer as { unref?: () => void }).unref?.();
+    engine.retryTimer = timer;
+  }
   if (pass.transient && !pass.stop) {
     const wait = ROLE_RECHECK_BACKOFF_MS[Math.min(engine.retryStep, ROLE_RECHECK_BACKOFF_MS.length - 1)];
     engine.retryStep += 1;

@@ -26,3 +26,9 @@ export function currentPersonName(): string {
   const name = profile()?.name;
   return typeof name === 'string' ? name : '';
 }
+
+/** The signed-in person's role as the auth slice has it, or null (WH-304: only an administrator moves another person's items). */
+export function currentPersonRole(): string | null {
+  const role = profile()?.role;
+  return typeof role === 'string' ? role : null;
+}

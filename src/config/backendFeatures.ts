@@ -71,6 +71,8 @@ const INTRODUCED_BY_MIGRATION = {
   grnFieldChanges: 233,
   /** A new GRN or dispatch saved with no connection and numbered when sent: `p_issue_number`, `p_recorded_at`, the permanent request ID, the refusal codes (WH-161; topics "number issued at save", "recorded time on offline records", "permanent request ID on offline records", "refusal codes for offline sends"; provisional number: the last of the four, written at assembly, BATCH.md). */
   offlineNewRecords: 230,
+  /** The holding list for refused items: `hold_items`, `get_held_items`, `get_held_item`, `decide_held_item`, `mark_held_item_seen`, the `held_items` feed entity at format 5 (WH-304; topics "held items store", "hold held items", "holding list reads and decisions", "sync held items"; migrations 234 to 237, the last gives the number). */
+  holdingList: 237,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

@@ -9,12 +9,12 @@ import { getUnsentDb, unsentPhotoDirectory, type SqlValue, type UnsentDb } from 
 
 const logger = createLogger('[unsent]');
 
-export type ItemState = 'saved' | 'sending' | 'sent' | 'refused' | 'waiting';
+export type ItemState = 'saved' | 'sending' | 'sent' | 'refused' | 'waiting' | 'held';
 
 /**
  * The states of an item that is still unsent: the bar, the 2-hour clock and the account refusals count them. A refused item
- * and the items that depend on it are listed under "Held" but still count until the server holds them (Product's sharpened
- * ruling, 2026-11-26; WH-304 adds the `held` state that leaves the count).
+ * and the items that depend on it still count until the server holds them (Product's sharpened ruling, 2026-11-26); `held`
+ * (WH-304: the server holds the item) is left out, and with it the bar, the clock and the account refusals.
  */
 export const UNSENT_STATES: readonly ItemState[] = ['saved', 'sending', 'refused'];
 
@@ -41,6 +41,10 @@ export interface ItemRow {
   sent_day: string | null;
   /** The unfinished form a saved new record came from (WH-161), as JSON; phone only, never sent. */
   form_row?: string | null;
+  /** The id the server gave the item when it holds it (WH-304); null until then. A `refused` photos row may have one while its files go up. */
+  held_id?: string | null;
+  /** 1 once a hand-over attempt did not end held (WH-304, Design 7.11); the row then reads "Not passed on". */
+  handover_failed?: number;
 }
 
 export interface PhotoRow {
@@ -478,8 +482,9 @@ export async function deleteItems(scope: string, ids: string[]): Promise<void> {
     const doomed = new Set<string>();
     let next = ids;
     while (next.length > 0) {
+      // A row the server holds is never deleted here (WH-304): it is already on the server, with its own outcome.
       const own = await tx.all<{ id: string }>(
-        `SELECT id FROM items WHERE scope = ? AND id IN (${next.map(() => '?').join(', ')})`,
+        `SELECT id FROM items WHERE scope = ? AND state <> 'held' AND id IN (${next.map(() => '?').join(', ')})`,
         [scope, ...next]
       );
       const fresh = own.map(row => row.id).filter(id => !doomed.has(id));
@@ -523,6 +528,31 @@ export async function sweepSentRows(today: string): Promise<void> {
   });
   for (const uri of files) removePhotoFile(uri);
   await announceUnsentChange();
+}
+
+/**
+ * Removes the rows the server holds and the copy has the row of (WH-304: "a held row leaves the phone at the first sync run that
+ * ends after its hand-over and whose copy holds its `held_items` row"). A photos row that still has files to send is not a held
+ * row (it stays `refused`), so it is never removed here.
+ */
+export async function sweepHeldRows(heldIds: readonly string[]): Promise<void> {
+  if (heldIds.length === 0) return;
+  const db = await getUnsentDb();
+  const files: string[] = [];
+  let removed = 0;
+  await db.transaction(async tx => {
+    const marks = heldIds.map(() => '?').join(', ');
+    const rows = await tx.all<{ id: string }>(`SELECT id FROM items WHERE state = 'held' AND held_id IN (${marks})`, [...heldIds]);
+    for (const { id } of rows) {
+      const photos = await tx.all<{ file: string }>('SELECT file FROM item_photos WHERE item_id = ?', [id]);
+      files.push(...photos.map(photo => photo.file));
+      await tx.run('DELETE FROM item_photos WHERE item_id = ?', [id]);
+      await tx.run('DELETE FROM items WHERE id = ?', [id]);
+      removed += 1;
+    }
+  });
+  for (const uri of files) removePhotoFile(uri);
+  if (removed > 0) await announceUnsentChange();
 }
 
 const LAST_SENT_KEY = 'last_sent_at';
