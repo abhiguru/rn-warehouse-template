@@ -309,15 +309,20 @@ export async function listItems(): Promise<UnsentRowView[]> {
 
 /** Other people's unsent items on this phone for this facility: their name and how many, nothing more (spec step 27). */
 export async function otherPeople(): Promise<{ name: string; count: number }[]> {
+  return (await otherPeopleBySubject()).map(({ name, count }) => ({ name, count }));
+}
+
+/** The same people with the subject each is kept under, for an administrator's "Move to the holding list" (WH-304). */
+export async function otherPeopleBySubject(): Promise<{ subject: string; name: string; count: number }[]> {
   const scope = await getSessionCacheScope();
   if (!scope) return [];
   const [origin, instance, subject] = JSON.parse(scope) as [string, string, string];
-  const people = new Map<string, { name: string; count: number }>();
+  const people = new Map<string, { subject: string; name: string; count: number }>();
   for (const row of await allItems()) {
     if (!UNSENT_STATES.includes(row.state)) continue;
     const [rowOrigin, rowInstance, rowSubject] = JSON.parse(row.scope) as [string, string, string];
     if (rowOrigin !== origin || rowInstance !== instance || rowSubject === subject) continue;
-    const person = people.get(rowSubject) ?? { name: row.recorder_name, count: 0 };
+    const person = people.get(rowSubject) ?? { subject: rowSubject, name: row.recorder_name, count: 0 };
     person.count += 1;
     people.set(rowSubject, person);
   }

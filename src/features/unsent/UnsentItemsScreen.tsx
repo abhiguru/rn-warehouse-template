@@ -3,7 +3,7 @@
  * sent yet, what was sent today, when something was last sent, and one button, Send now. Another person's items are never
  * listed. Nothing here calls the server except the send itself.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
@@ -12,19 +12,22 @@ import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { Button } from '@/components/ui/Button';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
+import { holdingOn, moveOtherPersonToHolding } from '@/features/holding/handOver';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { askAlert } from '@/utils/alert';
 import { formatLoadedAt } from '@/utils/formatters';
+import { showToast } from '@/utils/toast';
 import { createLogger, loggableError } from '@/utils/logger';
 import { endFormDraft } from './formDrafts';
 import { sendNow } from './sendEngine';
 import { InfoStrip } from './UnsentMarkers';
 import { requestContinue } from './useFormDraft';
-import { deleteItem } from './unsentQueue';
+import { deleteItem, otherPeopleBySubject } from './unsentQueue';
 import { useUnsentList, type UnsentListRow } from './unsentList';
 import { UnsentRow } from './UnsentRow';
 
@@ -69,7 +72,23 @@ export function UnsentItemsScreen() {
   const tokens = useTokens();
   const offline = useIsOffline();
   const { loaded, rows, lastSentAt, others } = useUnsentList();
+  const { isAdmin } = usePermissions();
   const [sending, setSending] = useState(false);
+  const [moving, setMoving] = useState(false);
+  // The subject each other person's items are kept under: an administrator moves them by it (Design 4.2, 4.3).
+  const [subjects, setSubjects] = useState<{ subject: string; name: string }[]>([]);
+  useEffect(() => {
+    let live = true;
+    void otherPeopleBySubject().then(
+      people => {
+        if (live) setSubjects(people);
+      },
+      () => undefined
+    );
+    return () => {
+      live = false;
+    };
+  }, [others]);
   const entries = useMemo(() => entriesOf(rows), [rows]);
   const anyToSend = rows.some(row => row.section === 'unsent');
 
@@ -83,6 +102,31 @@ export function UnsentItemsScreen() {
       setSending(false);
     }
   }, [sending]);
+
+  const move = useCallback(
+    async (name: string) => {
+      const subject = subjects.find(person => person.name === name)?.subject;
+      if (subject === undefined || moving) return;
+      const answer = await askAlert(
+        tr('offline.moveHolding.title', { name }),
+        tr('offline.moveHolding.message'),
+        [
+          { text: tr('common.cancel'), style: 'cancel', value: 'keep' as const },
+          { text: tr('offline.unsent.moveToHolding'), value: 'move' as const },
+        ],
+        'keep' as const
+      );
+      if (answer !== 'move') return;
+      setMoving(true);
+      try {
+        const outcome = await moveOtherPersonToHolding(subject);
+        if (outcome.failed !== undefined) showToast(tr('common.somethingWentWrong'));
+      } finally {
+        setMoving(false);
+      }
+    },
+    [subjects, moving]
+  );
 
   const open = useCallback((row: UnsentListRow) => {
     // An unfinished form opens where it was left, without asking again.
@@ -147,7 +191,28 @@ export function UnsentItemsScreen() {
       </Text>
       {/* Someone else's items on this phone: only their name and how many. Not listed, not sent, not deleted here (spec step 27). */}
       {others.map(person => (
-        <InfoStrip key={person.name} testID="unsent-other-person" text={tr('offline.unsent.otherPerson', { count: person.count, name: person.name })} />
+        <React.Fragment key={person.name}>
+          <InfoStrip testID="unsent-other-person" text={tr('offline.unsent.otherPerson', { count: person.count, name: person.name })} />
+          {isAdmin && holdingOn() ? (
+            <>
+              <Button
+                testID="unsent-move-to-holding"
+                type="secondary"
+                size="fullWidth"
+                disabled={offline || moving}
+                loading={moving}
+                onPress={() => void move(person.name)}
+              >
+                {tr('offline.unsent.moveToHolding')}
+              </Button>
+              {offline ? (
+                <Text testID="unsent-move-needs-connection" style={styles.reason}>
+                  {tr('components.offlineRead.needsConnection')}
+                </Text>
+              ) : null}
+            </>
+          ) : null}
+        </React.Fragment>
       ))}
       {anyToSend ? (
         <>
