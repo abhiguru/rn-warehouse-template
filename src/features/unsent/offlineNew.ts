@@ -17,7 +17,7 @@ import { buildCreateDispatchArgs, type CreateDispatchFormPayload } from '@/featu
 import { copyRoute } from '@/features/phone-copy/readRoute';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import type { NewDispatchBody } from './newDispatchKind';
 import type { NewGrnBody, SaveGrnArgs } from './newGrnKind';
 import { refusalCodeOf } from './newRecordAnswer';
@@ -204,7 +204,7 @@ export function saveNewGrn(payload: CreateGRNPayload, form: NewRecordForm): Prom
         {
           kind: 'newGrn',
           body,
-          what: number ? t('offline.unsent.whatNewGrnNumber', { number }) : t('offline.unsent.whatNewGrn'),
+          what: number ? t('offline.unsent.whatNewGrnNumber', { number: formatIdentifier(number) }) : t('offline.unsent.whatNewGrn'),
           customer,
           targetRef: { grnId: localId, lotIds: lotLocalIds, ...(number ? { number } : {}) },
         },
@@ -246,7 +246,7 @@ export function saveNewDispatch(payload: CreateDispatchFormPayload, form: NewRec
         {
           kind: 'newDispatch',
           body,
-          what: number ? t('offline.unsent.whatNewDispatchNumber', { number }) : t('offline.unsent.whatNewDispatch'),
+          what: number ? t('offline.unsent.whatNewDispatchNumber', { number: formatIdentifier(number) }) : t('offline.unsent.whatNewDispatch'),
           customer,
           targetRef: { dispatchId: body.localId, ...(number ? { number } : {}) },
         },

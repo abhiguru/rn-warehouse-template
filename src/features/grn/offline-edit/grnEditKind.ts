@@ -15,7 +15,7 @@ import { registerSendKind, type SendKind, type SendOutcome } from '@/features/un
 import { deleteItem, enqueue, mergeInto } from '@/features/unsent/unsentQueue';
 import { itemsOfScope, type ItemRow } from '@/features/unsent/unsentRows';
 import { loadedUnsentRows, refreshUnsent } from '@/features/unsent/unsentStore';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -94,7 +94,7 @@ const parse = (row: ItemRow): unknown => {
 };
 
 const whatOf = (grnNumber: string, body: GrnEditBody): string =>
-  t('offline.unsent.whatChange', { number: grnNumber, fields: changedFieldLabels(body).map(label => t(label)).join(', ') });
+  t('offline.unsent.whatChange', { number: formatIdentifier(grnNumber), fields: changedFieldLabels(body).map(label => t(label)).join(', ') });
 
 async function save(grnId: string, body: GrnEditBody | null, photos: GrnEditPhoto[], meta: GrnEditMeta): Promise<SaveGrnEditResult> {
   const scope = await getSessionCacheScope();
@@ -143,7 +143,7 @@ async function save(grnId: string, body: GrnEditBody | null, photos: GrnEditPhot
       body: { doc: 'grn', recordId: grnId, ...(remove.length > 0 ? { remove } : {}) },
       ...(result ? { dependsOn: result.id } : {}),
       targetRef: { grnId, number: meta.grnNumber },
-      what: t('offline.unsent.whatPhotos', { count: photos.length, number: meta.grnNumber }),
+      what: t('offline.unsent.whatPhotos', { count: photos.length, number: formatIdentifier(meta.grnNumber) }),
       photos,
     });
   }

@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { hasCapability } from '@/config/facilityCapabilities';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import { useAppStore } from '@/store/hooks';
 import { hydrateDraft as hydrateGrn, selectGRNFormChanged, type GRNFormState } from '@/store/slices/grnFormSlice';
 import { hydrateDraft as hydrateDispatch } from '@/store/slices/dispatchFormSlice';
@@ -64,7 +64,7 @@ const grnHasData = (state: GRNFormState): boolean =>
 
 const askResume = (kind: FormKind, number: string | null, startedAt: number, customer: string | null): Promise<'continue' | 'new'> => {
   const title =
-    kind === 'grn' ? t('offline.resume.grnTitle') : kind === 'dispatch' ? t('offline.resume.dispatchTitle') : t('offline.resume.editTitle', { number: number ?? '' });
+    kind === 'grn' ? t('offline.resume.grnTitle') : kind === 'dispatch' ? t('offline.resume.dispatchTitle') : t('offline.resume.editTitle', { number: formatIdentifier(number) });
   const time = formatLoadedAt(startedAt);
   const message = customer ? t('offline.resume.message', { time, customer }) : t('offline.resume.messageNoCustomer', { time });
   return askAlert<'continue' | 'new'>(

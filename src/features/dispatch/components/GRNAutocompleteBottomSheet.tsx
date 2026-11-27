@@ -613,7 +613,7 @@ const GRNListItem = memo<GRNListItemProps>(({
           isSelected && styles.grnCardSelected,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={`${tr('dispatch.grnSheet.rowLabel', { number: numberText, date: formatSpokenDate(item.date), customer: item.customer_name })}${unsent ? `. ${unsentNote}` : ''}`}
+        accessibilityLabel={`${tr('dispatch.grnSheet.rowLabel', { number: String(numberText), date: formatSpokenDate(item.date), customer: item.customer_name })}${unsent ? `. ${unsentNote}` : ''}`}
         accessibilityState={{ selected: isSelected, disabled: unsent }}
         accessibilityActions={[{ name: 'viewGRN', label: tr('dispatch.grnSheet.viewGrn') }]}
         onAccessibilityAction={(e) => {
@@ -623,7 +623,7 @@ const GRNListItem = memo<GRNListItemProps>(({
         <View style={styles.grnHeader}>
           <View style={styles.grnTitleRow}>
             <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.grnNumber}>{tr('dispatch.grnSheet.grnNumbered', { number: numberText })}</Text>
+            <Text style={styles.grnNumber}>{tr('dispatch.grnSheet.grnNumbered', { number: String(numberText) })}</Text>
           </View>
           {isSelected && (
             <Icon name="check-circle" size={iconSize.lg} color={t.brand.tint} />

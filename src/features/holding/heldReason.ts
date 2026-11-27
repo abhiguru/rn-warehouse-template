@@ -5,7 +5,7 @@
  * empty value (DQ2). A hint that needs a figure it lacks falls back to the hint of `other`.
  */
 import { formatDate } from '@/utils/formatters';
-import { t as tr, type TranslationKey } from '@/i18n';
+import { t as tr, formatIdentifier, type TranslationKey } from '@/i18n';
 
 export const HELD_REASONS = [
   'stockShort', 'noRate', 'numberUsed', 'numberFormat', 'deleted', 'locked', 'dateRefused', 'duplicate', 'belowDispatched',
@@ -79,16 +79,16 @@ function sentenceOf(reason: HeldReason, ctx: ReasonContext): string | null {
       return item !== null && ctx.customer !== null ? tr('offline.holding.sentence.noRate', { item, customer: ctx.customer }) : null;
     }
     case 'numberUsed':
-      return number === null ? null : tr('offline.holding.sentence.numberUsed', { number, document });
+      return number === null ? null : tr('offline.holding.sentence.numberUsed', { number: formatIdentifier(number), document });
     case 'numberFormat':
-      return number === null ? null : tr('offline.holding.sentence.numberFormat', { number });
+      return number === null ? null : tr('offline.holding.sentence.numberFormat', { number: formatIdentifier(number) });
     case 'deleted': {
       if (number === null) return null;
       const name = textOf(data.deleted_by_name);
       const date = dateOf(data.deleted_at);
       return name !== null && date !== null
-        ? tr('offline.holding.sentence.deleted', { document, number, name, date })
-        : tr('offline.holding.sentence.deletedShort', { document, number });
+        ? tr('offline.holding.sentence.deleted', { document, number: formatIdentifier(number), name, date })
+        : tr('offline.holding.sentence.deletedShort', { document, number: formatIdentifier(number) });
     }
     case 'locked': {
       const field = textOf(data.field);
@@ -97,8 +97,8 @@ function sentenceOf(reason: HeldReason, ctx: ReasonContext): string | null {
       if (field === null || number === null || lock === null) return null;
       const date = dateOf(data.since);
       return date === null
-        ? tr('offline.holding.sentence.lockedShort', { field, document, number, lock })
-        : tr('offline.holding.sentence.locked', { field, document, number, lock, date });
+        ? tr('offline.holding.sentence.lockedShort', { field, document, number: formatIdentifier(number), lock })
+        : tr('offline.holding.sentence.locked', { field, document, number: formatIdentifier(number), lock, date });
     }
     case 'dateRefused': {
       const date = dateOf(data.date) ?? dateOf(data.recorded_at);

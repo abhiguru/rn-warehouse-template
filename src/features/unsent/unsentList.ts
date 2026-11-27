@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import { createLogger, loggableError } from '@/utils/logger';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 import { orderEffectLines, parseOrderEffects } from '@/services/orderEffects';
 import { describeReason, reasonOf } from '@/features/holding/heldReason';
 import { heldWhatText } from '@/features/holding/heldWhat';
@@ -103,7 +103,7 @@ async function titleOf(row: UnsentRowView): Promise<{ title: string; photoMissin
       ? 'offline.unsent.whatPhotosNewDispatch'
       : 'offline.unsent.whatPhotosNewGrn';
   return {
-    title: tr(key, { count, number: number ?? '' }),
+    title: tr(key, { count, number: formatIdentifier(number) }),
     photoMissing: photos.some(photo => photo.missing === 1),
   };
 }
@@ -274,7 +274,7 @@ function formRow(form: Awaited<ReturnType<typeof listOwnForms>>[number]): Unsent
       ? tr('offline.unsent.whatFormGrn')
       : form.kind === 'dispatch'
         ? tr('offline.unsent.whatFormDispatch')
-        : tr('offline.unsent.whatFormEdit', { number: form.number ?? '' });
+        : tr('offline.unsent.whatFormEdit', { number: formatIdentifier(form.number) });
   return {
     id: form.id,
     state: 'saved',

@@ -8,7 +8,7 @@ import * as Crypto from 'expo-crypto';
 import { buildSaveGrnArgs, type CreateGRNPayload } from '@/features/grn/services/saveGrnArgs';
 import type { GRNHeaderData, GRNImageData, GRNItemData } from '@/store/slices/grnFormSlice';
 import { getSessionCacheScope } from '@/utils/cacheManager';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import { isNewGrnBody, type NewGrnBody, type SaveGrnArgs } from './newGrnKind';
 import type { NumberMode } from './offlineNew';
 import { grnPhotosOf } from './queuedGrnSave';
@@ -204,7 +204,7 @@ export async function saveEditedUnsentGrn(
       lines: request.items.map(item => ({ itemName: item.item_name, packaging: item.packaging || null })),
     },
   };
-  const what = typedNumber ? t('offline.unsent.whatNewGrnNumber', { number: typedNumber }) : t('offline.unsent.whatNewGrn');
+  const what = typedNumber ? t('offline.unsent.whatNewGrnNumber', { number: formatIdentifier(typedNumber) }) : t('offline.unsent.whatNewGrn');
   const photos = grnPhotosOf(request);
   const photoWhat = t('offline.unsent.whatPhotosNewGrn', { count: photos.length });
   const replaced = await replaceItem(row.id, {

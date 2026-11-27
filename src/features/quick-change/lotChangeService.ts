@@ -4,7 +4,7 @@
  * value put back to what the server holds is dropped before anything was sent (Product PQ6). The queue sends the item at
  * once when the server is reachable (`enqueue` asks the engine).
  */
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import { normalizeDigits } from '@/i18n/language';
 import { changedLotFields, isLotChangeBody, LOT_FIELD_LABELS, LOT_FIELDS, type FieldChange, type LotChangeBody, type LotField } from '@/features/unsent/lotChangeKind';
 import { sendNow } from '@/features/unsent/sendEngine';
@@ -76,7 +76,7 @@ function toOf(row: ItemRow, lotId: string, field: LotField): string | null | und
 const WAITING_STATES: readonly string[] = ['saved', 'sending', 'waiting'];
 
 const whatOf = (grnNumber: string, fields: readonly LotField[]): string =>
-  t('offline.unsent.whatChange', { number: grnNumber, fields: fields.map(field => t(LOT_FIELD_LABELS[field])).join(', ') });
+  t('offline.unsent.whatChange', { number: formatIdentifier(grnNumber), fields: fields.map(field => t(LOT_FIELD_LABELS[field])).join(', ') });
 
 /**
  * A save was refused at once while the sheet is open (Product PQ7): only the newer part goes. A merged item goes back to

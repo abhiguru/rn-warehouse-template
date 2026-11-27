@@ -7,7 +7,7 @@
 import type { createGRN } from '@/features/grn/services/grnFormService';
 import type { CreateGRNPayload } from '@/features/grn/services/saveGrnArgs';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import { getFormNumberMode } from './formNumberMode';
 import { refusalCodeOf } from './newRecordAnswer';
 import { offlineNewOn, saveNewGrn, savesByQueue, type SavePhoto } from './offlineNew';
@@ -65,7 +65,7 @@ export async function runQueuedGrnSave(
     case 'duplicate': {
       const stored = answer.path === 'refused' ? answer.answer : answer.warning;
       const words = newRefusalOf(refusalCodeOf(stored));
-      if (words) return { kind: 'alert', message: t(`offline.offlineNew.refusal.${words}`, { document: t('common.grn'), number: typedNumber }) };
+      if (words) return { kind: 'alert', message: t(`offline.offlineNew.refusal.${words}`, { document: t('common.grn'), number: formatIdentifier(typedNumber) }) };
       // Today's refusal handling reads the server's answer as if it had just come: the number, duplicate, rate and date cases.
       return { kind: 'result', result: await replay({ ...request, header: { ...request.header, gr_no: typedNumber || '-' }, storedAnswer: stored }) };
     }
