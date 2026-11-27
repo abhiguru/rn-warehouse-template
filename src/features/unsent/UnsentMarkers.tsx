@@ -248,7 +248,7 @@ const parseJsonObject = (text: string | null): Record<string, unknown> | null =>
 /** The server id assigned to a sent new record whose local id is `localId`, even if a sync already removed it from the overlay. */
 export function sentServerIdOf(kind: 'grn' | 'dispatch', localId: string, overlay: UnsentOverlay): string | null {
   const fromOverlay = overlay.newDocuments(kind).find(doc => doc.localId === localId)?.serverId;
-  if (fromOverlay) return fromOverlay;
+  if (typeof fromOverlay === 'string' && fromOverlay.length > 0) return fromOverlay;
   const scope = currentUnsentScope();
   if (scope === null) return null;
   const itemKind = kind === 'grn' ? 'newGrn' : 'newDispatch';
