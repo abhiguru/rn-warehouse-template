@@ -12,7 +12,7 @@ import { formatIdentifier, t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatLoadedAt } from '@/utils/formatters';
-import type { UnsentListRow } from './unsentList';
+import { formatOrderNotes, type UnsentListRow } from './unsentList';
 
 const makeStyles = (t: ThemeTokens) => ({
   row: {
@@ -78,7 +78,8 @@ export const UnsentRow = memo(function UnsentRow({ row, divider, onOpen, onDelet
   const tagLabel = tagText !== null && row.sentNumber !== null ? `${tagText} · ${formatIdentifier(row.sentNumber)}` : tagText;
   // A form says when it was started; a record, when it was recorded.
   const recorded = row.form === null ? tr('offline.unsent.recordedAt', { time: formatLoadedAt(row.recordedAt) }) : tr('offline.unsent.startedAt', { time: formatLoadedAt(row.recordedAt) });
-  const label = [row.title, row.customer, recorded, tagLabel, row.reason].filter(Boolean).join(', ');
+  const orderNotesText = formatOrderNotes(row.orderNotes);
+  const label = [row.title, row.customer, recorded, tagLabel, row.reason, orderNotesText].filter(Boolean).join(', ');
 
   const content = (
     <Pressable
@@ -100,6 +101,11 @@ export const UnsentRow = memo(function UnsentRow({ row, divider, onOpen, onDelet
         {row.reason ? (
           <Text testID={`unsent-row-reason-${row.id}`} style={styles.footnote}>
             {row.reason}
+          </Text>
+        ) : null}
+        {orderNotesText ? (
+          <Text testID={`unsent-row-order-notes-${row.id}`} style={styles.footnote}>
+            {orderNotesText}
           </Text>
         ) : null}
         {row.photoMissing ? (

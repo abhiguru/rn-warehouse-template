@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr } from '@/i18n';
+import { orderEffectLines, parseOrderEffects } from '@/services/orderEffects';
 import { listOwnForms, type FormKind } from './formDrafts';
 import { refusalCodeOf, refusalFamilyOf } from './refusalTags';
 import { DEPENDS_ON_REFUSED } from './sendEngine';
@@ -33,6 +34,8 @@ export interface UnsentListRow {
   form: { kind: FormKind; grnId: string | null } | null;
   /** Under "Held": why it was not sent (the footnote); null when nothing is known. */
   reason: string | null;
+  /** Under "Sent today" for a dispatch whose send changed open orders (WH-161, PQ5). */
+  orderNotes?: string[];
   /** The record a tap opens, when it exists. */
   target: { grnId?: string; dispatchId?: string };
 }
@@ -46,11 +49,30 @@ export interface UnsentListState {
 }
 
 const numberOf = (value: unknown): string | null => {
-  if (typeof value === 'object' && value !== null && 'number' in value) {
-    const number: unknown = value.number;
-    if (typeof number === 'string' || typeof number === 'number') return String(number);
-  }
+  if (typeof value !== 'object' || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.number === 'string' || typeof record.number === 'number') return String(record.number);
+  if (typeof record.gr_no === 'string' && record.gr_no !== '') return `${tr('common.grn')} ${record.gr_no}`;
+  if (typeof record.disp_no === 'string' && record.disp_no !== '') return `${tr('common.dispatch')} ${record.disp_no}`;
   return null;
+};
+
+/** The lines of `order_effects` from a sent dispatch answer, in the online dialog's words (WH-161, PQ5). */
+export const orderNotesOfResult = (result: unknown): string[] => {
+  if (typeof result !== 'object' || result === null || !('order_effects' in result)) return [];
+  return orderEffectLines(parseOrderEffects((result as { order_effects?: unknown }).order_effects));
+};
+
+/** The lead and bulleted lines behind `document-success-order-notes`, or null when empty. */
+export const formatOrderNotes = (lines: readonly string[] | undefined): string | null =>
+  lines && lines.length > 0 ? `${tr('orders.effect.doneLead')}\n${lines.map(line => `• ${line}`).join('\n')}` : null;
+
+const sentTargetOf = (target: UnsentRowView['target'], result: unknown): UnsentRowView['target'] => {
+  if (typeof result !== 'object' || result === null) return target;
+  const record = result as Record<string, unknown>;
+  if (typeof record.grn_id === 'string' && record.grn_id !== '') return { ...target, grnId: record.grn_id };
+  if (typeof record.dispatch_id === 'string' && record.dispatch_id !== '') return { ...target, dispatchId: record.dispatch_id };
+  return target;
 };
 
 /** The words for what an item is. A photos item is described from its files; any other kind keeps the words it was saved with. */
@@ -119,7 +141,8 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
       tag: tagOf(view.state),
       form: null,
       reason: view.section === 'held' ? heldReason(view.reason, view.result) : null,
-      target: view.target,
+      orderNotes: view.section === 'sent' && view.kind === 'newDispatch' ? orderNotesOfResult(view.result) : [],
+      target: view.section === 'sent' ? sentTargetOf(view.target, view.result) : view.target,
     });
   }
   // "Not sent yet" oldest first (the order they are sent); "Held": each refused item with what follows it directly under

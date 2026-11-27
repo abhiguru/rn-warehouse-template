@@ -10,7 +10,9 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { subscribeSyncRunEnd } from '@/features/phone-copy/syncEngine';
 import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
 import { getUnsentOverlay, type UnsentOverlay } from '@/features/phone-copy/unsentOverlay';
+import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { currentUnsentScope, loadedUnsentRows, subscribeUnsent } from './unsentStore';
+import { formatOrderNotes, orderNotesOfResult } from './unsentList';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { iconSize, radius, space, typography } from '@/theme/tokens';
@@ -80,6 +82,7 @@ const makeStyles = (t: ThemeTokens) => ({
   stripText: { ...typography.footnote, color: t.status.informative.text, flexShrink: 1 },
   line: { ...typography.footnote, color: t.text.secondary },
   lineInset: { paddingHorizontal: space.lg },
+  orderNotes: { paddingHorizontal: space.lg, paddingVertical: space.xs },
 });
 
 /** Design 2.2: a footnote at the bottom of a card or row, icon and words, never a tag. Nothing when there is no marker. */
@@ -273,4 +276,31 @@ export function useFollowSentRoute(kind: 'grn' | 'dispatch', id: string): void {
       router.replace(kind === 'grn' ? `/grn-details/${serverId}` : `/dispatch-details/${serverId}`);
     }
   }, [kind, id, serverId]);
+}
+
+/**
+ * WH-161 (§7, PQ5): order lines changed by an offline dispatch once sent, shown under the hero while that sent item is in the
+ * store (local or server id). Uses the same wording as `document-success-order-notes`; nothing when empty.
+ */
+export function DispatchSentOrderNotes({ id }: { id: string }) {
+  useUnsentOverlay();
+  const styles = useThemedStyles(makeStyles);
+  const scope = currentUnsentScope();
+  if (scope === null) return null;
+  let notes: string[] = [];
+  for (const row of loadedUnsentRows()) {
+    if (row.scope !== scope || row.kind !== 'newDispatch' || row.state !== 'sent') continue;
+    const target = parseJsonObject(row.target_ref);
+    const result = parseJsonObject(row.result);
+    if (target?.dispatchId !== id && result?.dispatch_id !== id) continue;
+    notes = orderNotesOfResult(result);
+    if (notes.length > 0) break;
+  }
+  const message = formatOrderNotes(notes);
+  if (message === null) return null;
+  return (
+    <View style={styles.orderNotes} testID="dispatch-details-order-notes">
+      <InlineValidation variant="warning" message={message} />
+    </View>
+  );
 }
