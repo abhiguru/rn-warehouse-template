@@ -186,14 +186,26 @@ export async function insertItems(db: UnsentDb, items: readonly NewItem[], form?
       const first = items[0];
       if (form && first) {
         const [row] = await tx.all<Record<string, SqlValue>>('SELECT * FROM forms WHERE scope = ? AND kind = ? AND grn_id = ?', [form.scope, form.kind, '']);
-        const keptRow = JSON.stringify({ ...(row ?? {}), hadForm: row !== undefined, taken: moved.map(entry => ({ from: entry.from, to: toStored(entry.to) })) });
-        await tx.run('UPDATE items SET form_row = ? WHERE id = ?', [keptRow, first.id]);
-        if (row) {
-          await tx.run('DELETE FROM forms WHERE id = ?', [String(row.id)]);
-          // WH-301: a file the kept form_row's text still names stays, so returnToForm can give the form back with its photo.
-          const stillNamed = new Set(ownFilesInText(keptRow));
-          leftovers = formFiles(row.photos).filter(file => !stillNamed.has(file));
+        const taken = moved.map(entry => ({ from: entry.from, to: toStored(entry.to) }));
+        const formFileList = row ? formFiles(row.photos) : [];
+        // WH-301: a file the kept form_row's own text names stays unless an item now holds that photo (one file per photo): the
+        // saved-form copy `form-<name>` of a photo the item took over is removed and `taken` leads from it to the item's file, so
+        // giveBackForm puts the photo back at the address the form's text names. A named file nothing covers stays.
+        const stillNamed = new Set(row ? ownFilesInText(JSON.stringify(row)) : []);
+        leftovers = [];
+        for (const file of formFileList) {
+          const name = file.slice(file.lastIndexOf('/') + 1);
+          const holder = moved.find(entry => entry.from === file || `form-${entry.from.slice(entry.from.lastIndexOf('/') + 1)}` === name);
+          if (holder && stillNamed.has(file)) {
+            if (holder.from !== file) taken.push({ from: file, to: toStored(holder.to) });
+            leftovers.push(file);
+          } else if (!stillNamed.has(file)) {
+            leftovers.push(file);
+          }
         }
+        const keptRow = JSON.stringify({ ...(row ?? {}), hadForm: row !== undefined, taken });
+        await tx.run('UPDATE items SET form_row = ? WHERE id = ?', [keptRow, first.id]);
+        if (row) await tx.run('DELETE FROM forms WHERE id = ?', [String(row.id)]);
       }
     });
   } catch (error) {
