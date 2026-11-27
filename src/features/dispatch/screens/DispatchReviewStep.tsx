@@ -67,6 +67,10 @@ import { getLanguage } from '@/i18n/language';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
 import { keepFailedPhotos } from '@/features/unsent/keepFailedPhotos';
+import { OfflineSavedDialog } from '@/features/unsent/OfflineSavedDialog';
+import { OrderChangesLater } from '@/features/unsent/UnsentMarkers';
+import { offlineNewOn } from '@/features/unsent/offlineNew';
+import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
@@ -154,6 +158,10 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Success dialog state (create mode)
     const [showSuccessDialog, setShowSuccessDialog] = useState(false);
     const [successDialogData, setSuccessDialogData] = useState<DocumentData | null>(null);
+    // A new dispatch kept on the phone and not sent (WH-161): the dialog that says so, with what it needs.
+    const [offlineSaved, setOfflineSaved] = useState<{ localId: string; number: string | undefined; afterEarlierEntries: boolean } | null>(null);
+    // Offline, the order-effects preview is not asked: the note says the changes come after the send (PQ5).
+    const offlineNow = useCopyOffline();
     const [isShareLoading, setIsShareLoading] = useState(false);
     const [shareError, setShareError] = useState<string | null>(null);
 
@@ -399,6 +407,13 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         [{ text: tr('common.ok'), onPress: () => { if (!empty) void navigateToStep(DISPATCH_STEP_NUMBERS.ITEMS); } }]
                     );
             }
+            return;
+        }
+
+        if (result.savedOnPhone) {
+            const { savedOnPhone } = result;
+            void triggerSuccess();
+            afterDialog.current = () => setOfflineSaved(savedOnPhone);
             return;
         }
 
@@ -882,6 +897,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             />
                         </ReviewSection>
                     </ReviewCard>
+                    {isCreateMode && offlineNow && offlineNewOn() ? <OrderChangesLater /> : null}
                     {orderEffectsNotice(orderEffects) ? (
                         <View style={styles.errorStrip} testID="dispatch-review-order-effects">
                             <InlineValidation variant="warning" message={orderEffectsNotice(orderEffects)} />
@@ -944,6 +960,28 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 busy={isRetryingPhotos}
                 onDismissed={runAfterDialog}
             />
+
+            {/* Saved on this phone (create mode, WH-161) */}
+            {isCreateMode && (
+                <OfflineSavedDialog
+                    isVisible={offlineSaved !== null}
+                    document="dispatch"
+                    customer={header.customer_name || tr('dispatch.review.noCustomer')}
+                    number={offlineSaved?.number}
+                    afterEarlierEntries={offlineSaved?.afterEarlierEntries ?? false}
+                    onView={() => {
+                        const localId = offlineSaved?.localId;
+                        setOfflineSaved(null);
+                        resetFormState();
+                        void router.replace(localId ? `/dispatch-details/${localId}` : '/dispatch');
+                    }}
+                    onCreateAnother={() => {
+                        setOfflineSaved(null);
+                        resetFormState();
+                        void router.replace('/dispatch-form/step1');
+                    }}
+                />
+            )}
 
             {/* Success Dialog (create mode) */}
             {isCreateMode && (

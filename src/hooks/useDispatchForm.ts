@@ -103,6 +103,7 @@ import {
   validateDispatchDateVsGRNDates,
   dateRuleScope,
 } from '@/features/dispatch/schemas/dispatchValidation';
+import { runQueuedDispatchSave } from '@/features/unsent/queuedDispatchSave';
 import { decideFormNumberMode, getFormNumberMode, setFormNumberMode, typedNumberUsed } from '@/features/unsent/formNumberMode';
 import {
   getNextDispatchNumber,
@@ -211,6 +212,8 @@ export type DispatchSubmitResult = {
    * `submitForm` again with `warnDuplicate: false`.
    */
   duplicate?: PossibleDuplicate;
+  /** A new dispatch kept on the phone, not sent (WH-161): the screen says so in "Saved on this phone". */
+  savedOnPhone?: { localId: string; number: string | undefined; afterEarlierEntries: boolean };
 };
 
 /** What a caller may change about one submit. */
@@ -1081,7 +1084,21 @@ export function useDispatchForm({
       submitAbortRef.current = controller;
       const lostAnswer = { onLostAnswer: () => dispatch(setCheckingAnswer(true)), signal: controller.signal };
 
-      const result = isCreateMode
+      // On the queue (offline, or an older entry still unsent): the same Save, kept on the phone (WH-161).
+      const queued = isCreateMode
+        ? await runQueuedDispatchSave({ ...payload, submissionNonce, warnDuplicate: submitOptions.warnDuplicate }, { numberTyped: dispNoTypedRef.current }, createDispatch)
+        : { kind: 'not-queued' as const };
+      if (queued.kind === 'alert') {
+        report(t('dispatch.wizard.errorTitle'), queued.message);
+        return { success: false, error: queued.message, toDetails: { message: queued.message } };
+      }
+      if (queued.kind === 'saved') {
+        return { success: true, savedOnPhone: { localId: queued.localId, number: queued.number, afterEarlierEntries: queued.afterEarlierEntries } };
+      }
+
+      const result = queued.kind === 'result'
+        ? queued.result
+        : isCreateMode
         ? await createDispatch({ ...payload, submissionNonce, warnDuplicate: submitOptions.warnDuplicate }, lostAnswer)
         : await updateDispatch(
             dispatchIdParam!,

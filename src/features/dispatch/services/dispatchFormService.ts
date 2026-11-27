@@ -387,6 +387,11 @@ export const createDispatch = async (payload: {
    * request body, so of the request code: the same form saved with the warning and without it are two requests.
    */
   warnDuplicate?: boolean;
+  /**
+   * The server's answer to this save, already got (a dispatch saved on the phone and sent while the form waited, WH-161): it is
+   * handled exactly as if this call had just received it, and nothing is sent.
+   */
+  storedAnswer?: unknown;
 }, options: LostAnswerOptions = {}): Promise<DispatchApiResponse> => {
   let finishMutation: (() => void) | undefined;
   // The save's request code once it is made, for the outcome report of the catch below.
@@ -448,7 +453,9 @@ export const createDispatch = async (payload: {
 
     // The key is the request code of this attempt: it is what the server is asked about when no answer comes back,
     // and what an identical request is sent again with.
-    const answer = await sendUntilAnswered(
+    const answer = payload.storedAnswer !== undefined
+      ? ({ data: payload.storedAnswer, error: null } as unknown as Awaited<ReturnType<typeof sendUntilAnswered>>)
+      : await sendUntilAnswered(
       'create_dispatch_with_stock_check',
       (resend) => sendOnCurrentClient(authenticatedClient, resend, (client) => client.rpc('create_dispatch_with_stock_check', rpcPayload)),
       rpcPayload.p_idempotency_key,
