@@ -26,6 +26,7 @@ const RPC = 'set_lot_rack_and_mark';
 const LOT = 'lot-0001';
 const GRN = 'grn-0001';
 const COPY = { rack: 'A-1', package_mark: 'M1' };
+const T0 = '2026-11-26T03:30:00.000Z'; // the pinned phone time of the tests (09:00 in Kolkata)
 const calls = () => server.calls.filter(c => c.name === RPC);
 const answer = (rack: string): RpcAnswer => ({
   data: { success: true, lot: { id: LOT, gr_id: GRN, rack, package_mark: 'M1' }, grn: { id: GRN, gr_no: 12, updated_at: 'x' }, changed: ['rack'], replaced: [] },
@@ -67,7 +68,7 @@ describe('K1: send', () => {
     await online(phone);
     await pass(phone);
     expect(calls()).toHaveLength(1);
-    expect(calls()[0].args).toEqual({ p_lot_id: LOT, p_changes: { rack: { to: 'B-2', from: 'A-1' } }, p_request_key: saved.requestKey });
+    expect(calls()[0].args).toEqual({ p_lot_id: LOT, p_changes: { rack: { to: 'B-2', from: 'A-1' }, recorded_at: T0 }, p_request_key: saved.requestKey });
     const [row] = await items();
     expect(row.state).toBe('sent');
     expect(row.kind).toBe('lotChange');
@@ -107,10 +108,12 @@ describe('K2, K3, K4: one own item per lot while it can still change', () => {
     const phone = await start();
     await offline(phone);
     await change({ rack: 'B-2' });
+    await jest.advanceTimersByTimeAsync(5_000);
     await change({ rack: 'C-3' });
     const rows = await items();
     expect(rows).toHaveLength(1);
-    expect(bodyOf(rows[0])).toEqual({ lotId: LOT, grnId: GRN, changes: { rack: { to: 'C-3', from: 'A-1' } } });
+    // The merged item carries the later save's time.
+    expect(bodyOf(rows[0])).toEqual({ lotId: LOT, grnId: GRN, recordedAt: '2026-11-26T03:30:05.000Z', changes: { rack: { to: 'C-3', from: 'A-1' } } });
     expect(rows[0].what).toBe('GRN 12: Rack changed');
     expect((await phone.queue.listItems())).toHaveLength(1);
   });
@@ -153,7 +156,7 @@ describe('K2, K3, K4: one own item per lot while it can still change', () => {
     await online(phone);
     await pass(phone);
     expect(calls()).toHaveLength(1);
-    expect(calls()[0].args.p_changes).toEqual({ package_mark: { to: 'M9', from: 'M1' } });
+    expect(calls()[0].args.p_changes).toEqual({ package_mark: { to: 'M9', from: 'M1' }, recorded_at: T0 });
     expect(phone.store.getUnsentSummary().count).toBe(0);
   });
 
@@ -235,7 +238,8 @@ describe('K5: a change after an attempt', () => {
     expect(rows[0].state).toBe('refused');
     expect(rows[1].state).toBe('refused');
     expect(rows[1].depends_on).toBe(rows[0].id);
-    expect(phone.store.getUnsentSummary().count).toBe(0);
+    // Sharpened ruling (WH-304 PQ1): a refused item and its dependants count as unsent until the server holds them.
+    expect(phone.store.getUnsentSummary().count).toBe(2);
     const reasons = await rawRows<{ last_error: string | null }>('items', 'ORDER BY seq');
     expect(reasons[1].last_error).toBe('dependsOnRefused'); // ASSUMED column: items.last_error
     expect(reasons[1].last_error).not.toBe(reasons[0].last_error);
@@ -327,9 +331,10 @@ describe('K8: an unsent GRN edit of the same lot', () => {
     const phone = await start();
     await offline(phone);
     phone.kinds.registerSendKind('grnEdit', { lane: 'record', send: async () => ({ kind: 'sent', result: { success: true } }) });
+    const editBody = { v: 1, grnId: GRN, loadedAt: '2026-11-26T03:00:00.000Z', recordedAt: '2026-11-26T03:20:00.000Z', lots: { [LOT]: { rack: { from: 'A-1', to: 'D-4' } } } };
     const edit = await phone.queue.enqueue({
       kind: 'grnEdit',
-      body: { grnId: GRN, lines: [{ lotId: LOT, rack: 'D-4' }] }, // ASSUMED shape (WH-303's contract owns it)
+      body: editBody,
       targetRef: { grnId: GRN, lotIds: [LOT], number: '12' },
       what: 'GRN 12: edited',
     });
@@ -337,7 +342,7 @@ describe('K8: an unsent GRN edit of the same lot', () => {
     const rows = await items();
     expect(rows).toHaveLength(2);
     expect(rows[0].id).toBe(edit.id);
-    expect(bodyOf(rows[0])).toEqual({ grnId: GRN, lines: [{ lotId: LOT, rack: 'D-4' }] });
+    expect(bodyOf(rows[0])).toEqual(editBody);
     expect(rows[1].kind).toBe('lotChange');
     expect(rows[1].depends_on).toBeNull();
     expect(bodyOf(rows[1]).changes).toEqual({ rack: { to: 'E-5', from: 'D-4' } });

@@ -30,6 +30,8 @@ import { setLanguage } from '@/i18n';
 jest.mock('expo-sqlite', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.sqlite(), { virtual: true });
 jest.mock('expo-secure-store', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.secureStore());
 jest.mock('expo-file-system', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.fileSystem());
+// The bar's tests are about the copy: the unsent work is not opened (its file is kept open for a run, and this file wipes the fake phone before each test). Nothing is unsent here.
+jest.mock('@/features/unsent/unsentStore', () => ({ ...jest.requireActual('@/features/unsent/unsentStore'), initUnsent: jest.fn(async () => undefined) }));
 jest.mock('@/config/supabaseConfig', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.supabase());
 jest.mock('@react-native-community/netinfo', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.netinfo());
 // react-redux does not load under Jest here: the app's two store hooks read the real theme slice's starting state.

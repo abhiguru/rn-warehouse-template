@@ -42,3 +42,17 @@ describe('items waiting for an administrator (PQ5)', () => {
     expect(bar(3, 'gu')).toBe('તમે નોંધેલી ૩ એન્ટ્રી એડમિનના નિર્ણય માટે રાહ જુએ છે.');
   });
 });
+
+describe('photos kept at save (Design 4.9, 2026-11-26)', () => {
+  const kept = (count: number, language: 'en' | 'gu') => (t as (k: string, o?: Record<string, unknown>, l?: string) => string)('offline.photosKept', { count }, language);
+
+  it('one photo and many photos, in English', () => {
+    expect(kept(1, 'en')).toBe("1 photo couldn't be sent yet. It's kept on this phone and sent when the connection is better.");
+    expect(kept(3, 'en')).toBe("3 photos couldn't be sent yet. They're kept on this phone and sent when the connection is better.");
+  });
+
+  it('in Gujarati, with Gujarati digits', () => {
+    expect(kept(1, 'gu')).toBe('૧ ફોટો હજુ મોકલી શકાયો નથી. તે આ ફોનમાં સાચવેલો છે અને કનેક્શન સારું થાય ત્યારે મોકલાશે.');
+    expect(kept(3, 'gu')).toBe('૩ ફોટો હજુ મોકલી શકાયા નથી. તે આ ફોનમાં સાચવેલા છે અને કનેક્શન સારું થાય ત્યારે મોકલાશે.');
+  });
+});

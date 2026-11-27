@@ -14,9 +14,9 @@
  */
 import React from 'react';
 import { act, render as renderScreen } from '@testing-library/react-native';
-import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
+import { env } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
-import { rawRows, rawRun } from '@/tests/unsent/unsentPhone';
+import { rawRows, rawRun, unsentFileNames } from '@/tests/unsent/unsentPhone';
 import { useAccountActions } from '@/features/account/useAccountActions';
 const { initUnsent } = require('@/features/unsent/unsentStore') as { initUnsent(): Promise<void> }; // not built yet
 import { setLanguage, t } from '@/i18n';
@@ -70,8 +70,12 @@ async function deleteWith(number: string) {
   await act(async () => hook.deletion.dialog.onConfirm());
 }
 
-beforeEach(() => { jest.clearAllMocks(); resetEnv(); files.reset(); mockOffline = false; env.subject = 'user-1'; });
-afterEach(async () => { setLanguage('en'); await eraseEverything(); });
+// The unsent store keeps its file open for the whole run (as in the app), so the file is emptied between tests, not wiped.
+beforeEach(async () => {
+  jest.clearAllMocks(); files.reset(); mockOffline = false; env.subject = 'user-1';
+  if (unsentFileNames().length > 0) { await rawRun('DELETE FROM forms'); await rawRun('DELETE FROM items'); }
+});
+afterEach(() => { setLanguage('en'); });
 
 describe('the warning step', () => {
   it('with unfinished forms of this person it ends with the count, joined by a space', async () => {

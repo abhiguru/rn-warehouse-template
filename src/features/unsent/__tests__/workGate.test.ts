@@ -18,7 +18,7 @@
  *  - `refused` is the state of an item the server refused; it counts (section 3) until WH-304.
  * ==========================================================================
  */
-import { eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
+import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
 import { addPhoto, bootUnsent, rawRows, rawRun, restart, rpcKind, server } from '@/tests/unsent/unsentPhone';
 
@@ -267,10 +267,11 @@ describe("G4f: another person's unsent dispatch (PQ4b)", () => {
     first.kinds.registerSendKind('testDispatch', dispatchKind as never);
     await first.store.initUnsent();
     await first.queue.enqueue({ kind: 'testDispatch', body: {}, what: 'Dispatch for Bina Fictional Stores' });
-    const { env } = require('@/tests/phoneCopy/phoneEnv') as typeof import('@/tests/phoneCopy/phoneEnv');
+    // A kill and a second person signing in. `env` is the top-level import, the copy the fake session reads (a require after the module reset would be another copy).
+    const phone = await bootUnsent();
     env.subject = 'user-2';
-    const phone = await restart();
     phone.kinds.registerSendKind('testDispatch', dispatchKind as never);
+    await phone.store.initUnsent();
     const { getUnsentOverlay } = require('@/features/phone-copy/unsentOverlay') as { getUnsentOverlay(): { lessOthersUnsent(l: string): number; lessUnsent(l: string): number; deductions(): ReadonlyMap<string, number>; lot(l: string): unknown } };
     const overlay = getUnsentOverlay();
     expect(overlay.lessOthersUnsent('lot-1')).toBe(12);

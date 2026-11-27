@@ -116,8 +116,9 @@ describe('Q1, Q2: the order', () => {
     const rows = await rawRows<{ last_error: string; depends_on: string }>('items', 'ORDER BY seq');
     expect(rows[1]).toMatchObject({ last_error: 'dependsOnRefused', depends_on: a.id }); // ASSUMED column for the reason: last_error
     expect(rows[0].last_error).toBe('Not enough stock');
-    expect(phone.store.getUnsentSummary().count).toBe(1);
-    expect(phone.gate.accountActionAllowed()).toEqual({ ok: false, count: 1 });
+    // Sharpened ruling (WH-304 PQ1): both stay unsent work until the server holds them.
+    expect(phone.store.getUnsentSummary().count).toBe(2);
+    expect(phone.gate.accountActionAllowed()).toEqual({ ok: false, count: 2 });
   });
 });
 
