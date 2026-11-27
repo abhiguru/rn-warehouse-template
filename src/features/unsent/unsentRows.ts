@@ -197,7 +197,7 @@ export async function insertItems(db: UnsentDb, items: readonly NewItem[], form?
           const name = file.slice(file.lastIndexOf('/') + 1);
           const holder = moved.find(entry => entry.from === file || `form-${entry.from.slice(entry.from.lastIndexOf('/') + 1)}` === name);
           if (holder && stillNamed.has(file)) {
-            if (holder.from !== file) taken.push({ from: file, to: toStored(holder.to) });
+            // No `taken` entry: giveBackForm derives form-<name> from the item's file name.
             leftovers.push(file);
           } else if (!stillNamed.has(file)) {
             leftovers.push(file);
