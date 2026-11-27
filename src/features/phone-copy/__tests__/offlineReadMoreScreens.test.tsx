@@ -7,7 +7,7 @@
  * its own. Reachable, an older server or the feature off: today's screens.
  *
  * ===== AGREE WITH DEVELOPMENT =====
- *  - `create-invoice-fab` is the Invoices tab's "+" testID (Design 13.7 check 3); `invoices-last-updated` the removed time line.
+ *  - `create-invoice-fab` is the Invoices tab's "+" testID (Design 13.7 check 3); `invoice-last-updated` the removed time line.
  * ==================================
  *
  * Real: the screens, the services, the sync engine, the copy, the store. Faked at the edge: the server's answers, the phone's
@@ -218,7 +218,7 @@ describe('Invoices tab with no connection (WH-381, Design 13.1 A & C)', () => {
     expect(screen.queryByRole('button', { name: /Create invoice/ })).not.toBeOnTheScreen();
     expect(screen.queryByTestId('create-invoice-fab')).not.toBeOnTheScreen();
     expect(screen.queryByTestId('invoices-new-needs-connection')).not.toBeOnTheScreen();
-    expect(screen.queryByTestId('invoices-last-updated')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('invoice-last-updated')).not.toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
   });
 
