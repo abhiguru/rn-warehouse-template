@@ -22,14 +22,6 @@ const lookup = (groups: string[], name: string, options: Record<string, unknown>
   return '(no such key)';
 };
 const bar = (count: number, language: 'en' | 'gu') => lookup(['components.offlineStatus'], 'waitingForAdmin', { count }, language);
-const less = (count: number, language: 'en' | 'gu') => lookup(['components.offlineRead', 'components.offlineStatus'], 'lessOtherPerson', { count }, language);
-
-describe("another person's unsent dispatch (PQ4b)", () => {
-  it('reads as the design says, in English and in Gujarati with Gujarati digits', () => {
-    expect(less(12, 'en')).toBe("Less 12 in another person's dispatches not sent yet");
-    expect(less(12, 'gu')).toBe('બીજી વ્યક્તિની મોકલવાની બાકી જાવકના ૧૨ નંગ બાદ');
-  });
-});
 
 describe('items waiting for an administrator (PQ5)', () => {
   it('one item and many items, in English', () => {

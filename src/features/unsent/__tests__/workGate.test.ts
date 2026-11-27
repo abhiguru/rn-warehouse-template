@@ -258,38 +258,37 @@ describe('G4b: the unreadable file, in the summary (contract section 1, section 
   });
 });
 
-describe("G4f: another person's unsent dispatch (PQ4b)", () => {
-  // ASSUMED: section 2.1 does not give `OverlayPart`; here a kind's overlay answers the bags it takes off a lot as `{ lessUnsent: { [lotId]: bags } }`.
-  const dispatchKind = { lane: 'record' as const, send: async () => ({ kind: 'transient' as const }), overlay: () => ({ lessUnsent: { 'lot-1': 12 } }) };
+describe('G4f: WH-381 zero dispatch deductions (replaces PQ4b)', () => {
+  // WH-381 Section 3.3: offline dispatches are dropped, so lessUnsent, lessHeld, lessOthersUnsent and deductions() are always 0 / empty.
+  const legacyDispatchKind = { lane: 'record' as const, send: async () => ({ kind: 'transient' as const }), overlay: () => ({ lessUnsent: { 'lot-1': 12 } }) };
 
-  it("is deducted as lessOthersUnsent and in deductions(), and is not this person's own unsent", async () => {
+  it("another person's legacy item deducts nothing (lessOthersUnsent 0, lessUnsent 0, deductions empty)", async () => {
     const first = await bootUnsent();
-    first.kinds.registerSendKind('testDispatch', dispatchKind as never);
+    first.kinds.registerSendKind('testDispatch', legacyDispatchKind as never);
     await first.store.initUnsent();
-    await first.queue.enqueue({ kind: 'testDispatch', body: {}, what: 'Dispatch for Bina Fictional Stores' });
-    // A kill and a second person signing in. `env` is the top-level import, the copy the fake session reads (a require after the module reset would be another copy).
+    await first.queue.enqueue({ kind: 'testDispatch', body: {}, what: 'Legacy item' });
     const phone = await bootUnsent();
     env.subject = 'user-2';
-    phone.kinds.registerSendKind('testDispatch', dispatchKind as never);
+    phone.kinds.registerSendKind('testDispatch', legacyDispatchKind as never);
     await phone.store.initUnsent();
-    const { getUnsentOverlay } = require('@/features/phone-copy/unsentOverlay') as { getUnsentOverlay(): { lessOthersUnsent(l: string): number; lessUnsent(l: string): number; deductions(): ReadonlyMap<string, number>; lot(l: string): unknown } };
+    const { getUnsentOverlay } = require('@/features/phone-copy/unsentOverlay') as { getUnsentOverlay(): { lessOthersUnsent?(l: string): number; lessUnsent(l: string): number; deductions(): ReadonlyMap<string, number>; lot(l: string): unknown } };
     const overlay = getUnsentOverlay();
-    expect(overlay.lessOthersUnsent('lot-1')).toBe(12);
+    expect(overlay.lessOthersUnsent?.('lot-1') ?? 0).toBe(0);
     expect(overlay.lessUnsent('lot-1')).toBe(0);
-    expect(overlay.deductions().get('lot-1')).toBe(12);
+    expect(overlay.deductions().size).toBe(0);
     expect(overlay.lot('lot-1')).toBeNull();
   });
 
-  it("the person's own dispatch is lessUnsent, not lessOthersUnsent, and still in deductions()", async () => {
+  it("own legacy item deducts nothing (lessUnsent 0, lessOthersUnsent 0, deductions empty)", async () => {
     const phone = await bootUnsent();
-    phone.kinds.registerSendKind('testDispatch', dispatchKind as never);
+    phone.kinds.registerSendKind('testDispatch', legacyDispatchKind as never);
     await phone.store.initUnsent();
-    await phone.queue.enqueue({ kind: 'testDispatch', body: {}, what: 'Dispatch for Bina Fictional Stores' });
-    const { getUnsentOverlay } = require('@/features/phone-copy/unsentOverlay') as { getUnsentOverlay(): { lessOthersUnsent(l: string): number; lessUnsent(l: string): number; deductions(): ReadonlyMap<string, number> } };
+    await phone.queue.enqueue({ kind: 'testDispatch', body: {}, what: 'Legacy item' });
+    const { getUnsentOverlay } = require('@/features/phone-copy/unsentOverlay') as { getUnsentOverlay(): { lessOthersUnsent?(l: string): number; lessUnsent(l: string): number; deductions(): ReadonlyMap<string, number> } };
     const overlay = getUnsentOverlay();
-    expect(overlay.lessUnsent('lot-1')).toBe(12);
-    expect(overlay.lessOthersUnsent('lot-1')).toBe(0);
-    expect(overlay.deductions().get('lot-1')).toBe(12);
+    expect(overlay.lessUnsent('lot-1')).toBe(0);
+    expect(overlay.lessOthersUnsent?.('lot-1') ?? 0).toBe(0);
+    expect(overlay.deductions().size).toBe(0);
   });
 });
 

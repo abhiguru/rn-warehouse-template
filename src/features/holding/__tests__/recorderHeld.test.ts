@@ -35,11 +35,21 @@ const loadList = async () =>
   (require('@/features/unsent/unsentList') as typeof import('@/features/unsent/unsentList')).loadUnsentList();
 const heldRows = (): { markHeldSeen(heldId: string): Promise<void> } => require('@/features/holding/heldRows');
 
-const own = (id: string, overrides: Record<string, unknown> = {}): FeedRow => recorderHeldFeedRow({ id, ...overrides });
+const own = (id: string, overrides: Record<string, unknown> = {}): FeedRow =>
+  recorderHeldFeedRow({
+    id,
+    kind: 'newGrn',
+    what: { key: 'offline.unsent.whatNewGrn' },
+    reason: 'noRate',
+    reason_data: { lines: [{ item_name: 'Beans' }] },
+    lines: null,
+    body: { v: 1, localId: id, args: { p_customer_id: 'c1', p_items: [] } },
+    ...overrides,
+  });
 const accepted = (id: string, decidedAt: string, result: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
   own(id, { state: 'accepted', needs_decision: true, decided_by_name: 'Meera Fictional', decided_at: decidedAt, result, ...extra });
 const rejected = (id: string, decidedAt: string) =>
-  own(id, { state: 'rejected', decided_by_name: 'Meera Fictional', decided_at: decidedAt, reject_reason: 'Goods did not leave' });
+  own(id, { state: 'rejected', decided_by_name: 'Meera Fictional', decided_at: decidedAt, reject_reason: 'Duplicate entry' });
 
 async function recorder(rows: FeedRow[]): Promise<HoldingPhone> {
   const phone = await bootHolding({ role: 'staff', profileId: 'profile-staff-1', heldFeedRows: rows, withCopy: true });
@@ -65,23 +75,23 @@ describe('S9: the recorder\'s Held, Accepted and Rejected rows in "Unsent items"
   it('a held item is under Held with its reason sentence; its follower is directly under it with dependsOnRefused', async () => {
     await recorder([
       own('held-1'),
-      own('held-2', { kind: 'photos', reason: 'followsHeld', follows: 'held-1', needs_decision: false, lines: null, reason_data: {}, what: { key: 'offline.unsent.whatPhotosNewDispatch', params: { count: 1 } } }),
+      own('held-2', { kind: 'photos', reason: 'followsHeld', follows: 'held-1', needs_decision: false, lines: null, reason_data: {}, what: { key: 'offline.unsent.whatPhotosNewGrn', params: { count: 1 } } }),
     ]);
     const { rows } = await loadList();
     const held = rows.filter(r => r.section === 'held');
     expect(held.map(r => r.id)).toEqual(['held-1', 'held-2']);
     expect(held[0]).toMatchObject({ tag: 'held' });
-    expect(held[0].reason).toMatch(/has 4 left; this dispatch takes 6\./);
+    expect(held[0].reason).toMatch(/There is no rate for Beans for asha Traders\./);
     expect(held[1].reason).toBe('Not sent: the change before it was refused.');
   });
 
   it('an item accepted today is under "Sent today" as Accepted with its number; one accepted yesterday is gone', async () => {
     await recorder([
-      accepted('acc-today', TODAY, { dispatch_id: 'd-17', disp_no: 'D-17' }),
-      accepted('acc-old', YESTERDAY, { dispatch_id: 'd-16', disp_no: 'D-16' }),
+      accepted('acc-today', TODAY, { grn_id: 'g-17', gr_no: 'G-17' }),
+      accepted('acc-old', YESTERDAY, { grn_id: 'g-16', gr_no: 'G-16' }),
     ]);
     const { rows } = await loadList();
-    expect(rows.find(r => r.id === 'acc-today')).toMatchObject({ section: 'sent', tag: 'accepted', sentNumber: 'D-17' });
+    expect(rows.find(r => r.id === 'acc-today')).toMatchObject({ section: 'sent', tag: 'accepted', sentNumber: 'G-17' });
     expect(rows.find(r => r.id === 'acc-old')).toBeUndefined();
   });
 
@@ -95,7 +105,7 @@ describe('S9: the recorder\'s Held, Accepted and Rejected rows in "Unsent items"
 
   it('a rejected item stays under Held the next day with the rejecter\'s reason, until opened; then mark_held_item_seen and gone', async () => {
     const phone = await recorder([rejected('rej-1', YESTERDAY)]);
-    expect((await loadList()).rows.find(r => r.id === 'rej-1')).toMatchObject({ section: 'held', tag: 'rejected', reason: 'Goods did not leave' });
+    expect((await loadList()).rows.find(r => r.id === 'rej-1')).toMatchObject({ section: 'held', tag: 'rejected', reason: 'Duplicate entry' });
 
     server.answers.mark_held_item_seen = (): RpcAnswer => ({ data: { success: true }, error: null });
     await heldRows().markHeldSeen('rej-1');
@@ -120,6 +130,16 @@ describe('S9: the recorder\'s Held, Accepted and Rejected rows in "Unsent items"
     await phone.sync();
     expect(rpcCalls('mark_held_item_seen').map(c => c.args)).toEqual([{ p_id: 'rej-2' }]);
   });
+
+  it('WH-381: historical newDispatch rows in held_items are filtered out of Unsent items and held summary count', async () => {
+    const phone = await recorder([
+      recorderHeldFeedRow({ id: 'legacy-disp-1', kind: 'newDispatch', state: 'held' }),
+      own('grn-held-1'),
+    ]);
+    const { rows } = await loadList();
+    expect(rows.map(r => r.id)).toEqual(['grn-held-1']);
+    expect(phone.store.getUnsentSummary()).toMatchObject({ count: 0, held: 1 });
+  });
 });
 
 describe('S12: the status bar\'s line 2 for held items (Design 7.9 DQ6)', () => {
@@ -134,7 +154,7 @@ describe('S12: the status bar\'s line 2 for held items (Design 7.9 DQ6)', () => 
   };
 
   it('counts own held rows and rejected rows not yet opened, never accepted ones', async () => {
-    const phone = await recorder([own('h-1'), rejected('r-1', YESTERDAY), accepted('a-1', TODAY, { dispatch_id: 'd-1', disp_no: 'D-1' })]);
+    const phone = await recorder([own('h-1'), rejected('r-1', YESTERDAY), accepted('a-1', TODAY, { grn_id: 'g-1', gr_no: 'G-1' })]);
     expect(phone.store.getUnsentSummary()).toMatchObject({ count: 0, held: 2 });
   });
 

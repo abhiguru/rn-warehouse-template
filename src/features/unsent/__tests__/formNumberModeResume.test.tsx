@@ -93,22 +93,4 @@ describe('N5: an unfinished form keeps its number mode across a reconnect', () =
     await hook.unmount();
     expect(await modes.decideFormNumberMode('grn')).toBe('online');
   });
-
-  it('a kept dispatch form restores its pending mode on Continue as well', async () => {
-    const phone = await bootNewRecords();
-    const { rtl, modes, drafts, useFormDraft } = load();
-    const dispatchSlice = require('@/store/slices/dispatchFormSlice') as typeof import('@/store/slices/dispatchFormSlice');
-    const empty = dispatchSlice.default(undefined, { type: 'test/init' });
-    const state = { ...empty, header: { ...empty.header, customer_id: 'c1', customer_name: 'asha Traders' }, numberMode: 'pending' };
-    expect(await drafts.saveFormDraft({ kind: 'dispatch', grnId: null, state, customer: 'asha Traders' })).toBe(true);
-    await phone.online();
-
-    const hook = await rtl.renderHook(() => useFormDraft('dispatch', null, true, () => true));
-    await rtl.act(async () => {
-      await jest.advanceTimersByTimeAsync(100);
-    });
-    expect(hook.result.current.ready).toBe(true);
-    expect(await modes.decideFormNumberMode('dispatch')).toBe('pending');
-    await hook.unmount();
-  });
 });

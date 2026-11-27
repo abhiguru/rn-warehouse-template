@@ -19,7 +19,7 @@
 import { eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
 import { addPhoto, keptPhotoFiles, rawRows, server } from '@/tests/unsent/unsentPhone';
-import { bootNewRecords, dispatchSaved, grnPayload, grnSaved, refusal, type NewRecordPhone } from '@/tests/unsent/newRecordPhone';
+import { bootNewRecords, grnSaved, refusal, type NewRecordPhone } from '@/tests/unsent/newRecordPhone';
 
 type Item = { id: string; kind: string; state: string; body: string; last_error: string | null; depends_on: string | null; attempts: number };
 const items = () => rawRows<Item>('items', 'ORDER BY seq');
@@ -28,7 +28,7 @@ const forms = () => rawRows<{ id: string; kind: string; state: string; photos: s
 const listed = (phone: NewRecordPhone) => phone.queue.listItems() as unknown as Promise<{ id: string; kind: string; state: string; result: any; reason: string | null }[]>;
 
 type Queue = NewRecordPhone['queue'] & {
-  enqueueAll(inputs: unknown[], form?: { kind: 'grn' | 'dispatch' }): Promise<{ id: string; requestKey: string }[]>;
+  enqueueAll(inputs: unknown[], form?: { kind: 'grn' }): Promise<{ id: string; requestKey: string }[]>;
   returnToForm(itemId: string): Promise<void>;
 };
 
@@ -38,12 +38,6 @@ const grnBody = (lines = 1) => ({
   lotLocalIds: Array.from({ length: lines }, (_, index) => `5f1c0000-0000-4000-8000-0000000000b${index}`),
   args: { p_gr_no: '', p_issue_number: true, p_date: '2026-11-27', p_customer_id: 'c1', p_customer_name: 'asha Traders', p_items: Array.from({ length: lines }, () => ({ item_id: 'i1', qty: 40 })), p_warn_duplicate: true },
   show: { customerName: 'asha Traders', lines: Array.from({ length: lines }, () => ({ itemName: 'Peas', packaging: 'Bag' })) },
-});
-const dispatchBody = () => ({
-  v: 1,
-  localId: '5f1c0000-0000-4000-8000-0000000000c1',
-  args: { p_dispatch_data: { disp_no: '', issue_number: true, customer_id: 'c1' }, p_dispatch_items: [{ gr_trl_id: 'l06', disp_qty: 4 }], p_generate_invoice: true, p_retry_count: 0 },
-  show: { customerName: 'asha Traders' },
 });
 const recordWithPhotos = (photos: { file: string; role: string; lineRef?: string }[], body: unknown = grnBody(2)) => [
   { kind: 'newGrn', body, what: 'New GRN', customer: 'asha Traders', targetRef: { grnId: (body as { localId: string }).localId } },
@@ -81,17 +75,6 @@ describe('K3: the result is flat, and photos find the record and the line', () =
       expect.arrayContaining([['grn-server-1', 'header', null], ['grn-server-1', 'item', 'item-server-1']])
     );
     expect((await photoRows()).every(row => row.done === 1)).toBe(true);
-  });
-
-  it('a dispatch\'s result is { dispatch_id, disp_no, order_effects }', async () => {
-    const phone = await bootNewRecords();
-    await phone.offline();
-    await phone.queue.enqueue({ kind: 'newDispatch', body: dispatchBody(), what: 'New dispatch', customer: 'asha Traders', targetRef: { dispatchId: dispatchBody().localId } });
-    const effects = [{ order_no: 'O-5', status: 'completed' }];
-    server.answers.create_dispatch_with_stock_check = () => dispatchSaved('77', effects);
-    await phone.online();
-    await phone.pass();
-    expect((await listed(phone))[0].result).toEqual({ dispatch_id: 'disp-server-1', disp_no: '77', order_effects: effects });
   });
 });
 

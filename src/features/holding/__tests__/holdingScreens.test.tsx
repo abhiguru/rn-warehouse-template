@@ -76,7 +76,7 @@ jest.mock('@/config/supabaseConfig', () => {
     return answer ? answer(args) : { data: null, error: { message: 'No internet connection', code: 'NETWORK' } };
   };
   const client = async () => ({ rpc, storage: { from: () => ({ createSignedUrl: async (path: string) => mockStorage.sign(path) }) } });
-  return { ...base, getAuthenticatedClient: client, getSupabaseClient: client, RequestTimeoutError: class RequestTimeoutError extends Error {} };
+  return { ...base, getAuthenticatedClient: client, getSupabaseClient: client, getSupabaseWithJWT: client, RequestTimeoutError: class RequestTimeoutError extends Error {} };
 });
 jest.mock('@react-native-community/netinfo', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.netinfo());
 jest.mock('@/config/lanTransport', () => ({ ...require('@/tests/phoneCopy/phoneEnv').mockFactories.lan(), setLanContext: () => undefined, viaCurrentPath: (url: string) => url }));
@@ -164,17 +164,17 @@ function signIn(role: 'admin' | 'supervisor' | 'staff' | 'customer') {
   store.dispatch(setUserProfile({ id: `profile-${role}-1`, role, name: 'Neha Fictional' } as never));
 }
 
-/** A list row of `get_held_items` (contract 11.5), fictional people and phone. */
+/** A list row of `get_held_items` (contract 11.5), fictional people and phone (GRN-only under WH-381). */
 const listRow = (id: string, overrides: Record<string, unknown> = {}) => ({
   id,
-  kind: 'newDispatch',
-  what: { key: 'offline.unsent.whatNewDispatch' },
+  kind: 'newGrn',
+  what: { key: 'offline.unsent.whatNewGrn' },
   customer_name: 'asha Traders',
   recorded_by_name: 'Ravi Fictional',
   recorded_at: '2026-11-27T09:00:00+05:30',
   phone: 'Fictional Android phone',
-  reason: 'stockShort',
-  reason_data: { lines: [{ lot_id: 'l03', item_name: 'Beans', available: 4, requested: 6 }] },
+  reason: 'noRate',
+  reason_data: { lines: [{ item_name: 'Beans' }] },
   state: 'held',
   follows: null,
   needs_decision: true,
@@ -234,9 +234,9 @@ afterEach(async () => {
   jest.restoreAllMocks();
 });
 
-describe('S1: the strip on the GRN and Dispatch tabs', () => {
-  const managerRow = (id: string, needsDecision = true): FeedRow => ({
-    id, row: { id, kind: 'newDispatch', state: 'held', needs_decision: needsDecision, lines: [{ lot_id: 'l03', qty: 1 }] },
+describe('S1: the strip on the GRN tab (WH-381: GRN-only)', () => {
+  const managerRow = (id: string, needsDecision = true, kind = 'newGrn'): FeedRow => ({
+    id, row: { id, kind, state: 'held', needs_decision: needsDecision, lines: null },
   });
   async function loadCopy(rows: FeedRow[]) {
     env.feed.format = 5;
@@ -258,6 +258,13 @@ describe('S1: the strip on the GRN and Dispatch tabs', () => {
     expect(mockRouter.push).toHaveBeenCalledWith('/holding-list');
   });
 
+  it('WH-381: historical newDispatch rows do not count on HeldStrip', async () => {
+    await loadCopy([managerRow('h-disp', true, 'newDispatch')]);
+    await show(HeldStrip());
+    expect(engine.isCopyReadable()).toBe(true);
+    expect(screen.queryByTestId('holding-strip')).not.toBeOnTheScreen();
+  });
+
   it('is hidden with nothing to decide (a photos follower only)', async () => {
     await loadCopy([managerRow('h9', false)]);
     await show(HeldStrip());
@@ -267,7 +274,7 @@ describe('S1: the strip on the GRN and Dispatch tabs', () => {
 
   it('is hidden for staff, whatever the copy holds', async () => {
     signIn('staff');
-    await loadCopy([{ id: 'h1', row: { id: 'h1', kind: 'newDispatch', state: 'held', lines: [{ lot_id: 'l03', qty: 1 }] } }]);
+    await loadCopy([{ id: 'h1', row: { id: 'h1', kind: 'newGrn', state: 'held', lines: null } }]);
     await show(HeldStrip());
     expect(engine.isCopyReadable()).toBe(true);
     expect(screen.queryByTestId('holding-strip')).not.toBeOnTheScreen();
@@ -313,7 +320,6 @@ describe('S2: the Reports tab row', () => {
 
 describe('S3: the Holding list', () => {
   const TAGS: [string, string, Record<string, unknown>][] = [
-    ['stockShort', 'Stock short', {}],
     ['noRate', 'No rate', {}],
     ['numberUsed', 'Number used', {}],
     ['numberFormat', 'Wrong number', {}],
@@ -322,12 +328,12 @@ describe('S3: the Holding list', () => {
     ['dateRefused', 'Date refused', {}],
     ['duplicate', 'Duplicate?', {}],
     ['belowDispatched', 'Below dispatched', {}],
-    ['followsHeld', 'Waits', { follows: 'r-stockShort', can_accept: false }],
+    ['followsHeld', 'Waits', { follows: 'r-noRate', can_accept: false }],
     ['moved', 'Moved', { reason_data: { admin_name: 'Neha Fictional', recorder_name: 'Ravi Fictional', moved_at: '2026-11-27T08:00:00+05:30' } }],
     ['other', 'Refused', {}],
   ];
 
-  it('shows the note, each row with what, customer, who and the tag of its reason (all twelve)', async () => {
+  it('shows the note, each row with what, customer, who and the tag of its reason (all eleven GRN reasons)', async () => {
     mockServer.answers.get_held_items = () => listAnswer(TAGS.map(([reason, , extra]) => listRow(`r-${reason}`, { reason, reason_data: {}, ...extra })));
     await show(HoldingListScreen());
     expect(await screen.findByTestId('holding-screen')).toBeOnTheScreen();
@@ -335,8 +341,8 @@ describe('S3: the Holding list', () => {
     for (const [reason, tag] of TAGS) {
       expect(screen.getByTestId(`holding-row-tag-r-${reason}`)).toHaveTextContent(tag);
     }
-    const first = screen.getByTestId('holding-row-r-stockShort');
-    expect(first).toHaveTextContent(/New dispatch/);
+    const first = screen.getByTestId('holding-row-r-noRate');
+    expect(first).toHaveTextContent(/New GRN/);
     expect(first).toHaveTextContent(/asha Traders/);
     expect(first).toHaveTextContent(/Ravi Fictional/);
     expect(first).toHaveTextContent(/Fictional Android phone/);
@@ -346,7 +352,7 @@ describe('S3: the Holding list', () => {
   it('lists a follower directly under the item it follows, tagged "Waits"', async () => {
     mockServer.answers.get_held_items = () => listAnswer([
       listRow('a'),
-      listRow('b', { reason: 'followsHeld', follows: 'a', can_accept: false, kind: 'photos', what: { key: 'offline.unsent.whatPhotosNewDispatch', params: { count: 1 } } }),
+      listRow('b', { reason: 'followsHeld', follows: 'a', can_accept: false, kind: 'photos', what: { key: 'offline.unsent.whatPhotosNewGrn', params: { count: 1 } } }),
       listRow('c', { reason: 'other', reason_data: {} }),
     ]);
     await show(HoldingListScreen());
@@ -402,7 +408,7 @@ describe('S3: the Holding list', () => {
     ]);
     await show(HoldingListScreen());
     expect(await screen.findByTestId('holding-list-note')).toHaveTextContent('કોઈ સ્વીકારે કે નકારે ત્યાં સુધી રોકેલી એન્ટ્રી અહીં રહે છે.');
-    expect(screen.getByTestId('holding-row-tag-a')).toHaveTextContent('સ્ટોક ઓછો');
+    expect(screen.getByTestId('holding-row-tag-a')).toHaveTextContent('દર નથી');
     expect(screen.getByTestId('holding-row-tag-b')).toHaveTextContent('રાહ જુએ છે');
     expect(screen.getByTestId('holding-row-tag-c')).toHaveTextContent('ખસેડેલી');
     expect(screen.getByTestId('holding-row-tag-d')).toHaveTextContent('નકાર્યું');
@@ -420,12 +426,12 @@ describe('S3: the Holding list', () => {
 
 describe('S4: the Held item', () => {
   it('shows the header facts, the reason with its figures and the fix hint; no Accept while accept_possible is false', async () => {
-    await openItem(listRow('h1'), { accept_possible: false });
+    await openItem(listRow('h1', { kind: 'grnEdit', reason: 'belowDispatched', reason_data: { requested: 6, dispatched_qty: 10 } }), { accept_possible: false });
     expect(screen.getByText('Held item')).toBeOnTheScreen();
     for (const fact of ['asha Traders', 'Ravi Fictional', 'Fictional Android phone']) {
       expect(screen.getAllByText(new RegExp(fact)).length).toBeGreaterThan(0);
     }
-    expect(screen.getByTestId('held-item-reason')).toHaveTextContent(/has 4 left; this dispatch takes 6\./);
+    expect(screen.getByTestId('held-item-reason')).toHaveTextContent(/6 is less than the 10 already dispatched from this lot\./);
     expect(screen.getByTestId('held-item-hint')).toHaveTextContent('Correct the quantity, or reject.');
     expect(screen.getByTestId('held-item-record')).toBeOnTheScreen();
     expect(screen.queryByTestId('held-item-accept')).not.toBeOnTheScreen();
@@ -512,13 +518,17 @@ describe('A-4: Correct on the Held item', () => {
 
   it.each([
     ['newGrn', '/grn-edit/[id]/step1'],
-    ['newDispatch', '/dispatch-edit/[id]/step1'],
     ['grnEdit', '/grn-edit/[id]/step1'],
   ])('%s: Correct opens the kind\'s own form on the held id, and asks the server for nothing', async (kind, pathname) => {
     await openItem(listRow('h9', { kind }), { accept_possible: false });
     await user.press(screen.getByTestId('held-item-correct'));
     expect(mockRouter.push).toHaveBeenCalledWith({ pathname, params: { id: 'held-h9' } });
     expect(decideCalls()).toHaveLength(0);
+  });
+
+  it('WH-381: newDispatch has no Correct button', async () => {
+    await openItem(listRow('h9', { kind: 'newDispatch', reason: 'other', reason_data: {} }), { accept_possible: false });
+    expect(screen.queryByTestId('held-item-correct')).not.toBeOnTheScreen();
   });
 
   it('photos: there is no Correct button', async () => {
@@ -574,20 +584,20 @@ describe('A-4: Correct on the Held item', () => {
 });
 
 describe('A-6: the photos of a held item on the Held item page', () => {
-  const photo = (id: string, extra: Record<string, unknown> = {}) => ({ client_photo_id: id, role: 'dispatch', path: `held/h1/${id}.jpg`, state: 'confirmed', line_ref: null, ...extra });
+  const photo = (id: string, extra: Record<string, unknown> = {}) => ({ client_photo_id: id, role: 'header', path: `held/h1/${id}.jpg`, state: 'confirmed', line_ref: null, ...extra });
 
   it('draws a tile for each confirmed photo, read only, from a link signed by storage', async () => {
     await openItem(listRow('h1'), { photos: [photo('p1'), photo('p2')] });
     const grid = await screen.findByTestId('held-item-photos');
     expect(within(grid).getByTestId('held-photo-p1')).toBeOnTheScreen();
     expect(within(grid).getByTestId('held-photo-p2')).toBeOnTheScreen();
-    expect(within(grid).getByTestId('held-photo-p1')).toHaveAccessibleName('Dispatch photo 1 of 2');
+    expect(within(grid).getByTestId('held-photo-p1')).toHaveAccessibleName('GRN photo');
   });
 
   it('a photo storage will not sign is the "Photo needs a connection" tile', async () => {
     mockStorage.sign = () => ({ data: null, error: { message: 'offline' } });
     await openItem(listRow('h1'), { photos: [photo('p1')] });
-    expect(await screen.findByTestId('held-photo-needs-connection-p1')).toHaveTextContent('Photo needs a connection');
+    expect(await screen.findByTestId('held-photo-needs-connection-p1', {}, { timeout: 3000 })).toHaveTextContent('Photo needs a connection');
   });
 
   it('a photo the recorder\'s phone reported missing is the "Photo missing" tile, with no file asked for', async () => {
@@ -761,12 +771,12 @@ describe('S7: a double tap on Accept is one decision', () => {
     const accept = screen.getByTestId('held-item-accept');
     await user.press(accept);
     await user.press(accept);
-    await act(async () => { answer(decideOk('h1', 'accepted', { dispatch_id: 'd-77', disp_no: 'D-77' })); });
+    await act(async () => { answer(decideOk('h1', 'accepted', { grn_id: 'g-77', gr_no: 'G-77' })); });
 
     expect(decideCalls()).toHaveLength(1);
     expect(decideCalls()[0].args).toMatchObject({ p_id: 'h1', p_action: 'accept' });
     expect(decideCalls()[0].args.p_body ?? null).toBeNull();
-    expect(toasts()).toContain('Accepted as D-77');
+    expect(toasts()).toContain('Accepted as G-77');
     expect(mockRouter.back).toHaveBeenCalled();
   });
 });

@@ -48,21 +48,20 @@ describe('save and resume', () => {
     expect(await loadFormDraft('grn')).toMatchObject({ startedAt: 1_000, state: state('second') });
   });
 
-  it('a GRN, a dispatch and the edit of two GRNs are separate forms', async () => {
+  it('a GRN and the edit of two GRNs are separate forms', async () => {
     await saveFormDraft({ kind: 'grn', state: state('new grn') });
-    await saveFormDraft({ kind: 'dispatch', state: state('dispatch') });
     await saveFormDraft({ kind: 'grnEdit', grnId: 'grn-1', state: state('edit 1') });
     await saveFormDraft({ kind: 'grnEdit', grnId: 'grn-2', state: state('edit 2') });
-    expect(await countOwnForms()).toBe(4);
+    expect(await countOwnForms()).toBe(3);
     expect((await loadFormDraft('grnEdit', 'grn-2'))?.state).toEqual(state('edit 2'));
     expect(await loadFormDraft('grnEdit', 'grn-3')).toBeNull();
   });
 
   it('lists them oldest first, an edit with its GRN number', async () => {
     await saveFormDraft({ kind: 'grnEdit', grnId: 'grn-1', state: state('edit'), at: 9_000 });
-    await saveFormDraft({ kind: 'dispatch', state: state('d'), at: 2_000 });
+    await saveFormDraft({ kind: 'grn', state: state('g'), at: 2_000 });
     const list = await listOwnForms();
-    expect(list.map(form => form.kind)).toEqual(['dispatch', 'grnEdit']);
+    expect(list.map(form => form.kind)).toEqual(['grn', 'grnEdit']);
     expect(list[1]).toMatchObject({ grnId: 'grn-1', number: 'RV15001' });
   });
 
@@ -111,10 +110,10 @@ describe('photos of a form', () => {
 describe('discard and the other person', () => {
   it('Discard ends only that form', async () => {
     await saveFormDraft({ kind: 'grn', state: state('a') });
-    await saveFormDraft({ kind: 'dispatch', state: state('b') });
+    await saveFormDraft({ kind: 'grnEdit', grnId: 'grn-1', state: state('b') });
     await endFormDraft('grn');
     expect(await loadFormDraft('grn')).toBeNull();
-    expect(await loadFormDraft('dispatch')).not.toBeNull();
+    expect(await loadFormDraft('grnEdit', 'grn-1')).not.toBeNull();
   });
 
   it("another person's form is neither offered, listed, counted nor ended by this person's Discard", async () => {
@@ -131,7 +130,7 @@ describe('discard and the other person', () => {
 
   it("deleteOwnForms removes all of this person's forms and their photos, and leaves the other person's", async () => {
     await saveFormDraft({ kind: 'grn', state: state('mine', [addPhoto('a.jpg')]) });
-    await saveFormDraft({ kind: 'dispatch', state: state('mine too') });
+    await saveFormDraft({ kind: 'grnEdit', grnId: 'grn-1', state: state('mine too') });
     env.subject = 'user-2';
     await saveFormDraft({ kind: 'grn', state: state('theirs') });
     env.subject = 'user-1';

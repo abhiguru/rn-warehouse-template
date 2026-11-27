@@ -192,12 +192,12 @@ async function loadCopy() {
   await engine.startPhoneCopy();
   expect(await engine.syncNow('open')).toBe('done');
 }
-async function loadTo(entity: 'goodsreceived' | 'dispatch') {
+async function loadTo(entity: 'goodsreceived') {
   const gate = env.feed.hold(call => call.name === 'get_sync_page' && call.args.p_entity === entity);
   await engine.startPhoneCopy();
   const run = engine.syncNow('open');
   await Promise.race([gate.opened, run]);
-  expect(syncStore.getSyncSnapshot().phase).toBe(entity === 'dispatch' ? 'stage2' : 'stage1');
+  expect(syncStore.getSyncSnapshot().phase).toBe('stage1');
   return { finish: () => act(async () => { gate.release(); await run; }) };
 }
 async function connection(offline: boolean) {
@@ -394,29 +394,13 @@ describe('S4: no match', () => {
 });
 
 describe('PQ2 and the connection: no stage-two line, and the same screen offline', () => {
-  it('stage two: no "older records" line under the field or inside No match, and lots are found', async () => {
-    const load = await loadTo('dispatch');
-    await render(<Tab />);
-    await userEvent.press(await screen.findByTestId('grn-view-switch-find-goods'));
-    expect(screen.queryByTestId('find-goods-older-loading')).not.toBeOnTheScreen();
-    await search('peas');
-    await waitFor(() => expect(rowsOnScreen()).toEqual(['l08', 'l06', 'l01', 'l02']));
-    expect(screen.queryByTestId('find-goods-older-loading')).not.toBeOnTheScreen();
-    expect(screen.queryByText(/Older records are still loading/)).not.toBeOnTheScreen();
-    await search('zzzz');
-    await screen.findByTestId('find-goods-no-match');
-    expect(screen.queryByTestId('find-goods-older-loading')).not.toBeOnTheScreen();
-    expect(screen.queryByText(/Older records are still loading/)).not.toBeOnTheScreen();
-    // The GRN view (the tab's first view) asks the server for its own first page while the copy is half loaded; that is allowed. Find goods adds no call (none for the typed text).
-    for (const call of serverCalls) expect(call).toEqual({ name: 'get_all_grn_items', args: { p_filters: { page_by: 'receipt' }, p_limit: 20, p_offset: 0, p_sort_by: 'gr_no', p_sort_order: 'desc' } });
-    await load.finish();
-  });
-
   it('flight mode: the same rows as online, no error, no "Try again", nothing asked of the server', async () => {
     await loadCopy();
     await openFindGoods();
     await search('peas');
     await waitFor(() => expect(rowsOnScreen()).toEqual(['l08', 'l06', 'l01', 'l02']));
+    expect(screen.queryByTestId('find-goods-older-loading')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/Older records are still loading/)).not.toBeOnTheScreen();
     await connection(true);
     await search('asha');
     await waitFor(() => expect(rowsOnScreen()).toEqual(['l08', 'l06', 'l03', 'l02']));
@@ -498,26 +482,17 @@ describe('S6: a row', () => {
     expect(await screen.findByTestId('find-goods-row-l05')).toHaveTextContent('રેક નથી', { exact: false });
   });
 
-  it('this phone\'s unsent dispatches: the number is lower and the line says why, with Gujarati digits in Gujarati', async () => {
+  it('WH-381: FindGoodsRow renders no lessNotSent / lessHeld / lessOtherPerson deduction lines', async () => {
     mockOverlay.lessUnsent.set('l06', 4);
     mockOverlay.lessHeld.set('l06', 2);
     await loadCopy();
     await openFindGoods();
     await search('d-4');
     await screen.findByTestId('find-goods-row-l06');
-    expect(screen.getByTestId('find-goods-row-stock-l06')).toHaveTextContent('3');
-    expect(screen.getByTestId('lot-less-unsent-l06')).toHaveTextContent('Less 4 in dispatches not sent yet', { exact: false });
-    expect(screen.getByTestId('lot-less-held-l06')).toHaveTextContent('Less 2 in held dispatches', { exact: false });
-    expect(screen.queryByTestId('lot-less-unsent-l01')).not.toBeOnTheScreen();
-  });
-
-  it('a lot with its whole stock deducted moves to the end, as Empty', async () => {
-    mockOverlay.lessUnsent.set('l08', 2);
-    await loadCopy();
-    await openFindGoods();
-    await search('peas');
-    await waitFor(() => expect(rowsOnScreen()).toEqual(['l06', 'l01', 'l08', 'l02']));
-    expect(screen.getByTestId('find-goods-row-empty-l08')).toBeOnTheScreen();
+    expect(screen.queryByTestId('lot-less-unsent-l06')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('lot-less-held-l06')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('lot-less-others-l06')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/Less \d+ in/)).not.toBeOnTheScreen();
   });
 });
 
@@ -576,13 +551,13 @@ describe('S9: after a sync', () => {
     expect(serverCalls).toEqual([]);
   }, 15000);
 
-  it('a change of dispatches only reads nothing', async () => {
+  it('a change of settings only reads nothing', async () => {
     await loadCopy();
     await openFindGoods();
     await search('peas');
     await waitFor(() => expect(rowsOnScreen()).toHaveLength(4));
     const read = jest.spyOn(findGoodsModule(), 'findGoods');
-    await sync([upsert('dispatch', 'd9', { id: 'd9', disp_no: 'D9', customer_id: 'c1' })]);
+    await sync([upsert('settings', 'numbering', { id: 'numbering' })]);
     await wait(1500);
     expect(read).not.toHaveBeenCalled();
   });

@@ -17,17 +17,15 @@ import { files } from '@/tests/phoneCopy/fakeFiles';
 import { rawRows, rawRun, rpcKind, server, type RpcAnswer } from '@/tests/unsent/unsentPhone';
 import {
   bootHolding,
-  heldDispatchFeedRow,
   recorderHeldFeedRow,
   rpcCalls,
-  sampleDispatchBody,
   serverRefusal,
   type HoldingPhone,
 } from '@/tests/unsent/holdingPhone';
 import type { ChangesAnswer, FeedRow } from '@/tests/phoneCopy/fakeFeed';
 
 const SAVE = 'save_holding_rules';
-const STOCK_SHORT = (): RpcAnswer => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+const RATE_MISSING = (): RpcAnswer => serverRefusal('RATE_MISSING', 'Missing rate');
 
 type ItemDbRow = { id: string; state: string; held_id: string | null; handover_failed: number; request_key: string; form_row: string | null };
 const allItemRows = () => rawRows<ItemDbRow>('items', 'ORDER BY seq');
@@ -43,13 +41,26 @@ const holdOk = (prefix: string) => {
 };
 const heldKeys = () => rpcCalls('hold_items').map(call => (call.args.p_items as { request_key: string }[]).map(item => item.request_key));
 
+const sampleGrnBody = (localId: string, qty = 10) => ({
+  v: 1,
+  localId,
+  lotLocalIds: [`${localId}-l1`],
+  args: { p_gr_no: '', p_issue_number: true, p_date: '2026-11-27', p_customer_id: 'c1', p_items: [{ item_id: 'i1', qty }] },
+  show: { customerName: 'asha Traders', lines: [{ itemName: 'Beans', packaging: 'Bag' }] },
+});
+
+const heldGrnFeedRow = (id: string): FeedRow => ({
+  id,
+  row: { id, kind: 'newGrn', state: 'held', needs_decision: true, lines: null },
+});
+
 async function startStaff(): Promise<HoldingPhone> {
   const phone = await bootHolding({ role: 'staff', withCopy: true });
-  phone.kinds.registerSendKind('newDispatch', rpcKind(phone, SAVE));
+  phone.kinds.registerSendKind('newGrn', rpcKind(phone, SAVE));
   return phone;
 }
-const enqueueDispatch = (phone: HoldingPhone, localId: string, lot = 'l03') =>
-  phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody(lot, 6, localId), what: 'New dispatch', customer: 'asha Traders' });
+const enqueueGrn = (phone: HoldingPhone, localId: string, qty = 10) =>
+  phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(localId, qty), what: 'New GRN', customer: 'asha Traders' });
 
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date('2026-11-27T09:00:00+05:30'), doNotFake: ['setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask'] });
@@ -66,10 +77,10 @@ describe('R1: a record saved by a form waits out the form\'s 8 s Save wait befor
   it('is not handed over inside the wait, then goes by itself when the wait is over', async () => {
     const phone = await startStaff();
     await phone.offline();
-    const item = await enqueueDispatch(phone, '5f304000-0000-4000-8000-0000000000a1');
+    const item = await enqueueGrn(phone, '5f304000-0000-4000-8000-0000000000a1');
     // The record came from a form (its Save): the form still waits for the answer.
     await rawRun(`UPDATE items SET form_row = '{"hadForm":true}' WHERE id = '${item.id}'`);
-    server.answers[SAVE] = STOCK_SHORT;
+    server.answers[SAVE] = RATE_MISSING;
     server.answers.hold_items = holdOk('held-r1');
 
     await phone.online();
@@ -91,8 +102,8 @@ describe('R1: a record saved by a form waits out the form\'s 8 s Save wait befor
   it('a record with no form behind it is handed over at once, in the same pass', async () => {
     const phone = await startStaff();
     await phone.offline();
-    await enqueueDispatch(phone, '5f304000-0000-4000-8000-0000000000a2');
-    server.answers[SAVE] = STOCK_SHORT;
+    await enqueueGrn(phone, '5f304000-0000-4000-8000-0000000000a2');
+    server.answers[SAVE] = RATE_MISSING;
     server.answers.hold_items = holdOk('held-r1b');
     await phone.online();
     const pass = phone.engine.sendNow('send-now');
@@ -107,8 +118,8 @@ describe('R2: a group refused for good is not asked again until the app starts a
   it('asks once over two passes, still asks for an unrelated item, and asks again after a restart', async () => {
     let phone = await startStaff();
     await phone.offline();
-    const first = await enqueueDispatch(phone, '5f304000-0000-4000-8000-0000000000b1');
-    server.answers[SAVE] = STOCK_SHORT;
+    const first = await enqueueGrn(phone, '5f304000-0000-4000-8000-0000000000b1');
+    server.answers[SAVE] = RATE_MISSING;
     server.answers.hold_items = () => serverRefusal('HELD_BODY_TOO_LARGE', 'Body too large');
     await phone.online();
 
@@ -119,7 +130,7 @@ describe('R2: a group refused for good is not asked again until the app starts a
 
     // Another refused item is a new group: it is asked for, and the first one still is not.
     server.answers.hold_items = holdOk('held-r2');
-    const second = await enqueueDispatch(phone, '5f304000-0000-4000-8000-0000000000b2', 'l04');
+    const second = await enqueueGrn(phone, '5f304000-0000-4000-8000-0000000000b2', 12);
     await phone.pass();
     expect(heldKeys()).toHaveLength(2);
     const [, secondCall] = heldKeys();
@@ -138,7 +149,7 @@ describe('R2: a group refused for good is not asked again until the app starts a
 
   async function restartHolding(): Promise<HoldingPhone> {
     const next = await bootHolding({ role: 'staff', withCopy: true });
-    next.kinds.registerSendKind('newDispatch', rpcKind(next, SAVE));
+    next.kinds.registerSendKind('newGrn', rpcKind(next, SAVE));
     return next;
   }
 });
@@ -150,21 +161,21 @@ describe('R3: the sync run removes held rows by held_id, once the copy holds the
     more: false,
     reload_all: null,
     reload: [],
-    changes: [{ e: 'held_items', id, op: 'upsert', v: version, row: heldDispatchFeedRow(id, [{ lot_id: 'l03', qty: 6 }]).row }],
+    changes: [{ e: 'held_items', id, op: 'upsert', v: version, row: heldGrnFeedRow(id).row }],
   });
 
   it('removes only the row whose held id the copy now holds; a still-refused row and a held row not in the copy stay', async () => {
     const phone = await startStaff();
     await phone.offline();
-    const a = await enqueueDispatch(phone, '5f304000-0000-4000-8000-0000000000c1');
-    const b = await enqueueDispatch(phone, '5f304000-0000-4000-8000-0000000000c2', 'l04');
-    server.answers[SAVE] = STOCK_SHORT;
+    const a = await enqueueGrn(phone, '5f304000-0000-4000-8000-0000000000c1');
+    const b = await enqueueGrn(phone, '5f304000-0000-4000-8000-0000000000c2', 12);
+    server.answers[SAVE] = RATE_MISSING;
     server.answers.hold_items = holdOk('sw');
     await phone.online();
     await phone.pass();
     // A third item is refused and cannot be handed over: it never gets a held id.
     server.answers.hold_items = () => serverRefusal('HELD_BODY_TOO_LARGE', 'Body too large');
-    const c = await enqueueDispatch(phone, '5f304000-0000-4000-8000-0000000000c3', 'l05');
+    const c = await enqueueGrn(phone, '5f304000-0000-4000-8000-0000000000c3', 15);
     await phone.pass();
     expect((await allItemRows()).map(r => [r.id, r.state, r.held_id])).toEqual([
       [a.id, 'held', 'sw-1'],
@@ -189,36 +200,50 @@ describe('R3: the sync run removes held rows by held_id, once the copy holds the
 
 describe('R4: accepted rows of the recorder (Sent today) and the document they became', () => {
   const accepted = (id: string, decidedAt: string, result: Record<string, unknown>, extra: Record<string, unknown> = {}): FeedRow =>
-    recorderHeldFeedRow({ id, state: 'accepted', needs_decision: true, decided_by_name: 'Meera Fictional', decided_at: decidedAt, result, ...extra });
+    recorderHeldFeedRow({
+      id,
+      kind: 'newGrn',
+      what: { key: 'offline.unsent.whatNewGrn' },
+      reason: 'noRate',
+      reason_data: { lines: [{ item_name: 'Beans' }] },
+      lines: null,
+      body: sampleGrnBody(id),
+      state: 'accepted',
+      needs_decision: true,
+      decided_by_name: 'Meera Fictional',
+      decided_at: decidedAt,
+      result,
+      ...extra,
+    });
 
   it('keeps an acceptance of today (even just after midnight), drops one from the minute before, and one from days ago', async () => {
     const phone = await bootHolding({
       role: 'staff',
       withCopy: true,
       heldFeedRows: [
-        accepted('a-after-midnight', '2026-11-27T00:01:00+05:30', { dispatch_id: 'd-1', disp_no: 'D-1' }),
-        accepted('a-before-midnight', '2026-11-26T23:59:00+05:30', { dispatch_id: 'd-2', disp_no: 'D-2' }),
-        accepted('a-old', '2026-11-20T10:00:00+05:30', { dispatch_id: 'd-3', disp_no: 'D-3' }),
+        accepted('a-after-midnight', '2026-11-27T00:01:00+05:30', { grn_id: 'g-1', gr_no: 'G-1' }),
+        accepted('a-before-midnight', '2026-11-26T23:59:00+05:30', { grn_id: 'g-2', gr_no: 'G-2' }),
+        accepted('a-old', '2026-11-20T10:00:00+05:30', { grn_id: 'g-3', gr_no: 'G-3' }),
       ],
     });
     const { rows } = await loadList();
     expect(rows.map(r => r.id)).toEqual(['a-after-midnight']);
-    expect(rows[0]).toMatchObject({ section: 'sent', tag: 'accepted', sentNumber: 'D-1', sentDoc: 'dispatch' });
+    expect(rows[0]).toMatchObject({ section: 'sent', tag: 'accepted', sentNumber: 'G-1', sentDoc: 'grn' });
     // An old acceptance is never counted as held either.
     expect(phone.store.getUnsentSummary()).toMatchObject({ count: 0, held: 0 });
   });
 
-  it('a dispatch says "dispatch" and a field change says "grn", so the row can read "Accepted · GRN B1"', async () => {
+  it('both a new GRN and a field change say "grn", so the row can read "Accepted · GRN B1"', async () => {
     await bootHolding({
       role: 'staff',
       withCopy: true,
       heldFeedRows: [
-        accepted('a-disp', '2026-11-27T08:30:00+05:30', { dispatch_id: 'd-9', disp_no: 'D-9' }),
+        accepted('a-new', '2026-11-27T08:30:00+05:30', { grn_id: 'g-9', gr_no: 'G-9' }),
         accepted('a-grn', '2026-11-27T08:31:00+05:30', { grn_id: 'g-B1', gr_no: 'B1' }, { kind: 'lotChange', lines: null }),
       ],
     });
     const { rows } = await loadList();
-    expect(rows.find(r => r.id === 'a-disp')).toMatchObject({ sentDoc: 'dispatch', sentNumber: 'D-9' });
+    expect(rows.find(r => r.id === 'a-new')).toMatchObject({ sentDoc: 'grn', sentNumber: 'G-9' });
     expect(rows.find(r => r.id === 'a-grn')).toMatchObject({ sentDoc: 'grn', sentNumber: 'B1' });
   });
 });

@@ -1,7 +1,7 @@
 /**
- * WH-304 wording of Design offline-capture.md 7.11a (DQ10), word for word, on the screens built in A-1 to A-3:
- * "Accepted · Dispatch {{number}}" / "સ્વીકાર્યું · જાવક {{number}}" on the recorder's accepted row (the number keeps 0-9), and
- * the status line's count in Gujarati digits.
+ * WH-304 wording of Design offline-capture.md 7.11a (DQ10), word for word (updated for WH-381 GRN-only scope):
+ * "Accepted · GRN {{number}}" / "સ્વીકાર્યું · આવક પાવતી {{number}}" on the recorder's accepted row (the number keeps 0-9),
+ * the status line's count in Gujarati digits, and the missing-photo footnote for GRNs.
  *
  * Real: `UnsentRow`, i18n. The row is the shape `loadUnsentList` gives an accepted held item (heldRules.test.ts R4 checks that).
  */
@@ -22,17 +22,17 @@ const accepted = (overrides: Partial<UnsentListRow> = {}): UnsentListRow => ({
   id: 'acc-1',
   state: 'sent',
   section: 'sent',
-  title: 'New dispatch',
+  title: 'New GRN',
   customer: 'asha Traders',
   recordedAt: new Date('2026-11-27T08:30:00+05:30').getTime(),
-  sentNumber: 'D-17',
+  sentNumber: 'B1',
   photoMissing: false,
   tag: 'accepted',
   form: null,
   reason: null,
-  sentDoc: 'dispatch',
+  sentDoc: 'grn',
   heldId: 'acc-1',
-  target: { dispatchId: 'd-17' },
+  target: { grnId: 'g-B1' },
   ...overrides,
 });
 
@@ -43,25 +43,14 @@ afterEach(async () => {
 });
 
 describe('7.11a (b): the accepted row names its document', () => {
-  it('English: "Accepted · Dispatch D-17"', async () => {
-    await show(accepted());
-    expect(screen.getByTestId('unsent-row-tag-acc-1')).toHaveTextContent('Accepted · Dispatch D-17');
-  });
-
-  it('Gujarati: "સ્વીકાર્યું · જાવક D-17" with the number in 0-9', async () => {
-    await setLanguage('gu');
-    await show(accepted());
-    expect(screen.getByTestId('unsent-row-tag-acc-1')).toHaveTextContent('સ્વીકાર્યું · જાવક D-17');
-  });
-
   it('a GRN reads "Accepted · GRN B1"', async () => {
-    await show(accepted({ sentDoc: 'grn', sentNumber: 'B1', target: { grnId: 'g-B1' } }));
+    await show(accepted());
     expect(screen.getByTestId('unsent-row-tag-acc-1')).toHaveTextContent('Accepted · GRN B1');
   });
 
-  it('Gujarati GRN', async () => {
+  it('Gujarati GRN with the number in 0-9', async () => {
     await setLanguage('gu');
-    await show(accepted({ sentDoc: 'grn', sentNumber: 'B1', target: { grnId: 'g-B1' } }));
+    await show(accepted());
     expect(screen.getByTestId('unsent-row-tag-acc-1')).toHaveTextContent('સ્વીકાર્યું · આવક પાવતી B1');
   });
 });
@@ -81,24 +70,13 @@ describe('7.11c (b): the footnote of a photos item with a missing file names its
     accepted({ id: 'ph-1', tag: 'sent', sentDoc: undefined, sentNumber: null, title: 'Photos', photoMissing: true, heldId: undefined, ...overrides });
   const footnote = () => screen.getByTestId('unsent-row-photo-missing-ph-1');
 
-  it('a dispatch: "A photo file is missing on this phone; the dispatch was sent without it."', async () => {
-    await show(missing({ photoMissingDispatch: true }));
-    expect(footnote()).toHaveTextContent('A photo file is missing on this phone; the dispatch was sent without it.');
-  });
-
   it('a GRN keeps its own sentence: "…; the GRN was sent without it."', async () => {
     await show(missing());
     expect(footnote()).toHaveTextContent('A photo file is missing on this phone; the GRN was sent without it.');
   });
 
-  it('Gujarati dispatch: "આ ફોનમાં એક ફોટો ફાઇલ નથી; જાવક તેના વગર મોકલાઈ."', async () => {
-    await setLanguage('gu');
-    await show(missing({ photoMissingDispatch: true }));
-    expect(footnote()).toHaveTextContent('આ ફોનમાં એક ફોટો ફાઇલ નથી; જાવક તેના વગર મોકલાઈ.');
-  });
-
   it('no footnote while no file is missing', async () => {
-    await show(missing({ photoMissing: false, photoMissingDispatch: true }));
+    await show(missing({ photoMissing: false }));
     expect(screen.queryByTestId('unsent-row-photo-missing-ph-1')).not.toBeOnTheScreen();
   });
 });

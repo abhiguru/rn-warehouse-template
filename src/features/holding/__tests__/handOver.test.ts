@@ -36,9 +36,7 @@ import { files } from '@/tests/phoneCopy/fakeFiles';
 import { addPhoto, GATEWAY_TIMEOUT, NO_NETWORK, rawRows, rawRun, rpcKind, server, type RpcAnswer } from '@/tests/unsent/unsentPhone';
 import {
   bootHolding,
-  heldDispatchFeedRow,
   rpcCalls,
-  sampleDispatchBody,
   sampleLotChangeBody,
   serverRefusal,
   type HoldingPhone,
@@ -46,6 +44,25 @@ import {
 
 const HOUR = 3_600_000;
 const SAVE = 'save_holding_test';
+
+const sampleGrnBody = (localId = '5f304000-0000-4000-8000-0000000000d1', qty = 10) => ({
+  v: 1,
+  localId,
+  lotLocalIds: [`${localId}-l1`],
+  args: {
+    p_gr_no: '',
+    p_issue_number: true,
+    p_date: '2026-11-27',
+    p_customer_id: 'c1',
+    p_items: [{ item_id: 'i1', qty }],
+  },
+  show: { customerName: 'asha Traders', lines: [{ itemName: 'Beans', packaging: 'Bag' }] },
+});
+
+const heldGrnFeedRow = (id: string) => ({
+  id,
+  row: { id, kind: 'newGrn', state: 'held', needs_decision: true, lines: null },
+});
 
 interface HandOverModule {
   holdingOn(): boolean;
@@ -85,7 +102,7 @@ const holdOk = (prefix = 'held-uuid'): ((args: Record<string, any>) => RpcAnswer
 
 async function startStaff(options: Parameters<typeof bootHolding>[0] = {}): Promise<HoldingPhone> {
   const phone = await bootHolding({ role: 'staff', ...options });
-  phone.kinds.registerSendKind('newDispatch', rpcKind(phone, SAVE));
+  phone.kinds.registerSendKind('newGrn', rpcKind(phone, SAVE));
   phone.kinds.registerSendKind('testFollow', rpcKind(phone, 'save_follow_test'));
   return phone;
 }
@@ -107,13 +124,13 @@ describe('K8: unsent-work schema step 2 (items.held_id) migrates in place', () =
     expect(schema.UNSENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(2);
     const phone = await startStaff();
     await phone.offline();
-    await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch', customer: 'asha Traders' });
+    await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
     const [row] = await allItemRows();
     expect('held_id' in row).toBe(true);
     expect(row.held_id).toBeNull();
   });
 
-  it('migrates an existing schema-1 unsent database in place without losing rows', async () => {
+  it('migrates an existing schema-1 unsent database in place without losing GRN rows', async () => {
     // Seed a schema-1 database directly before the app opens it.
     const sqlite = require('expo-sqlite') as {
       openDatabaseAsync(name: string): Promise<{ execAsync(sql: string): Promise<void>; runAsync(sql: string, p?: unknown[]): Promise<unknown> }>;
@@ -133,7 +150,7 @@ describe('K8: unsent-work schema step 2 (items.held_id) migrates in place', () =
     await db.runAsync("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '1')");
     await db.runAsync(
       `INSERT INTO items (id, seq, scope, recorder_name, kind, request_key, body, what, customer, state, attempts, recorded_at, recorded_tick)
-       VALUES ('legacy-1', 1, ?, 'Ravi Fictional', 'newDispatch', 'rk-legacy-1', '{}', 'New dispatch', 'asha Traders', 'refused', 1, ?, ?)`,
+       VALUES ('legacy-1', 1, ?, 'Ravi Fictional', 'newGrn', 'rk-legacy-1', '{}', 'New GRN', 'asha Traders', 'refused', 1, ?, ?)`,
       [scope, Date.now(), Date.now()],
     );
 
@@ -153,21 +170,21 @@ describe('K1: refused item and followers handed over together in one hold_items 
     const phone = await startStaff();
     await phone.offline();
     const root = await phone.queue.enqueue({
-      kind: 'newDispatch',
-      body: sampleDispatchBody('l03', 25),
-      what: 'New dispatch',
+      kind: 'newGrn',
+      body: sampleGrnBody('5f304000-0000-4000-8000-000000000001', 25),
+      what: 'New GRN',
       customer: 'asha Traders',
     });
     const follower = await phone.queue.enqueue({
       kind: 'testFollow',
-      body: { note: 'follows dispatch' },
+      body: { note: 'follows grn' },
       dependsOn: root.id,
       what: 'Follow-up change',
       customer: 'asha Traders',
     });
 
-    const lines = [{ lot_id: 'l03', item_name: 'Beans', available: 19, requested: 25 }];
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock', { lines });
+    const lines = [{ item_name: 'Beans' }];
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate', { lines });
     server.answers.hold_items = holdOk('srv-held');
 
     await phone.online();
@@ -179,8 +196,8 @@ describe('K1: refused item and followers handed over together in one hold_items 
     expect(itemsArg).toHaveLength(2);
     expect(itemsArg[0]).toMatchObject({
       request_key: root.requestKey,
-      kind: 'newDispatch',
-      refusal: { code: 'STOCK_SHORT', data: { lines } },
+      kind: 'newGrn',
+      refusal: { code: 'RATE_MISSING', data: { lines } },
     });
     expect(itemsArg[0].follows_key).toBeUndefined();
     expect(itemsArg[1]).toMatchObject({
@@ -196,7 +213,7 @@ describe('K1: refused item and followers handed over together in one hold_items 
       ['held', 'srv-held-2'],
     ]);
     const refusal = JSON.parse(rows[0].result ?? '{}') as Record<string, unknown>;
-    expect(refusal).toMatchObject({ code: 'STOCK_SHORT', answer: { lines } });
+    expect(refusal).toMatchObject({ code: 'RATE_MISSING', answer: { lines } });
   });
 });
 
@@ -204,10 +221,10 @@ describe('K2, K3 (PQ1): refused + dependants stay counted/clocked/blocking until
   it('transient hand-over failure keeps both refused and counted, blocks sign-out and 2-hour clock, and retries the identical hold_items call', async () => {
     const phone = await startStaff();
     await phone.offline();
-    const root = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody('l03', 25), what: 'New dispatch', customer: 'asha Traders' });
+    const root = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody('5f304000-0000-4000-8000-000000000002', 25), what: 'New GRN', customer: 'asha Traders' });
     const follower = await phone.queue.enqueue({ kind: 'testFollow', body: { step: 2 }, dependsOn: root.id, what: 'Follow-up', customer: 'asha Traders' });
 
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock', { lines: [{ lot_id: 'l03', available: 19, requested: 25 }] });
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate', { lines: [{ item_name: 'Beans' }] });
     server.answers.hold_items = () => GATEWAY_TIMEOUT;
 
     await phone.online();
@@ -252,23 +269,23 @@ describe('K4 (PQ2): photos of a held item still to upload', () => {
     const phone = await startStaff();
     await phone.offline();
     const photoUri = addPhoto('held-doc.jpg');
-    const root = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody('l03', 25), what: 'New dispatch', customer: 'asha Traders' });
+    const root = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody('5f304000-0000-4000-8000-000000000003', 25), what: 'New GRN', customer: 'asha Traders' });
     await phone.queue.enqueue({
       kind: 'photos',
-      body: { doc: 'dispatch' },
+      body: { doc: 'grn' },
       dependsOn: root.id,
       what: 'Photos',
       customer: 'asha Traders',
-      photos: [{ file: photoUri, role: 'dispatch' }],
+      photos: [{ file: photoUri, role: 'header' }],
     });
 
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock', { lines: [{ lot_id: 'l03', available: 19, requested: 25 }] });
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate', { lines: [{ item_name: 'Beans' }] });
     server.answers.hold_items = holdOk('srv-held');
     // Photo upload RPCs remain unreachable (NO_NETWORK), so the photo file stays unuploaded.
     await phone.online();
     await phone.pass();
 
-    // The dispatch itself is held (leaves the clock), while the unuploaded photos item stays waiting (PQ2).
+    // The GRN itself is held (leaves the clock), while the unuploaded photos item stays waiting (PQ2).
     await jest.advanceTimersByTimeAsync(3 * HOUR);
     const summary = phone.store.getUnsentSummary();
     expect(summary.count).toBe(1);
@@ -287,7 +304,7 @@ describe('K5, K7: when no hand-over is ever attempted', () => {
   ] as [string, RpcAnswer][])('does not call hold_items on %s outcome', async (_label, answer) => {
     const phone = await startStaff();
     await phone.offline();
-    await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch', customer: 'asha Traders' });
+    await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
     server.answers[SAVE] = () => answer;
     server.answers.hold_items = holdOk();
     await phone.online();
@@ -299,8 +316,8 @@ describe('K5, K7: when no hand-over is ever attempted', () => {
     const phone = await startStaff({ holdingFeature: false });
     expect(handOver().holdingOn()).toBe(false);
     await phone.offline();
-    await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch', customer: 'asha Traders' });
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+    await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
     server.answers.hold_items = holdOk();
     await phone.online();
     await phone.pass();
@@ -322,9 +339,9 @@ describe('K11 (PQ10): every way the hand-over itself can be refused', () => {
   ] as [string, RpcAnswer][])('%s: the rows stay refused with no held id and stay counted', async (_label, answer) => {
     const phone = await startStaff();
     await phone.offline();
-    const root = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch', customer: 'asha Traders' });
+    const root = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
     await phone.queue.enqueue({ kind: 'testFollow', body: { step: 2 }, dependsOn: root.id, what: 'Follow-up', customer: 'asha Traders' });
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
     server.answers.hold_items = () => answer;
 
     await phone.online();
@@ -344,12 +361,12 @@ describe('K11, K12, PQ10: permanent hand-over refusal, list states, and person D
   it('K12: before hand-over finishes, a refused item is in "Not sent yet" tagged Sending with handingOver; once held, it is in Held', async () => {
     const phone = await startStaff();
     await phone.offline();
-    const item = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch', customer: 'asha Traders' });
+    const item = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
 
     // Hold the hand-over RPC open so we can inspect the in-flight state between refusal and held.
     let releaseHold!: (a: RpcAnswer) => void;
     const holdPending = new Promise<RpcAnswer>(resolve => { releaseHold = resolve; });
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
     server.answers.hold_items = () => holdPending;
 
     await phone.online();
@@ -373,10 +390,10 @@ describe('K11, K12, PQ10: permanent hand-over refusal, list states, and person D
   it('K11 & PQ10: refused hand-over (42501 / HELD_BODY_TOO_LARGE) keeps rows refused & counted, tags "Not passed on", and Delete frees the phone', async () => {
     const phone = await startStaff();
     await phone.offline();
-    const root = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch', customer: 'asha Traders' });
+    const root = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
     const follower = await phone.queue.enqueue({ kind: 'testFollow', body: { step: 2 }, dependsOn: root.id, what: 'Follow-up', customer: 'asha Traders' });
 
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
     server.answers.hold_items = () => serverRefusal('HELD_BODY_TOO_LARGE', 'Body too large');
 
     await phone.online();
@@ -407,8 +424,8 @@ describe('K11, K12, PQ10: permanent hand-over refusal, list states, and person D
   it('Design 7.4: deleteItem does not delete a row that the server already holds (state = held)', async () => {
     const phone = await startStaff();
     await phone.offline();
-    const item = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch', customer: 'asha Traders' });
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+    const item = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
     server.answers.hold_items = holdOk('srv-held');
     await phone.online();
     await phone.pass();
@@ -423,9 +440,9 @@ describe('K6, K10: leaving the phone after sync & overlay clearing', () => {
   it('K6: a held row stays in the unsent DB until a sync completes whose copy holds its held_items row', async () => {
     const phone = await startStaff({ withCopy: true });
     await phone.offline();
-    await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody('l03', 6), what: 'New dispatch', customer: 'asha Traders' });
+    await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
 
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
     server.answers.hold_items = holdOk('held-k6');
 
     await phone.online();
@@ -444,7 +461,7 @@ describe('K6, K10: leaving the phone after sync & overlay clearing', () => {
       more: false,
       reload_all: null,
       reload: [],
-      changes: [{ e: 'held_items', id: 'held-k6-1', op: 'upsert', v: '0000000000000001', row: heldDispatchFeedRow('held-k6-1', [{ lot_id: 'l03', qty: 6 }]).row }],
+      changes: [{ e: 'held_items', id: 'held-k6-1', op: 'upsert', v: '0000000000000001', row: heldGrnFeedRow('held-k6-1').row }],
     });
     await phone.sync();
     expect(await allItemRows()).toHaveLength(0);
@@ -465,7 +482,7 @@ describe('K6, K10: leaving the phone after sync & overlay clearing', () => {
     expect(overlay().marker('lot', 'l06')).toBe('notSent');
 
     // Server refuses and holds it -> overlay must stop overriding the lot's value (server's value shows).
-    server.answers.set_lot_rack_and_mark = () => serverRefusal('LOT_DISPATCHED', 'Lot dispatched');
+    server.answers.set_lot_rack_and_mark = () => serverRefusal('LOT_NOT_FOUND', 'Lot deleted');
     server.answers.hold_items = holdOk('held-lc');
     await phone.online();
     await phone.pass();
@@ -482,7 +499,7 @@ describe('K9 (PQ7): administrator "Move to the holding list" (p_recorder)', () =
     env.subject = otherSubject;
     const staffPhone = await startStaff();
     await staffPhone.offline();
-    const first = await staffPhone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody('l03', 5), what: 'New dispatch', customer: 'asha Traders' });
+    const first = await staffPhone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody('5f304000-0000-4000-8000-000000000005', 5), what: 'New GRN', customer: 'asha Traders' });
     const second = await staffPhone.queue.enqueue({ kind: 'testFollow', body: { step: 2 }, dependsOn: first.id, what: 'Follow-up', customer: 'asha Traders' });
 
     env.subject = 'admin-user-1';
@@ -548,9 +565,9 @@ describe('WH-303: an item whose form still waits for its save is not handed over
   async function twoRefused() {
     const phone = await startStaff();
     await phone.offline();
-    const waiting = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody('l03', 25), what: 'New dispatch', customer: 'asha Traders' });
-    const other = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody('l03', 26), what: 'New dispatch', customer: 'asha Traders' });
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+    const waiting = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody('5f304000-0000-4000-8000-000000000006', 25), what: 'New GRN', customer: 'asha Traders' });
+    const other = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody('5f304000-0000-4000-8000-000000000007', 26), what: 'New GRN', customer: 'asha Traders' });
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
     server.answers.hold_items = holdOk('srv-held');
     return { phone, waiting, other };
   }
@@ -603,8 +620,8 @@ describe('session end: what the hand-over remembered about the first person is g
   it('a hand-over the server refused for good is asked again after the session registry runs, as for a person who has not met the refusal', async () => {
     const phone = await startStaff();
     await phone.offline();
-    await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch', customer: 'asha Traders' });
-    server.answers[SAVE] = () => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+    await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
     server.answers.hold_items = () => serverRefusal('HELD_BODY_TOO_LARGE', 'Body too large');
     await phone.online();
     await phone.pass();

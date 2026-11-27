@@ -23,7 +23,7 @@
 import { eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
 import { addPhoto, rawRows, server } from '@/tests/unsent/unsentPhone';
-import { bootNewRecords, callsOf, dispatchPayload, dispatchSaved, duplicateWarning, grnPayload, grnSaved, rateFailure, refusal } from '@/tests/unsent/newRecordPhone';
+import { bootNewRecords, callsOf, duplicateWarning, grnPayload, grnSaved, rateFailure, refusal } from '@/tests/unsent/newRecordPhone';
 import type { RpcAnswer } from '@/tests/unsent/unsentPhone';
 
 type Saved = { path: string; result?: any; itemId?: string; answer?: any; warning?: unknown };
@@ -31,14 +31,12 @@ type Form = Record<string, unknown>;
 const offlineNew = () =>
   require('@/features/unsent/offlineNew') as {
     offlineNewOn(): boolean;
-    numberMode(type: 'grn' | 'dispatch'): 'online' | 'pending' | 'typed';
+    numberMode(type: 'grn'): 'online' | 'pending' | 'typed';
     saveNewGrn(payload: unknown, form: Form): Promise<Saved>;
-    saveNewDispatch(payload: unknown, form: Form): Promise<Saved>;
   };
 const items = () => rawRows<{ id: string; kind: string; state: string; body: string; last_error: string | null; depends_on: string | null; request_key: string }>('items', 'ORDER BY seq');
 const bodyOf = (row: { body: string }) => JSON.parse(row.body);
 const GRN_RPC = 'save_grn';
-const DISPATCH_RPC = 'create_dispatch_with_stock_check';
 
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date('2026-11-27T09:00:00+05:30') });
@@ -75,20 +73,6 @@ describe('K2: what the kind sends for each number mode', () => {
     await phone.offline();
     await offlineNew().saveNewGrn(grnPayload({ number: 'G-501' }), { numberMode: 'typed' });
     expect(bodyOf((await items())[0]).args).toMatchObject({ p_gr_no: 'G-501', p_issue_number: false });
-  });
-
-  it('a dispatch: pending gives a blank disp_no and issue_number true inside p_dispatch_data; typed gives the number and false', async () => {
-    const phone = await bootNewRecords();
-    await phone.offline();
-    await offlineNew().saveNewDispatch(dispatchPayload(), { numberMode: 'pending' });
-    const first = bodyOf((await items())[0]).args;
-    expect(first.p_dispatch_data).toMatchObject({ disp_no: '', issue_number: true, warn_duplicate: true });
-    expect(first.p_dispatch_data.source_order_id ?? null).toBeNull();
-    expect(first).toMatchObject({ p_generate_invoice: true, p_retry_count: 0 });
-    expect(first.p_dispatch_items).toEqual([{ gr_trl_id: 'l06', disp_qty: 4 }]);
-
-    await offlineNew().saveNewDispatch(dispatchPayload({ number: 'D-9', lotId: 'l03' }), { numberMode: 'typed' });
-    expect(bodyOf((await items())[1]).args.p_dispatch_data).toMatchObject({ disp_no: 'D-9', issue_number: false });
   });
 
   it('an online form that ends in the queue (an own item is unsent): the suggested number is not sent, a changed one is', async () => {
@@ -150,15 +134,6 @@ describe('P4: reachable with a pending number waits for this item', () => {
     expect(callsOf(GRN_RPC)[0].args).toMatchObject({ p_gr_no: '', p_issue_number: true, p_idempotency_key: (await items())[0].request_key });
   });
 
-  it('a dispatch\'s success carries the number and the order effects of the answer', async () => {
-    await bootNewRecords();
-    const effects = [{ order_no: 'O-5', status: 'completed' }];
-    server.answers[DISPATCH_RPC] = () => dispatchSaved('77', effects);
-    const saved = await saving(offlineNew().saveNewDispatch(dispatchPayload(), { numberMode: 'pending' }), 100);
-    expect(saved.path).toBe('sent');
-    expect(saved.result).toMatchObject({ dispatch_id: 'disp-server-1', disp_no: '77', order_effects: effects });
-  });
-
   it('no answer in 8 s: "Saved on this phone", and the item goes on by itself', async () => {
     await bootNewRecords();
     server.answers[GRN_RPC] = () => new Promise(() => undefined); // never answers
@@ -185,10 +160,12 @@ describe('P5: reachable with an own unsent record', () => {
     await offlineNew().saveNewGrn(grnPayload(), { numberMode: 'pending' });
     await phone.online();
     server.answers[GRN_RPC] = () => new Promise(() => undefined); // the older one is not answered
-    const saved = await saving(offlineNew().saveNewDispatch(dispatchPayload(), { numberMode: 'pending' }), 8_500);
+    const saved = await saving(offlineNew().saveNewGrn(grnPayload(), { numberMode: 'pending' }), 8_500);
     expect(saved.path).toBe('saved');
-    expect((await items()).map(row => row.kind)).toEqual(['newGrn', 'newDispatch']);
-    expect(callsOf(DISPATCH_RPC)).toHaveLength(0); // never ahead of the older record (criterion 15)
+    const rows = await items();
+    expect(rows.map(row => row.kind)).toEqual(['newGrn', 'newGrn']);
+    // Only the older GRN was sent; the second stays queued behind it (criterion 15).
+    expect(callsOf(GRN_RPC).map(call => call.args.p_idempotency_key)).toEqual([rows[0].request_key]);
   });
 });
 
@@ -212,15 +189,6 @@ describe('P7: a refusal within the wait is told on the form and nothing is kept'
     expect(await items()).toHaveLength(0);
     expect(files.held.has(photo)).toBe(true); // the photo file is not erased
     expect(server.calls.filter(call => call.name.includes('image'))).toHaveLength(0);
-  });
-
-  it('stock short on a dispatch gives the form back, and the bar counts nothing', async () => {
-    const phone = await bootNewRecords();
-    server.answers[DISPATCH_RPC] = () => refusal('STOCK_SHORT', { lines: [{ lot_id: 'l06', item_name: 'Peas', available: 2, requested: 4 }] });
-    const saved = await saving(offlineNew().saveNewDispatch(dispatchPayload(), { numberMode: 'pending' }), 100);
-    expect(saved.path).toBe('refused');
-    expect(await items()).toHaveLength(0);
-    expect(phone.store.getUnsentSummary().count).toBe(0);
   });
 
   it('the same refusal after the wait is a refused item (C301 section 3)', async () => {
@@ -289,7 +257,6 @@ describe('N6: the number box when an own record-lane item is unsent (PQ6)', () =
     await phone.online();
     server.answers[GRN_RPC] = () => new Promise(() => undefined);
     expect(offlineNew().numberMode('grn')).toBe('pending');
-    expect(offlineNew().numberMode('dispatch')).toBe('pending');
     // the form was opened pending: the mode is kept in the form, so asking again after the send changes nothing for it
     server.answers[GRN_RPC] = () => grnSaved('312');
     await phone.pass();

@@ -10,10 +10,18 @@
 import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
 import { addPhoto, keptPhotoFiles, NO_NETWORK, rawRows, rpcKind, server, type RpcAnswer } from '@/tests/unsent/unsentPhone';
-import { bootHolding, rpcCalls, sampleDispatchBody, serverRefusal, type HoldingPhone } from '@/tests/unsent/holdingPhone';
+import { bootHolding, rpcCalls, serverRefusal, type HoldingPhone } from '@/tests/unsent/holdingPhone';
 
 const SAVE = 'save_held_photos_test';
-const stockShort = (): RpcAnswer => serverRefusal('STOCK_SHORT', 'Insufficient stock');
+const rateMissing = (): RpcAnswer => serverRefusal('RATE_MISSING', 'Missing rate');
+
+const sampleGrnBody = (localId = '5f304000-0000-4000-8000-0000000000p1') => ({
+  v: 1,
+  localId,
+  lotLocalIds: [`${localId}-l1`],
+  args: { p_gr_no: '', p_issue_number: true, p_date: '2026-11-27', p_customer_id: 'c1', p_items: [{ item_id: 'i1', qty: 10 }] },
+  show: { customerName: 'asha Traders', lines: [{ itemName: 'Beans', packaging: 'Bag' }] },
+});
 
 type ItemDbRow = { id: string; kind: string; state: string; held_id: string | null; request_key: string };
 type PhotoDbRow = { item_id: string; client_photo_id: string; done: number; missing: number };
@@ -27,7 +35,7 @@ const holdOk = (prefix: string) => {
     return { data: { success: true, held: list.map(item => ({ request_key: item.request_key, id: `${prefix}-${(next += 1)}`, state: 'held' })) }, error: null };
   };
 };
-const registered = (status = 'registered'): RpcAnswer => ({ data: { success: true, status, storage_path: 'held/h-1/p.jpg', bucket: 'dispatch-images' }, error: null });
+const registered = (status = 'registered'): RpcAnswer => ({ data: { success: true, status, storage_path: 'held/h-1/p.jpg', bucket: 'grn-images' }, error: null });
 const okAnswer: RpcAnswer = { data: { success: true }, error: null };
 
 /** What happened to the files, in order, across the RPCs and the storage upload. */
@@ -66,23 +74,23 @@ function withStorage(): void {
 async function startStaff(): Promise<HoldingPhone> {
   const phone = await bootHolding({ role: 'staff', withCopy: true });
   withStorage();
-  phone.kinds.registerSendKind('newDispatch', rpcKind(phone, SAVE));
+  phone.kinds.registerSendKind('newGrn', rpcKind(phone, SAVE));
   return phone;
 }
 
-/** A refused dispatch with a photos item of `count` files behind it, handed over; the files still to go up. */
-async function refusedDispatchWithPhotos(phone: HoldingPhone, count = 1) {
+/** A refused GRN with a photos item of `count` files behind it, handed over; the files still to go up. */
+async function refusedGrnWithPhotos(phone: HoldingPhone, count = 1) {
   await phone.offline();
-  const root = await phone.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody('l03', 25), what: 'New dispatch', customer: 'asha Traders' });
+  const root = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
   const photos = await phone.queue.enqueue({
     kind: 'photos',
-    body: { doc: 'dispatch' },
+    body: { doc: 'grn' },
     dependsOn: root.id,
     what: 'Photos',
     customer: 'asha Traders',
-    photos: Array.from({ length: count }, (_, i) => ({ file: addPhoto(`held-doc-${i}.jpg`), role: 'dispatch' })),
+    photos: Array.from({ length: count }, (_, i) => ({ file: addPhoto(`held-doc-${i}.jpg`), role: 'header' })),
   });
-  server.answers[SAVE] = stockShort;
+  server.answers[SAVE] = rateMissing;
   server.answers.hold_items = holdOk('h');
   await phone.online();
   return { root, photos };
@@ -107,7 +115,7 @@ afterEach(async () => {
 describe('A-6: the files of a held photos item go up under its held id', () => {
   it('registers, uploads and confirms each file, in that order and with these arguments; then the row is held', async () => {
     const phone = await startStaff();
-    await refusedDispatchWithPhotos(phone);
+    await refusedGrnWithPhotos(phone);
     server.answers.register_held_photo_upload = () => registered();
     server.answers.confirm_held_photo_upload = () => okAnswer;
     await phone.pass();
@@ -120,13 +128,13 @@ describe('A-6: the files of a held photos item go up under its held id', () => {
     expect(rpcCalls('register_held_photo_upload')[0].args).toEqual({
       p_held_id: photosItem.held_id,
       p_client_photo_id: photoRow.client_photo_id,
-      p_role: 'dispatch',
+      p_role: 'header',
       p_file_name: expect.stringMatching(/\.jpg$/),
       p_file_size: 1200,
       p_mime_type: 'image/jpeg',
       p_line_ref: null,
     });
-    expect(uploads).toEqual([{ bucket: 'dispatch-images', path: 'held/h-1/p.jpg', options: expect.objectContaining({ upsert: true }) }]);
+    expect(uploads).toEqual([{ bucket: 'grn-images', path: 'held/h-1/p.jpg', options: expect.objectContaining({ upsert: true }) }]);
     expect(rpcCalls('confirm_held_photo_upload')[0].args).toEqual({ p_held_id: photosItem.held_id, p_client_photo_id: photoRow.client_photo_id });
     expect(photoRow).toMatchObject({ done: 1, missing: 0 });
     expect(photosItem.state).toBe('held');
@@ -134,7 +142,7 @@ describe('A-6: the files of a held photos item go up under its held id', () => {
 
   it('a resend the server already has confirmed needs no upload and no confirm', async () => {
     const phone = await startStaff();
-    await refusedDispatchWithPhotos(phone);
+    await refusedGrnWithPhotos(phone);
     server.answers.register_held_photo_upload = () => registered('confirmed');
     await phone.pass();
     expect(steps).not.toContain('upload');
@@ -145,7 +153,7 @@ describe('A-6: the files of a held photos item go up under its held id', () => {
 
   it('the row is held only when every file is done: one file fails, the row stays refused and counted, and the done file is not sent again', async () => {
     const phone = await startStaff();
-    await refusedDispatchWithPhotos(phone, 2);
+    await refusedGrnWithPhotos(phone, 2);
     server.answers.register_held_photo_upload = () => registered();
     server.answers.confirm_held_photo_upload = () => okAnswer;
     // Only the first upload gets through: the second file keeps failing until the test lets it.
@@ -167,7 +175,7 @@ describe('A-6: the files of a held photos item go up under its held id', () => {
 
   it('an item decided meanwhile (HELD_ALREADY_DECIDED) needs no files: the row is settled at once', async () => {
     const phone = await startStaff();
-    await refusedDispatchWithPhotos(phone);
+    await refusedGrnWithPhotos(phone);
     server.answers.register_held_photo_upload = () => serverRefusal('HELD_ALREADY_DECIDED', 'decided');
     await phone.pass();
     expect(steps).not.toContain('upload');
@@ -180,7 +188,7 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
 
   it('a file gone from the phone is reported with reason file_missing, then the row is held', async () => {
     const phone = await startStaff();
-    await refusedDispatchWithPhotos(phone);
+    await refusedGrnWithPhotos(phone);
     for (const path of keptPhotoFiles()) files.held.delete(path);
     server.answers.mark_held_photo_missing = () => okAnswer;
     await phone.pass();
@@ -190,21 +198,21 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
     expect(missingCalls()[0].args).toEqual({
       p_held_id: photosItem.held_id,
       p_client_photo_id: (await photoRows())[0].client_photo_id,
-      p_role: 'dispatch',
+      p_role: 'header',
       p_line_ref: null,
       p_reason: 'file_missing',
     });
     expect(steps).not.toContain('register_held_photo_upload');
     expect((await photoRows())[0]).toMatchObject({ missing: 1, done: 0 });
     expect(photosItem.state).toBe('held');
-    // The row says so on the phone, with the dispatch's own footnote (Design 7.11c).
+    // The row says so on the phone, with the GRN's missing-photo footnote (Design 7.11c).
     const { rows } = await (require('@/features/unsent/unsentList') as typeof import('@/features/unsent/unsentList')).loadUnsentList();
-    expect(rows.find(row => row.id === photosItem.id)).toMatchObject({ photoMissing: true, photoMissingDispatch: true });
+    expect(rows.find(row => row.id === photosItem.id)).toMatchObject({ photoMissing: true });
   });
 
   it('(a) a photo the server refuses as invalid is reported with reason invalid and the rest goes on', async () => {
     const phone = await startStaff();
-    await refusedDispatchWithPhotos(phone, 2);
+    await refusedGrnWithPhotos(phone, 2);
     let registers = 0;
     server.answers.register_held_photo_upload = () => (++registers === 1 ? serverRefusal('HELD_PHOTO_INVALID', 'wrong type') : registered());
     server.answers.confirm_held_photo_upload = () => okAnswer;
@@ -221,7 +229,7 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
     const phone = await startStaff();
     // PhoneCopyLifecycle starts it with the copy; it does not listen at import. The phone's modules are loaded fresh at boot.
     (require('@/features/holding/heldPhotos') as typeof import('@/features/holding/heldPhotos')).startHeldPhotos();
-    await refusedDispatchWithPhotos(phone);
+    await refusedGrnWithPhotos(phone);
     server.answers.register_held_photo_upload = () => serverRefusal('HELD_PHOTO_NOT_YOURS', 'not yours');
     server.answers.mark_held_photo_missing = () => okAnswer;
 
@@ -242,7 +250,7 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
 
   it('(b) nothing counts sync runs before startHeldPhotos(): a run that ends first does not release a refused photo', async () => {
     const phone = await startStaff();
-    await refusedDispatchWithPhotos(phone);
+    await refusedGrnWithPhotos(phone);
     server.answers.register_held_photo_upload = () => serverRefusal('HELD_PHOTO_NOT_YOURS', 'not yours');
     server.answers.mark_held_photo_missing = () => okAnswer;
 
@@ -258,7 +266,7 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
   it('session end: the sync runs counted and the first refusals are forgotten, so the next person\'s photo waits a full run of its own', async () => {
     const phone = await startStaff();
     (require('@/features/holding/heldPhotos') as typeof import('@/features/holding/heldPhotos')).startHeldPhotos();
-    await refusedDispatchWithPhotos(phone);
+    await refusedGrnWithPhotos(phone);
     server.answers.register_held_photo_upload = () => serverRefusal('HELD_PHOTO_NOT_YOURS', 'not yours');
     server.answers.mark_held_photo_missing = () => okAnswer;
 
@@ -273,7 +281,7 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
 
   it('a report the server did not take is not marked: the photo stays waiting and is reported again next pass', async () => {
     const phone = await startStaff();
-    await refusedDispatchWithPhotos(phone);
+    await refusedGrnWithPhotos(phone);
     for (const path of keptPhotoFiles()) files.held.delete(path);
     server.answers.mark_held_photo_missing = () => NO_NETWORK;
     await phone.pass();
@@ -290,7 +298,7 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
 
   it('a report the server refuses for another reason is not marked either: the photo keeps waiting', async () => {
     const phone = await startStaff();
-    await refusedDispatchWithPhotos(phone);
+    await refusedGrnWithPhotos(phone);
     for (const path of keptPhotoFiles()) files.held.delete(path);
     server.answers.mark_held_photo_missing = () => serverRefusal('HELD_NOT_FOUND', 'no such item');
     await phone.pass();
@@ -300,7 +308,7 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
 
   it('a report for an item decided meanwhile settles the row', async () => {
     const phone = await startStaff();
-    await refusedDispatchWithPhotos(phone);
+    await refusedGrnWithPhotos(phone);
     for (const path of keptPhotoFiles()) files.held.delete(path);
     server.answers.mark_held_photo_missing = () => serverRefusal('HELD_ALREADY_DECIDED', 'decided');
     await phone.pass();
@@ -313,10 +321,10 @@ describe('A-6: Move to the holding list carries photos items', () => {
     env.subject = subject;
     const staff = await startStaff();
     await staff.offline();
-    const root = await staff.queue.enqueue({ kind: 'newDispatch', body: sampleDispatchBody('l03', 5), what: 'New dispatch', customer: 'asha Traders' });
+    const root = await staff.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody('5f304000-0000-4000-8000-0000000000p2'), what: 'New GRN', customer: 'asha Traders' });
     await staff.queue.enqueue({
-      kind: 'photos', body: { doc: 'dispatch' }, dependsOn: root.id, what: 'Photos', customer: 'asha Traders',
-      photos: Array.from({ length: count }, (_, i) => ({ file: addPhoto(`moved-${i}.jpg`), role: 'dispatch' })),
+      kind: 'photos', body: { doc: 'grn' }, dependsOn: root.id, what: 'Photos', customer: 'asha Traders',
+      photos: Array.from({ length: count }, (_, i) => ({ file: addPhoto(`moved-${i}.jpg`), role: 'header' })),
     });
     env.subject = 'admin-user-1';
     const admin = await bootHolding({ role: 'admin', profileId: 'profile-admin-1', profileName: 'Neha Fictional' });
@@ -350,7 +358,7 @@ describe('A-6: Move to the holding list carries photos items', () => {
 
     const first = await move('staff-user-22');
     expect(first.failed).toBe('transient');
-    expect((await itemRows()).map(row => row.kind).sort()).toEqual(['newDispatch', 'photos']);
+    expect((await itemRows()).map(row => row.kind).sort()).toEqual(['newGrn', 'photos']);
 
     uploadError = null;
     const holdCalls = rpcCalls('hold_items').length;

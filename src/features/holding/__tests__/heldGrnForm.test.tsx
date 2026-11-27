@@ -217,7 +217,7 @@ describe('A-4: a held new GRN in the GRN form', () => {
     mockRpc.mockImplementation(async (name: string) => {
       if (name === 'get_held_item') return heldAnswer();
       if (name === 'decide_held_item') {
-        return { data: { success: false, error_code: 'WH409', reason: 'STOCK_SHORT', error: 'short', message: 'short', lines: [{ lot_id: 'l03', item_name: 'Beans', available: 4, requested: 6 }] }, error: null };
+        return { data: { success: false, error_code: 'WH409', reason: 'NUMBER_TAKEN', error: 'taken', message: 'taken', number: 'G-501' }, error: null };
       }
       return { data: { success: true }, error: null };
     });
@@ -225,8 +225,8 @@ describe('A-4: a held new GRN in the GRN form', () => {
     await user.press(screen.getByRole('button', { name: 'Accept with changes' }));
 
     const alert = (showAlert as jest.Mock).mock.calls.at(-1);
-    expect(alert?.[1]).toContain('has 4 left; this dispatch takes 6.');
-    expect(alert?.[1]).toContain('Correct the quantity, or reject.');
+    expect(alert?.[1]).toContain('Number G-501 is already used by another GRN.');
+    expect(alert?.[1]).toContain('Correct the number.');
     expect(router.dismissTo).not.toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
   });

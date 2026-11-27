@@ -62,12 +62,6 @@ describe('keeping photos that did not upload', () => {
     expect(keptPhotoFiles()).toHaveLength(1);
   });
 
-  it('a dispatch keeps them under its own id', async () => {
-    await keepFailedPhotos({ ...input('a.jpg'), doc: 'dispatch', recordId: 'dispatch-uuid-1' });
-    const [item] = await rawRows<{ target_ref: string }>('items');
-    expect(JSON.parse(item.target_ref)).toMatchObject({ dispatchId: 'dispatch-uuid-1' });
-  });
-
   it('they count as unsent (the bar, sign-out) but never start the 2-hour clock (PQ2)', async () => {
     await keepFailedPhotos(input('a.jpg'));
     expect(getUnsentSummary()).toMatchObject({ count: 1, limitReached: false });

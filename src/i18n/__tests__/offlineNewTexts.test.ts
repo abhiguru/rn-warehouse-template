@@ -21,29 +21,21 @@ const text = (key: string, options: Record<string, unknown>, language: Lang) =>
 const rows: [string, Record<string, unknown>, string, string][] = [
   ['numberPending', {}, 'Given when sent', 'મોકલતી વખતે મળશે'],
   ['numberPendingHelpGrn', {}, 'No connection. The GRN number is given when this GRN is sent.', 'કનેક્શન નથી. આ આવક પાવતી મોકલાશે ત્યારે તેનો નંબર મળશે.'],
-  ['numberPendingHelpDispatch', {}, 'No connection. The dispatch number is given when this dispatch is sent.', 'કનેક્શન નથી. આ જાવક મોકલાશે ત્યારે તેનો નંબર મળશે.'],
   ['typedNumberHelp', {}, 'Checked when sent. If it is already used, this waits for a supervisor.', 'મોકલતી વખતે તપાસાશે. નંબર વપરાયેલો હશે તો તે સુપરવાઇઝરના નિર્ણય માટે રોકાશે.'],
   ['savedTitle', {}, 'Saved on this phone', 'આ ફોનમાં સાચવ્યું'],
   ['savedGrn', { customer: 'Asha Traders' }, 'The GRN for Asha Traders will be sent when you reconnect and gets its number then. You can print and share it once it is sent.', 'Asha Traders ની આવક પાવતી ફરી જોડાશો ત્યારે મોકલાશે અને ત્યારે તેનો નંબર મળશે. મોકલાયા પછી પ્રિન્ટ અને શેર કરી શકશો.'],
   ['savedGrnTyped', { customer: 'Asha Traders', number: 'G-501' }, 'GRN G-501 for Asha Traders will be sent when you reconnect. You can print and share it once it is sent.', 'Asha Traders ની આવક પાવતી G-501 ફરી જોડાશો ત્યારે મોકલાશે. મોકલાયા પછી પ્રિન્ટ અને શેર કરી શકશો.'],
-  ['savedDispatch', { customer: 'Asha Traders' }, 'The dispatch for Asha Traders will be sent when you reconnect and gets its number then. You can print and share it once it is sent.', 'Asha Traders ની જાવક ફરી જોડાશો ત્યારે મોકલાશે અને ત્યારે તેનો નંબર મળશે. મોકલાયા પછી પ્રિન્ટ અને શેર કરી શકશો.'],
-  ['savedDispatchTyped', { customer: 'Asha Traders', number: 'D-9' }, 'Dispatch D-9 for Asha Traders will be sent when you reconnect. You can print and share it once it is sent.', 'Asha Traders ની જાવક D-9 ફરી જોડાશો ત્યારે મોકલાશે. મોકલાયા પછી પ્રિન્ટ અને શેર કરી શકશો.'],
   ['heroNumberPending', {}, 'Number when sent', 'મોકલતી વખતે નંબર'],
   ['docNotSent', {}, 'Not sent yet. It gets its number when sent.', 'હજુ મોકલાયું નથી. મોકલાશે ત્યારે નંબર મળશે.'],
-  ['grnUnsentInPicker', {}, 'Not sent yet. Dispatch from it after it is sent.', 'હજુ મોકલાઈ નથી. મોકલાયા પછી તેમાંથી જાવક કરો.'],
   // 10.6 DQ2, DQ4
   ['onceSent', {}, 'Available once this is sent', 'મોકલાયા પછી થઈ શકશે'],
   ['beingSent', {}, 'Being sent. Try again in a moment.', 'મોકલાઈ રહ્યું છે. થોડી વારમાં ફરી પ્રયાસ કરો.'],
-  // 10.7 (PQ1, PQ5)
+  // 10.7 (PQ1)
   ['ratesCheckedWhenSent', {}, 'No connection. Rates are checked when this GRN is sent.', 'કનેક્શન નથી. આ આવક પાવતી મોકલાશે ત્યારે દર તપાસાશે.'],
-  ['orderChangesLater', {}, 'Changes to orders are shown once this dispatch is sent.', 'ઑર્ડરમાં થતા ફેરફાર આ જાવક મોકલાયા પછી બતાવાશે.'],
   // 10.8 DQ8: reachable, but an older entry is still unsent
   ['numberPendingQueuedGrn', {}, 'Your earlier entries are still being sent. The GRN number is given when this GRN is sent.', 'તમારી પહેલાંની એન્ટ્રી હજુ મોકલાઈ રહી છે. આ આવક પાવતી મોકલાશે ત્યારે તેનો નંબર મળશે.'],
-  ['numberPendingQueuedDispatch', {}, 'Your earlier entries are still being sent. The dispatch number is given when this dispatch is sent.', 'તમારી પહેલાંની એન્ટ્રી હજુ મોકલાઈ રહી છે. આ જાવક મોકલાશે ત્યારે તેનો નંબર મળશે.'],
   ['savedGrnQueued', { customer: 'Asha Traders' }, 'The GRN for Asha Traders will be sent after your earlier entries and gets its number then. You can print and share it once it is sent.', 'Asha Traders ની આવક પાવતી તમારી પહેલાંની એન્ટ્રી પછી મોકલાશે અને ત્યારે તેનો નંબર મળશે. મોકલાયા પછી પ્રિન્ટ અને શેર કરી શકશો.'],
   ['savedGrnTypedQueued', { customer: 'Asha Traders', number: 'G-501' }, 'GRN G-501 for Asha Traders will be sent after your earlier entries. You can print and share it once it is sent.', 'Asha Traders ની આવક પાવતી G-501 તમારી પહેલાંની એન્ટ્રી પછી મોકલાશે. મોકલાયા પછી પ્રિન્ટ અને શેર કરી શકશો.'],
-  ['savedDispatchQueued', { customer: 'Asha Traders' }, 'The dispatch for Asha Traders will be sent after your earlier entries and gets its number then. You can print and share it once it is sent.', 'Asha Traders ની જાવક તમારી પહેલાંની એન્ટ્રી પછી મોકલાશે અને ત્યારે તેનો નંબર મળશે. મોકલાયા પછી પ્રિન્ટ અને શેર કરી શકશો.'],
-  ['savedDispatchTypedQueued', { customer: 'Asha Traders', number: 'D-9' }, 'Dispatch D-9 for Asha Traders will be sent after your earlier entries. You can print and share it once it is sent.', 'Asha Traders ની જાવક D-9 તમારી પહેલાંની એન્ટ્રી પછી મોકલાશે. મોકલાયા પછી પ્રિન્ટ અને શેર કરી શકશો.'],
 ];
 
 describe('S7: the screen texts of 10.5, 10.6, 10.7 and 10.8', () => {

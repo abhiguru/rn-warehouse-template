@@ -135,13 +135,11 @@ describe('sections and rows', () => {
 });
 
 describe('Not finished', () => {
-  it('lists an unfinished GRN, dispatch and edit with their words and no state tag', async () => {
+  it('lists an unfinished GRN and edit with their words and no state tag', async () => {
     await saveFormDraft({ kind: 'grn', state: { header: { gr_no: 'RV1' }, items: [] }, customer: 'Asha Fictional Traders', at: 1_000 });
-    await saveFormDraft({ kind: 'dispatch', state: { header: {}, items: [], images: [] }, at: 2_000 });
     await saveFormDraft({ kind: 'grnEdit', grnId: 'grn-9', state: { header: { gr_no: 'RV15009' }, items: [] }, at: 3_000 });
     await open();
     expect(screen.getByText('GRN form')).toBeOnTheScreen();
-    expect(screen.getByText('Dispatch form')).toBeOnTheScreen();
     expect(screen.getByText('Changes to GRN RV15009')).toBeOnTheScreen();
     expect(screen.getByText('Asha Fictional Traders')).toBeOnTheScreen();
     expect(screen.queryByText('Saved on phone')).not.toBeOnTheScreen();
@@ -174,10 +172,10 @@ describe('Not finished', () => {
 });
 
 describe('Held: a refused item, its tag, and what follows it', () => {
-  it('a refused item with a known code shows "Refused: Stock short", never the server\'s own words or the generic sentence', async () => {
-    await insert({ id: 'h1', seq: 1, state: 'refused', what: 'Dispatch for Bina Fictional Stores', lastError: 'Lot L-9 has 4 left; this dispatch takes 12', result: { code: 'STOCK_SHORT' } });
+  it('a refused item with a known code shows "Refused: Below dispatched", never the server\'s own words or the generic sentence', async () => {
+    await insert({ id: 'h1', seq: 1, state: 'refused', what: 'GRN 12: Quantity changed', lastError: 'Lot L-9 has 10 dispatched; requested 4', result: { code: 'QTY_BELOW_DISPATCHED' } });
     await open();
-    expect(screen.getByTestId('unsent-row-reason-h1')).toHaveTextContent('Refused: Stock short');
+    expect(screen.getByTestId('unsent-row-reason-h1')).toHaveTextContent('Refused: Below dispatched');
     expect(screen.queryByText(/Lot L-9/)).not.toBeOnTheScreen();
     expect(screen.queryByText(REFUSED_GENERIC)).not.toBeOnTheScreen();
     expect(screen.getByTestId('unsent-row-tag-h1')).toHaveTextContent('Held');
@@ -210,9 +208,9 @@ describe('Held: a refused item, its tag, and what follows it', () => {
 
   it('in Gujarati the tag is the Gujarati one', async () => {
     setLanguage('gu');
-    await insert({ id: 'h1', seq: 1, state: 'refused', what: 'GRN 12', lastError: 'raw', result: { code: 'STOCK_SHORT' } });
+    await insert({ id: 'h1', seq: 1, state: 'refused', what: 'GRN 12', lastError: 'raw', result: { code: 'QTY_BELOW_DISPATCHED' } });
     await open();
-    expect(screen.getByTestId('unsent-row-reason-h1')).toHaveTextContent('નકાર્યું: સ્ટોક ઓછો');
+    expect(screen.getByTestId('unsent-row-reason-h1')).toHaveTextContent('નકાર્યું: જાવકથી ઓછું');
   });
 
   it('what follows a refused item sits directly under it with its own footnote, and a later unrelated held item comes after', async () => {

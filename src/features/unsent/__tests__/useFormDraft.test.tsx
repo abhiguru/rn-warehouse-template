@@ -42,7 +42,7 @@ const flush = () => act(async () => { for (let i = 0; i < 20; i += 1) await new 
 const advance = async (ms: number) => { await act(async () => { jest.advanceTimersByTime(ms); }); await flush(); };
 const forms = async () => listOwnForms();
 const type = (note: string) => act(async () => { mockStore.dispatch(updateHeader({ note })); });
-const mount = async (stillOpen = () => true, kind: 'grn' | 'dispatch' = 'grn') => {
+const mount = async (stillOpen = () => true, kind: 'grn' | 'grnEdit' = 'grn') => {
   const hook = await renderHook(() => useFormDraft(kind, null, true, stillOpen));
   await flush();
   return hook;
