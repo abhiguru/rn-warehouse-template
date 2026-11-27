@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Text,
   Dimensions,
+  useWindowDimensions,
   ActivityIndicator,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -16,6 +17,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNImageData } from '@/store/slices/grnFormSlice';
 import { deleteGRNImage } from '../services/imageUploadService';
 import { isTemporaryGRNImageId } from '../services/imageId';
+import { photoTileShowsWords } from '../utils/photoTile';
 
 import { showAlert } from '@/utils/alert';
 import { localizeDigits, t as tr } from '@/i18n';
@@ -46,9 +48,6 @@ interface ImagePreviewGridProps {
   removeFromServer?: boolean;
 }
 
-/** A tile narrower than this shows only the icon; the words stay in its spoken label. */
-const WORDS_MIN_TILE = 88;
-
 /** A photo that is on the server but has no file on this phone (an Edit GRN form loaded from the phone copy). */
 const isSavedPhotoNotOnPhone = (img: GRNImageData): boolean =>
   !img.imageUrl && img.uploadStatus === 'completed' && !!img.id && !isTemporaryGRNImageId(img.id);
@@ -77,6 +76,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const { fontScale } = useWindowDimensions();
   const [deletingImages, setDeletingImages] = useState<Set<string>>(new Set());
   // Measured grid width; falls back to the screen width minus the side margins.
   const [gridWidth, setGridWidth] = useState<number | null>(null);
@@ -245,8 +245,8 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                   testID={`photo-needs-connection-${imageData.id}`}
                 >
                   <Icon name="image-off-outline" size={iconSize.xl} color={t.icon.secondary} importantForAccessibility="no" />
-                  {imageSize >= WORDS_MIN_TILE && (
-                    <Text style={styles.notOnPhoneText} maxFontSizeMultiplier={1.4} importantForAccessibility="no">
+                  {photoTileShowsWords(imageSize, fontScale) && (
+                    <Text style={styles.notOnPhoneText} importantForAccessibility="no">
                       {tr('components.offlineRead.photoNeedsConnection')}
                     </Text>
                   )}

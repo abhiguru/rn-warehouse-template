@@ -25,6 +25,7 @@ import { parseReceiptQuantity } from '@/features/grn/schemas/grnValidation';
 import { showAlert } from '@/utils/alert';
 import { buildRackValue, parseRackValue, type RackPresets } from '../rackPresets';
 import { useRackPresets } from '../useRackPresets';
+import { photoTileShowsWords } from '../utils/photoTile';
 import { formatNumber } from '@/utils/formatters';
 import { usePermissions } from '@/hooks/usePermissions';
 import { backendHasFeature } from '@/config/backendFeatures';
@@ -44,6 +45,9 @@ const FIELD_WIDTHS = {
     package_mark: 270,
 } as const;
 export type ItemFormFieldName = keyof typeof FIELD_WIDTHS;
+/** The mark photo thumbnails are this wide and high. */
+const MARK_THUMB_SIZE = 128;
+
 const FIELD_ORDER: readonly ItemFormFieldName[] = ['item', 'qty', 'weight', 'rack', 'package_mark'];
 
 /** The widest the text sizes count for: the weight box grows with them up to here. */
@@ -730,9 +734,11 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                         testID={`photo-needs-connection-${img.id}`}
                                     >
                                         <Icon name="image-off-outline" size={iconSize.xl} color={t.icon.secondary} importantForAccessibility="no" />
-                                        <Text style={styles.miniThumbMissingText} maxFontSizeMultiplier={1.4} importantForAccessibility="no">
-                                            {tr('components.offlineRead.photoNeedsConnection')}
-                                        </Text>
+                                        {photoTileShowsWords(MARK_THUMB_SIZE, fontScale) && (
+                                            <Text style={styles.miniThumbMissingText} importantForAccessibility="no">
+                                                {tr('components.offlineRead.photoNeedsConnection')}
+                                            </Text>
+                                        )}
                                         <Pressable
                                             style={styles.missingRemove}
                                             onPress={() => onImageRemove(img.id)}
@@ -1023,8 +1029,8 @@ const makeStyles = (t: ThemeTokens) => ({
         gap: space.xs,
     },
     miniThumb: {
-        width: 128,
-        height: 128,
+        width: MARK_THUMB_SIZE,
+        height: MARK_THUMB_SIZE,
         borderRadius: radius.card,
         backgroundColor: t.surface.cardActive,
         overflow: 'hidden' as const,
@@ -1062,8 +1068,8 @@ const makeStyles = (t: ThemeTokens) => ({
         justifyContent: 'center' as const,
     },
     moreThumb: {
-        width: 128,
-        height: 128,
+        width: MARK_THUMB_SIZE,
+        height: MARK_THUMB_SIZE,
         borderRadius: radius.card,
         backgroundColor: t.surface.cardActive,
         alignItems: 'center' as const,
