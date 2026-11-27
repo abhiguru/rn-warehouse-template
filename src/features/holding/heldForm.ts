@@ -23,6 +23,20 @@ export function heldIdOfRoute(routeId: string | null | undefined): string | null
 /** How long the "It replaced a newer entry" toast stays: twice the normal time (the sentence is longer). */
 const REPLACED_TOAST_MS = TOAST_DURATION_MS * 2;
 
+/**
+ * The toast for an accepted item (DQ14): when the decide answer's `replaced` list is not empty, a GRN's accept says it
+ * replaced a newer entry and stays longer; otherwise the normal toast. A dispatch has no GRN number and nothing to replace.
+ */
+export function acceptToast(result: unknown, normalToast: string): { text: string; durationMs?: number } {
+  const done = typeof result === 'object' && result !== null && !Array.isArray(result) ? (result as Record<string, unknown>) : {};
+  const replaced = done.replaced;
+  const grn = typeof done.gr_no === 'string' && done.gr_no !== '' ? done.gr_no : null;
+  if (Array.isArray(replaced) && replaced.length > 0 && grn !== null) {
+    return { text: tr('offline.holding.acceptedReplaced', { number: formatIdentifier(grn) }), durationMs: REPLACED_TOAST_MS };
+  }
+  return { text: normalToast };
+}
+
 /** What a corrected Accept ended in, as the form acts on it. */
 export type CorrectedOutcome =
   | { kind: 'accepted'; toast: string; /** Set when the toast needs longer than the normal time (a newer entry was replaced). */ durationMs?: number }
@@ -42,12 +56,9 @@ export async function acceptWithChanges(item: Pick<HeldItemDetail, 'id' | 'kind'
     // A change to a record reads "Accepted: GRN {{number}} updated" (Design 7.9 DQ5), a new record "Accepted as {{number}}".
     const change = item.kind === 'lotChange' || item.kind === 'grnEdit' || item.kind === 'photos';
     const number = change ? (textOf(done.gr_no) ?? textOf(done.disp_no)) : (textOf(done.disp_no) ?? textOf(done.gr_no));
-    // DQ14: a held GRN edit that replaced a newer entry says so, with the long toast.
-    const replaced: unknown = done.replaced;
-    if (item.kind === 'grnEdit' && Array.isArray(replaced) && replaced.length > 0 && number !== null) {
-      return { kind: 'accepted', toast: tr('offline.holding.acceptedReplaced', { number: formatIdentifier(number) }), durationMs: REPLACED_TOAST_MS };
-    }
-    return { kind: 'accepted', toast: tr(change ? 'offline.holding.acceptedChange' : 'offline.holding.accepted', { number: formatIdentifier(number) }) };
+    // DQ14: a GRN accept that replaced a newer entry says so, with the long toast.
+    const shown = acceptToast(done, tr(change ? 'offline.holding.acceptedChange' : 'offline.holding.accepted', { number: formatIdentifier(number) }));
+    return { kind: 'accepted', toast: shown.text, ...(shown.durationMs !== undefined ? { durationMs: shown.durationMs } : {}) };
   }
   if (outcome.kind === 'alreadyDecided') {
     const key = outcome.state === 'rejected' ? 'offline.holding.alreadyRejected' : 'offline.holding.alreadyAccepted';

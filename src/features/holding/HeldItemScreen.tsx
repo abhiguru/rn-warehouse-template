@@ -34,7 +34,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { formatDate, formatLoadedAt, formatNumber } from '@/utils/formatters';
 import { showToast } from '@/utils/toast';
 import { QuickChangeSheet } from '@/features/quick-change/QuickChangeSheet';
-import { acceptWithChanges, heldRouteId } from './heldForm';
+import { acceptToast, acceptWithChanges, heldRouteId } from './heldForm';
 import { correctedLotBody, heldLotTarget } from './heldLot';
 import { decideHeldItem, getHeldItem, type HeldCurrent, type HeldItemDetail, type HeldListRow } from './holdingApi';
 import { describeReason } from './heldReason';
@@ -358,7 +358,13 @@ function ManagerHeldItem() {
             ? await decideHeldItem({ id: item.id, action: 'reject', decisionKey: decisionKey.current, reason: rejectReason ?? '' })
             : await decideHeldItem({ id: item.id, action: 'accept', decisionKey: decisionKey.current });
         if (outcome.kind === 'done') {
-          showToast(outcome.state === 'rejected' ? tr('offline.holding.rejected') : acceptedToast(item, outcome.result));
+          if (outcome.state === 'rejected') {
+            showToast(tr('offline.holding.rejected'));
+          } else {
+            const shown = acceptToast(outcome.result, acceptedToast(item, outcome.result));
+            if (shown.durationMs !== undefined) showToast(shown.text, { durationMs: shown.durationMs });
+            else showToast(shown.text);
+          }
           await finish();
         } else if (outcome.kind === 'alreadyDecided') {
           const key: TranslationKey = outcome.state === 'rejected' ? 'offline.holding.alreadyRejected' : 'offline.holding.alreadyAccepted';
@@ -387,7 +393,8 @@ function ManagerHeldItem() {
       try {
         const decided = await acceptWithChanges(item, correctedLotBody(item.body, values), decisionKey.current);
         if (decided.kind === 'accepted' || decided.kind === 'alreadyDecided') {
-          showToast(decided.toast);
+          if (decided.kind === 'accepted' && decided.durationMs !== undefined) showToast(decided.toast, { durationMs: decided.durationMs });
+          else showToast(decided.toast);
           setCorrecting(false);
           await finish();
         } else if (decided.kind === 'refused') {
