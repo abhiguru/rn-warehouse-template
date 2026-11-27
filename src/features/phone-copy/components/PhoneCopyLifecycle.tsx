@@ -22,6 +22,7 @@ import { FormDraftHost } from '@/features/unsent/FormDraftHost';
 import { initUnsent } from '@/features/unsent/unsentStore';
 import { sendNow } from '@/features/unsent/sendEngine';
 import { eraseCopy } from '../copyDb';
+import { startMoneyRefresh, stopMoneyRefresh } from '../money/moneyRefresh';
 import { setCopyForeground, setCopyOffline, setSyncSchedule, startPhoneCopy, stopPhoneCopy, syncNow } from '../syncEngine';
 
 export function PhoneCopyLifecycle() {
@@ -105,6 +106,7 @@ export function PhoneCopyLifecycle() {
     const stopGeneration = subscribeNetInfoGeneration(() => {
       if (stopNet && getNetInfoGeneration() !== generation) listenToNet();
     });
+    startMoneyRefresh();
     const appState = AppState.addEventListener('change', onAppState);
     const stopCapabilities = subscribeFacilityCapabilities(() => void applyCapability());
     setCopyForeground(foreground);
@@ -115,6 +117,7 @@ export function PhoneCopyLifecycle() {
       stopListening();
       stopGeneration();
       appState.remove();
+      stopMoneyRefresh();
       stopCapabilities();
       setSyncSchedule(false);
       void stopPhoneCopy();
