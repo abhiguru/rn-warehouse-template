@@ -282,3 +282,44 @@ describe('the form text and the kept form row keep their files (WH-301p, sweep f
     expect(exists(orphan)).toBe(true);
   });
 });
+
+describe('one file per photo when a saved form becomes items and comes back (batch abb9cb6d)', () => {
+  const formsMod = () => require('@/features/unsent/formDrafts') as typeof import('@/features/unsent/formDrafts');
+  const imagesOf = (state: unknown) => (state as { header: { gr_images: { uri: string }[] } }).header.gr_images.map(image => image.uri);
+  const formWith = (...uris: string[]) => ({ header: { gr_no: 'RV15001', gr_images: uris.map(uri => ({ uri })) }, items: [] });
+  const inFolder = (name: string) => [...files.held.keys()].filter(path => path.startsWith(PHOTOS) && path.endsWith(name));
+
+  it('gives the photo back at its form-<name> file, the returned form names it, and no copy stays under the item\'s name', async () => {
+    const phone = await firstStart();
+    const queue = phone.queue as unknown as Queue;
+    await formsMod().saveFormDraft({ kind: 'grn', state: formWith(addPhoto('pick.jpg')) });
+    expect(inFolder('pick.jpg')).toEqual([`${PHOTOS}form-pick.jpg`]);
+    const [record] = await queue.enqueueAll(
+      [{ kind: 'testRecord', body: {}, what: 'GRN 1 for Asha Fictional Traders', photos: [{ file: addPhoto('pick.jpg'), role: 'goods' }] }],
+      { kind: 'grn' }
+    );
+    expect(inFolder('pick.jpg')).toHaveLength(1); // the item's file only: the saved-form copy was removed
+
+    await queue.returnToForm(record.id);
+
+    const [uri] = imagesOf((await formsMod().loadFormDraft('grn'))?.state);
+    expect(uri).toBe(`${PHOTOS}form-pick.jpg`);
+    expect(exists(uri)).toBe(true);
+    expect(inFolder('pick.jpg')).toEqual([uri]);
+  });
+
+  it('keeps a file the kept form row names that no item took over, after the save and after a start-up sweep', async () => {
+    const phone = await firstStart();
+    const queue = phone.queue as unknown as Queue;
+    await formsMod().saveFormDraft({ kind: 'grn', state: formWith(addPhoto('taken.jpg'), addPhoto('left.jpg')) });
+    await queue.enqueueAll(
+      [{ kind: 'testRecord', body: {}, what: 'GRN 1 for Asha Fictional Traders', photos: [{ file: addPhoto('taken.jpg'), role: 'goods' }] }],
+      { kind: 'grn' }
+    );
+    expect(exists(`${PHOTOS}form-left.jpg`)).toBe(true);
+
+    await restart();
+
+    expect(exists(`${PHOTOS}form-left.jpg`)).toBe(true);
+  });
+});
