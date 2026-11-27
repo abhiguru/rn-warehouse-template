@@ -3,7 +3,7 @@
  * the server's `data`, key for key, except the rates (Product's PR1: the copy has no rates; the section says it needs a
  * connection). Its text is the baseline function with migrations 137, 165, 174 and 191, as installed on temp1.
  */
-import { COPY_FORMAT_V3 } from '../copySchema';
+import { COPY_FORMAT_V3, COPY_FORMAT_V4 } from '../copySchema';
 import { enCompare, parseTimestampUs } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
 import { getUnsentOverlay, netStock } from '../unsentOverlay';
@@ -60,6 +60,12 @@ async function canCreateInvoice(q: CopyReader, grn: Row, lockImported: boolean):
   const onLeave = charging ? parseRow(charging.row).invoice_as_goods_leave === true : false;
   if (onLeave) return hasFreeLine;
   return hasFreeLine && grn.out_of_stock === true && grn.invoiced === false;
+}
+
+/** The GRN's unchecked replaced entries, newest first (`get_grn_details.replacements`). */
+async function replacementsOf(q: CopyReader, grnId: string): Promise<Row[]> {
+  const found = await q.all<{ row: string }>('SELECT row FROM grn_replacements WHERE grn_id = ? ORDER BY sent_at_us DESC, id', [grnId]);
+  return parseRows(found);
 }
 
 export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnDetailsAnswer> {
@@ -119,6 +125,8 @@ export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnD
     pricing_mode: pick(g, 'pricing_mode'),
     duration_mode: pick(g, 'duration_mode'),
     // A copy of format 2 holds no rates: the key is left out and the service says they need the server (WH-299).
+    // WH-303: the unchecked replaced entries, for the staff roles (a customer account has no such entity on the phone).
+    ...(q.format >= COPY_FORMAT_V4 ? { replacements: await replacementsOf(q, grnId) } : {}),
     ...(q.format >= COPY_FORMAT_V3 ? { rates: await ratesOf(q, grnId, gOver.invoiced === true) } : {}),
     created_at: pick(g, 'created_at'),
     updated_at: pick(g, 'updated_at'),

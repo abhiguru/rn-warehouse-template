@@ -126,7 +126,7 @@ interface PhotoRef {
 
 /** The records this page reads from the phone copy: a sync that changed one of them reads the page again. */
 const GRN_PAGE_KINDS: readonly EntityName[] = [
-  'goodsreceived', 'goodsreceived_trl', 'grn_images', 'grn_lock', 'dispatch', 'dispatch_trl', 'customers', 'items', 'invoice', 'invoice_trl',
+  'goodsreceived', 'goodsreceived_trl', 'grn_images', 'grn_lock', 'grn_replacements', 'dispatch', 'dispatch_trl', 'customers', 'items', 'invoice', 'invoice_trl',
 ];
 
 /** The names of the items that are on more than one lot of this GRN (a lot's mark or rack then tells them apart, Design DQ11). */

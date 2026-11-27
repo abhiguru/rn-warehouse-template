@@ -10,7 +10,7 @@ import { View, Text } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { iconSize, radius, space, typography } from '@/theme/tokens';
 import { t as tr, type TranslationKey } from '@/i18n';
 
 type ValidationVariant = 'helper' | 'success' | 'warning' | 'error';
@@ -19,6 +19,11 @@ interface InlineValidationProps {
   message: string;
   variant?: ValidationVariant;
   visible?: boolean;
+  /** More lines and actions inside the strip, under the message (WH-303's replaced entries). */
+  children?: React.ReactNode;
+  /** The strip is read as its message, with no "Warning:" label in front (its title already says what it is). */
+  plainLabel?: boolean;
+  testID?: string;
 }
 
 const VARIANT_CONFIG: Record<
@@ -35,6 +40,9 @@ export const InlineValidation: React.FC<InlineValidationProps> = ({
   message,
   variant = 'helper',
   visible = true,
+  children,
+  plainLabel = false,
+  testID,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -50,10 +58,11 @@ export const InlineValidation: React.FC<InlineValidationProps> = ({
         status && styles.strip,
         status && { backgroundColor: status.background, borderColor: status.border },
       ]}
-      accessible
+      testID={testID}
+      accessible={!children}
       accessibilityRole={variant === 'error' ? 'alert' : undefined}
       accessibilityLiveRegion={variant === 'error' ? 'polite' : 'none'}
-      accessibilityLabel={config.labelKey ? tr(config.labelKey, { message }) : message}
+      accessibilityLabel={config.labelKey && !plainLabel ? tr(config.labelKey, { message }) : message}
     >
       {config.icon && status && (
         <Icon
@@ -63,9 +72,16 @@ export const InlineValidation: React.FC<InlineValidationProps> = ({
           style={styles.icon}
         />
       )}
-      <Text style={[styles.text, { color: status ? status.text : t.text.secondary }]}>
-        {message}
-      </Text>
+      {children ? (
+        <View style={styles.body}>
+          <Text style={[styles.text, styles.titleText, { color: status ? status.text : t.text.secondary }]} accessibilityRole="header">
+            {message}
+          </Text>
+          {children}
+        </View>
+      ) : (
+        <Text style={[styles.text, { color: status ? status.text : t.text.secondary }]}>{message}</Text>
+      )}
     </View>
   );
 };
@@ -84,7 +100,7 @@ export const getValidationState = (
   return null;
 };
 
-const makeStyles = (_t: ThemeTokens) => ({
+const makeStyles = () => ({
   container: {
     flexDirection: 'row' as const,
     alignItems: 'flex-start' as const,
@@ -103,6 +119,13 @@ const makeStyles = (_t: ThemeTokens) => ({
   text: {
     ...typography.footnote,
     flex: 1,
+  },
+  titleText: {
+    flex: 0,
+  },
+  body: {
+    flex: 1,
+    gap: space.xs,
   },
 });
 

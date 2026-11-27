@@ -8,19 +8,21 @@ import { documentNumberSortKey } from '@/utils/documentNumber';
 import type { CopyDriver, SqlValue } from './copyDriver';
 import { mobileDigits, mobileKey, parseTimestampUs } from './pgCompat';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 /** The payload formats of the change-log feed this build reads. */
-export const SYNC_FORMATS: readonly number[] = [1, 2, 3];
+export const SYNC_FORMATS: readonly number[] = [1, 2, 3, 4];
 /** The format from which the screens may read the copy: it carries what their rows need (WH-299, section 6). */
 export const READ_FORMAT = 2;
 /** The format from which the WH-348 screens (invoices, rates, users, settings) read the copy; the one constant (contract section 2). */
 export const COPY_FORMAT_V3 = 3;
+/** The format from which the copy holds the replaced entries (WH-303, entity `grn_replacements`). */
+export const COPY_FORMAT_V4 = 4;
 
 export type EntityName =
   | 'customers' | 'items' | 'settings' | 'people' | 'goodsreceived' | 'goodsreceived_trl' | 'grn_images'
   | 'dispatch' | 'dispatch_trl' | 'dispatch_images' | 'invoice' | 'invoice_trl' | 'grn_lock' | 'user_profiles'
   | 'users_customers_new' | 'grn_rates' | 'item_storage_prices' | 'standard_rate_tiers' | 'item_price_history' | 'payments'
-  | 'orders' | 'order_items';
+  | 'orders' | 'order_items' | 'grn_replacements';
 
 /**
  * A column copied out of the row: `from` are the row keys tried in order; `lower` keeps it lower-cased for search;
@@ -91,6 +93,8 @@ export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
   invoice_trl: { columns: [col('invoice_id'), col('disp_trl_id'), col('storage_amount')], indexes: ['invoice_id', 'disp_trl_id'] },
   grn_lock: { columns: [col('invoice_state')], indexes: [] },
   grn_rates: { columns: [col('gr_id')], indexes: ['gr_id'] },
+  // WH-303: the entries that replaced someone's newer value and are not checked yet, in the server's row shape (staff roles only).
+  grn_replacements: { columns: [col('grn_id'), micros('sent_at_us', 'sent_at')], indexes: ['grn_id'] },
   item_storage_prices: { columns: [col('item_id'), col('customer_id'), micros('effective_from_us', 'effective_from')], indexes: ['item_id', 'customer_id'] },
   standard_rate_tiers: { columns: [], indexes: [] },
   item_price_history: { columns: [col('item_id'), micros('changed_at_us', 'changed_at')], indexes: ['item_id'] },
