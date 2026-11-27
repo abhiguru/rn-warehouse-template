@@ -14,6 +14,7 @@ import { File } from 'expo-file-system';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { deleteWarehouseImage } from '@/services/imageDeletion';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
+import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 import { createLimiter } from '@/utils/concurrency';
 import { createLogger, loggableError } from '@/utils/logger';
 import { classify } from './sendEngine';
@@ -68,9 +69,14 @@ type Client = Awaited<ReturnType<typeof getAuthenticatedClient>>;
 interface Answer {
   data: unknown;
   error: unknown;
+  status?: number;
 }
 
-const asOutcome = (answer: Answer): SendOutcome => classify(answer.data, answer.error);
+// An unreadable HTTP 200, an empty one and a gateway's 502 / 504 are a LOST answer, not a plain transient failure.
+const asOutcome = (answer: Answer): SendOutcome => {
+  const error = answer.error ?? emptyAnswerAsError({ data: answer.data, error: answer.error, status: answer.status });
+  return classify(answer.data, error ? withHttpStatus(error, answer.status) : null);
+};
 
 /** One photo through register, upload and confirm. `sent` means it is attached. */
 async function uploadOne(client: Client, body: PhotosBody, recordId: string, photo: PhotoRow, lineId: string | null): Promise<SendOutcome> {

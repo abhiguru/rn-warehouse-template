@@ -10,7 +10,7 @@ import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens
 import type { ThemeTokens } from '@/theme/tokens';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { useBackHandler } from '@/hooks/useBackHandler';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
   GRNImageData,
@@ -42,6 +42,8 @@ import {
   setGrNoTyped,
   setTakenNumberError,
   selectGRNFormChanged,
+  selectGRNLoadedBaseline,
+  selectGRNLoadedFrom,
 } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { ImageUploadButton } from '@/features/grn/components/ImageUploadButton';
@@ -57,7 +59,7 @@ import {
 import { useOrderEffectsPreview } from '@/hooks/useOrderEffectsPreview';
 import { orderEffectLines, orderEffectsNotice, previewUpdateGrn, withOrderEffects } from '@/services/orderEffects';
 import { importedReadOnlyText } from '@/utils/importedRefusal';
-import { REFUSAL, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
+import { REFUSAL, refusalNumber, refusalOf, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
 import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lockTexts';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
 import { showToast } from '@/utils/toast';
@@ -87,7 +89,7 @@ import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { askAlert, showAlert } from '@/utils/alert';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { ReviewCard, ReviewKeyValue, ReviewKeyValues, ReviewSection, useReviewSections } from '@/components/review/ReviewSections';
-import { formatCount, formatDate, formatSpokenDate, formatNumber, formatWeightEach, toCalendarDay } from '@/utils/formatters';
+import { formatCount, formatDate, formatQuantity, formatSpokenDate, formatNumber, formatWeightEach, toCalendarDay } from '@/utils/formatters';
 import { ONE_LINE, makeTableStyles, numberColumnWidth, useTableLayout } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
@@ -125,7 +127,13 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { getGrnItemRates, getItemsWithoutRate } from '@/services/item-pricing-service';
 import type { ScrollViewRef } from '@/types/nativeRefs';
 import { invoiceFileName } from '@/utils/invoiceLabel';
+import { displayPackaging } from '@/utils/packagingWord';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
+import { backendHasFeature } from '@/config/backendFeatures';
+import { hasCapability } from '@/config/facilityCapabilities';
+import { isCopyOffline } from '@/features/phone-copy/syncEngine';
+import { offlineEditOf } from '@/features/grn/offline-edit/grnEditSave';
+import { saveGrnEditAndWait, saveGrnEditOffline } from '@/features/grn/offline-edit/grnEditKind';
 import { keepFailedPhotos } from '@/features/unsent/keepFailedPhotos';
 
 const log = createLogger('grn');
@@ -211,6 +219,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // The GRN's version token as the edit form read it (get_grn_edit_state, backend migration 121); null on an older
   // server. Save sends it back, and the server refuses the save when someone else changed the GRN since (STALE_RECORD).
   const loadedUpdatedAt = useAppSelector(selectGRNLoadedUpdatedAt);
+  // WH-303: where the form was loaded from and what it was loaded with; an edit saved as field changes is the difference.
+  const loadedFrom = useAppSelector(selectGRNLoadedFrom);
+  const loadedBaseline = useAppSelector(selectGRNLoadedBaseline);
   // Set once this form has created its GRN. A further press of Create never creates again:
   // save_grn would answer the repeat with the same GRN and every photo would go up twice.
   const createdRef = useRef(false);
@@ -1012,7 +1023,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
    * details step for the number and the date, the items step for a line, Rates for a rate that would go. Nothing was saved.
    */
   const handleUpdateRefusal = async (refusal: ServerRefusal, editedGrnId: string, formLeft: () => boolean) => {
-    const lineId = refusalString(refusal, 'line_id');
+    const lineId = refusalString(refusal, 'line_id') ?? refusalString(refusal, 'lot_id');
     const lineIndex = lineId ? items.findIndex((item) => item.grn_trl_id === lineId) : -1;
     const itemName = refusalString(refusal, 'item_name') ?? (lineIndex >= 0 ? items[lineIndex].item_name : '');
     const grNo = refusalString(refusal, 'gr_no') ?? header.gr_no;
@@ -1043,6 +1054,20 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       case REFUSAL.LOT_DISPATCHED:
         showAlert(lineTitle, tr('grn.refusal.lotDispatched', { item: itemName }), [closeButton(goToItemsStep), reopenButton]);
         return;
+      case REFUSAL.QTY_BELOW_DISPATCHED: {
+        // The phone checks first (Design DQ7); this is the server's check, for a dispatch that arrived after the form loaded.
+        const requested = refusalNumber(refusal, 'requested');
+        const dispatched = refusalNumber(refusal, 'dispatched_qty');
+        const word = displayPackaging(lineIndex >= 0 ? items[lineIndex].packaging : '');
+        showAlert(
+          lineTitle,
+          requested !== undefined && dispatched !== undefined
+            ? tr('offline.belowDispatched', { quantity: formatQuantity(requested, word), dispatched: formatQuantity(dispatched, word) })
+            : serverText(refusal.text, connectionHint(), { write: true, form: true }),
+          [closeButton(goToItemsStep), reopenButton]
+        );
+        return;
+      }
       case REFUSAL.GRN_INVOICED:
         showAlert(saveFailedTitle(), invoicedNoNewLotText(formatIdentifier(grNo), invoiceNo), ok(goToItemsStep));
         return;
@@ -1154,8 +1179,74 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     () => previewUpdateGrn(buildUpdateGRNRequest(effectsGrnId as string, buildUpdateRequest(), removedImages).rpcRequest)
   );
 
+  /**
+   * WH-303: an Edit GRN saved as the field changes the person made (never as a whole GRN). A form loaded from the phone copy
+   * never calls `update_grn`: its photo and line lists may be older than the server's, and `update_grn` deletes what it is
+   * not sent. With the server reachable the save waits a few seconds for the answer (Design DQ2); a refusal in that time
+   * is told here, with the form as typed and nothing kept (Product PQ9).
+   */
+  const performFieldChanges = async (formSession: number, editedGrnId: string) => {
+    const formLeft = () => currentGrnFormSession() !== formSession;
+    if (!loadedBaseline) return;
+    dispatch(setIsSaving(true));
+    try {
+      const edit = offlineEditOf({
+        grnId: editedGrnId,
+        baseline: loadedBaseline,
+        header,
+        items,
+        removedImages,
+        loadedAt: loadedUpdatedAt,
+        recordedAt: new Date().toISOString(),
+      });
+      const toDetails = () => {
+        resetFormState();
+        router.replace(`/grn-details/${editedGrnId}` as Href);
+      };
+      if (!edit) {
+        // Nothing the server would take changed: the form closes onto the GRN.
+        toDetails();
+        return;
+      }
+      const reachable = !isCopyOffline();
+      if (loadedFrom === 'copy' && reachable) {
+        const saved = await saveGrnEditAndWait(editedGrnId, edit.body, edit.photos, edit.meta);
+        if (formLeft()) return;
+        if (saved.outcome === 'refused') {
+          void triggerError();
+          const refusal = refusalOf(saved.answer);
+          if (refusal) await handleUpdateRefusal(refusal, editedGrnId, formLeft);
+          else showAlert(saveFailedTitle(), serverText(saved.reason ?? undefined, connectionHint(), { write: true, form: true }));
+          return;
+        }
+        void triggerSuccess();
+        showToast(tr(saved.outcome === 'sent' ? 'offline.quickChange.saved' : 'offline.quickChange.savedOnPhone'));
+      } else {
+        await saveGrnEditOffline(editedGrnId, edit.body, edit.photos, edit.meta);
+        if (formLeft()) return;
+        void triggerSuccess();
+        showToast(tr('offline.quickChange.savedOnPhone'));
+      }
+      toDetails();
+    } catch (error) {
+      if (formLeft()) return;
+      void triggerError();
+      log.error('Edit could not be saved on the phone', loggableError(error));
+      showAlert(saveFailedTitle(), tr('errors.general.unexpectedRetry'));
+    } finally {
+      if (!formLeft()) dispatch(setIsSaving(false));
+    }
+  };
+
   const performUpdate = async (formSession: number) => {
     const formLeft = () => currentGrnFormSession() !== formSession;
+    if (hasCapability('sync') && backendHasFeature('grnFieldChanges') && !grnImported && loadedBaseline && (loadedFrom === 'copy' || isCopyOffline())) {
+      const target: unknown = Array.isArray(id) ? id[0] : id;
+      if (typeof target === 'string' && grnId && target === grnId) {
+        await performFieldChanges(formSession, target);
+        return;
+      }
+    }
     // The GRN being edited is the route's; the form's id is only what was loaded last. If they differ the form
     // holds another GRN (the edit layout loads the route's GRN before this step is shown, so this is a guard).
     const routeGrnId = Array.isArray(id) ? id[0] : id;

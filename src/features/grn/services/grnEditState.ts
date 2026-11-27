@@ -27,6 +27,7 @@ export function locksOfLines(lines: unknown): Map<string, GRNLineLocks> {
     const dispatchedQty = Number(line.dispatched_qty);
     out.set(line.id, {
       dispatched: Number.isFinite(dispatchedQty) && dispatchedQty > 0,
+      ...(Number.isFinite(dispatchedQty) ? { dispatchedQty } : {}),
       hasHistory: line.has_history === true,
       invoiced: line.on_invoice === true,
       invoiceNo: textOrUndefined(line.invoice_label) ?? textOrUndefined(line.invoice_no),

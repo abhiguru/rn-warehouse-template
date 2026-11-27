@@ -19,6 +19,8 @@ export const REFUSAL = {
   LOT_INVOICED: 'LOT_INVOICED',
   /** A GRN line that was dispatched: item and packing are locked (D2). */
   LOT_DISPATCHED: 'LOT_DISPATCHED',
+  /** WH-303: a quantity below what has left the lot (`lot_id`, `item_name`, `dispatched_qty`, `requested`). Nothing was saved. */
+  QTY_BELOW_DISPATCHED: 'QTY_BELOW_DISPATCHED',
   /** A dispatch on an invoice: date and number are locked (D2). */
   DISPATCH_INVOICED: 'DISPATCH_INVOICED',
   /** A dispatch dated after today (D3). */

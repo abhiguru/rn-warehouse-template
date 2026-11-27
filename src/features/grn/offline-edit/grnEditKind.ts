@@ -16,6 +16,7 @@ import { itemsOfScope, type ItemRow } from '@/features/unsent/unsentRows';
 import { loadedUnsentRows, refreshUnsent } from '@/features/unsent/unsentStore';
 import { t } from '@/i18n';
 import { getSessionCacheScope } from '@/utils/cacheManager';
+import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 import { createLogger, loggableError } from '@/utils/logger';
 import { changedFieldLabels, isGrnEditBody, lotIdsOf, mergeGrnEdit, overlayOf, type GrnEditBody } from './grnEditChanges';
 
@@ -28,7 +29,10 @@ async function sendGrnEdit(body: unknown, requestKey: string): Promise<SendOutco
   if (!isGrnEditBody(body)) return { kind: 'refused', reason: 'grnEdit: unreadable body' };
   const client = await getAuthenticatedClient();
   const answer = await client.rpc('apply_grn_changes', { p_grn_id: body.grnId, p_changes: body, p_request_key: requestKey });
-  const outcome = classify(answer.data, answer.error);
+  // An unreadable HTTP 200, an empty one and a gateway's 502 / 504 are a LOST answer (the edit may be applied), not a plain
+  // transient failure: the item then stays tried and is checked by its request key.
+  const error = answer.error ?? emptyAnswerAsError({ data: answer.data, error: answer.error, status: answer.status });
+  const outcome = classify(answer.data, error ? withHttpStatus(error, answer.status) : null);
   // A server without the function: the item cannot be sent, and the person's work is kept whole for a supervisor.
   if (outcome.kind === 'refused' && outcome.code === 'PGRST202') return { kind: 'refused', code: SERVER_TOO_OLD, reason: SERVER_TOO_OLD };
   return outcome;
@@ -91,7 +95,7 @@ const parse = (row: ItemRow): unknown => {
 const whatOf = (grnNumber: string, body: GrnEditBody): string =>
   t('offline.unsent.whatChange', { number: grnNumber, fields: changedFieldLabels(body).map(label => t(label)).join(', ') });
 
-async function save(grnId: string, body: GrnEditBody, photos: GrnEditPhoto[], meta: GrnEditMeta): Promise<SaveGrnEditResult> {
+async function save(grnId: string, body: GrnEditBody | null, photos: GrnEditPhoto[], meta: GrnEditMeta): Promise<SaveGrnEditResult> {
   const scope = await getSessionCacheScope();
   if (!scope) throw new Error('No session: nothing can be saved');
   const waiting = (await itemsOfScope(scope)).filter(row => row.kind === 'grnEdit' && WAITING_STATES.includes(row.state));
@@ -103,7 +107,7 @@ async function save(grnId: string, body: GrnEditBody, photos: GrnEditPhoto[], me
 
   let result: SaveGrnEditResult | null = null;
   let current = body;
-  if (own?.state === 'saved' && own.attempts === 0) {
+  if (body !== null && own?.state === 'saved' && own.attempts === 0) {
     const old = parse(own);
     const merged = isGrnEditBody(old) ? mergeGrnEdit(old, body) : body;
     if (merged === null) {
@@ -118,7 +122,7 @@ async function save(grnId: string, body: GrnEditBody, photos: GrnEditPhoto[], me
       result = { id: own.id, requestKey: own.request_key, merged: true };
     }
   }
-  if (result === null) {
+  if (body !== null && result === null) {
     const saved = await enqueue({
       kind: 'grnEdit',
       body,
@@ -131,11 +135,12 @@ async function save(grnId: string, body: GrnEditBody, photos: GrnEditPhoto[], me
   }
 
   const remove = meta.removePhotoIds ?? [];
+  let photoItem: { id: string; requestKey: string } | null = null;
   if (photos.length > 0 || remove.length > 0) {
-    await enqueue({
+    photoItem = await enqueue({
       kind: 'photos',
       body: { doc: 'grn', recordId: grnId, ...(remove.length > 0 ? { remove } : {}) },
-      dependsOn: result.id,
+      ...(result ? { dependsOn: result.id } : {}),
       targetRef: { grnId, number: meta.grnNumber },
       what: t('offline.unsent.whatPhotos', { count: photos.length, number: meta.grnNumber }),
       photos,
@@ -143,15 +148,16 @@ async function save(grnId: string, body: GrnEditBody, photos: GrnEditPhoto[], me
   }
   // The screens read the phone's own work from this snapshot: it holds the edit before the form closes onto the GRN.
   await refreshUnsent();
-  logger.info(`Edit of a GRN saved on the phone with ${changedFieldLabels(current).length} changed fields`);
-  return result;
+  logger.info(`Edit of a GRN saved on the phone with ${current ? changedFieldLabels(current).length : 0} changed fields`);
+  // Photos only: the photos item is what was saved.
+  return result ?? { id: photoItem?.id ?? '', requestKey: photoItem?.requestKey ?? '', merged: false };
 }
 
 // Calls for one phone go one at a time, so two taps on Save are one item.
 let chain: Promise<unknown> = Promise.resolve();
 
 /** Stores the edit on the phone. Throws when the file cannot be written (nothing is kept then). */
-export function saveGrnEditOffline(grnId: string, body: GrnEditBody, photos: GrnEditPhoto[], meta: GrnEditMeta): Promise<SaveGrnEditResult> {
+export function saveGrnEditOffline(grnId: string, body: GrnEditBody | null, photos: GrnEditPhoto[], meta: GrnEditMeta): Promise<SaveGrnEditResult> {
   const run = chain.then(() => save(grnId, body, photos, meta));
   chain = run.catch(() => undefined);
   return run;
@@ -161,8 +167,10 @@ export function saveGrnEditOffline(grnId: string, body: GrnEditBody, photos: Grn
  * Stores the edit and waits up to `QUICK_CHANGE_WAIT_MS` for the server's answer (Design DQ2). A refusal during the wait is
  * told at once and nothing is kept: the item and its photo item are removed (Product PQ9).
  */
-export async function saveGrnEditAndWait(grnId: string, body: GrnEditBody, photos: GrnEditPhoto[], meta: GrnEditMeta): Promise<SaveGrnEditWaitResult> {
+export async function saveGrnEditAndWait(grnId: string, body: GrnEditBody | null, photos: GrnEditPhoto[], meta: GrnEditMeta): Promise<SaveGrnEditWaitResult> {
   const saved = await saveGrnEditOffline(grnId, body, photos, meta);
+  // Photos only: they go in the photo lane after the person has left the form; there is nothing to wait for.
+  if (body === null) return { ...saved, outcome: 'later', reason: null };
   const outcome = await waitForOutcome(saved.id, QUICK_CHANGE_WAIT_MS);
   if (outcome.kind !== 'refused') return { ...saved, outcome: outcome.kind, reason: null };
   const row = loadedUnsentRows().find(each => each.id === saved.id);
