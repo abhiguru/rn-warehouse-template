@@ -75,8 +75,7 @@ export const HEADER_FIELD_LABELS: Readonly<Record<HeaderField, TranslationKey>> 
   registration: 'grn.header.vehicleRegistration',
   pricing_mode: 'grn.header.pricingMode',
   leon: 'grn.header.leon',
-  // The contract's example reads "GRN B1: Note, Rack changed" (the form's own label is "Notes").
-  note: 'payments.form.note',
+  note: 'common.notes',
 };
 export const LOT_FIELD_LABELS: Readonly<Record<LotField, TranslationKey>> = {
   item: 'common.item',

@@ -112,7 +112,7 @@ export const offline: Translation<typeof source> = {
   lineRemovedNotSent: 'કાઢી નાખી, હજુ મોકલવાની બાકી',
   belowDispatched: 'આ જથ્થામાંથી {{dispatched}} નંગની જાવક થઈ ચૂકી છે; {{quantity}} તેનાથી ઓછું છે.',
   replaced: {
-    title: 'અહીં એક ફેરફારે કોઈની નવી નોંધ બદલી નાખી છે. તે સાચું છે તે તપાસો.',
+    title: 'અહીં એક ફેરફારે કોઈની નવી એન્ટ્રી બદલી નાખી છે. તે સાચું છે તે તપાસો.',
     field: '{{field}}: {{newer}} ({{newerBy}}, {{newerAt}}) ની જગ્યાએ {{sent}} ({{sentBy}}, {{sentAt}}) લખાયું.',
     fieldLate:
       '{{field}}: {{newer}} ({{newerBy}}, {{newerAt}}) ની જગ્યાએ {{sent}} ({{sentBy}}, {{sentAt}} એ કર્યું, {{reachedAt}} એ સર્વર પર પહોંચ્યું) લખાયું.',
@@ -120,7 +120,7 @@ export const offline: Translation<typeof source> = {
     lineAddedLate: 'આઇટમ ઉમેરી: {{item}}, {{quantity}} ({{by}}, {{at}} એ કરી, {{reachedAt}} એ સર્વર પર પહોંચી).',
     whoUnknown: 'કોઈ',
     empty: 'ખાલી',
-    markChecked: 'તપાસ્યું',
+    markChecked: 'તપાસ્યું તરીકે નોંધો',
     showAll: 'બધા {{count}} બતાવો',
     lotField: '{{item}}, {{field}}',
     lotFieldMark: '{{item}} ({{mark}}), {{field}}',

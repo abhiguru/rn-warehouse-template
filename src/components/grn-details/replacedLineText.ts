@@ -30,7 +30,7 @@ const FIELD_LABELS: Readonly<Record<string, TranslationKey>> = {
   registration: 'grn.header.vehicleRegistration',
   pricing_mode: 'grn.header.pricingMode',
   leon: 'grn.header.leon',
-  note: 'payments.form.note',
+  note: 'common.notes',
   item_id: 'common.item',
   item: 'common.item',
   packaging: 'common.packaging',

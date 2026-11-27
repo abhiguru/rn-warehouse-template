@@ -67,8 +67,8 @@ const INTRODUCED_BY_MIGRATION = {
   billsNeedGst: 206,
   /** `set_lot_rack_and_mark`: the quick change of a lot's rack and mark (WH-302; migration 226, topic "lot rack and mark change"). */
   lotQuickChange: 226,
-  /** `apply_grn_changes`, the replaced entries and the feed entity `grn_replacements` (WH-303; topics "edit GRN by field changes" and "replaced entries"; 210 is provisional: the number is written at assembly, BATCH.md). */
-  grnFieldChanges: 210,
+  /** `apply_grn_changes`, the replaced entries and the feed entity `grn_replacements` (WH-303, migrations 232-233 on the assembly batch; 233 is the one that has the function and the feed entity). */
+  grnFieldChanges: 233,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 
