@@ -25,8 +25,8 @@ import {
   type PaymentRefusal,
   type PaymentWriteDone,
 } from '@/services/paymentsService';
-import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
-import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { SectionNeedsConnection } from '@/features/phone-copy/components/SectionNeedsConnection';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { PaymentStatusTag } from './PaymentStatusTag';
 import { PaymentFormModal } from './PaymentFormModal';
 
@@ -77,8 +77,8 @@ const makeStyles = (th: ThemeTokens) => ({
 export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canManage }: PaymentsTabProps) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
-  // Recording, editing and deleting a payment need the server (WH-348, Design 2.10b).
-  const needsConnection = useNeedsConnectionV3();
+  // Payments need the server (WH-381): offline the tab is one line and shows nothing it kept.
+  const needsConnection = useNeedsConnection();
   const [data, setData] = useState<InvoicePayments | null>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -105,11 +105,12 @@ export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canMan
   }, [invoiceId]);
 
   useEffect(() => {
+    if (needsConnection) return undefined;
     void load();
     return () => {
       request.current += 1;
     };
-  }, [load]);
+  }, [load, needsConnection]);
 
   const openRecord = () => {
     setEditing(null);
@@ -159,6 +160,8 @@ export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canMan
     }
   };
 
+  if (needsConnection) return <SectionNeedsConnection testID="invoice-details-section-needs-connection-payments" />;
+
   const figures = data;
   const dueText = figures?.dueAmount !== null && figures?.dueAmount !== undefined ? formatMoney(figures.dueAmount) : undefined;
 
@@ -181,12 +184,8 @@ export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canMan
                   {t('payments.paidOfTotal', { paid: formatMoney(data.paidAmount), total: formatMoney(total), due: formatMoney(data.dueAmount) })}
                 </Text>
               ) : null}
-              {canManage && !cancelled && !needsConnection ? (
+              {canManage && !cancelled ? (
                 <Button onPress={openRecord} testID="payment-record">{t('payments.record')}</Button>
-              ) : null}
-              {/* The "+" is not offered offline: its reason is a lasting fact about the tab (Design 2.10b). */}
-              {canManage && !cancelled && needsConnection ? (
-                <NeedsConnectionLine testID="payments-new-needs-connection" text={t('payments.offline.newNeedsConnection')} />
               ) : null}
             </View>
             {data.payments.length === 0 ? <Text style={styles.empty}>{t('payments.section.none')}</Text> : null}
@@ -207,10 +206,7 @@ export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canMan
                     <Pressable
                       style={styles.action}
                       onPress={() => openEdit(payment)}
-                      disabled={needsConnection}
                       accessibilityRole="button"
-                      accessibilityLabel={needsConnection ? needsConnectionLabel(t('common.edit')) : undefined}
-                      accessibilityState={{ disabled: needsConnection }}
                       testID={`payment-edit-${payment.id}`}
                     >
                       <Icon name="pencil-outline" size={iconSize.md} color={th.brand.tint} />
@@ -219,10 +215,7 @@ export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canMan
                     <Pressable
                       style={styles.action}
                       onPress={() => setDeleting(payment)}
-                      disabled={needsConnection}
                       accessibilityRole="button"
-                      accessibilityLabel={needsConnection ? needsConnectionLabel(t('common.delete')) : undefined}
-                      accessibilityState={{ disabled: needsConnection }}
                       testID={`payment-delete-${payment.id}`}
                     >
                       <Icon name="delete-outline" size={iconSize.md} color={th.status.negative.text} />

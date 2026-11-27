@@ -42,6 +42,8 @@ import {
 } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable, useDefaultOpen } from '@/components/table/DataTable';
+import { SectionNeedsConnection } from '@/features/phone-copy/components/SectionNeedsConnection';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { GRNItem, lotLine } from './GRNItemsTab';
 
 interface GRNDispatchesTabProps {
@@ -203,7 +205,7 @@ const DispatchLines: React.FC<DispatchLinesProps> = ({ dispatches, packaging, wi
   );
 };
 
-export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
+const GRNDispatchesTabOnline: React.FC<GRNDispatchesTabProps> = ({
   items,
   dispatchesByItem,
   loading = false,
@@ -380,6 +382,13 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
       testID="grn-dispatches-table"
     />
   );
+};
+
+/** Offline the tab is one line: the dispatches need the server and none is kept (WH-381). */
+export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = props => {
+  const needsConnection = useNeedsConnection();
+  if (needsConnection) return <SectionNeedsConnection testID="grn-details-section-needs-connection-dispatches" />;
+  return <GRNDispatchesTabOnline {...props} />;
 };
 
 export default GRNDispatchesTab;

@@ -9,6 +9,7 @@ import {
   TAB_ICONS,
   type TabConfig,
 } from '@/components/common/GenericDetailTabNavigator';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { t as tr } from '@/i18n';
 
 // ============================================================================
@@ -38,6 +39,8 @@ export const GRNTabNavigator: React.FC<GRNTabNavigatorProps> = ({
   image_count = 0,
   invoice_count = 0,
 }) => {
+  // Dispatches and invoices need the server (WH-381): offline their tabs stay, with no count.
+  const needsConnection = useNeedsConnection();
   const tabs = useMemo<TabConfig<TabKey>[]>(() => [
     {
       key: 'overview',
@@ -54,7 +57,7 @@ export const GRNTabNavigator: React.FC<GRNTabNavigatorProps> = ({
       key: 'dispatches',
       label: tr('grn.tabs.dispatches'),
       icon: TAB_ICONS.dispatches,
-      badgeCount: dispatch_count > 0 ? dispatch_count : undefined,
+      badgeCount: dispatch_count > 0 && !needsConnection ? dispatch_count : undefined,
     },
     {
       key: 'images',
@@ -66,9 +69,9 @@ export const GRNTabNavigator: React.FC<GRNTabNavigatorProps> = ({
       key: 'invoices',
       label: tr('grn.tabs.invoices'),
       icon: TAB_ICONS.invoices,
-      badgeCount: invoice_count > 0 ? invoice_count : undefined,
+      badgeCount: invoice_count > 0 && !needsConnection ? invoice_count : undefined,
     },
-  ], [item_count, dispatch_count, image_count, invoice_count]);
+  ], [item_count, dispatch_count, image_count, invoice_count, needsConnection]);
 
   return (
     <GenericDetailTabNavigator

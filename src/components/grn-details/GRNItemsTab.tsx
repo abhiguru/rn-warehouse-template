@@ -42,6 +42,8 @@ import {
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
 import { UnsentLotLines } from '@/features/unsent/UnsentMarkers';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { QuickChangeButton } from '@/features/quick-change/QuickChangeButton';
 
 // ============================================================================
@@ -120,6 +122,14 @@ const makeStyles = (t: ThemeTokens) => ({
   actionPressed: {
     backgroundColor: t.brand.subtle,
   },
+  // Disabled: its reason is the line under it.
+  actionOff: {
+    opacity: t.interaction.disabledOpacity,
+  },
+  // The reason lines up with the button's text.
+  needsLine: {
+    marginLeft: iconSize.md + space.sm,
+  },
   actionText: {
     ...typography.subhead,
     fontWeight: fontWeight.semibold,
@@ -196,6 +206,8 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
   const own = useThemedStyles(makeStyles);
   const t = useTokens();
   const screen = useTableLayout();
+  // The dispatches of a lot need the server (WH-381): the button stays, disabled, with its reason under it.
+  const needsConnection = useNeedsConnection();
   const totals = useMemo(
     () => ({
       received: items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0),
@@ -336,17 +348,26 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
           </View>
         ) : null}
         {dispatched > 0 && onViewItemDispatches ? (
-          <Pressable
-            onPress={() => onViewItemDispatches(item)}
-            style={({ pressed }) => [own.action, pressed && own.actionPressed]}
-            accessibilityRole="button"
-            accessibilityLabel={tr('grn.detailsTable.viewDispatches')}
-            accessibilityHint={tr('grn.detailsTable.viewDispatchesHint')}
-            testID={`grn-item-dispatches-${item.id}`}
-          >
-            <Text style={own.actionText}>{tr('grn.detailsTable.viewDispatches')}</Text>
-            <Icon name="chevron-right" size={iconSize.md} color={t.brand.tint} />
-          </Pressable>
+          <>
+            <Pressable
+              onPress={() => onViewItemDispatches(item)}
+              disabled={needsConnection}
+              style={({ pressed }) => [own.action, pressed && !needsConnection && own.actionPressed, needsConnection && own.actionOff]}
+              accessibilityRole="button"
+              accessibilityLabel={needsConnection ? needsConnectionLabel(tr('grn.detailsTable.viewDispatches')) : tr('grn.detailsTable.viewDispatches')}
+              accessibilityHint={tr('grn.detailsTable.viewDispatchesHint')}
+              accessibilityState={{ disabled: needsConnection }}
+              testID={`grn-item-dispatches-${item.id}`}
+            >
+              <Text style={own.actionText}>{tr('grn.detailsTable.viewDispatches')}</Text>
+              <Icon name="chevron-right" size={iconSize.md} color={t.brand.tint} />
+            </Pressable>
+            {needsConnection ? (
+              <View style={own.needsLine}>
+                <NeedsConnectionLine testID={`grn-item-dispatches-needs-connection-${item.id}`} text={tr('components.offlineRead.needsConnection')} />
+              </View>
+            ) : null}
+          </>
         ) : null}
       </>
     );
