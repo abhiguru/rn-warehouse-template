@@ -26,6 +26,8 @@ export interface LotChangeBody {
   /** Phone time of the latest save into this item, ISO. A merge takes the later save's time; a resend carries the same. */
   recordedAt: string;
   changes: { rack?: FieldChange; package_mark?: FieldChange };
+  /** Phone only, never sent: what the item was before the latest save merged into it, so a refusal told at once can put it back (PQ7). */
+  previous?: { recordedAt: string; changes: LotChangeBody['changes']; what: string };
 }
 
 /** The locale key of each field's label, in the order they are listed ("Rack, Mark"). */

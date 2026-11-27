@@ -9,14 +9,13 @@ import { backendHasFeature } from '@/config/backendFeatures';
 import { hasCapability } from '@/config/facilityCapabilities';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
-import { deleteItem } from '@/features/unsent/unsentQueue';
 import { t as tr } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
 import { showAlert } from '@/utils/alert';
 import { createLogger, loggableError } from '@/utils/logger';
 import { showToast } from '@/utils/toast';
 import { confirmedLotValues } from './confirmedLotValues';
-import { saveLotChange, type LotValues } from './lotChangeService';
+import { saveLotChange, undoRefusedSave, type LotValues } from './lotChangeService';
 import { QUICK_CHANGE_WAIT_MS, waitForOutcome } from './quickChangeOutcome';
 import { QuickChangeSheet } from './QuickChangeSheet';
 
@@ -94,8 +93,9 @@ export function useQuickChange(): {
         }
         const outcome = await waitForOutcome(saved.id, QUICK_CHANGE_WAIT_MS);
         if (outcome.kind === 'refused') {
-          // Told at once and nothing kept: the item leaves the queue, the sheet stays with what was typed.
-          await deleteItem(saved.id);
+          // Told at once and the newer part is not kept: a new item leaves the queue, a merged one goes back to what it was
+          // (PQ7); the sheet stays with what was typed.
+          await undoRefusedSave(saved);
           setRefusal(outcome.reason ? tr('offline.quickChange.refused', { reason: outcome.reason }) : tr('offline.quickChange.refusedUnknown'));
           setSaving(false);
           return;

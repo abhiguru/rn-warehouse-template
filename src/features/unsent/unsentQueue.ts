@@ -9,7 +9,7 @@ import { getSessionCacheScope } from '@/utils/cacheManager';
 import { getUnsentDb } from './unsentDb';
 import { allItems, announceUnsentChange, deleteItems, insertItem, itemById, itemsOfScope, photosOf, UNSENT_STATES, type ItemRow, type ItemState } from './unsentRows';
 import { currentPersonName } from './unsentRole';
-import { sendNow } from './sendEngine';
+import { DEPENDS_ON_REFUSED, sendNow } from './sendEngine';
 import { persistWorkClock, workNow } from './workClock';
 
 export interface TargetRef {
@@ -122,6 +122,41 @@ export async function mergeInto(id: string, patch: (body: unknown) => unknown, w
   });
   if (merged) await announceUnsentChange();
   return merged;
+}
+
+/**
+ * Puts a refused item back to a waiting one (WH-302 PQ7): the body and title it had before the newer save was merged in,
+ * not tried, no error, and the items that went with it (refused only because it was) waiting again. One transaction.
+ * False when the item is not a refused one of this person.
+ */
+export async function reviveItem(id: string, body: unknown, what: string): Promise<boolean> {
+  const scope = await ownScope();
+  const db = await getUnsentDb();
+  let revived = false;
+  await db.transaction(async tx => {
+    const [row] = await tx.all<ItemRow>('SELECT * FROM items WHERE id = ? AND scope = ?', [id, scope]);
+    if (row?.state !== 'refused') return;
+    await tx.run(
+      'UPDATE items SET body = ?, what = ?, state = ?, attempts = 0, first_sent_at = NULL, last_sent_at = NULL, last_error = NULL, result = NULL WHERE id = ?',
+      [JSON.stringify(body), what, 'saved', id]
+    );
+    // The items that waited for it were refused only for that: they wait again (any depth, as the engine marked them).
+    let next = [id];
+    while (next.length > 0) {
+      const found: string[] = [];
+      for (const parent of next) {
+        const rows = await tx.all<{ id: string }>('SELECT id FROM items WHERE scope = ? AND depends_on = ? AND state = ? AND last_error = ?', [scope, parent, 'refused', DEPENDS_ON_REFUSED]);
+        for (const dependant of rows) {
+          await tx.run('UPDATE items SET state = ?, last_error = NULL WHERE id = ?', ['saved', dependant.id]);
+          found.push(dependant.id);
+        }
+      }
+      next = found;
+    }
+    revived = true;
+  });
+  if (revived) await announceUnsentChange();
+  return revived;
 }
 
 function targetNumberOf(raw: string | null): string | null {

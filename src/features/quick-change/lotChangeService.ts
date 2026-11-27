@@ -8,7 +8,7 @@ import { t } from '@/i18n';
 import { normalizeDigits } from '@/i18n/language';
 import { changedLotFields, isLotChangeBody, LOT_FIELD_LABELS, LOT_FIELDS, type FieldChange, type LotChangeBody, type LotField } from '@/features/unsent/lotChangeKind';
 import { sendNow } from '@/features/unsent/sendEngine';
-import { deleteItem, enqueue, mergeInto } from '@/features/unsent/unsentQueue';
+import { deleteItem, enqueue, mergeInto, reviveItem } from '@/features/unsent/unsentQueue';
 import { itemById, itemsOfScope, type ItemRow } from '@/features/unsent/unsentRows';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -79,6 +79,24 @@ const whatOf = (grnNumber: string, fields: readonly LotField[]): string =>
   t('offline.unsent.whatChange', { number: grnNumber, fields: fields.map(field => t(LOT_FIELD_LABELS[field])).join(', ') });
 
 /**
+ * A save was refused at once while the sheet is open (Product PQ7): only the newer part goes. A merged item goes back to
+ * what it was before the merge (waiting, counted, its dependants kept); an item that was new, or has nothing to go back
+ * to, is removed.
+ */
+export async function undoRefusedSave(saved: Pick<SaveLotChangeResult, 'id' | 'merged'>): Promise<void> {
+  if (saved.merged) {
+    const row = await itemById(saved.id);
+    const body = row ? parse(row) : null;
+    if (isLotChangeBody(body) && body.previous) {
+      const { previous } = body;
+      const back: LotChangeBody = { lotId: body.lotId, grnId: body.grnId, recordedAt: previous.recordedAt, changes: previous.changes };
+      if (changedLotFields(back).length > 0 && (await reviveItem(saved.id, back, previous.what))) return;
+    }
+  }
+  await deleteItem(saved.id);
+}
+
+/**
  * Saves or merges the change. `from` of a field is the `to` of the person's latest earlier unsent item of either kind for
  * that lot and field, else the confirmed value (C303 section 4 rule 2). Throws when the file cannot be written.
  */
@@ -133,7 +151,7 @@ export async function saveLotChange(input: SaveLotChangeInput): Promise<SaveLotC
         own.id,
         body => {
           const current = isLotChangeBody(body) ? body : old;
-          return { ...current, recordedAt, changes: next.changes };
+          return { ...current, recordedAt, changes: next.changes, previous: { recordedAt: current.recordedAt, changes: current.changes, what: own.what } };
         },
         whatOf(input.grnNumber, fields)
       );
