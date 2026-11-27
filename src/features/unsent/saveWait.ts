@@ -1,6 +1,9 @@
 /** How long a form waits for its own item to be sent while the phone is reachable (the one wait of C302 and C303). */
 export const SAVE_WAIT_MS = 8_000;
 
+/** Extra time a note stays open after the 8 s wait, so a handler that never ends cannot hold the hand-over for ever. */
+export const SAVE_WAIT_SAFETY_MS = 5_000;
+
 /**
  * The saves whose form is still waiting for the server's answer, by item id, with when the wait ends. A refusal during the
  * wait goes back to the form or sheet and nothing is kept (Product PQ9, PQ2), so the hand-over to the holding list leaves
@@ -15,6 +18,11 @@ export function openSaveWait(itemId: string, ms: number = SAVE_WAIT_MS): () => v
   return () => {
     if (openWaits.get(itemId) === endsAt) openWaits.delete(itemId);
   };
+}
+
+/** Ends the note of an item at once: the form or sheet has finished handling the outcome. */
+export function closeSaveWait(itemId: string): void {
+  openWaits.delete(itemId);
 }
 
 /** How many ms of the item's save wait are left; 0 when no form waits for it. */

@@ -16,6 +16,7 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { showToast } from '@/utils/toast';
 import { confirmedLotValues } from './confirmedLotValues';
 import { saveLotChange, undoRefusedSave, type LotValues } from './lotChangeService';
+import { closeSaveWait } from '@/features/unsent/saveWait';
 import { QUICK_CHANGE_WAIT_MS, waitForOutcome } from './quickChangeOutcome';
 import { QuickChangeSheet } from './QuickChangeSheet';
 
@@ -91,17 +92,22 @@ export function useQuickChange(): {
           showToast(tr('offline.quickChange.savedOnPhone'));
           return;
         }
-        const outcome = await waitForOutcome(saved.id, QUICK_CHANGE_WAIT_MS);
-        if (outcome.kind === 'refused') {
-          // Told at once and the newer part is not kept: a new item leaves the queue, a merged one goes back to what it was
-          // (PQ7); the sheet stays with what was typed.
-          await undoRefusedSave(saved);
-          setRefusal(outcome.reason ? tr('offline.quickChange.refused', { reason: outcome.reason }) : tr('offline.quickChange.refusedUnknown'));
-          setSaving(false);
-          return;
+        try {
+          const outcome = await waitForOutcome(saved.id, QUICK_CHANGE_WAIT_MS);
+          if (outcome.kind === 'refused') {
+            // Told at once and the newer part is not kept: a new item leaves the queue, a merged one goes back to what it was
+            // (PQ7); the sheet stays with what was typed.
+            await undoRefusedSave(saved);
+            setRefusal(outcome.reason ? tr('offline.quickChange.refused', { reason: outcome.reason }) : tr('offline.quickChange.refusedUnknown'));
+            setSaving(false);
+            return;
+          }
+          close();
+          showToast(tr(outcome.kind === 'sent' ? 'offline.quickChange.saved' : 'offline.quickChange.savedOnPhone'));
+        } finally {
+          // The sheet has handled the outcome (the refused save undone, or closed): the hand-over may see the item now.
+          closeSaveWait(saved.id);
         }
-        close();
-        showToast(tr(outcome.kind === 'sent' ? 'offline.quickChange.saved' : 'offline.quickChange.savedOnPhone'));
       } catch (error) {
         logger.warn('A quick change could not be saved', loggableError(error));
         setSaving(false);

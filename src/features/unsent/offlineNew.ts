@@ -25,7 +25,7 @@ import { refreshNumbering, serverIssues } from './numberingCache';
 import { sendNow } from './sendEngine';
 import { getSendKind } from './sendKinds';
 import { enqueueAll, returnToForm, type EnqueueAllInput } from './unsentQueue';
-import { openSaveWait, SAVE_WAIT_MS } from './saveWait';
+import { closeSaveWait, openSaveWait, SAVE_WAIT_MS, SAVE_WAIT_SAFETY_MS } from './saveWait';
 import { itemById, onUnsentChange, type ItemRow } from './unsentRows';
 import { ownUnsentRows } from './unsentStore';
 
@@ -102,7 +102,8 @@ function numberFor(type: DocType, typed: string, form: NewRecordForm): { number:
 /** Waits for the item to be sent or refused; `cancel` ends the wait early. Null when it ended with no outcome. */
 function waitForItem(itemId: string, ms: number): { outcome: Promise<ItemRow | null>; cancel: () => void } {
   let cancel = (): void => undefined;
-  const closeWait = openSaveWait(itemId, ms);
+  // Stays open after the outcome, until the form has handled it (saveAndWait closes it) or the safety time ends.
+  openSaveWait(itemId, ms + SAVE_WAIT_SAFETY_MS);
   const outcome = new Promise<ItemRow | null>(resolve => {
     let done = false;
     let unsubscribe = (): void => undefined;
@@ -110,7 +111,6 @@ function waitForItem(itemId: string, ms: number): { outcome: Promise<ItemRow | n
     function finish(row: ItemRow | null): void {
       if (done) return;
       done = true;
-      closeWait();
       clearTimeout(timer);
       unsubscribe();
       resolve(row);
@@ -157,9 +157,13 @@ async function saveAndWait(inputs: EnqueueAllInput[], formKind: DocType, localId
     const latest = await itemById(record.id);
     return latest?.state === 'sent' || latest?.state === 'refused' ? latest : null;
   });
-  const row = await Promise.race([wait.outcome, passEnded]);
-  wait.cancel();
-  return row ? outcomeOf(row) : { path: 'saved', itemId: record.id, localId };
+  try {
+    const row = await Promise.race([wait.outcome, passEnded]);
+    wait.cancel();
+    return row ? await outcomeOf(row) : { path: 'saved', itemId: record.id, localId };
+  } finally {
+    closeSaveWait(record.id);
+  }
 }
 
 const photoInput = (doc: DocType, photos: SavePhoto[] | undefined, what: string, customer: string): EnqueueAllInput[] =>

@@ -5,7 +5,7 @@
  */
 import { refusalCodeOf } from '@/features/unsent/refusalTags';
 import { loadedUnsentRows, ownUnsentRows, subscribeUnsent } from '@/features/unsent/unsentStore';
-import { openSaveWait } from '@/features/unsent/saveWait';
+import { openSaveWait, SAVE_WAIT_SAFETY_MS } from '@/features/unsent/saveWait';
 import { t } from '@/i18n';
 
 /** How long Save waits for the server before it closes on "Saved on this phone". */
@@ -39,14 +39,14 @@ export function waitsBehindOlder(id: string): boolean {
 
 export function waitForOutcome(id: string, ms: number = QUICK_CHANGE_WAIT_MS): Promise<QuickChangeOutcome> {
   return new Promise(resolve => {
-    const closeWait = openSaveWait(id, ms);
+    // Stays open after the outcome, until the caller has handled it and calls closeSaveWait (or the safety time ends).
+    openSaveWait(id, ms + SAVE_WAIT_SAFETY_MS);
     let finished = false;
     let stop: (() => void) | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const finish = (outcome: QuickChangeOutcome) => {
       if (finished) return;
       finished = true;
-      closeWait();
       stop?.();
       if (timer !== null) clearTimeout(timer);
       resolve(outcome);

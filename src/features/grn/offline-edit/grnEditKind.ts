@@ -8,6 +8,7 @@
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { QUICK_CHANGE_WAIT_MS, waitForOutcome } from '@/features/quick-change/quickChangeOutcome';
+import { closeSaveWait } from '@/features/unsent/saveWait';
 import { refusalCodeOf } from '@/features/unsent/refusalTags';
 import { classify, sendNow } from '@/features/unsent/sendEngine';
 import { registerSendKind, type SendKind, type SendOutcome } from '@/features/unsent/sendKinds';
@@ -171,6 +172,15 @@ export async function saveGrnEditAndWait(grnId: string, body: GrnEditBody | null
   const saved = await saveGrnEditOffline(grnId, body, photos, meta);
   // Photos only: they go in the photo lane after the person has left the form; there is nothing to wait for.
   if (body === null) return { ...saved, outcome: 'later', reason: null };
+  try {
+    return await answerOf(saved);
+  } finally {
+    // The refused item is gone (or the outcome handled): only now may the hand-over see this item.
+    closeSaveWait(saved.id);
+  }
+}
+
+async function answerOf(saved: Awaited<ReturnType<typeof saveGrnEditOffline>>): Promise<SaveGrnEditWaitResult> {
   const outcome = await waitForOutcome(saved.id, QUICK_CHANGE_WAIT_MS);
   if (outcome.kind !== 'refused') return { ...saved, outcome: outcome.kind, reason: null };
   const row = loadedUnsentRows().find(each => each.id === saved.id);
