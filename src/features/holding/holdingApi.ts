@@ -47,6 +47,8 @@ export interface HeldPhoto {
   clientPhotoId: string;
   role: string;
   path: string;
+  /** `index:<n>` of a new GRN line, a lot id, or null (header and dispatch photos). */
+  lineRef: string | null;
 }
 
 export interface HeldItemDetail extends HeldListRow {
@@ -147,7 +149,7 @@ export async function getHeldItem(id: string): Promise<HeldItemDetail> {
         if (!isFields(entry) || entry.state !== 'confirmed') return [];
         const clientPhotoId = textOf(entry.client_photo_id);
         const path = textOf(entry.path);
-        return clientPhotoId !== null && path !== null ? [{ clientPhotoId, role: textOf(entry.role) ?? 'header', path }] : [];
+        return clientPhotoId !== null && path !== null ? [{ clientPhotoId, role: textOf(entry.role) ?? 'header', path, lineRef: textOf(entry.line_ref) }] : [];
       })
     : [];
   const photoFollowers = Array.isArray(answer.data.followers)

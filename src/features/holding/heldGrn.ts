@@ -6,6 +6,8 @@ import * as Crypto from 'expo-crypto';
 import { buildSaveGrnArgs, type CreateGRNPayload } from '@/features/grn/services/saveGrnArgs';
 import { grnFormOfBody, type LoadedUnsentGrn } from '@/features/unsent/editUnsentGrn';
 import { isNewGrnBody, type NewGrnBody, type SaveGrnArgs } from '@/features/unsent/newGrnKind';
+import type { PhotoRow } from '@/features/unsent/unsentRows';
+import { loadHeldPhotos } from './heldPhotoLinks';
 import { getHeldItem, type HeldItemDetail } from './holdingApi';
 
 export type LoadedHeldGrn = { kind: 'loaded'; item: HeldItemDetail; held: NewGrnBody; data: LoadedUnsentGrn } | { kind: 'unavailable' };
@@ -14,7 +16,11 @@ export type LoadedHeldGrn = { kind: 'loaded'; item: HeldItemDetail; held: NewGrn
 export async function loadHeldGrn(heldId: string): Promise<LoadedHeldGrn> {
   const item = await getHeldItem(heldId);
   if (item.kind !== 'newGrn' || item.state !== 'held' || !isNewGrnBody(item.body)) return { kind: 'unavailable' };
-  return { kind: 'loaded', item, held: item.body, data: grnFormOfBody(item.body, []) };
+  // The photos the recorder's phone uploaded show in the form as they are on the server; one storage will not sign is left out.
+  const photos: PhotoRow[] = (await loadHeldPhotos(item)).flatMap(photo =>
+    photo.url === null ? [] : [{ item_id: item.id, file: photo.url, client_photo_id: photo.clientPhotoId, role: photo.role, line_ref: photo.lineRef, done: 1, missing: 0 }]
+  );
+  return { kind: 'loaded', item, held: item.body, data: grnFormOfBody(item.body, photos) };
 }
 
 /**

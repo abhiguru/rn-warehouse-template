@@ -6,11 +6,12 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { buildCreateDispatchArgs } from '@/features/dispatch/services/saveDispatchArgs';
 import { isNewDispatchBody, type NewDispatchBody } from '@/features/unsent/newDispatchKind';
-import type { DispatchHeaderData, DispatchItemData } from '@/types/dispatch.types';
+import type { DispatchHeaderData, DispatchImageData, DispatchItemData } from '@/types/dispatch.types';
+import { loadHeldPhotos } from './heldPhotoLinks';
 import { getHeldItem, type HeldItemDetail } from './holdingApi';
 
 export type LoadedHeldDispatch =
-  | { kind: 'loaded'; item: HeldItemDetail; held: NewDispatchBody; header: DispatchHeaderData; items: DispatchItemData[] }
+  | { kind: 'loaded'; item: HeldItemDetail; held: NewDispatchBody; header: DispatchHeaderData; items: DispatchItemData[]; images: DispatchImageData[] }
   | { kind: 'unavailable' };
 
 type Fields = Record<string, unknown>;
@@ -80,7 +81,11 @@ export async function loadHeldDispatch(heldId: string): Promise<LoadedHeldDispat
       original_disp_quantity: 0,
     });
   }
-  return { kind: 'loaded', item, held, header, items };
+  // The photos the recorder's phone uploaded show in the form as they are on the server; one storage will not sign is left out.
+  const images: DispatchImageData[] = (await loadHeldPhotos(item)).flatMap(photo =>
+    photo.url === null ? [] : [{ id: `held_${photo.clientPhotoId}`, file_name: photo.path.slice(photo.path.lastIndexOf('/') + 1), image_url: photo.url, upload_status: 'completed' as const, storage_path: photo.path }]
+  );
+  return { kind: 'loaded', item, held, header, items, images };
 }
 
 /** The body "Accept with changes" sends: the held body with the form's header and lines; the recorder's own flags stay. */

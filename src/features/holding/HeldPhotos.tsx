@@ -8,42 +8,17 @@ import { Text, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useQuery } from '@tanstack/react-query';
-import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import { viaCurrentPath } from '@/config/lanTransport';
 import { t as tr } from '@/i18n';
 import { useViaCurrentPath } from '@/hooks/useLanStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { queryKeys } from '@/lib/queryClient';
 import { iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { getHeldItem, type HeldItemDetail, type HeldPhoto } from './holdingApi';
+import { loadHeldPhotos, type HeldPhotoView } from './heldPhotoLinks';
+import type { HeldItemDetail } from './holdingApi';
 
 const COLUMNS = 3;
 const GAP = space.xs;
-const URL_SECONDS = 3600;
-
-export interface HeldPhotoView extends HeldPhoto {
-  /** A signed link, or null when storage would not give one. */
-  url: string | null;
-}
-
-const bucketOf = (role: string): string => (role === 'dispatch' ? 'dispatch-images' : 'grn-images');
-
-async function signed(photo: HeldPhoto): Promise<HeldPhotoView> {
-  try {
-    const client = await getAuthenticatedClient();
-    const { data, error } = await client.storage.from(bucketOf(photo.role)).createSignedUrl(photo.path, URL_SECONDS);
-    return { ...photo, url: error || !data.signedUrl ? null : viaCurrentPath(data.signedUrl) };
-  } catch {
-    return { ...photo, url: null };
-  }
-}
-
-/** The item's photos and those of the `photos` items that go with it, each with a signed link (null when it could not be signed). */
-async function loadHeldPhotos(item: HeldItemDetail): Promise<HeldPhotoView[]> {
-  const more = await Promise.all(item.photoFollowers.map(id => getHeldItem(id).then(detail => detail.photos, () => [] as HeldPhoto[])));
-  return Promise.all([...item.photos, ...more.flat()].map(signed));
-}
 
 const makeStyles = (t: ThemeTokens) => ({
   grid: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: GAP, paddingHorizontal: layout.marginCompact, paddingVertical: space.sm },

@@ -91,7 +91,7 @@ export default function DispatchEditLayout() {
         const held = await loadHeldDispatch(heldId);
         if (request !== loadRequest.current) return;
         if (held.kind === 'loaded') {
-          dispatch(loadDispatchIntoForm({ dispatchId: id, header: held.header, items: held.items, images: [], updatedAt: undefined, invoicedNumber: undefined }));
+          dispatch(loadDispatchIntoForm({ dispatchId: id, header: held.header, items: held.items, images: held.images, updatedAt: undefined, invoicedNumber: undefined }));
           setPhase('ready');
         } else {
           dispatch(resetForm());
