@@ -12,12 +12,14 @@ import type { RankKind } from '../copySchema';
 import { parseTimestampUs, pgSearchTerms } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
 import { getUnsentOverlay, netStock } from '../unsentOverlay';
+import { unsentGrnPart } from './newDocuments';
 
 export interface GrnItemsPage {
   success: true;
   data: GRNItem[];
   pagination: { total_count: number; limit: number; offset: number; unit: 'line' | 'receipt' };
-  aggregates: { total_qty: number; total_stock: number; total_weight: number };
+  /** `includes_unsent`: the bags of this person's unsent new GRNs the totals count (WH-161); 0 when none. */
+  aggregates: { total_qty: number; total_stock: number; total_weight: number; includes_unsent?: number };
 }
 export type GrnItemsAnswer =
   | { kind: 'page'; page: GrnItemsPage }
@@ -303,13 +305,22 @@ export async function readGrnItems(q: CopyReader, params: GRNListParams): Promis
   const rows = await (byReceipt ? pageByReceipt : pageByLine)(q, params, c, limit, offset);
   // After the ranks are up to date, so writing them does not make a first page's totals look old.
   const totals = await totalsOf(q, params, c, offset);
+  // This person's unsent new GRNs: rows on top of page 0, and in the count and the totals of every page (WH-161).
+  const unsent = unsentGrnPart(params);
+  const shown = offset === 0 ? unsent.rows : [];
   return {
     kind: 'page',
     page: {
       success: true,
-      data: rows,
-      pagination: { total_count: byReceipt ? totals.receipts : totals.lines, limit, offset, unit: byReceipt ? 'receipt' : 'line' },
-      aggregates: { total_qty: totals.total_qty, total_stock: totals.total_stock, total_weight: totals.total_weight },
+      data: [...shown, ...rows],
+      pagination: { total_count: (byReceipt ? totals.receipts + unsent.receipts : totals.lines + unsent.rows.length), limit, offset, unit: byReceipt ? 'receipt' : 'line' },
+      aggregates: {
+        total_qty: totals.total_qty + unsent.qty,
+        total_stock: totals.total_stock + unsent.stock,
+        total_weight: totals.total_weight + unsent.weight,
+        // Only when it counts some, so with nothing unsent the answer is the server's own.
+        ...(unsent.stock > 0 ? { includes_unsent: unsent.stock } : {}),
+      },
     },
   };
 }

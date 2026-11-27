@@ -7,7 +7,7 @@
  * - Operations Dashboard (S1)
  */
 
-import { ServiceResponse } from './service.types';
+import type { ServiceResponse } from './service.types';
 
 // ============================================================
 // Common Report Types
@@ -61,6 +61,8 @@ export interface StockSummaryKPIs {
   oldest_stock_date: string | null;
   grn_count: number;
   grn_count_empty: number;
+  /** Bags of this person's new GRNs not sent yet that the figures count (WH-161); read from the phone copy only, 0 or absent otherwise. */
+  includes_unsent?: number;
 }
 
 /**
@@ -88,6 +90,8 @@ export interface AllStockSummaryKPIs {
   total_customers_with_stock: number;
   total_items: number;
   total_quantity: number;
+  /** As on `StockSummaryKPIs` (WH-161). */
+  includes_unsent?: number;
 }
 
 /**

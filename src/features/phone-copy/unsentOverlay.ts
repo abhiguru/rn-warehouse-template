@@ -25,6 +25,23 @@ type Row = Record<string, unknown>;
 /** A document that exists only on this phone (WH-161): the row a list or picker shows for it. */
 export type NewDocRow = Row & { kind: 'grn' | 'dispatch' };
 
+/** One line of an unsent new GRN, as a lot the copy's stock totals add (WH-161, 7a). Bags and weight only, never money. */
+export interface NewLotRow {
+  lot_id: string;
+  grn_id: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  item_id: string | null;
+  item_name: string | null;
+  packaging: string | null;
+  qty: number;
+  stock: number;
+  weight: number | null;
+  date: string | null;
+  rack: string | null;
+  package_mark: string | null;
+}
+
 /** What one item contributes (a kind's `overlay(body, state)`). */
 export interface OverlayPart {
   /** Lot id to the bags this item takes off it. */
@@ -68,6 +85,8 @@ export interface UnsentOverlay {
   changedFields(kind: 'grn' | 'dispatch', id: string): string[];
   /** Documents that exist only on this phone, newest first. */
   newDocuments(kind: 'grn' | 'dispatch'): readonly NewDocRow[];
+  /** The lines of this person's unsent new GRNs that the copy does not hold yet; refused ones give none (WH-161, 7a). */
+  newLots(): readonly NewLotRow[];
   /** Lines an unsent edit adds to a GRN, and the lot ids it removes. */
   lotsAdded(grnId: string): readonly Row[];
   lotsRemoved(grnId: string): readonly string[];
@@ -90,6 +109,7 @@ const NOTHING: UnsentOverlay = {
   marker: () => null,
   changedFields: () => [],
   newDocuments: () => [],
+  newLots: () => [],
   lotsAdded: () => [],
   lotsRemoved: () => [],
   lotsGone: () => [],
@@ -103,7 +123,8 @@ function partOf(row: ItemRow): OverlayPart {
   if (!kind?.overlay) return {};
   try {
     const body: unknown = JSON.parse(row.body);
-    const part: unknown = kind.overlay(body as never, row.state);
+    const result: unknown = row.result === null ? null : JSON.parse(row.result);
+    const part: unknown = kind.overlay(body as never, row.state, { id: row.id, recordedAt: row.recorded_at, result });
     return isRecord(part) ? part : {};
   } catch (error) {
     logger.warn('An unsent item could not be read for the overlay', loggableError(error));
@@ -142,6 +163,27 @@ function mergeInto(target: Map<string, Fields>, source: Record<string, Fields> |
 function add(target: Map<string, number>, source: Record<string, number> | undefined): void {
   if (!source) return;
   for (const [id, bags] of Object.entries(source)) if (bags > 0) target.set(id, (target.get(id) ?? 0) + bags);
+}
+
+/** The lots of the new GRNs in `documents` that were not refused. */
+function lotsOf(documents: readonly NewDocRow[]): NewLotRow[] {
+  const out: NewLotRow[] = [];
+  for (const doc of documents) {
+    if (doc.kind !== 'grn' || doc.refused === true) continue;
+    const header = isRecord(doc.header) ? doc.header : {};
+    const text = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+    const lines = Array.isArray(doc.lines) ? (doc.lines as unknown[]) : [];
+    for (const line of lines) {
+      if (!isRecord(line)) continue;
+      const qty = typeof line.qty === 'number' ? line.qty : 0;
+      out.push({
+        lot_id: String(line.id), grn_id: String(doc.localId), customer_id: text(header.customer_id), customer_name: text(header.customer_name),
+        item_id: text(line.item_id), item_name: text(line.item_name), packaging: text(line.packaging), qty, stock: qty,
+        weight: typeof line.weight === 'number' ? line.weight : null, date: text(header.date), rack: text(line.rack), package_mark: text(line.package_mark),
+      });
+    }
+  }
+  return out;
 }
 
 interface Built {
@@ -190,15 +232,17 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
       const into = unsent ? removed : gone;
       into.set(grnId, [...(into.get(grnId) ?? []), ...ids]);
     }
+    // A new document is shown, with its number and no marker, until a sync run has ended after its send (WH-161).
+    documents.push(...(part.newDocuments ?? []));
     if (!unsent) continue;
     add(own, part.lessUnsent);
     for (const rowsAdded of Object.values(part.lotsAdded ?? {})) for (const lot of rowsAdded) mark(`lot:${String(lot.id)}`, row.state === 'sending' ? 'sending' : 'notSent');
     for (const ids of Object.values(part.lotsRemoved ?? {})) for (const lotId of ids) mark(`lot:${lotId}`, row.state === 'sending' ? 'sending' : 'notSent');
-    documents.push(...(part.newDocuments ?? []));
     const state = row.state === 'sending' ? 'sending' : 'notSent';
     for (const id of Object.keys(part.grn ?? {})) mark(`grn:${id}`, state);
     for (const id of Object.keys(part.lot ?? {})) if (!part.lotChanges) mark(`lot:${id}`, state);
     for (const id of Object.keys(part.dispatch ?? {})) mark(`dispatch:${id}`, state);
+    for (const doc of part.newDocuments ?? []) mark(`${doc.kind}:${String(doc.localId)}`, state);
     for (const change of part.lotChanges ?? []) {
       const key = `${change.lotId}:${change.field}`;
       const seen = lotFields.get(key);
@@ -235,6 +279,7 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
     marker: (kind, id) => markers.get(`${kind}:${id}`) ?? null,
     changedFields: (kind, id) => [...(changed.get(`${kind}:${id}`) ?? [])],
     newDocuments: kind => documents.filter(doc => doc.kind === kind),
+    newLots: () => lotsOf(documents),
     lotsAdded: id => added.get(id) ?? [],
     lotsRemoved: id => removed.get(id) ?? [],
     lotsGone: id => gone.get(id) ?? [],

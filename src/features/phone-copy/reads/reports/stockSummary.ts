@@ -5,6 +5,7 @@
  */
 import { copyToday } from '@/features/phone-copy/pgCompat';
 import type { CopyReader } from '@/features/phone-copy/readRoute';
+import { unsentLotsOf, unsentStockOf } from '../newDocuments';
 import {
   addDays, compareIds, compareText, dayOf, dayStartUs, fromUnits, numberOf, parseRow, textOf, weightSum, weightUnits, type Row,
 } from './reportParts';
@@ -102,17 +103,20 @@ export async function readCustomerStockSummary(q: CopyReader, customerId: string
   const lastGrnRow = lastGrn ? parseRow(lastGrn.row) : null;
   const lastDispatchRow = lastDispatch ? parseRow(lastDispatch.row) : null;
   // `MAX(date)` is the newest of all, which the first row of that order is.
+  const unsent = unsentStockOf(customerId);
   const summary: Row = {
     total_items: new Set(inStock.map(line => line.lot.item_id)).size,
-    total_quantity: inStock.reduce((sum, line) => sum + numberOf(line.lot.stock), 0),
-    total_weight_kg: weightSum(weightRows?.units),
+    total_quantity: inStock.reduce((sum, line) => sum + numberOf(line.lot.stock), 0) + unsent.bags,
+    total_weight_kg: weightSum(weightRows?.units) + unsent.weight,
     oldest_stock_date: oldestLine ? dayOf(oldestLine.grn.date) : null,
-    grn_count: new Set(inStock.map(line => line.grn.id)).size,
+    grn_count: new Set(inStock.map(line => line.grn.id)).size + unsent.receipts,
     grn_count_empty: empty?.n ?? 0,
     last_grn_date: lastGrnRow ? dayOf(lastGrnRow.date) : null,
     last_grn_no: lastGrnRow?.gr_no ?? null,
     last_dispatch_date: lastDispatchRow ? dayOf(lastDispatchRow.disp_date) : null,
     last_dispatch_no: lastDispatchRow?.disp_no ?? null,
+    // The bags of this person's unsent new GRNs the figures above count (WH-161; 0 when none).
+    ...(unsent.bags > 0 ? { includes_unsent: unsent.bags } : {}),
   };
 
   const items = [...groupByItem(inStock)].map(([itemId, group]) => ({
@@ -214,15 +218,27 @@ export async function readAllStockSummary(q: CopyReader): Promise<Row> {
       latest_date: await dayOfUs(record.latest_us),
     });
   }
+  const unsent = unsentStockOf();
+  const known = new Set(customers.map(customer => customer.customer_id));
+  const unsentCustomers = new Set(unsentLotsOf().map(lot => lot.customer_id).filter((id): id is string => id !== null && !known.has(id)));
+  for (const customer of customers) {
+    const own = unsentStockOf(String(customer.customer_id));
+    if (own.bags > 0) {
+      customer.total_stock = Number(customer.total_stock) + own.bags;
+      customer.total_weight = Number(customer.total_weight) + own.weight;
+      customer.grn_count = Number(customer.grn_count) + own.receipts;
+    }
+  }
   return {
     success: true,
     summary: {
-      total_customers_with_stock: total?.customers ?? 0,
+      total_customers_with_stock: (total?.customers ?? 0) + unsentCustomers.size,
       total_items: total?.items ?? 0,
-      total_quantity: total?.quantity ?? 0,
-      total_weight_kg: weightSum(total?.units),
+      total_quantity: (total?.quantity ?? 0) + unsent.bags,
+      total_weight_kg: weightSum(total?.units) + unsent.weight,
       oldest_stock_date: oldest?.day ?? null,
-      grn_count: total?.grns ?? 0,
+      grn_count: (total?.grns ?? 0) + unsent.receipts,
+      ...(unsent.bags > 0 ? { includes_unsent: unsent.bags } : {}),
     },
     customers,
   };

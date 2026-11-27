@@ -24,6 +24,49 @@ import type {
   CustomerStockRow,
 } from '@/types/report.types';
 
+/** What the function answers (or the phone copy, in its shape); every member can be missing or null. */
+interface RawGrn {
+  grn_id?: string | null;
+  gr_no: string;
+  date: string;
+  orig_qty?: number | null;
+  stock?: number | null;
+  item_weight?: number | null;
+  rack?: string | null;
+  packaging?: string | null;
+  package_mark: string;
+  emptied_date: string;
+}
+interface RawItem {
+  item_id: string;
+  item_name: string;
+  total_stock?: number | null;
+  grn_count?: number | null;
+  grns?: RawGrn[] | null;
+}
+interface RawSummary {
+  total_items?: number | null;
+  total_quantity?: number | null;
+  total_customers_with_stock?: number | null;
+  oldest_stock_date?: string | null;
+  grn_count?: number | null;
+  grn_count_empty?: number | null;
+  includes_unsent?: number | null;
+}
+interface RawCustomer {
+  customer_id: string;
+  customer_name: string;
+  total_stock?: number | null;
+  item_count?: number | null;
+  grn_count?: number | null;
+}
+interface RawBody {
+  summary?: RawSummary;
+  items?: RawItem[];
+  out_of_stock_items?: RawItem[];
+  customers?: RawCustomer[];
+}
+
 /**
  * Default empty response for error cases
  */
@@ -74,9 +117,10 @@ export async function getCustomerStockSummary(
     // The phone copy answers when it can (WH-299), in the function's own shape.
     const copy = await readVia('all', q => readCustomerStockSummary(q, customerId));
     const source = copy?.source;
-    const { data, error } = copy
-      ? { data: copy.value as unknown, error: null }
+    const answer: { data: unknown; error: { message: string } | null } = copy
+      ? { data: copy.value, error: null }
       : await (await getAuthenticatedClient()).rpc('get_customer_stock_summary', { p_customer_uuid: customerId });
+    const { data, error } = answer;
 
     if (error) {
       logger.error('[StockSummary] RPC error:', error.message);
@@ -102,7 +146,7 @@ export async function getCustomerStockSummary(
     }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const responseData = reportBody(data);
+    const responseData = reportBody(data) as RawBody | undefined;
 
     // Map to our expected format
     const summary: StockSummaryKPIs = {
@@ -111,11 +155,13 @@ export async function getCustomerStockSummary(
       oldest_stock_date: responseData?.summary?.oldest_stock_date ?? null,
       grn_count: responseData?.summary?.grn_count ?? 0,
       grn_count_empty: responseData?.summary?.grn_count_empty ?? 0,
+      // Only the phone copy adds this (WH-161): a server answer has none.
+      ...(responseData?.summary?.includes_unsent ? { includes_unsent: responseData.summary.includes_unsent } : {}),
     };
 
     // Helper function to map GRN data
-    const mapGrns = (grns: any[]) =>
-      (grns ?? []).map((grn: any) => ({
+    const mapGrns = (grns: RawGrn[] | null | undefined) =>
+      (grns ?? []).map(grn => ({
         grn_id: grn.grn_id ?? '',
         gr_no: grn.gr_no,
         date: grn.date,
@@ -129,8 +175,8 @@ export async function getCustomerStockSummary(
       }));
 
     // Helper function to map item data
-    const mapItems = (items: any[]): StockItemSummary[] =>
-      (items ?? []).map((item: any) => ({
+    const mapItems = (items: RawItem[] | null | undefined): StockItemSummary[] =>
+      (items ?? []).map(item => ({
         item_id: item.item_id,
         item_name: item.item_name,
         total_stock: item.total_stock ?? 0,
@@ -167,9 +213,10 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
   try {
     const copy = await readVia('all', readAllStockSummary);
     const source = copy?.source;
-    const { data, error } = copy
-      ? { data: copy.value as unknown, error: null }
+    const answer: { data: unknown; error: { message: string } | null } = copy
+      ? { data: copy.value, error: null }
       : await (await getAuthenticatedClient()).rpc('get_all_stock_summary');
+    const { data, error } = answer;
 
     if (error) {
       logger.error('[AllStockSummary] RPC error:', error.message);
@@ -195,7 +242,7 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
     }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const responseData = reportBody(data);
+    const responseData = reportBody(data) as RawBody | undefined;
 
     // Map to our expected format
     const summary: AllStockSummaryKPIs = {
@@ -203,10 +250,11 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
         responseData?.summary?.total_customers_with_stock ?? 0,
       total_items: responseData?.summary?.total_items ?? 0,
       total_quantity: responseData?.summary?.total_quantity ?? 0,
+      ...(responseData?.summary?.includes_unsent ? { includes_unsent: responseData.summary.includes_unsent } : {}),
     };
 
     const customers: CustomerStockRow[] = (responseData?.customers ?? []).map(
-      (customer: any) => ({
+      customer => ({
         customer_id: customer.customer_id,
         customer_name: customer.customer_name,
         total_stock: customer.total_stock ?? 0,

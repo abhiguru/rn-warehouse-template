@@ -8,6 +8,7 @@ import { enCompare, parseTimestampUs } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
 import { getUnsentOverlay, netStock } from '../unsentOverlay';
 import { lotsOfGrn, removedLotIds } from './lotOverlay';
+import { readNewGrnDetails, unsentGrnById } from './newDocuments';
 import { customerDetails, itemDetailsById, supervisorDetails } from './documentParts';
 import { compareNullsLast, compareNumbers, compareText, comparePhotos, distinctSorted, numberOf, parseRow, parseRows, pick, sumMoney, textOf, type Row } from './rows';
 
@@ -70,7 +71,11 @@ async function replacementsOf(q: CopyReader, grnId: string): Promise<Row[]> {
 
 export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnDetailsAnswer> {
   const found = await q.get<{ row: string }>('SELECT row FROM goodsreceived WHERE id = ?', [grnId]);
-  if (!found) return { kind: 'not-found' };
+  if (!found) {
+    // A GRN that exists only on this phone (WH-161): answered from the overlay, with no server call.
+    const unsent = unsentGrnById(grnId);
+    return unsent ? { kind: 'found', grn: await readNewGrnDetails(q, unsent), needsServer: ['rates'] } : { kind: 'not-found' };
+  }
   const g = parseRow(found.row);
   const overlay = getUnsentOverlay();
   const gOver = { ...g, ...overlay.grn(grnId) };
