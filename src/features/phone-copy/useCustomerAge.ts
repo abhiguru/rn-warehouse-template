@@ -3,7 +3,7 @@
  * product/tech/app-offline-customer-accounts.md 7; Design offline-capture.md Part 9). A customer account has no status bar
  * line about time: the strip under the header is where it reads it, once.
  */
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { usePhoneCopyStatus } from '@/hooks/usePhoneCopyStatus';
 import { useAppSelector } from '@/store/hooks';
 import { customerAge, type CustomerAge } from './customerAge';
@@ -11,10 +11,7 @@ import { businessDate } from './pgCompat';
 import { useCopyOffline } from './useCopyOffline';
 
 const DAY_CHECK_MS = 60_000;
-const subscribeDay = (onChange: () => void): (() => void) => {
-  const timer = setInterval(onChange, DAY_CHECK_MS);
-  return () => clearInterval(timer);
-};
+const noSubscribe = (): (() => void) => () => undefined;
 const phoneDayNow = (): string => businessDate(Date.now());
 
 export interface CustomerAgeView {
@@ -32,8 +29,17 @@ export function useCustomerAge(): CustomerAgeView | null {
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const snapshot = usePhoneCopyStatus();
   const offline = useCopyOffline();
-  // India's day on the phone's clock, looked at again every minute: a strip left open overnight turns to "earlier".
-  const phoneDay = useSyncExternalStore(subscribeDay, phoneDayNow, phoneDayNow);
+  // India's day on the phone's clock, looked at again every minute while a customer account's strip can show: one left
+  // open overnight turns to "earlier". Other roles, and a customer with no copy, run no timer.
+  const watching = role === 'customer' && snapshot.feature === 'on' && snapshot.asOf !== null;
+  const subscribeDay = useCallback(
+    (onChange: () => void): (() => void) => {
+      const timer = setInterval(onChange, DAY_CHECK_MS);
+      return () => clearInterval(timer);
+    },
+    [],
+  );
+  const phoneDay = useSyncExternalStore(watching ? subscribeDay : noSubscribe, phoneDayNow, phoneDayNow);
   if (role !== 'customer' || snapshot.feature !== 'on' || snapshot.asOf === null) return null;
   const readable = snapshot.phase === 'ready' || (snapshot.phase === 'stage2' && offline);
   if (!readable) return null;
