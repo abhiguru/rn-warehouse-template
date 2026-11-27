@@ -8,6 +8,7 @@
 import { COPY_FORMAT_V3 } from '../copySchema';
 import type { CopyReader } from '../readRoute';
 import { getUnsentOverlay, netStock } from '../unsentOverlay';
+import { readNewDispatchDetails, unsentDispatchById } from './newDispatches';
 import { customerDetails, itemDetailsById, supervisorDetails } from './documentParts';
 import { compareText, comparePhotos, distinctSorted, numberOf, parseRow, parseRows, pick, textOf, type Row } from './rows';
 
@@ -18,7 +19,11 @@ const mean = (values: readonly number[]): number => (values.length ? values.redu
 
 export async function readDispatchDetails(q: CopyReader, dispatchId: string): Promise<DispatchDetailsAnswer> {
   const found = await q.get<{ row: string }>('SELECT row FROM dispatch WHERE id = ?', [dispatchId]);
-  if (!found) return { kind: 'not-found' };
+  if (!found) {
+    // A dispatch that exists only on this phone (WH-161): answered from the copy's lots and the overlay.
+    const unsent = unsentDispatchById(dispatchId);
+    return unsent ? { kind: 'found', dispatch: await readNewDispatchDetails(q, unsent), needsServer: ['invoiceAmounts'] } : { kind: 'not-found' };
+  }
   const d = parseRow(found.row);
   const overlay = getUnsentOverlay();
   const dOver = { ...d, ...overlay.dispatch(dispatchId) };

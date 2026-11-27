@@ -8,6 +8,7 @@ import type { SqlValue } from '../copyDriver';
 import { enCompare, likeUnescaped, parseTimestampUs, pgSearchTerms } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
 import { getUnsentOverlay } from '../unsentOverlay';
+import { unsentDispatches } from './newDispatches';
 import { compareText, IN_LIST, numberOf, parseRow, pick, textOf, type Row } from './rows';
 
 export interface DispatchListRequest {
@@ -195,5 +196,14 @@ export async function readDispatchList(q: CopyReader, raw: DispatchListRequest):
       created_by: pick(row, 'created_by'), updated_by: pick(row, 'updated_by'), ...overlay.dispatch(id),
     }];
   });
-  return { dispatches, total_count: total, current_page: request.page, total_pages: Math.ceil(total / request.limit), limit: request.limit };
+  // This person's unsent new dispatches (WH-161): on page 1 above the copy's rows, in the count of every page.
+  const unsent = await unsentDispatches(q, request);
+  const count = total + unsent.length;
+  return {
+    dispatches: request.page === 1 ? [...unsent, ...dispatches] : dispatches,
+    total_count: count,
+    current_page: request.page,
+    total_pages: Math.ceil(count / request.limit),
+    limit: request.limit,
+  };
 }
