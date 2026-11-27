@@ -122,9 +122,23 @@ export interface HeldPhotosResult {
  */
 let syncRuns = 0;
 const blockedAt = new Map<string, number>();
-subscribeSyncRunEnd(() => {
-  syncRuns += 1;
-});
+let stopCounting: (() => void) | null = null;
+
+/** Starts counting ended sync runs (the hand-over starts with the phone copy). Idempotent; nothing listens at import. */
+export function startHeldPhotos(): void {
+  if (stopCounting) return;
+  stopCounting = subscribeSyncRunEnd(() => {
+    syncRuns += 1;
+  });
+}
+
+/** Stops counting and forgets the first refusals. Idempotent. */
+export function stopHeldPhotos(): void {
+  stopCounting?.();
+  stopCounting = null;
+  blockedAt.clear();
+  syncRuns = 0;
+}
 
 /** True once a sync run has ended since this photo was first refused as not the person's. Records the first refusal. */
 function blockedForGood(heldId: string, photo: PhotoRow): boolean {
