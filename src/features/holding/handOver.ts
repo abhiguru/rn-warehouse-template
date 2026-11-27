@@ -24,6 +24,7 @@ import { allItems, deleteItems, itemsOfScope, photosOf, updateItem, type ItemRow
 import { cannotSendUnsent, currentPersonRole } from '@/features/unsent/unsentRole';
 import { heldWhatOf } from './heldWhat';
 import { sendHeldPhotos } from './heldPhotos';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 const logger = createLogger('[holding-handover]');
 
@@ -60,6 +61,10 @@ const refusedForGood = new Set<string>();
 
 /** A code is written to the log once, whatever the number of items that met it. */
 const logged = new Set<string>();
+registerSessionScoped('hand-over-refusals', () => {
+  refusedForGood.clear();
+  logged.clear();
+});
 function logOnce(code: string, error?: unknown): void {
   if (logged.has(code)) return;
   logged.add(code);

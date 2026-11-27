@@ -28,6 +28,7 @@ import { enqueueAll, returnToForm, type EnqueueAllInput } from './unsentQueue';
 import { closeSaveWait, openSaveWait, SAVE_WAIT_MS, SAVE_WAIT_SAFETY_MS } from './saveWait';
 import { itemById, onUnsentChange, type ItemRow } from './unsentRows';
 import { ownUnsentRows } from './unsentStore';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 export { SAVE_WAIT_MS };
 
@@ -170,6 +171,7 @@ const photoInput = (doc: DocType, photos: SavePhoto[] | undefined, what: string,
   photos && photos.length > 0 ? [{ kind: 'photos', body: { doc }, what, customer, dependsOn: 0, photos }] : [];
 
 const running = new Map<DocType, Promise<SaveAnswer>>();
+registerSessionScoped('offline-new-saves-running', () => running.clear());
 /** One Save at a time per form kind: a second tap while one runs gets the same answer and makes no second item (P4). */
 function once(type: DocType, work: () => Promise<SaveAnswer>): Promise<SaveAnswer> {
   const busy = running.get(type);

@@ -17,12 +17,17 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 // The overlay changes when the unsent-work store does and when a sync run ends (a sent item's values then go). Components
 // subscribe to a version number, not to the overlay: the overlay is read when they draw.
 let overlayVersion = 0;
 const overlayListeners = new Set<() => void>();
 let watching: (() => void)[] = [];
+registerSessionScoped('unsent-markers-version', () => {
+  overlayVersion += 1;
+  for (const each of [...overlayListeners]) each();
+});
 
 function subscribeOverlayVersion(listener: () => void): () => void {
   overlayListeners.add(listener);

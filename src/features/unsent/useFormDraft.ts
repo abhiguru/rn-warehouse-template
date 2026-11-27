@@ -17,6 +17,7 @@ import { formatLoadedAt } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
 import { endFormDraft, formDraftEpoch, isSessionEnding, loadFormDraft, saveFormDraft, type FormKind } from './formDrafts';
 import { clearRestoredFormNumberMode, getFormNumberMode, isNumberMode, restoreFormNumberMode } from './formNumberMode';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 const logger = createLogger('[form-draft]');
 
@@ -30,6 +31,9 @@ const isDispatchState = (value: unknown): value is DispatchFormState =>
 
 // "Not finished" opens a form that is to be continued without the question.
 let continueNext: { kind: FormKind; grnId: string | null } | null = null;
+registerSessionScoped('form-draft-continue', () => {
+  continueNext = null;
+});
 export function requestContinue(kind: FormKind, grnId: string | null): void {
   continueNext = { kind, grnId };
 }

@@ -1,3 +1,5 @@
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
+
 /** How long a form waits for its own item to be sent while the phone is reachable (the one wait of C302 and C303). */
 export const SAVE_WAIT_MS = 8_000;
 
@@ -10,6 +12,7 @@ export const SAVE_WAIT_SAFETY_MS = 5_000;
  * these items alone until the wait is over, whatever their kind.
  */
 const openWaits = new Map<string, number>();
+registerSessionScoped('save-waits', () => openWaits.clear());
 
 /** Notes that a form waits for this item; the returned function ends the note (call it when the wait ends). */
 export function openSaveWait(itemId: string, ms: number = SAVE_WAIT_MS): () => void {

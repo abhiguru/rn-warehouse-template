@@ -10,6 +10,7 @@ import { createLogger } from '@/utils/logger';
 import { currentCopy } from './copyDb';
 import { photoDirectory } from './photoFolder';
 import { getSyncSnapshot } from './syncStore';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 const logger = createLogger('[phone-copy]');
 
@@ -17,6 +18,7 @@ export { erasePhotoFolder as erasePhotos } from './photoFolder';
 
 /** Several asks for one photo share one download. */
 const running = new Map<string, Promise<boolean>>();
+registerSessionScoped('phone-copy-photo-downloads', () => running.clear());
 
 const fileName = (storagePath: string): Promise<string> => sha256Hex(new TextEncoder().encode(storagePath));
 

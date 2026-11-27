@@ -9,6 +9,7 @@ import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
 import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
 import { t } from '@/i18n';
 import { openNumberMode, type NumberMode } from './offlineNew';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 type DocType = 'grn' | 'dispatch';
 
@@ -17,6 +18,13 @@ const generation: Record<DocType, number> = { grn: 0, dispatch: 0 };
 // True when an unfinished form restored its saved mode (N5): a fresh open's decision does not overwrite it.
 const restoredForOpen: Record<DocType, boolean> = { grn: false, dispatch: false };
 const listeners = new Set<() => void>();
+registerSessionScoped('form-number-mode', () => {
+  modes.grn = 'online';
+  modes.dispatch = 'online';
+  restoredForOpen.grn = false;
+  restoredForOpen.dispatch = false;
+  for (const listener of [...listeners]) listener();
+});
 const subscribe = (listener: () => void): (() => void) => {
   listeners.add(listener);
   return () => {

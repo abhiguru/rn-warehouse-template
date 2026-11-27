@@ -13,6 +13,7 @@ import { classify } from '@/features/unsent/sendEngine';
 import { markPhoto, photosOf, updateItem, type ItemRow, type PhotoRow } from '@/features/unsent/unsentRows';
 import { createLogger, loggableError } from '@/utils/logger';
 import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 const logger = createLogger('[holding-photos]');
 
@@ -123,6 +124,10 @@ export interface HeldPhotosResult {
 let syncRuns = 0;
 const blockedAt = new Map<string, number>();
 let stopCounting: (() => void) | null = null;
+registerSessionScoped('held-photos-blocked', () => {
+  blockedAt.clear();
+  syncRuns = 0;
+});
 
 /** Starts counting ended sync runs (the hand-over starts with the phone copy). Idempotent; nothing listens at import. */
 export function startHeldPhotos(): void {

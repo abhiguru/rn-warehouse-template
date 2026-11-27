@@ -19,6 +19,7 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { noteCopyChange, publishCopyChanges } from './copyChanges';
 import type { EntityName } from './copySchema';
 import { subscribeSyncRunEnd } from './syncEngine';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 const logger = createLogger('[unsent-overlay]');
 
@@ -315,6 +316,13 @@ const cache: { rows: readonly ItemRow[] | null; scope: string | null; syncEnd: n
   built: { overlay: NOTHING, touched: new Set() },
 };
 let installed = false;
+registerSessionScoped('unsent-overlay-cache', () => {
+  cache.rows = null;
+  cache.scope = null;
+  cache.syncEnd = -1;
+  cache.held = null;
+  cache.built = { overlay: NOTHING, touched: new Set() };
+});
 
 function current(): Built {
   const rows = loadedUnsentRows();
