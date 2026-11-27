@@ -4,7 +4,7 @@ import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
 import type { EntityName } from '@/features/phone-copy/copySchema';
 import { syncNow } from '@/features/phone-copy/syncEngine';
 import { getSyncSnapshot } from '@/features/phone-copy/syncStore';
-import { isWarehouseCopyRole } from '@/config/offlineStart';
+import { isWarehouseCopyRole } from '@/config/copyRoles';
 import { useAppSelector } from '@/store/hooks';
 
 export type OrderLiveUpdatesOptions = LiveUpdatesOptions;

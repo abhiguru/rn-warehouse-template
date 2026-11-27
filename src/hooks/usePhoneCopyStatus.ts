@@ -8,7 +8,7 @@ import { formatCopySize } from '@/features/phone-copy/copyStorage';
 import { getSyncSnapshot, subscribeSync, type SyncSnapshot } from '@/features/phone-copy/syncStore';
 import { t } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
-import { isCopyRole } from '@/config/offlineStart';
+import { isCopyRole } from '@/config/copyRoles';
 import { copyKindOf } from '@/features/phone-copy/copyKind';
 import { eraseCopy } from '@/features/phone-copy/copyDb';
 

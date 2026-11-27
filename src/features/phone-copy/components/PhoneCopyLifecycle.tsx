@@ -22,6 +22,7 @@ import { FormDraftHost } from '@/features/unsent/FormDraftHost';
 import { initUnsent } from '@/features/unsent/unsentStore';
 import { sendNow } from '@/features/unsent/sendEngine';
 import { eraseCopy } from '../copyDb';
+import { startHeldRows, stopHeldRows } from '@/features/holding/heldRows';
 import { startHeldPhotos, stopHeldPhotos } from '@/features/holding/heldPhotos';
 import { startMoneyRefresh, stopMoneyRefresh } from '../money/moneyRefresh';
 import { setCopyForeground, setCopyOffline, setSyncSchedule, startPhoneCopy, stopPhoneCopy, syncNow } from '../syncEngine';
@@ -109,6 +110,7 @@ export function PhoneCopyLifecycle() {
     });
     startMoneyRefresh();
     startHeldPhotos();
+    startHeldRows();
     const appState = AppState.addEventListener('change', onAppState);
     const stopCapabilities = subscribeFacilityCapabilities(() => void applyCapability());
     setCopyForeground(foreground);
@@ -121,6 +123,7 @@ export function PhoneCopyLifecycle() {
       appState.remove();
       stopMoneyRefresh();
       stopHeldPhotos();
+      stopHeldRows();
       stopCapabilities();
       setSyncSchedule(false);
       void stopPhoneCopy();

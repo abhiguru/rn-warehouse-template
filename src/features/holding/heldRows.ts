@@ -190,10 +190,21 @@ async function sendKeptSeen(): Promise<void> {
   }
 }
 
-// The rows are read, and what was opened offline is told, when a sync run ends: a run that works is waited for.
-subscribeSyncRunEnd(async () => {
-  await refreshHeldRows();
-  // The copy now holds these items, so the phone's own rows of them are no longer the only source (contract section 3).
-  await sweepHeldRows(state.rows.map(row => row.id)).catch((error: unknown) => logger.warn('Held rows could not be removed', loggableError(error)));
-  await sendKeptSeen();
-});
+// The rows are read, and what was opened offline is told, when a sync run ends: a run that works is waited for. The phone copy
+// starts this (and stops it) with its own lifecycle; nothing listens at import.
+let stopRunEnd: (() => void) | null = null;
+
+export function startHeldRows(): void {
+  if (stopRunEnd) return;
+  stopRunEnd = subscribeSyncRunEnd(async () => {
+    await refreshHeldRows();
+    // The copy now holds these items, so the phone's own rows of them are no longer the only source (contract section 3).
+    await sweepHeldRows(state.rows.map(row => row.id)).catch((error: unknown) => logger.warn('Held rows could not be removed', loggableError(error)));
+    await sendKeptSeen();
+  });
+}
+
+export function stopHeldRows(): void {
+  stopRunEnd?.();
+  stopRunEnd = null;
+}
