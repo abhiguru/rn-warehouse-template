@@ -260,6 +260,72 @@ describe('K5: a change after an attempt', () => {
   });
 });
 
+describe('K9: the phone time of the change (recorded_at)', () => {
+  it('a save carries its time; a merge ten minutes later makes it the later time, and that is what is sent', async () => {
+    const phone = await start();
+    await offline(phone);
+    await change({ rack: 'B-2' });
+    expect(bodyOf((await items())[0]).recordedAt).toBe(T0);
+    await jest.advanceTimersByTimeAsync(10 * 60_000);
+    await change({ rack: 'C-3' });
+    const merged = '2026-11-26T03:40:00.000Z';
+    expect(bodyOf((await items())[0]).recordedAt).toBe(merged);
+    server.answers[RPC] = () => answer('C-3');
+    await online(phone);
+    await jest.setSystemTime(new Date(merged)); // the clock is not moved by the send itself
+    await pass(phone, 1_000);
+    expect(calls()[0].args.p_changes).toEqual({ rack: { to: 'C-3', from: 'A-1' }, recorded_at: merged });
+  });
+
+  it('a dependant made twenty minutes after has its own time and the first keeps its own', async () => {
+    const phone = await start();
+    await offline(phone);
+    await change({ rack: 'B-2' });
+    server.answers[RPC] = () => GATEWAY_TIMEOUT;
+    server.answers.get_submission_result = () => ({ data: null, error: { message: 'No internet connection', code: 'NETWORK' } });
+    await online(phone);
+    await pass(phone, 1_000);
+    await offline(phone);
+    await jest.setSystemTime(new Date('2026-11-26T03:50:00.000Z'));
+    await change({ rack: 'C-3' });
+    const rows = await items();
+    expect(rows).toHaveLength(2);
+    expect(bodyOf(rows[0]).recordedAt).toBe(T0);
+    expect(bodyOf(rows[1]).recordedAt).toBe('2026-11-26T03:50:00.000Z');
+  });
+
+  it('a resend after a lost answer carries the same time and the same key', async () => {
+    const phone = await start();
+    await offline(phone);
+    const saved = await change({ rack: 'B-2' });
+    server.answers[RPC] = () => GATEWAY_TIMEOUT;
+    server.answers.get_submission_result = () => ({ data: null, error: { message: 'No internet connection', code: 'NETWORK' } });
+    await online(phone);
+    await pass(phone, 1_000);
+    await jest.setSystemTime(new Date('2026-11-26T05:00:00.000Z'));
+    server.answers[RPC] = () => answer('B-2');
+    server.answers.get_submission_result = () => ({ data: { found: false }, error: null });
+    await pass(phone);
+    const sent = calls().map(c => c.args);
+    expect(sent.length).toBeGreaterThanOrEqual(2);
+    for (const args of sent) {
+      expect((args.p_changes as { recorded_at: string }).recorded_at).toBe(T0);
+      expect(args.p_request_key).toBe(saved.requestKey);
+    }
+  });
+
+  it('a field put back keeps the item\'s time: the other field is sent with the time of the latest save', async () => {
+    const phone = await start();
+    await offline(phone);
+    await change({ rack: 'B-2', package_mark: 'M9' });
+    await jest.advanceTimersByTimeAsync(60_000);
+    await change({ rack: 'A-1' });
+    const [row] = await items();
+    expect(bodyOf(row).recordedAt).toBe('2026-11-26T03:31:00.000Z');
+    expect(Object.keys(bodyOf(row).changes)).toEqual(['package_mark']);
+  });
+});
+
 describe('K6: another person\'s items', () => {
   it('are never merged into: the same lot by this person is a new item, and the other\'s body is unchanged', async () => {
     const phone = await start();
