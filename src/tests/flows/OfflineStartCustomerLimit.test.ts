@@ -178,6 +178,21 @@ describe('PQ5: a server too old for the customer copy', () => {
     expect(marked).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['older', null],
+    ['current', 'customer'],
+  ] as const)('the session restore of an offline start (authSlice), %s server: the profile is %s', async (which, role) => {
+    await serverRelease(which);
+    clockAt(CONFIRMED + DAY);
+    await launchOffline();
+    killApp();
+    markOfflineStarted();
+    await store.dispatch(initializeAuth());
+    await flush();
+    if (role === null) expect(shownProfile()).toBeNull();
+    else expect(shownProfile()).toMatchObject({ role });
+  });
+
   it('a customer account at a server with the customer copy opens as above', async () => {
     await serverRelease('current');
     clockAt(CONFIRMED + DAY);

@@ -35,6 +35,7 @@ jest.mock('@react-native-community/netinfo', () => require('@/tests/phoneCopy/ph
 jest.mock('@/config/lanTransport', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.lan());
 // react-redux is not transformed by this repo's Jest config: the hook reads the real store (real auth reducer) directly.
 let mockStore: { getState: () => unknown; subscribe: (l: () => void) => () => void };
+jest.mock('@/store', () => ({ get store() { return mockStore; } }));
 jest.mock('@/store/hooks', () => {
   const { useSyncExternalStore } = require('react');
   return {
