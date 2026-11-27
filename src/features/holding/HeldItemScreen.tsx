@@ -40,6 +40,7 @@ import { decideHeldItem, getHeldItem, type HeldCurrent, type HeldItemDetail, typ
 import { describeReason } from './heldReason';
 import { heldCopyRows, markHeldSeen } from './heldRows';
 import { heldWhatText } from './heldWhat';
+import { HeldPhotos } from './HeldPhotos';
 
 type Fields = Record<string, unknown>;
 const isFields = (value: unknown): value is Fields => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -394,6 +395,7 @@ function ManagerHeldItem() {
               </Text>
             ))}
           </View>
+          <HeldPhotos item={item} />
         </ScrollView>
         {current !== null ? (
           <Text testID="held-item-current" style={styles.current}>

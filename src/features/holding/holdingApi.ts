@@ -42,11 +42,22 @@ export interface HeldCurrent {
   held: unknown;
 }
 
+/** One photo of a held item: its file is under `held/<held id>/` in a photo bucket (role `dispatch`: dispatch-images, else grn-images). */
+export interface HeldPhoto {
+  clientPhotoId: string;
+  role: string;
+  path: string;
+}
+
 export interface HeldItemDetail extends HeldListRow {
   body: unknown;
   acceptedBody: unknown;
   acceptPossible: boolean;
   current: HeldCurrent[];
+  /** The item's own confirmed photos. */
+  photos: HeldPhoto[];
+  /** The `photos` items that go with this one (their files are under their own held ids). */
+  photoFollowers: string[];
 }
 
 /** A call that did not get through (no connection, a gateway answer, an answer that could not be read). */
@@ -131,7 +142,26 @@ export async function getHeldItem(id: string): Promise<HeldItemDetail> {
           ? [{ field: entry.field, lineRef: textOf(entry.line_ref), current: entry.current, held: entry.held }]
           : [])
     : [];
-  return { ...head, body: answer.data.body ?? null, acceptedBody: answer.data.accepted_body ?? null, acceptPossible: answer.data.accept_possible === true, current };
+  const photos = Array.isArray(answer.data.photos)
+    ? answer.data.photos.flatMap((entry: unknown): HeldPhoto[] => {
+        if (!isFields(entry) || entry.state !== 'confirmed') return [];
+        const clientPhotoId = textOf(entry.client_photo_id);
+        const path = textOf(entry.path);
+        return clientPhotoId !== null && path !== null ? [{ clientPhotoId, role: textOf(entry.role) ?? 'header', path }] : [];
+      })
+    : [];
+  const photoFollowers = Array.isArray(answer.data.followers)
+    ? answer.data.followers.flatMap((entry: unknown): string[] => (isFields(entry) && entry.kind === 'photos' && typeof entry.id === 'string' ? [entry.id] : []))
+    : [];
+  return {
+    ...head,
+    body: answer.data.body ?? null,
+    acceptedBody: answer.data.accepted_body ?? null,
+    acceptPossible: answer.data.accept_possible === true,
+    current,
+    photos,
+    photoFollowers,
+  };
 }
 
 export type DecideInput =
