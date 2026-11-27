@@ -209,29 +209,23 @@ export const REPORTS: readonly ReportDefinition[] = [
     gate: 'replacedEntries',
     feature: 'grnFieldChanges',
   }),
+  /** The Holding list (WH-304, Design 7.1): its screen is `app/reports/holding-list.tsx`; offered to managers of a facility with sync and the holding list. */
+  define({
+    id: 'holding-list',
+    title: 'reports.titles.holdingList',
+    description: 'nav.reports.descriptions.holdingList',
+    icon: 'inbox-arrow-down',
+    category: 'operations',
+    hasPeriod: false,
+    gate: 'holdingList',
+    feature: 'holdingList',
+  }),
 ];
-
-/**
- * The Holding list's row of the Reports tab (WH-304, Design offline-capture.md 7.1): offered to administrators and supervisors of a
- * facility whose server has the holding list, so it is always reachable when the strip on the GRN and Dispatch tabs is gone. It
- * opens the Holding list screen, not a report screen, so it is not one of `REPORTS`; its line is the list's own note.
- */
-export const HOLDING_LIST_REPORT: ReportDefinition = define({
-  id: 'holding-list',
-  title: 'offline.holding.title',
-  description: 'nav.reports.descriptions.holdingList',
-  icon: 'inbox-arrow-down',
-  category: 'operations',
-  hasPeriod: false,
-  gate: 'holdingList',
-  feature: 'holdingList',
-  route: '/holding-list',
-});
 
 /**
  * The report with this id. The id is compared with the ids of the table only, so a word
  * that names something every object has ("__proto__", "constructor") finds nothing.
  */
 export function reportById(id: string): ReportDefinition | undefined {
-  return REPORTS.find((report) => report.id === id) ?? (id === HOLDING_LIST_REPORT.id ? HOLDING_LIST_REPORT : undefined);
+  return REPORTS.find((report) => report.id === id);
 }

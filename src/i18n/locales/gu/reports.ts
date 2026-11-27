@@ -1,6 +1,6 @@
 /** Gujarati text: reports. Follows docs/GUJARATI_GLOSSARY.md. */
 import type { reports as source } from '../en/reports';
-import type { Translation } from '../../types';
+import type { Translation } from '@/i18n/types';
 
 export const reports: Translation<typeof source> = {
   titles: {
@@ -17,6 +17,7 @@ export const reports: Translation<typeof source> = {
     temperatureReport: 'તાપમાનનો અહેવાલ',
     accountantPack: 'હિસાબનીશ માટેની ફાઇલો',
     replacedEntries: 'બદલાયેલી એન્ટ્રી',
+    holdingList: 'રોકેલી યાદી',
   },
   shared: {
     units: { one: 'નંગ', other: 'નંગ' },

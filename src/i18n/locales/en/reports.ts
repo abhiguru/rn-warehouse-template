@@ -14,6 +14,7 @@ export const reports = {
     temperatureReport: 'Temperature report',
     accountantPack: 'Accountant pack',
     replacedEntries: 'Replaced entries',
+    holdingList: 'Holding list',
   },
   shared: {
     // A label under a stock figure; pass `count` to get "unit" for 1.
