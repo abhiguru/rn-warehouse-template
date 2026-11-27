@@ -21,9 +21,9 @@ export const activityMoneyOn = (): boolean => copyEligible() && formatOk();
 
 /** Customer dues and Statement's kept answers: administrator and supervisor only. */
 export function moneyOn(): boolean {
+  if (!activityMoneyOn()) return false;
   const role = signedInRole();
-  return (role === 'admin' || role === 'supervisor') && activityMoneyOn();
+  return role === 'admin' || role === 'supervisor';
 }
 
 export const useMoneyOn = (): boolean => useSyncExternalStore(subscribeSync, moneyOn, moneyOn);
-export const useActivityMoneyOn = (): boolean => useSyncExternalStore(subscribeSync, activityMoneyOn, activityMoneyOn);
