@@ -46,6 +46,11 @@ function collectKeys(value: unknown, out = new Set<string>()): Set<string> {
   return out;
 }
 
+/** Keys the server's `strip_staff_keys` gained with WH-306 373df336; the copy of a customer account answers none of them. */
+const NEWLY_FORBIDDEN_KEYS = [
+  'cancelled_by', 'cancelled_by_name', 'ignored_by', 'discount_set_by', 'zero_charge_set_by', 'discount_reason', 'zero_charge_reason',
+] as const;
+
 function expectNoStaffKeys(value: unknown) {
   const keys = collectKeys(value);
   for (const forbidden of FORBIDDEN_STAFF_KEYS) {
@@ -75,6 +80,9 @@ function seedFullCustomerFeed(own: string[]) {
         updated_by: 'p1',
         updated_by_name: 'Meera Fictional',
         updated_by_display_name: 'Meera',
+        cancelled_by: 'p1',
+        cancelled_by_name: 'Meera Fictional',
+        ignored_by: 'p1',
       },
     });
   }
@@ -96,6 +104,12 @@ function seedFullCustomerFeed(own: string[]) {
       created_by: 'p1',
       created_by_display_name: 'Meera',
       created_by_role: 'admin',
+      cancelled_by: 'p1',
+      cancelled_by_name: 'Meera Fictional',
+      ignored_by: 'p1',
+      discount_set_by: 'p1',
+      zero_charge_set_by: 'p1',
+      zero_charge_reason: 'Fictional waiver',
     });
     Object.assign(feedRow('invoice_trl', 'invl1'), {
       storage_amount: 777.5,
@@ -203,15 +217,22 @@ describe('answerFor staff-key stripping (7d43015a)', () => {
       created_by_info: { id: 'p1', name: 'Meera', display_name: 'Meera', role: 'admin' },
       created_by_display_name: 'Meera',
       created_by_role: 'admin',
+      cancelled_by: 'p1',
+      cancelled_by_name: 'Meera Fictional',
+      ignored_by: 'p1',
+      discount_set_by: 'p1',
+      zero_charge_set_by: 'p1',
       nested: {
         ok: true,
         updated_by: 'p2',
         created_by_info: { id: 'p1' },
-        items: [{ id: 'i1', uploaded_by: 'p5', supervisor_name: 'Meera Fictional' }],
+        items: [{ id: 'i1', uploaded_by: 'p5', cancelled_by: 'p1', ignored_by: 'p1', supervisor_name: 'Meera Fictional' }],
       },
     };
     const stripped = rowsMod().answerFor('customer', sample) as Record<string, unknown>;
     expectNoStaffKeys(stripped);
+    const strippedKeys = collectKeys(stripped);
+    for (const key of NEWLY_FORBIDDEN_KEYS.filter(k => k !== 'discount_reason' && k !== 'zero_charge_reason')) expect(strippedKeys.has(key)).toBe(false);
     expect(stripped.id).toBe('doc-1');
     expect(stripped.supervisor_name).toBe('Meera Fictional');
     expect(stripped.sender_name).toBe('Kiran Sender');
@@ -225,6 +246,7 @@ describe('answerFor staff-key stripping (7d43015a)', () => {
       const kept = rowsMod().answerFor(role, sample);
       expect(kept).toBe(sample);
       expect(kept.created_by_info).toEqual({ id: 'p1', name: 'Meera', display_name: 'Meera', role: 'admin' });
+      expect(kept).toMatchObject({ cancelled_by: 'p1', cancelled_by_name: 'Meera Fictional', ignored_by: 'p1', discount_set_by: 'p1', zero_charge_set_by: 'p1' });
     }
   });
 });
@@ -322,8 +344,49 @@ describe('customer-copy parity & staff-key stripping on details, rates, stock, a
     expectNoStaffKeys(pay);
 
     const reasons = await invoices().getInvoiceReasons('inv1');
-    expect(reasons).toMatchObject({ discountReason: 'Fictional goodwill', discountSetByName: 'Meera Fictional' });
+    // The server answers a customer account none of the reasons (WH-306 373df336), though the copy holds them.
+    // The reader answers {}, so the service maps every reason field to null: no goodwill text, no setter name.
+    expect(reasons).toEqual({
+      discountReason: null, discountSetAt: null, discountSetByName: null,
+      zeroChargeReason: null, zeroChargeSetAt: null, zeroChargeSetByName: null,
+    });
     expectNoStaffKeys(reasons);
+    expect(w.serverCalls).toEqual([]);
+  });
+
+  it('invoice and order reads: carry none of the cancelled/ignored/discount/zero-charge staff keys at any depth, though the copy holds them', async () => {
+    const w = await readyCustomer(['c1', 'c2']);
+    expect(Object.keys(feedRow('invoice', 'inv1'))).toEqual(expect.arrayContaining([...NEWLY_FORBIDDEN_KEYS]));
+    const reads = [
+      await invoices().getInvoiceDetails('inv1'),
+      await invoices().getInvoiceItemsDetailed('inv1'),
+      await invoices().getInvoiceReasons('inv1'),
+      await payments().getInvoicePayments('inv1'),
+      await orders().getOrdersList({ has_items: true }),
+      await orders().getOrderWithItems('o-1'),
+      await dispatchDetail().getDispatchDetails('d-D2'),
+    ];
+    for (const read of reads) {
+      const keys = collectKeys(read);
+      for (const key of NEWLY_FORBIDDEN_KEYS) expect(keys.has(key)).toBe(false);
+    }
+    expect(reads[0]).toMatchObject({ success: true });
+    expect(w.serverCalls).toEqual([]);
+  });
+
+  it('customer dispatch list: carries total_items (line count), supervisor_name and total_weight rounded half away from zero, and no staff keys', async () => {
+    // D2 has two lines (l04 x30, l05 x4); 30 x 40.55 = 1216.5 must be answered as 1217, never 1216.5.
+    seedFullCustomerFeed(['c2']);
+    Object.assign(feedRow('goodsreceived_trl', 'l04'), { weight: 40.55 });
+    const w = await bootWarehouse({ role: 'customer' });
+    await loadCopy(w);
+    await goOffline(w);
+    const { readVia, forCustomerAccounts } = require('@/features/phone-copy/readRoute') as typeof import('@/features/phone-copy/readRoute');
+    const { readCustomerDispatchList } = require('@/features/phone-copy/reads/customer/customerDispatchList') as typeof import('@/features/phone-copy/reads/customer/customerDispatchList');
+    const answer = await readVia('all', forCustomerAccounts(q => readCustomerDispatchList(q, 'c2', 50, 0, true)));
+    const d2 = answer?.value.dispatches.find(d => d.disp_no === 'D2');
+    expect(d2).toMatchObject({ total_items: 2, supervisor_name: 'Meera Fictional', total_weight: 1217 });
+    expectNoStaffKeys(answer?.value);
     expect(w.serverCalls).toEqual([]);
   });
 
