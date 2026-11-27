@@ -285,6 +285,18 @@ describe('S2: the Reports tab row', () => {
   it.each(['staff', 'customer'])('is not offered to %s', role => {
     expect(offered(role)).toHaveLength(0);
   });
+  it('is not offered where the facility keeps no phone copy (no sync)', () => {
+    const rows = reportHubSections('admin', [], [], { sync: false } as never).flatMap(section => section.reports);
+    expect(rows.find(r => r.id === ('holding-list' as never))).toBeUndefined();
+  });
+  it('Gujarati: the row\'s second line is "નિર્ણય બાકી હોય તેવી રોકેલી એન્ટ્રી"', async () => {
+    await setLanguage('gu');
+    const [row] = offered('admin');
+    expect(row.description).toBe('નિર્ણય બાકી હોય તેવી રોકેલી એન્ટ્રી');
+  });
+  it('English: the row\'s second line is "Refused items waiting for a decision"', () => {
+    expect(offered('admin')[0].description).toBe('Refused items waiting for a decision');
+  });
   it('is not offered on a server without the holding list (section 7)', () => {
     setFacilityRelease(SERVER, { schemaHead: OLD_HEAD });
     expect(offered('admin')).toHaveLength(0);
@@ -480,6 +492,71 @@ describe('S4 wording (Design 7.11a (c)): the Held item\'s header facts are label
       expect(screen.getByText(value)).toBeOnTheScreen();
     }
     expect(screen.getByText('નોંધ્યાનો સમય')).toBeOnTheScreen();
+  });
+});
+
+describe('A-4: Correct on the Held item', () => {
+  const lotChange = (overrides: Record<string, unknown> = {}) =>
+    listRow('lc1', { kind: 'lotChange', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['rack'] } }, ...overrides });
+  const lotBody = { lotId: 'l06', grnId: 'g-B1', recordedAt: '2026-11-27T09:00:00+05:30', changes: { rack: { from: 'B-2', to: 'C-2' } } };
+  const open = (row: Record<string, unknown>) => openItem(row, { accept_possible: false, body: lotBody, current: [{ field: 'rack', line_ref: 'l06', current: 'D-4', held: 'C-2' }] });
+  const KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  it.each([
+    ['newGrn', '/grn-edit/[id]/step1'],
+    ['newDispatch', '/dispatch-edit/[id]/step1'],
+  ])('%s: Correct opens the kind\'s own form on the held id, and asks the server for nothing', async (kind, pathname) => {
+    await openItem(listRow('h9', { kind }), { accept_possible: false });
+    await user.press(screen.getByTestId('held-item-correct'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname, params: { id: 'held-h9' } });
+    expect(decideCalls()).toHaveLength(0);
+  });
+
+  it.each(['grnEdit', 'photos'])('%s: there is no Correct button', async kind => {
+    await openItem(listRow('h9', { kind, reason: 'other', reason_data: {} }), { accept_possible: true });
+    expect(screen.queryByTestId('held-item-correct')).not.toBeOnTheScreen();
+  });
+
+  it('a field change: Correct opens the sheet with the held value and "Accept with changes"; Save decides with the corrected body, once', async () => {
+    await open(lotChange());
+    await user.press(screen.getByTestId('held-item-correct'));
+    expect(await screen.findByTestId('quick-change-sheet')).toBeOnTheScreen();
+    expect(screen.getByTestId('quick-change-save')).toHaveTextContent('Accept with changes');
+    expect(screen.getByLabelText('Rack')).toHaveDisplayValue('C-2');
+
+    await user.clear(screen.getByLabelText('Rack'));
+    await user.type(screen.getByLabelText('Rack'), 'D-9');
+    mockServer.answers.decide_held_item = () => decideOk('lc1', 'accepted', { grn_id: 'g-B1', gr_no: 'B1' });
+    await user.press(screen.getByTestId('quick-change-save'));
+
+    expect(decideCalls()).toHaveLength(1);
+    expect(decideCalls()[0].args).toMatchObject({
+      p_id: 'lc1',
+      p_action: 'accept',
+      p_decision_key: expect.stringMatching(KEY),
+      p_body: { lotId: 'l06', grnId: 'g-B1', changes: { rack: { to: 'D-9', from: 'B-2' } } },
+    });
+    expect(mockServer.calls.map(c => c.name)).not.toEqual(expect.arrayContaining(['save_grn', 'update_grn', 'save_lot_change']));
+    expect(toasts()).toContain('Accepted: GRN B1 updated');
+  });
+
+  it('a refused corrected accept tells the reason and its fix on the sheet, and the item stays held', async () => {
+    await open(lotChange());
+    await user.press(screen.getByTestId('held-item-correct'));
+    await user.clear(await screen.findByLabelText('Rack'));
+    await user.type(screen.getByLabelText('Rack'), 'D-9');
+    mockServer.answers.decide_held_item = () => ({
+      data: { success: false, error_code: 'WH409', reason: 'LOT_NOT_FOUND', error: 'gone', message: 'gone', lot_ids: ['l06'] },
+      error: null,
+    });
+    await user.press(screen.getByTestId('quick-change-save'));
+
+    const refused = await screen.findByTestId('quick-change-refused');
+    expect(refused).toHaveTextContent(/was deleted/);
+    expect(refused).toHaveTextContent('Reject.');
+    expect(screen.getByTestId('quick-change-sheet')).toBeOnTheScreen();
+    expect(toasts()).toHaveLength(0);
+    expect(mockRouter.back).not.toHaveBeenCalled();
   });
 });
 
