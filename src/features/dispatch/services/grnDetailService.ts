@@ -15,7 +15,6 @@ import type {
 } from '@/types/dispatch.types';
 import { serverText } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
-import { copyCustomerGrns, copyGrnById, copyGrnByNumber, copyGrnPrefixes, copyGrnSearch, lotOfCopy } from './grnPickerCopy';
 
 // ============================================================================
 // SEARCH GRN NUMBERS (Autocomplete)
@@ -57,9 +56,6 @@ export const searchGRNNumbers = async (
     if (!query || query.trim().length === 0) {
       return [];
     }
-
-    const fromCopy = await copyGrnSearch(options?.startsWith ? anchoredPattern(query, options.startsWith) : grnSearchPattern(query), customerId);
-    if (fromCopy) return fromCopy;
 
     const authenticatedClient = await getAuthenticatedClient();
 
@@ -121,9 +117,6 @@ export const getGRNPrefixesWithStock = async (
 ): Promise<GRNPrefixWithStock[]> => {
   try {
     console.log('[GRNDetailService] Fetching GRN prefixes with stock, customerId:', customerId);
-
-    const fromCopy = await copyGrnPrefixes(customerId);
-    if (fromCopy) return fromCopy;
 
     const authenticatedClient = await getAuthenticatedClient();
 
@@ -194,9 +187,6 @@ export const getCustomerGRNsWithStock = async (
       return [];
     }
 
-    const fromCopy = await copyCustomerGrns(customerId, limit, offset);
-    if (fromCopy) return fromCopy;
-
     const authenticatedClient = await getAuthenticatedClient();
 
     const { data, error } = await authenticatedClient.rpc('get_customer_grns_with_stock_dispatch_sorted', {
@@ -255,13 +245,6 @@ export const getGRNDetailByNumber = async (
 ): Promise<GRNDetailResponse> => {
   try {
     console.log('[GRNDetailService] Fetching GRN detail for:', grNo);
-
-    const fromCopy = await copyGrnByNumber(grNo);
-    if (fromCopy) {
-      if (fromCopy.missing) throw new Error(t('dispatch.service.grnNotFound'));
-      const items = fromCopy.items.map(lotOfCopy).filter(item => includeZeroStock || item.stock > 0);
-      return { success: true, data: { grn: fromCopy.header, items } };
-    }
 
     const authenticatedClient = await getAuthenticatedClient();
 
@@ -371,12 +354,6 @@ export const getGRNDetailById = async (grnId: string): Promise<GRNDetailResponse
   try {
     console.log('[GRNDetailService] Fetching GRN detail for ID:', grnId);
 
-    const fromCopy = await copyGrnById(grnId);
-    if (fromCopy) {
-      if (fromCopy.missing) throw new Error(t('dispatch.service.grnDetailsFailed'));
-      return { success: true, data: { grn: fromCopy.header, items: fromCopy.items.map(lotOfCopy).filter(item => item.stock > 0) } };
-    }
-
     const authenticatedClient = await getAuthenticatedClient();
 
     // Use RPC function to get full details with items
@@ -470,14 +447,6 @@ export const getGRNItemsGroupedByItem = async (
 }> => {
   try {
     console.log('[GRNDetailService] Fetching GRN items grouped by item for GRN ID:', grnId);
-
-    const fromCopy = await copyGrnById(grnId);
-    if (fromCopy) {
-      if (fromCopy.missing) throw new Error(t('dispatch.service.grnDetailsFailed'));
-      // As the server path below: the server's lots carry no camel-case item details, so each lot is its own group.
-      const grouped = fromCopy.items.map(lotOfCopy).filter(lot => lot.stock > 0).map(lot => ({ itemId: lot.id, itemName: lot.item_name, lots: [lot] }));
-      return { success: true, data: grouped };
-    }
 
     const authenticatedClient = await getAuthenticatedClient();
 

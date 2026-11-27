@@ -18,12 +18,6 @@ import { isUnsettledFailure, serverText } from '@/utils/serverText';
 import { waitForServer } from '@/utils/lostAnswer';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
-import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
-import { readCustomerDispatchList, type CustomerDispatchListData } from '@/features/phone-copy/reads/customer/customerDispatchList';
-import { customerScope, ownIds, type CustomerScope } from '@/features/phone-copy/reads/customer/customerScope';
-import { readDispatchList } from '@/features/phone-copy/reads/dispatchList';
-import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
-import { readRecentDispatchedOrders } from '@/features/phone-copy/reads/recentOrderDispatches';
 import type { DataSource } from '@/features/phone-copy/sourced';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
@@ -426,14 +420,6 @@ export const getAllDispatchItems = async (
 };
 
 // New function using get_dispatch_list_with_items RPC with optional item details
-const emptyDispatchList = (limit: number, offset: number, sortOrder: string): DispatchListResponseNew['data'] => ({
-  dispatches: [],
-  pagination: { total_count: 0, limit, offset, has_more: false },
-  aggregations: { total_dispatches: 0, total_dispatched_qty: 0, unique_customers: 0, unique_grns: 0 },
-  filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: 'disp_date', sort_order: sortOrder },
-  user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 },
-});
-
 export const getDispatchListWithItems = async (
   params: GetDispatchListWithItemsParams & { offset?: number } = {}
 ): Promise<DispatchListResponseNew> => {
@@ -488,29 +474,6 @@ export const getDispatchListWithItems = async (
       if (value !== undefined && value !== null && value !== '') {
         transformedFilters[keyMap[key] || key] = value;
       }
-    }
-
-    // The phone copy answers when it can (WH-299): one source for all the pages of this request.
-    const request = { customerId: p_customer_id ?? null, filters: transformedFilters, sortBy: p_sort_by, sortOrder: p_sort_order, page: p_page, limit: p_limit, includeItems: p_include_items };
-    const copy = await readVia('all', q => readDispatchList(q, request), {
-      key: JSON.stringify({ ...request, page: undefined }),
-      page: p_page - 1,
-    });
-    if (copy && 'restart' in copy) {
-      return { success: false, message: t('errors.dispatch.fetchListFailed'), copyRestart: true, data: emptyDispatchList(p_limit, offset, p_sort_order) };
-    }
-    if (copy) {
-      const { value, source } = copy;
-      return {
-        success: true,
-        message: t('errors.dispatch.listRetrieved'),
-        source,
-        data: {
-          ...value,
-          dispatches: value.dispatches.map(row => mapBackendDispatch(row as unknown as BackendDispatchData)),
-          pagination: { total_count: value.total_count, limit: p_limit, offset, has_more: value.current_page < value.total_pages },
-        } as unknown as DispatchListResponseNew['data'],
-      };
     }
 
     // Get authenticated client with JWT tokens
@@ -666,23 +629,6 @@ export const getDispatchListWithItems = async (
   }
 };
 
-/**
- * A customer account's read of one customer from the phone copy (WH-306): its page, a refusal when the customer is not a
- * row of the copy (the server is not asked), or null for today's server path.
- */
-const readCopyCustomerDispatches = async (
-  customerId: string,
-  limit: number,
-  offset: number,
-  includeItems: boolean
-): Promise<{ refused: DataSource } | { page: CustomerDispatchListData; source: DataSource } | null> => {
-  const scope = await customerScope('all');
-  if (!scope) return null;
-  if (!scope.names.has(customerId)) return { refused: scope.source };
-  const copy = await readVia('all', forCustomerAccounts(q => readCustomerDispatchList(q, customerId, limit, offset, includeItems)));
-  return copy ? { page: copy.value, source: copy.source } : null;
-};
-
 export const getCustomerDispatchList = async (
   params: GetCustomerDispatchListParams
 ): Promise<DispatchListResponseNew> => {
@@ -722,18 +668,12 @@ export const getCustomerDispatchList = async (
   }
 
   try {
-    const copy = await readCopyCustomerDispatches(params.p_customer_id, limit, offset, params.p_include_items ?? true);
-    if (copy && 'refused' in copy) {
-      return { success: false, message: t('errors.customer.accessDenied'), data: emptyData, source: copy.refused };
-    }
-    const { data, error } = copy
-      ? { data: { success: true, data: copy.page } as unknown, error: null }
-      : await (await getAuthenticatedClient()).rpc('get_customer_dispatch_list', {
-          p_customer_id: params.p_customer_id,
-          p_limit: limit,
-          p_offset: offset,
-          p_include_items: params.p_include_items ?? true,
-        });
+    const { data, error } = await (await getAuthenticatedClient()).rpc('get_customer_dispatch_list', {
+      p_customer_id: params.p_customer_id,
+      p_limit: limit,
+      p_offset: offset,
+      p_include_items: params.p_include_items ?? true,
+    });
 
     if (error) {
       return {
@@ -762,7 +702,6 @@ export const getCustomerDispatchList = async (
 
     return {
       success: true,
-      ...(copy ? { source: copy.source } : {}),
       message: serverText(data.message, t('errors.dispatch.customerRetrieved')),
       data: {
         ...emptyData,
@@ -932,8 +871,6 @@ export function selectCustomerDispatches(
   });
 }
 
-const scopedIds = (scope: CustomerScope | null, ids: string[]): string[] => (scope ? ownIds(scope, ids) : ids);
-
 /**
  * Dispatch list for a customer account. The all-customers list RPC is for
  * warehouse roles only, so this collects get_customer_dispatch_list for each
@@ -960,9 +897,7 @@ export const getAssignedCustomerDispatchList = async (
     },
   });
 
-  // Read from the phone copy, the account's customers are the copy's rows (WH-306).
-  const scope = await customerScope('all');
-  const assigned = scopedIds(scope, [...new Set(assignedCustomerIds.filter(Boolean))]);
+  const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
   const requested = Array.isArray(filters.customer_ids) ? (filters.customer_ids as string[]) : [];
   if (requested.some(id => !assigned.includes(id))) return empty(t('errors.customer.accessDenied'), false);
   const targetIds = requested.length > 0 ? requested : assigned;
@@ -1009,7 +944,6 @@ export const getAssignedCustomerDispatchList = async (
 
   const dispatches = matching.slice(offset, offset + limit);
   const result = empty(t('errors.dispatch.customerRetrieved'), true);
-  if (scope) result.source = scope.source;
   result.data.dispatches = dispatches;
   result.data.pagination = {
     total_count: matching.length,
@@ -1259,12 +1193,6 @@ export const getRecentDispatchedOrders = async (
   try {
     if (__DEV__) {
       console.log('[DispatchService] Fetching recent dispatched orders:', { limit, offset });
-    }
-
-    // The phone copy answers when it can (WH-328).
-    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readRecentDispatchedOrders(q, limit, offset));
-    if (copy) {
-      return { success: true, source: copy.source, data: copy.value as unknown as NonNullable<RecentDispatchedOrdersResponse['data']> };
     }
 
     const authenticatedClient = await getAuthenticatedClient();

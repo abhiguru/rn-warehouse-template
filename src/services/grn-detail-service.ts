@@ -23,7 +23,7 @@ import { invalidateReportQueries } from '@/lib/queryClient';
 import { copyCarriesFormat3, forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { rememberServerLotValues } from '@/features/quick-change/confirmedLotValues';
 import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
-import { readGrnDetails, readItemDispatches } from '@/features/phone-copy/reads/grnDetails';
+import { readGrnDetails } from '@/features/phone-copy/reads/grnDetails';
 import { keepPhoto, photoFile } from '@/features/phone-copy/photoStore';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import type { DataSource } from '@/features/phone-copy/sourced';
@@ -391,20 +391,6 @@ export const getGRNItemDispatches = async (grnItemId: string): Promise<GRNItemDi
   interface GRNItemDispatchesData {
     dispatches: DispatchRecord[];
     summary: ItemDispatchDetailSummary;
-  }
-
-  const copy = await readVia('all', forCustomerAccounts(q => readItemDispatches(q, grnItemId)));
-  if (copy) {
-    const { value, source } = copy;
-    if (value.kind === 'found') {
-      return {
-        success: true,
-        data: { dispatches: value.dispatches as unknown as DispatchRecord[], summary: { ...value.summary, remaining_stock: value.summary.remaining_stock ?? 0 } },
-        message: t('errors.grn.itemDispatchesRetrieved'),
-        source,
-      };
-    }
-    return { success: false, message: t('errors.grn.fetchItemDispatchesFailed'), error: t('errors.grn.notFoundOrDenied'), source };
   }
 
   const result = await executeRPC<GRNItemDispatchesData>(

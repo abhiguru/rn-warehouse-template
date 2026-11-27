@@ -72,7 +72,7 @@ import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/
 
 /** The records this page reads from the phone copy: a sync that changed one of them reads the page again. */
 const DISPATCH_PAGE_KINDS: readonly EntityName[] = [
-  'dispatch', 'dispatch_trl', 'dispatch_images', 'goodsreceived', 'goodsreceived_trl', 'customers', 'items', 'invoice', 'invoice_trl',
+  'goodsreceived', 'goodsreceived_trl', 'customers', 'items',
 ];
 
 /** A photo of the Images tab: it may be a frame, not a picture. */
@@ -180,8 +180,6 @@ function DispatchDetailScreen() {
         return;
       }
 
-      fromCopyRef.current = result.source?.kind === 'copy';
-      setAmountsNeedServer(result.needsServer?.includes('invoiceAmounts') === true);
       if (result.success && result.data) {
         setData(result.data);
         setError(null);

@@ -12,12 +12,6 @@ import { formatNumber } from '@/utils/formatters';
 import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, trimCancelReason } from '@/features/invoice/utils/cancelReason';
 import { createLogger } from '@/utils/logger';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
-import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
-import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
-import { readCustomerInvoiceSummary } from '@/features/phone-copy/reads/customer/customerInvoiceSummary';
-import { customerScope, ownIds } from '@/features/phone-copy/reads/customer/customerScope';
-import { readInvoiceData, readInvoiceItemsDetailed, readInvoiceReasons } from '@/features/phone-copy/reads/invoiceDetails';
-import { readInvoicesList } from '@/features/phone-copy/reads/invoices';
 import type { DataSource } from '@/features/phone-copy/sourced';
 
 const invoiceServiceLogger = createLogger('InvoiceService');
@@ -153,34 +147,6 @@ export const getInvoicesList = async (
       p_payment_status,
       p_doc_type,
     } = params;
-
-    // The phone copy answers when it can (WH-348): one source for all the pages of this request.
-    const request = {
-      limit: p_limit, offset: p_offset, customerId: p_customer_id ?? null, financialYear: p_financial_year ?? null,
-      searchInvoiceNo: p_search_invoice_no ?? null, searchGrnNo: p_search_grn_no ?? null, invNoFrom: p_inv_no_from ?? null,
-      invNoTo: p_inv_no_to ?? null, sortField: p_sort_field, sortDirection: p_sort_direction, search: p_search?.trim() ?? null,
-      dateFrom: p_date_from ?? null, dateTo: p_date_to ?? null,
-      customerIds: p_customer_ids && p_customer_ids.length > 0 ? p_customer_ids : null,
-      paymentStatus: p_payment_status ?? null, docType: p_doc_type ?? null,
-    };
-    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readInvoicesList(q, request), {
-      key: JSON.stringify({ ...request, offset: undefined }),
-      page: Math.floor(p_offset / Math.max(p_limit, 1)),
-    });
-    if (copy && 'restart' in copy) {
-      return { success: false, message: t('errors.invoice.fetchListFailed'), copyRestart: true, data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit: p_limit, offset: p_offset } } };
-    }
-    if (copy) {
-      return {
-        success: true,
-        message: t('errors.invoice.listRetrieved'),
-        source: copy.source,
-        data: {
-          invoices: (copy.value.invoices as unknown as Invoice[]).map(withNumericAmounts),
-          pagination: { total_count: copy.value.total_count, limit: p_limit, offset: p_offset, has_more: copy.value.has_more },
-        },
-      };
-    }
 
     invoiceServiceLogger.debug('Getting authenticated client...');
     const authenticatedClient = await getAuthenticatedClient();
@@ -424,20 +390,17 @@ export const getAssignedCustomerInvoices = async (
     data: { invoices: [], pagination: { total_count: 0, limit, offset, has_more: false } },
   });
 
-  // Read from the phone copy, the account's customers are the copy's rows (WH-306).
-  const scope = await customerScope('all');
-  const profileIds = [...new Set(assignedCustomerIds.filter(Boolean))];
-  const assigned = scope ? ownIds(scope, profileIds) : profileIds;
+  const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
   const requested = [...(params.p_customer_ids ?? []), ...(params.p_customer_id ? [params.p_customer_id] : [])];
   if (requested.some(id => !assigned.includes(id))) return failure(t('errors.customer.accessDenied'));
   const targetIds = requested.length > 0 ? [...new Set(requested)] : assigned;
   if (targetIds.length === 0) return failure(t('errors.customer.noAssignment'));
 
   try {
-    // The summary rows carry no customer name. Use the caller's names, else the copy's, else read
-    // them; a failed name lookup only leaves the row's name line empty.
-    const names: Record<string, string> = { ...(scope ? Object.fromEntries(scope.names) : {}), ...(params.customerNames || {}) };
-    if (!scope && targetIds.some(id => !names[id])) {
+    // The summary rows carry no customer name. Use the caller's names, else read them; a failed name lookup only
+    // leaves the row's name line empty.
+    const names: Record<string, string> = { ...(params.customerNames || {}) };
+    if (targetIds.some(id => !names[id])) {
       const authenticatedClient = await getAuthenticatedClient();
       const { data: customers } = await authenticatedClient.from('customers').select('id, name').in('id', targetIds);
       for (const customer of customers || []) names[customer.id] = customer.name;
@@ -451,8 +414,6 @@ export const getAssignedCustomerInvoices = async (
         customerHistory<CustomerInvoiceHistory>(
           `invoices:${customerId}`,
           async () => {
-            const copy = scope ? await readVia('all', forCustomerAccounts(q => readCustomerInvoiceSummary(q, customerId))) : null;
-            if (copy) return { success: true, rows: copy.value.invoices as unknown as CustomerInvoiceRow[] };
             const { data, error } = await (await getAuthenticatedClient()).rpc('get_customer_invoice_summary', {
               p_customer_uuid: customerId,
               // The whole history; the date filter is applied here, to the moment.
@@ -485,7 +446,6 @@ export const getAssignedCustomerInvoices = async (
     const invoices = matching.slice(offset, offset + limit);
     return {
       success: true,
-      ...(scope ? { source: scope.source } : {}),
       message: t('errors.invoice.listRetrieved'),
       data: {
         invoices,
@@ -524,7 +484,7 @@ export interface GrnInvoiceRowsRequest {
  * (getAssignedCustomerInvoices). Both search by GRN number, which also matches longer numbers,
  * so the rows are kept only when their GRN id is this GRN's. The server decides who sees what.
  */
-export const getGrnInvoiceRows = async (request: GrnInvoiceRowsRequest): Promise<{ success: boolean; invoices: Invoice[]; source?: DataSource }> => {
+export const getGrnInvoiceRows = async (request: GrnInvoiceRowsRequest): Promise<{ success: boolean; invoices: Invoice[] }> => {
   const params = {
     p_limit: GRN_INVOICE_LIMIT,
     p_offset: 0,
@@ -538,7 +498,7 @@ export const getGrnInvoiceRows = async (request: GrnInvoiceRowsRequest): Promise
       ? await getInvoicesList(params)
       : await getAssignedCustomerInvoices(request.assignedCustomerIds ?? [], params);
     if (!result.success || !result.data) return { success: false, invoices: [] };
-    return { success: true, invoices: result.data.invoices.filter(invoice => invoice.grn?.id === request.grnId), ...('source' in result && result.source ? { source: result.source } : {}) };
+    return { success: true, invoices: result.data.invoices.filter(invoice => invoice.grn?.id === request.grnId) };
   } catch {
     return { success: false, invoices: [] };
   }
@@ -688,18 +648,10 @@ const textOrNull = (value: unknown): string | null => (typeof value === 'string'
  */
 export const getInvoiceReasons = async (invoiceId: string): Promise<InvoiceReasons | null> => {
   try {
-    // The phone copy answers when it can (WH-348, contract 15): the reasons are keys of the invoice row.
-    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, forCustomerAccounts(q => readInvoiceReasons(q, invoiceId)));
-    let h: Record<string, unknown>;
-    if (copy) {
-      if (!copy.value) return null;
-      h = copy.value;
-    } else {
-      const client = await getAuthenticatedClient();
-      const { data, error } = await client.rpc('get_invoice_detail', { p_invoice_id: invoiceId });
-      if (error || !data?.success || !data.invoice) return null;
-      h = data.invoice as Record<string, unknown>;
-    }
+    const client = await getAuthenticatedClient();
+    const { data, error } = await client.rpc('get_invoice_detail', { p_invoice_id: invoiceId });
+    if (error || !data?.success || !data.invoice) return null;
+    const h = data.invoice as Record<string, unknown>;
     return {
       discountReason: textOrNull(h.discount_reason),
       discountSetByName: textOrNull(h.discount_set_by_name),
@@ -746,19 +698,13 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
     }
 
     invoiceServiceLogger.debug('Fetching invoice details for ID:', invoiceId);
-    // The phone copy answers when it can (WH-348, contract 15): the same `data` as `get_invoice_data`.
-    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, forCustomerAccounts(q => readInvoiceData(q, invoiceId)));
     const authenticatedClient = await getAuthenticatedClient();
     invoiceServiceLogger.debug('Got authenticated client, calling get_invoice_data RPC...');
 
     // Use get_invoice_data RPC which includes nested structure with dispatch details (disp_no, disp_date)
-    const { data, error } = copy?.value
-      ? { data: { success: true, data: copy.value }, error: null }
-      : copy
-        ? { data: { success: false, error: t('invoice.details.notFoundTitle') }, error: null }
-        : await authenticatedClient.rpc('get_invoice_data', {
-          p_invoice_id: invoiceId
-        });
+    const { data, error } = await authenticatedClient.rpc('get_invoice_data', {
+      p_invoice_id: invoiceId
+    });
 
     invoiceServiceLogger.debug('RPC response:', {
       hasData: !!data,
@@ -800,7 +746,6 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
       success: true,
       data: data.data,
       message: t('errors.invoice.detailsFetched'),
-      ...(copy ? { source: copy.source } : {}),
     };
   } catch (error) {
     invoiceServiceLogger.error('Exception:', error);
@@ -986,16 +931,10 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
     }
 
     invoiceServiceLogger.debug('Fetching invoice items for ID:', invoiceId);
-    // The phone copy answers when it can (WH-348, contract 15): the same `data` as `get_invoice_items_detailed`.
-    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, forCustomerAccounts(q => readInvoiceItemsDetailed(q, invoiceId)));
     const authenticatedClient = await getAuthenticatedClient();
-    const { data, error } = copy?.value
-      ? { data: { success: true, data: copy.value }, error: null }
-      : copy
-        ? { data: { success: false, error: t('invoice.details.notFoundTitle') }, error: null }
-        : await authenticatedClient.rpc('get_invoice_items_detailed', {
-          p_invoice_id: invoiceId
-        });
+    const { data, error } = await authenticatedClient.rpc('get_invoice_items_detailed', {
+      p_invoice_id: invoiceId
+    });
 
     invoiceServiceLogger.debug('Invoice items RPC response:', {
       hasData: !!data,
@@ -1060,7 +999,6 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
         items: Array.isArray(data.data?.items) ? data.data.items.map(mapDetailedInvoiceItem) : [],
       },
       message: t('errors.invoice.itemsFetched'),
-      ...(copy ? { source: copy.source } : {}),
     };
   } catch (error) {
     invoiceServiceLogger.error('Invoice Items Exception:', error);

@@ -17,9 +17,6 @@ import type {
   CustomerDispatchRow,
 } from '@/types/report.types';
 
-import { readVia } from '@/features/phone-copy/readRoute';
-import { readForCustomer } from '@/features/phone-copy/reads/customer/customerScope';
-import { readAllDispatchActivity, readCustomerDispatchActivity } from '@/features/phone-copy/reads/reports/dispatchActivity';
 import { t } from '@/i18n';
 import { getDateDaysAgo, getToday } from './reportDates';
 import { createLogger } from '@/utils/logger';
@@ -87,15 +84,7 @@ export async function getCustomerDispatchActivity(
       p_to_date: toDate,
     };
 
-    // The phone copy answers when it can (WH-299), in the function's own shape.
-    const copy = await readForCustomer(params.customerId, 'all', q => readCustomerDispatchActivity(q, params.customerId, fromDate, toDate));
-    if (copy && 'refused' in copy) {
-      return { success: false, data: EMPTY_RESPONSE, message: t('errors.customer.accessDenied'), error: 'CUSTOMER_ACCESS_DENIED' };
-    }
-    const source = copy?.source;
-    const { data, error } = copy
-      ? { data: copy.value as unknown, error: null }
-      : await (await getAuthenticatedClient()).rpc('get_customer_dispatch_activity', rpcParams);
+    const { data, error } = await (await getAuthenticatedClient()).rpc('get_customer_dispatch_activity', rpcParams);
 
     if (error) {
       logger.error('[DispatchActivity] RPC error:', error.message);
@@ -154,7 +143,6 @@ export async function getCustomerDispatchActivity(
       success: true,
       data: { summary, dispatches },
       message: t('reports.dispatchActivity.retrieved'),
-      ...(source ? { source } : {}),
     };
   } catch (error) {
     logger.error('[DispatchActivity] Unexpected error:', error);
@@ -187,11 +175,7 @@ export async function getAllDispatchActivity(
       p_to_date: params.toDate,
     };
 
-    const copy = await readVia('all', q => readAllDispatchActivity(q, params.fromDate, params.toDate));
-    const source = copy?.source;
-    const { data, error } = copy
-      ? { data: copy.value as unknown, error: null }
-      : await (await getAuthenticatedClient()).rpc('get_all_dispatch_activity', rpcParams);
+    const { data, error } = await (await getAuthenticatedClient()).rpc('get_all_dispatch_activity', rpcParams);
 
     if (error) {
       logger.error('[AllDispatchActivity] RPC error:', error.message);
@@ -239,7 +223,6 @@ export async function getAllDispatchActivity(
       success: true,
       data: { summary, by_customer: byCustomer },
       message: t('reports.dispatchActivity.retrievedAll'),
-      ...(source ? { source } : {}),
     };
   } catch (error) {
     logger.error('[AllDispatchActivity] Unexpected error:', error);

@@ -37,7 +37,6 @@ import { changeCustomerAction, exportHeaderActions, longestPeriodAction } from '
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
-import { DISPATCH_ACTIVITY_KINDS } from '@/features/reports/reportCopyKinds';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -174,7 +173,6 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const filters = useReportFilters(DISPATCH_ACTIVITY_CUSTOMERS);
   const { period, view } = filters.request;
   const query = useReportQuery<AllDispatchActivityData>({
-    copyKinds: DISPATCH_ACTIVITY_KINDS,
     key: [REPORT_ID, 'customers', period.from, period.to],
     fetch: () => getAllDispatchActivity({ fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.dispatchActivity.loadError'),
@@ -296,7 +294,6 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const filters = useReportFilters(DISPATCH_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period, view } = filters.request;
   const query = useReportQuery<DispatchActivityData>({
-    copyKinds: DISPATCH_ACTIVITY_KINDS,
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerDispatchActivity({ customerId, fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.dispatchActivity.loadError'),

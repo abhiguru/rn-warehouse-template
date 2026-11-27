@@ -25,11 +25,6 @@ import type {
   RpcSupervisorDetails,
 } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
-import { copyCarriesFormat3, forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
-import { readDispatchDetails } from '@/features/phone-copy/reads/dispatchDetails';
-import { keepPhoto, photoFile } from '@/features/phone-copy/photoStore';
-import { isCopyOffline } from '@/features/phone-copy/syncEngine';
-import type { DataSource } from '@/features/phone-copy/sourced';
 
 // Re-export canonical types for consumers
 export type {
@@ -69,10 +64,6 @@ export interface DispatchDetailsResponse {
   error?: string;
   /** The server answered but there is no such dispatch (deleted, or not visible to the caller): not a failed load. */
   notFound?: boolean;
-  /** Answered by the phone copy (WH-299); absent when the server answered. */
-  source?: DataSource;
-  /** Parts the copy cannot give: the screen says they need a connection (Product's PR1). */
-  needsServer?: 'invoiceAmounts'[];
 }
 
 // Helper function to generate signed URL for dispatch images
@@ -107,7 +98,7 @@ const generateSignedUrl = async (storagePath: string): Promise<string | null> =>
 };
 
 // Helper function to process images and generate signed URLs
-const processDispatchImages = async (images: RpcImageInfo[], fromCopy = false): Promise<ProcessedDispatchImage[]> => {
+const processDispatchImages = async (images: RpcImageInfo[]): Promise<ProcessedDispatchImage[]> => {
   if (!images || images.length === 0) return [];
 
   if (__DEV__) console.log('[DispatchDetailService] Processing images:', images.length);
@@ -115,20 +106,12 @@ const processDispatchImages = async (images: RpcImageInfo[], fromCopy = false): 
   const processedImagesPromises = images.map(async (img) => {
     const pathForSigning = img.storage_path;
     if (!pathForSigning) return null;
-    // A copy-sourced page shows a photo kept on the phone first, and keeps each one it shows from a link.
-    const keptKey = `dispatch-images/${pathForSigning}`;
-    const kept = fromCopy ? await photoFile(keptKey) : null;
-    const signedUrl = kept ?? (fromCopy && isCopyOffline() ? null : await generateSignedUrl(pathForSigning));
-    if (fromCopy && signedUrl && !kept) void keepPhoto(keptKey, signedUrl);
-
-    if (!signedUrl && !fromCopy) {
-      return null;
-    }
+    const signedUrl = await generateSignedUrl(pathForSigning);
+    if (!signedUrl) return null;
 
     const dispatchImage: ProcessedDispatchImage = {
       id: img.id,
-      image_url: signedUrl ?? '',
-      ...(signedUrl ? {} : { needs_connection: true }),
+      image_url: signedUrl,
       file_name: img.original_filename || 'image.jpg',
       file_size: img.file_size || 0,
       mime_type: img.mime_type || 'image/jpeg',
@@ -153,17 +136,6 @@ export const getDispatchDetails = async (dispatchId: string): Promise<DispatchDe
         message: t('errors.dispatch.idRequired'),
         error: t('errors.general.missingParameter')
       };
-    }
-
-    const copy = await readVia('all', forCustomerAccounts(q => readDispatchDetails(q, dispatchId)));
-    if (copy) {
-      const { value, source } = copy;
-      if (value.kind === 'not-found') {
-        return { success: false, message: t('errors.dispatch.noneFound'), error: t('errors.dispatch.notFoundOrDenied'), notFound: true, source };
-      }
-      const dispatch = value.dispatch as unknown as DispatchDetailsWithImages;
-      if (dispatch.images?.length) dispatch.processed_images = await processDispatchImages(dispatch.images, true);
-      return { success: true, data: { dispatch }, message: t('errors.dispatch.detailsFetched'), source, needsServer: copyCarriesFormat3() ? undefined : value.needsServer };
     }
 
     // Get authenticated client with JWT tokens

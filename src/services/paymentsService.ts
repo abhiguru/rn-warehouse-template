@@ -7,9 +7,6 @@
  * saves are (owner rule D22, W22): `runPaymentWrite` below.
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
-import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
-import { readInvoicePayments } from '@/features/phone-copy/reads/invoiceDetails';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { getFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
 import { t } from '@/i18n';
@@ -104,12 +101,6 @@ export function readPayment(value: unknown): PaymentRecord | null {
 
 /** Reads the invoice's payments with `get_invoice_detail`. Throws when the answer cannot be read. */
 export async function getInvoicePayments(invoiceId: string): Promise<InvoicePayments> {
-  // The phone copy answers when it can (WH-348, contract 15): the rows the feed holds, the figures the server sent.
-  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, forCustomerAccounts(q => readInvoicePayments(q, invoiceId)));
-  if (copy?.value) {
-    const fromCopy = copy.value;
-    return { ...readFigures(fromCopy), payments: (Array.isArray(fromCopy.payments) ? fromCopy.payments : []).map(readPayment).filter((p): p is PaymentRecord => p !== null) };
-  }
   const client = await getAuthenticatedClient();
   const { data, error } = await client.rpc('get_invoice_detail', { p_invoice_id: invoiceId });
   if (error) throw new Error(t('payments.section.loadFailed'));

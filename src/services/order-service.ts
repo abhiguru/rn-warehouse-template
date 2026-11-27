@@ -39,10 +39,6 @@ import { serverText } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { refusalOf } from '@/utils/serverRefusal';
 import { backendHasFeature } from '@/config/backendFeatures';
-import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
-import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
-import { ownsInCopy, readForCustomer } from '@/features/phone-copy/reads/customer/customerScope';
-import { readCustomerOrder, readOrderScreenCustomer, readOrderWithItems, readOrdersList } from '@/features/phone-copy/reads/orders';
 
 const orderLog = createLogger('[OrderService]');
 
@@ -193,25 +189,6 @@ export class OrderService {
   ): Promise<OrderServiceResponse<{ order_id: string | null; order_no: string | null; item_count: number }> & { notAvailable?: boolean }> {
     if (!customerId) {
       return { success: false, message: t('errors.customer.idRequired'), error: t('errors.general.missingParameter') };
-    }
-    // The phone copy answers when it can (WH-328): the customer's live order, as the server names it.
-    const copy = await readForCustomer(customerId, { stage: 'all', format: COPY_FORMAT_V3 }, q => readCustomerOrder(q, customerId));
-    if (copy && 'refused' in copy) {
-      return { success: false, message: t('errors.customer.accessDenied'), error: 'CUSTOMER_ACCESS_DENIED' };
-    }
-    if (copy) {
-      const row = copy.value;
-      const orderId = row.exists === true && typeof row.order_id === 'string' ? row.order_id : null;
-      return {
-        success: true,
-        message: '',
-        source: copy.source,
-        data: {
-          order_id: orderId,
-          order_no: orderId ? ((row.order_no as string | null) ?? null) : null,
-          item_count: orderId ? Number(row.item_count) || 0 : 0,
-        },
-      };
     }
     const result = await executeRPC<{ exists?: boolean; order_id?: string | null; order_no?: string | null; item_count?: number }>(
       getAuthenticatedClient,
@@ -398,20 +375,8 @@ export class OrderService {
     orderId: string
   ): Promise<OrderServiceResponse<Order>> {
     try {
-      // The phone copy answers when it can (WH-328): the lines carry the stock less this phone's unsent work.
-      const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, forCustomerAccounts(q => readOrderWithItems(q, orderId)));
-      if (copy?.value.kind === 'not-found') {
-        return {
-          success: false,
-          message: t('errors.general.invalidResponseStructure'),
-          error: t('errors.order.expectedData'),
-          source: copy.source,
-        };
-      }
       const authenticatedClient = await getAuthenticatedClient();
-      const { data, error } = copy?.value.kind === 'found'
-        ? { data: { success: true, data: { order_data: copy.value.order_data, items: copy.value.items }, message: null }, error: null }
-        : await authenticatedClient.rpc('get_order_with_items', { p_order_id: orderId });
+      const { data, error } = await authenticatedClient.rpc('get_order_with_items', { p_order_id: orderId });
 
       if (error) {
         orderLog.debug('The order details were refused or failed', loggableError(error));
@@ -550,7 +515,6 @@ export class OrderService {
         success: true,
         message: t('errors.order.retrieved'),
         data: finalOrderData,
-        ...(copy ? { source: copy.source } : {}),
       };
     } catch (error) {
       console.error('[OrderService] Exception:', error);
@@ -584,39 +548,6 @@ export class OrderService {
       );
       const offset = Math.max(filters?.offset ?? 0, 0);
 
-      // The phone copy answers when it can (WH-328): one source for all the pages of this request. A name filter
-      // (the app never sends one) stays on the server.
-      if (!filters?.customer_name) {
-        const typed = filters?.search?.trim();
-        const request = { customerId: filters?.customer_id === undefined || filters.customer_id === '' ? null : filters.customer_id, hasItems: filters?.has_items === true ? true : null, search: typed === undefined || typed === '' ? null : typed, limit, offset };
-        const copy = await readVia(
-          { stage: 'all', format: COPY_FORMAT_V3 },
-          forCustomerAccounts(async q => {
-            if (request.customerId && !(await ownsInCopy(q, request.customerId))) return { refused: true as const };
-            return { refused: false as const, list: await readOrdersList(q, request) };
-          }),
-          {
-            key: JSON.stringify({ ...request, limit: undefined, offset: undefined }),
-            page: offset > 0 ? 1 : 0,
-          }
-        );
-        if (copy && 'restart' in copy) {
-          return { success: false, message: t('errors.order.fetchListFailed'), copyRestart: true, data: [] };
-        }
-        if (copy) {
-          if (copy.value.refused) {
-            return { success: false, message: t('errors.customer.accessDenied'), error: 'CUSTOMER_ACCESS_DENIED', data: [] };
-          }
-          const { orders, pagination } = copy.value.list;
-          return {
-            success: true,
-            message: t('errors.order.listRetrieved'),
-            data: orders as unknown as RpcOrderListItem[],
-            source: copy.source,
-            metadata: { total_count: pagination.total_count, current_count: orders.length, has_more: pagination.has_more },
-          };
-        }
-      }
       const rpcCall = authenticatedClient.rpc('get_orders_list', {
         p_customer_id: filters?.customer_id || null,
         p_customer_name: filters?.customer_name || null,
@@ -1236,19 +1167,10 @@ export interface OrderScreenCustomer {
 }
 
 /**
- * The order screen's customer record (name, active, deleted_at): from the phone copy when it can answer, else the
- * server's `customers` table. Throws when the record cannot be read; the screen then shows its plain sentence.
+ * The order screen's customer record (name, active, deleted_at), from the server's `customers` table (orders are never
+ * on the phone, WH-381). Throws when the record cannot be read; the screen then shows its plain sentence.
  */
 export async function getOrderScreenCustomer(customerId: string): Promise<OrderScreenCustomer> {
-  const copy = await readVia('stage1', forCustomerAccounts(q => readOrderScreenCustomer(q, customerId)));
-  if (copy) {
-    if (!copy.value) throw new Error('customer not found');
-    return {
-      name: typeof copy.value.name === 'string' ? copy.value.name : null,
-      active: typeof copy.value.active === 'boolean' ? copy.value.active : null,
-      deleted_at: typeof copy.value.deleted_at === 'string' ? copy.value.deleted_at : null,
-    };
-  }
   const client = await getAuthenticatedClient();
   const { data, error } = await client.from('customers').select('name, active, deleted_at').eq('id', customerId).single();
   if (error) throw new Error(error.message);

@@ -39,7 +39,6 @@ import { changeCustomerAction, exportHeaderActions, longestPeriodAction } from '
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
-import { GRN_ACTIVITY_KINDS } from '@/features/reports/reportCopyKinds';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -146,7 +145,6 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const filters = useReportFilters(GRN_ACTIVITY_CUSTOMERS);
   const { period, view } = filters.request;
   const query = useReportQuery<AllGRNActivityData>({
-    copyKinds: GRN_ACTIVITY_KINDS,
     key: [REPORT_ID, 'customers', period.from, period.to],
     fetch: () => getAllGRNActivity({ fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.grnActivity.loadError'),
@@ -264,7 +262,6 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const filters = useReportFilters(GRN_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period, view } = filters.request;
   const query = useReportQuery<GRNActivityData>({
-    copyKinds: GRN_ACTIVITY_KINDS,
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerGRNActivity({ customerId, fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.grnActivity.loadError'),

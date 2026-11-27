@@ -87,7 +87,7 @@ const PAGE_SIZE = 20;
 /** The most rows one read of the list may ask for (the server's own limit). */
 const MAX_READ = 200;
 /** The records of the phone copy the list's rows are made of (WH-348). */
-const LIST_KINDS: ReadonlySet<EntityName> = new Set<EntityName>(['invoice', 'invoice_trl', 'payments', 'customers', 'goodsreceived']);
+const LIST_KINDS: ReadonlySet<EntityName> = new Set<EntityName>(['customers', 'goodsreceived']);
 /** What of the rows shows on screen: a re-read that gives the same replaces nothing. */
 const shownOf = (rows: readonly Invoice[], hasMore: boolean) => JSON.stringify([rows, hasMore]);
 // ============================================================================

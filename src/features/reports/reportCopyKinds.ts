@@ -8,11 +8,5 @@ const GRN_KINDS: readonly EntityName[] = ['customers', 'goodsreceived', 'goodsre
 
 /** Stock summary and item stock: the receipts and lots, and the customers' names. */
 export const STOCK_REPORT_KINDS: readonly EntityName[] = GRN_KINDS;
-/** Stock ageing also counts the dispatches of each lot. */
-export const STOCK_AGING_KINDS: readonly EntityName[] = [...GRN_KINDS, 'dispatch', 'dispatch_trl'];
-/** GRN activity: receipts, lots, photos, invoices and the people named on them. */
-export const GRN_ACTIVITY_KINDS: readonly EntityName[] = [
-  ...GRN_KINDS, 'grn_images', 'invoice', 'dispatch', 'dispatch_trl', 'people', 'user_profiles',
-];
-/** Dispatch activity: dispatches, their lines and the lots they name. */
-export const DISPATCH_ACTIVITY_KINDS: readonly EntityName[] = [...GRN_KINDS, 'dispatch', 'dispatch_trl'];
+/** Stock ageing reads the same records: no dispatch is on the phone (WH-381). */
+export const STOCK_AGING_KINDS: readonly EntityName[] = GRN_KINDS;
