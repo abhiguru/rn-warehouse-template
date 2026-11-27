@@ -10,6 +10,7 @@ import {
   type RPCResult,
 } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
+import { createLogger, loggableError } from '@/utils/logger';
 import { invalidateReportQueries } from '@/lib/queryClient';
 import {
   Order,
@@ -42,6 +43,8 @@ import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { ownsInCopy, readForCustomer } from '@/features/phone-copy/reads/customer/customerScope';
 import { readCustomerOrder, readOrderScreenCustomer, readOrderWithItems, readOrdersList } from '@/features/phone-copy/reads/orders';
+
+const orderLog = createLogger('[OrderService]');
 
 /**
  * The new version of the order line in a server answer (`data.updated_at`, owner decision D1; the answer is the body,
@@ -411,7 +414,7 @@ export class OrderService {
         : await authenticatedClient.rpc('get_order_with_items', { p_order_id: orderId });
 
       if (error) {
-        console.error('[OrderService] RPC Error:', error);
+        orderLog.debug('The order details were refused or failed', loggableError(error));
         return {
           success: false,
           message: t('errors.order.fetchDetailsFailed'),
@@ -628,12 +631,8 @@ export class OrderService {
       const rpcDuration = Date.now() - rpcStartTime;
 
       if (error) {
-        console.error('[OrderService] RPC Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        });
+        // The code only, and below the level that raises a red box on a phone: the screen shows the translated message.
+        orderLog.debug('The orders list was refused or failed', loggableError(error));
 
         // Definitive token/session failures clear local auth immediately.
         handleGlobalAuthError(error);
@@ -1096,7 +1095,7 @@ export class OrderService {
       const data = Array.isArray(response) ? response : response?.data;
 
       if (error) {
-        console.error('[OrderService] RPC Error:', error);
+        orderLog.debug('The available items were refused or failed', loggableError(error));
         return {
           success: false,
           message: t('errors.item.fetchListFailed'),
