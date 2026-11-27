@@ -276,8 +276,9 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
           console.log('[useGRNForm] GRN number generation cancelled - session changed from', currentSessionId, 'to', currentGrnFormSession());
           return;
         }
-        // A newer request put a number in the box meanwhile, or the date went back to the year of the number held.
-        if (request <= appliedRequest.current || request <= supersededUpTo.current) return;
+        // A newer request put a number in the box meanwhile, or the date went back to the year of the number held,
+        // or a resumed draft put the form back in pending/typed mode (WH-161, N5).
+        if (request <= appliedRequest.current || request <= supersededUpTo.current || getFormNumberMode('grn') !== 'online') return;
         setNumberOffer(answered.offer);
         if (header.date) numberYear.current = calculateFinancialYear(header.date);
         // '' is no suggestion (free text, a full series): the box stays empty for the person to type.

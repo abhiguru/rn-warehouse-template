@@ -456,8 +456,9 @@ export function useDispatchForm({
           console.log('[useDispatchForm] Dispatch number generation cancelled - session changed from', currentSessionId, 'to', currentDispatchFormSession());
           return;
         }
-        // A newer request put a number in the box meanwhile, or the date went back to the year of the number held.
-        if (request <= appliedRequest.current || request <= supersededUpTo.current) return;
+        // A newer request put a number in the box meanwhile, or the date went back to the year of the number held,
+        // or a resumed draft put the form back in pending/typed mode (WH-161, N5).
+        if (request <= appliedRequest.current || request <= supersededUpTo.current || getFormNumberMode('dispatch') !== 'online') return;
         setNumberOffer(answered.offer);
         if (fetchDate) numberYear.current = calculateFinancialYear(fetchDate);
         // '' is no suggestion (free text, a full series): the box stays empty for the person to type.

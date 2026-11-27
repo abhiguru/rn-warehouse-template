@@ -13,6 +13,9 @@ import { openNumberMode, type NumberMode } from './offlineNew';
 type DocType = 'grn' | 'dispatch';
 
 const modes: Record<DocType, NumberMode> = { grn: 'online', dispatch: 'online' };
+const generation: Record<DocType, number> = { grn: 0, dispatch: 0 };
+// True when an unfinished form restored its saved mode (N5): a fresh open's decision does not overwrite it.
+const restoredForOpen: Record<DocType, boolean> = { grn: false, dispatch: false };
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void): (() => void) => {
   listeners.add(listener);
@@ -21,18 +24,41 @@ const subscribe = (listener: () => void): (() => void) => {
   };
 };
 
+export const isNumberMode = (value: unknown): value is NumberMode =>
+  value === 'online' || value === 'pending' || value === 'typed';
+
 export const getFormNumberMode = (type: DocType): NumberMode => modes[type];
 
-export function setFormNumberMode(type: DocType, mode: NumberMode): void {
+function applyMode(type: DocType, mode: NumberMode): void {
+  generation[type] += 1;
   if (modes[type] === mode) return;
   modes[type] = mode;
   for (const listener of [...listeners]) listener();
 }
 
+export function setFormNumberMode(type: DocType, mode: NumberMode): void {
+  restoredForOpen[type] = false;
+  applyMode(type, mode);
+}
+
+/** Restores the number mode saved with an unfinished form (WH-161, N5). */
+export function restoreFormNumberMode(type: DocType, mode: NumberMode): void {
+  restoredForOpen[type] = true;
+  applyMode(type, mode);
+}
+
+/** Clears the restored-draft pin when the form closes or starts new. */
+export function clearRestoredFormNumberMode(type: DocType): void {
+  restoredForOpen[type] = false;
+}
+
 /** Decides the mode for a form that opens now, keeps it, and gives it back. */
 export async function decideFormNumberMode(type: DocType): Promise<NumberMode> {
+  if (restoredForOpen[type]) return modes[type];
+  const gen = generation[type];
   const mode = await openNumberMode(type);
-  setFormNumberMode(type, mode);
+  if (restoredForOpen[type] || generation[type] !== gen) return modes[type];
+  applyMode(type, mode);
   return mode;
 }
 

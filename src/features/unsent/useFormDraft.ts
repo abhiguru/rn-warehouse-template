@@ -16,6 +16,7 @@ import { askAlert } from '@/utils/alert';
 import { formatLoadedAt } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
 import { endFormDraft, formDraftEpoch, isSessionEnding, loadFormDraft, saveFormDraft, type FormKind } from './formDrafts';
+import { clearRestoredFormNumberMode, getFormNumberMode, isNumberMode, restoreFormNumberMode } from './formNumberMode';
 
 const logger = createLogger('[form-draft]');
 
@@ -127,6 +128,10 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
       }
       if (!live) return;
       if (answer === 'continue') {
+        const savedMode = isRecord(draft.state) && isNumberMode(draft.state.numberMode) ? draft.state.numberMode : null;
+        if ((kind === 'grn' || kind === 'dispatch') && savedMode !== null) {
+          restoreFormNumberMode(kind, savedMode);
+        }
         if (isDispatchState(draft.state)) store.dispatch(hydrateDispatch(draft.state));
         else if (isGrnState(draft.state)) store.dispatch(hydrateGrn(draft.state));
       }
@@ -154,7 +159,9 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
       if (kept?.epoch !== formDraftEpoch()) return;
       const name = kept.state.header.customer_name;
       const customer = name === '' ? null : name;
-      await saveFormDraft({ kind, grnId, state: kept.state, customer });
+      // N5 (WH-161): keep the form's number mode with the unfinished form so continuing online still stays pending/typed.
+      const stateToSave = kind === 'grn' || kind === 'dispatch' ? { ...kept.state, numberMode: getFormNumberMode(kind) } : kept.state;
+      await saveFormDraft({ kind, grnId, state: stateToSave, customer });
     };
     const flush = async () => {
       await write();
@@ -191,6 +198,7 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
       appState.remove();
       if (flushOpenForm === flush) flushOpenForm = null;
       void write();
+      if (kind === 'grn' || kind === 'dispatch') clearRestoredFormNumberMode(kind);
     };
   }, [on, ready, enabled, kind, grnId, store]);
 
