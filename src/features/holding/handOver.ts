@@ -319,9 +319,12 @@ export async function moveOtherPersonToHolding(subject: string): Promise<MoveOut
       // A photos item still to send keeps the record it follows, and what that follows, on the phone.
       for (let at: ItemRow | undefined = row; at && !keep.has(at.id); at = at.depends_on === null ? undefined : handedById.get(at.depends_on)) keep.add(at.id);
     }
-    const done = handed.filter(row => (row.held_id ?? null) !== null && MOVABLE.includes(row.state));
+    // A row an earlier try already moved is `held` (its photos were still to send); a retry removes it too once nothing follows it.
+    const done = handed.filter(row => (row.held_id ?? null) !== null && (MOVABLE.includes(row.state) || row.state === 'held'));
     for (const row of done) if (keep.has(row.id) && row.kind !== 'photos') await updateItem(row.id, { state: 'held' });
     const gone = done.filter(row => !keep.has(row.id));
+    // `deleteItems` never deletes a `held` row, so a row an earlier try left held is made a plain refused one first; the server has it.
+    for (const row of gone) if (row.state === 'held') await updateItem(row.id, { state: 'refused' });
     const scope = gone[0]?.scope;
     if (scope !== undefined) await deleteItems(scope, gone.map(row => row.id));
     const remaining = (await own()).length;
