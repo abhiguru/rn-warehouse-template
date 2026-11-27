@@ -53,6 +53,8 @@ const mockServer = {
   answers: {} as Record<string, (args: Record<string, any>) => Answer | Promise<Answer>>,
 };
 let mockRole = 'admin';
+const mockStorage = { sign: (path: string): { data: { signedUrl: string } | null; error: unknown } => ({ data: { signedUrl: `https://files.example.test/${path}` }, error: null }) };
+const mockGrn = { answer: (_grnId: string): unknown => ({ success: false, message: 'none', error: 'none' }) };
 
 jest.mock('expo-sqlite', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.sqlite(), { virtual: true });
 jest.mock('expo-secure-store', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.secureStore());
@@ -73,11 +75,11 @@ jest.mock('@/config/supabaseConfig', () => {
     const answer = mockServer.answers[name];
     return answer ? answer(args) : { data: null, error: { message: 'No internet connection', code: 'NETWORK' } };
   };
-  const client = async () => ({ rpc });
+  const client = async () => ({ rpc, storage: { from: () => ({ createSignedUrl: async (path: string) => mockStorage.sign(path) }) } });
   return { ...base, getAuthenticatedClient: client, getSupabaseClient: client, RequestTimeoutError: class RequestTimeoutError extends Error {} };
 });
 jest.mock('@react-native-community/netinfo', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.netinfo());
-jest.mock('@/config/lanTransport', () => ({ ...require('@/tests/phoneCopy/phoneEnv').mockFactories.lan(), setLanContext: () => undefined }));
+jest.mock('@/config/lanTransport', () => ({ ...require('@/tests/phoneCopy/phoneEnv').mockFactories.lan(), setLanContext: () => undefined, viaCurrentPath: (url: string) => url }));
 jest.mock('@/config/sentryConfig', () => ({ setSentryUser: jest.fn(), clearSentryUser: jest.fn(), captureException: jest.fn(), captureMessage: jest.fn() }));
 let mockStore: { getState: () => unknown; subscribe: (l: () => void) => () => void; dispatch: (a: never) => unknown };
 jest.mock('@/store', () => ({ get store() { return mockStore; } }));
@@ -131,6 +133,10 @@ jest.mock('@/hooks/useHaptics', () => ({ triggerLightTap: jest.fn(), triggerSele
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn(), TOAST_DURATION_MS: 4000, registerToastHost: () => () => undefined }));
 jest.mock('@shopify/flash-list', () => require('@/tests/helpers/flashListMock'));
+// The LAN-path link rewrite is lanTransport's own (and tested there); a signed link is shown as it is.
+jest.mock('@/hooks/useLanStatus', () => ({ ...jest.requireActual('@/hooks/useLanStatus'), useViaCurrentPath: (url: string) => url }));
+jest.mock('expo-image', () => ({ Image: 'Image' }));
+jest.mock('@/services/grn-detail-service', () => ({ ...jest.requireActual('@/services/grn-detail-service'), getGRNDetails: async (grnId: string) => mockGrn.answer(grnId) }));
 
 const SERVER = { origin: 'https://warehouse.example.test', instanceId: 'instance-a', displayName: 'Fictional Cold Store', companyName: 'Fictional Cold Store' };
 const HOLDING_HEAD = '00000000009999_wh304_holding_list';
@@ -205,6 +211,8 @@ beforeEach(async () => {
   jest.mocked(showToast).mockClear();
   for (const fn of Object.values(mockRouter)) fn.mockClear();
   mockServer.calls = [];
+  mockStorage.sign = path => ({ data: { signedUrl: `https://files.example.test/${path}` }, error: null });
+  mockGrn.answer = () => ({ success: false, message: 'none', error: 'none' });
   mockServer.answers = {};
   mockParams = {};
   resetEnv();
@@ -557,6 +565,69 @@ describe('A-4: Correct on the Held item', () => {
     expect(screen.getByTestId('quick-change-sheet')).toBeOnTheScreen();
     expect(toasts()).toHaveLength(0);
     expect(mockRouter.back).not.toHaveBeenCalled();
+  });
+});
+
+describe('A-6: the photos of a held item on the Held item page', () => {
+  const photo = (id: string, extra: Record<string, unknown> = {}) => ({ client_photo_id: id, role: 'dispatch', path: `held/h1/${id}.jpg`, state: 'confirmed', line_ref: null, ...extra });
+
+  it('draws a tile for each confirmed photo, read only, from a link signed by storage', async () => {
+    await openItem(listRow('h1'), { photos: [photo('p1'), photo('p2')] });
+    const grid = await screen.findByTestId('held-item-photos');
+    expect(within(grid).getByTestId('held-photo-p1')).toBeOnTheScreen();
+    expect(within(grid).getByTestId('held-photo-p2')).toBeOnTheScreen();
+    expect(within(grid).getByTestId('held-photo-p1')).toHaveAccessibleName('Dispatch photo 1 of 2');
+  });
+
+  it('a photo storage will not sign is the "Photo needs a connection" tile', async () => {
+    mockStorage.sign = () => ({ data: null, error: { message: 'offline' } });
+    await openItem(listRow('h1'), { photos: [photo('p1')] });
+    expect(await screen.findByTestId('held-photo-needs-connection-p1')).toHaveTextContent('Photo needs a connection');
+  });
+
+  it('a photo the recorder\'s phone reported missing is the "Photo missing" tile, with no file asked for', async () => {
+    const signed: string[] = [];
+    mockStorage.sign = path => { signed.push(path); return { data: { signedUrl: `https://files.example.test/${path}` }, error: null }; };
+    await openItem(listRow('h1'), { photos: [photo('p1'), photo('p2', { state: 'missing', path: null })] });
+    expect(await screen.findByTestId('held-photo-missing-p2')).toHaveTextContent('Photo missing');
+    expect(screen.getByTestId('held-photo-p1')).toBeOnTheScreen();
+    expect(signed).toEqual(['held/h1/p1.jpg']);
+  });
+
+  it('Gujarati: "ફોટો ખૂટે છે"', async () => {
+    await setLanguage('gu');
+    await openItem(listRow('h1'), { photos: [photo('p2', { state: 'missing', path: null })] });
+    expect(await screen.findByTestId('held-photo-missing-p2')).toHaveTextContent('ફોટો ખૂટે છે');
+  });
+
+  it('an item with no photos draws no grid', async () => {
+    await openItem(listRow('h1'), { photos: [] });
+    expect(screen.queryByTestId('held-item-photos')).not.toBeOnTheScreen();
+  });
+});
+
+describe('DQ11 (c): the Correct sheet of a held field change names the lot', () => {
+  const row = () => listRow('lc1', { kind: 'lotChange', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['rack'] } } });
+  const extra = { accept_possible: false, body: { lotId: 'l06', grnId: 'g-B1', recordedAt: '2026-11-27T09:00:00+05:30', changes: { rack: { from: 'B-2', to: 'C-2' } } }, current: [] };
+
+  it('"Beans · GRN B1" and the customer, from the lot in the GRN the page loads', async () => {
+    mockGrn.answer = () => ({ success: true, data: { grn: { items: [{ id: 'l06', item_name: 'Beans' }, { id: 'l07', item_name: 'Rice' }] } } });
+    await openItem(row(), extra);
+    await user.press(screen.getByTestId('held-item-correct'));
+    const subtitle = await screen.findByTestId('quick-change-subtitle');
+    expect(within(subtitle).getByText('Beans · GRN B1')).toBeOnTheScreen();
+    expect(within(subtitle).getByText('asha Traders')).toBeOnTheScreen();
+  });
+
+  it('a lot that is gone from the GRN: "GRN B1" and the customer', async () => {
+    mockGrn.answer = () => ({ success: true, data: { grn: { items: [{ id: 'l99', item_name: 'Rice' }] } } });
+    await openItem(row(), extra);
+    await user.press(screen.getByTestId('held-item-correct'));
+    const subtitle = await screen.findByTestId('quick-change-subtitle');
+    expect(within(subtitle).getByText('GRN B1')).toBeOnTheScreen();
+    expect(within(subtitle).queryByText(/Rice/)).not.toBeOnTheScreen();
+    expect(within(subtitle).queryByText(/·/)).not.toBeOnTheScreen();
+    expect(within(subtitle).getByText('asha Traders')).toBeOnTheScreen();
   });
 });
 

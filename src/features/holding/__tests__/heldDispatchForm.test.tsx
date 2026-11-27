@@ -11,6 +11,7 @@ import React from 'react';
 import { render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { DispatchReviewStep } from '@/features/dispatch/screens/DispatchReviewStep';
+import { loadHeldDispatch } from '@/features/holding/heldDispatch';
 import type { NewDispatchBody } from '@/features/unsent/newDispatchKind';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
@@ -69,7 +70,7 @@ jest.mock('@/config/supabaseConfig', () => {
   return {
     beginOperatorMutation: () => jest.fn(),
     getCurrentConfig: () => ({ url: 'https://facility.invalid' }),
-    getAuthenticatedClient: async () => ({ from: builder, rpc: (...args: unknown[]) => mockRpc(...args) }),
+    getAuthenticatedClient: async () => ({ from: builder, rpc: (...args: unknown[]) => mockRpc(...args), storage: { from: () => ({ createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://files.example.test/${path}` }, error: null }) }) } }),
   };
 });
 jest.mock('expo-router', () => ({
@@ -178,5 +179,29 @@ describe('A-4: a held new dispatch in the dispatch form', () => {
     await user.press(screen.getByRole('button', { name: 'Accept with changes' }));
     expect(decideCalls()).toHaveLength(2);
     expect(decideCalls()[1][1].p_decision_key).toBe(decideCalls()[0][1].p_decision_key);
+  });
+});
+
+describe('A-6: the Correct form shows the photos the recorder\'s phone uploaded', () => {
+  it('loads each confirmed photo as a form image with its signed link, and leaves out one reported missing', async () => {
+    mockRpc.mockImplementation(async (name: string) => {
+      if (name !== 'get_held_item') return { data: { success: true }, error: null };
+      const answer = heldAnswer();
+      return {
+        ...answer,
+        data: {
+          ...answer.data,
+          photos: [
+            { client_photo_id: 'p1', role: 'dispatch', path: 'held/h/p1.jpg', state: 'confirmed', line_ref: null },
+            { client_photo_id: 'p2', role: 'dispatch', path: null, state: 'missing', line_ref: null },
+          ],
+        },
+      };
+    });
+    const loaded = await loadHeldDispatch(HELD);
+    if (loaded.kind !== 'loaded') throw new Error('the held dispatch did not load');
+    expect(loaded.images).toEqual([
+      expect.objectContaining({ id: 'held_p1', file_name: 'p1.jpg', image_url: 'https://files.example.test/held/h/p1.jpg', upload_status: 'completed', storage_path: 'held/h/p1.jpg' }),
+    ]);
   });
 });

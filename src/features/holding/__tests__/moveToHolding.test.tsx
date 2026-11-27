@@ -15,6 +15,7 @@ import { render, screen, userEvent } from '@testing-library/react-native';
 import { UnsentItemsScreen } from '@/features/unsent/UnsentItemsScreen';
 import { moveOtherPersonToHolding } from '@/features/holding/handOver';
 import { setLanguage } from '@/i18n';
+import { showToast } from '@/utils/toast';
 
 let mockRole = 'admin';
 let mockHoldingOn = true;
@@ -115,5 +116,42 @@ describe('A-5: Move to the holding list', () => {
     await user.press(screen.getByTestId('unsent-move-to-holding'));
     expect(mockAsk).toHaveBeenCalledTimes(1);
     expect(moveOtherPersonToHolding).not.toHaveBeenCalled();
+  });
+});
+
+describe('DQ11 (Design 7.11b): the Move dialog and a failed move', () => {
+  it('the dialog\'s buttons are Cancel and "Move" (Gujarati "મૂકો"), Move being the second', async () => {
+    await show();
+    await user.press(screen.getByTestId('unsent-move-to-holding'));
+    expect(mockAsk.mock.calls[0][2].map((choice: { text: string }) => choice.text)).toEqual(['Cancel', 'Move']);
+
+    await setLanguage('gu');
+    mockAsk.mockClear();
+    await user.press(screen.getByTestId('unsent-move-to-holding'));
+    expect(mockAsk.mock.calls[0][2][1].text).toBe('મૂકો');
+  });
+
+  it('a failed move says the items are still here and to try again, in a toast', async () => {
+    jest.mocked(moveOtherPersonToHolding).mockResolvedValueOnce({ moved: 0, remaining: 2, failed: 'transient' });
+    jest.mocked(showToast).mockClear();
+    await show();
+    await user.press(screen.getByTestId('unsent-move-to-holding'));
+    expect(showToast).toHaveBeenCalledWith("Couldn't move the items. Check your connection and try again.");
+  });
+
+  it('Gujarati: the failed move\'s toast', async () => {
+    await setLanguage('gu');
+    jest.mocked(moveOtherPersonToHolding).mockResolvedValueOnce({ moved: 0, remaining: 2, failed: 'transient' });
+    jest.mocked(showToast).mockClear();
+    await show();
+    await user.press(screen.getByTestId('unsent-move-to-holding'));
+    expect(showToast).toHaveBeenCalledWith('એન્ટ્રી રોકેલી યાદીમાં મૂકી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.');
+  });
+
+  it('a move that went through shows no failure toast', async () => {
+    jest.mocked(showToast).mockClear();
+    await show();
+    await user.press(screen.getByTestId('unsent-move-to-holding'));
+    expect(showToast).not.toHaveBeenCalled();
   });
 });

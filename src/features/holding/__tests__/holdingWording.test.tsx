@@ -75,3 +75,30 @@ describe('7.11a (b): heldLine counts in Gujarati digits', () => {
     expect(t('components.offlineStatus.heldLine' as never, { count })).toBe(words);
   });
 });
+
+describe('7.11c (b): the footnote of a photos item with a missing file names its document', () => {
+  const missing = (overrides: Partial<UnsentListRow> = {}) =>
+    accepted({ id: 'ph-1', tag: 'sent', sentDoc: undefined, sentNumber: null, title: 'Photos', photoMissing: true, heldId: undefined, ...overrides });
+  const footnote = () => screen.getByTestId('unsent-row-photo-missing-ph-1');
+
+  it('a dispatch: "A photo file is missing on this phone; the dispatch was sent without it."', async () => {
+    await show(missing({ photoMissingDispatch: true }));
+    expect(footnote()).toHaveTextContent('A photo file is missing on this phone; the dispatch was sent without it.');
+  });
+
+  it('a GRN keeps its own sentence: "…; the GRN was sent without it."', async () => {
+    await show(missing());
+    expect(footnote()).toHaveTextContent('A photo file is missing on this phone; the GRN was sent without it.');
+  });
+
+  it('Gujarati dispatch: "આ ફોનમાં એક ફોટો ફાઇલ નથી; જાવક તેના વગર મોકલાઈ."', async () => {
+    await setLanguage('gu');
+    await show(missing({ photoMissingDispatch: true }));
+    expect(footnote()).toHaveTextContent('આ ફોનમાં એક ફોટો ફાઇલ નથી; જાવક તેના વગર મોકલાઈ.');
+  });
+
+  it('no footnote while no file is missing', async () => {
+    await show(missing({ photoMissing: false, photoMissingDispatch: true }));
+    expect(screen.queryByTestId('unsent-row-photo-missing-ph-1')).not.toBeOnTheScreen();
+  });
+});
