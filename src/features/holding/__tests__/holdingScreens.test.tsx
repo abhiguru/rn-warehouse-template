@@ -513,6 +513,7 @@ describe('A-4: Correct on the Held item', () => {
   it.each([
     ['newGrn', '/grn-edit/[id]/step1'],
     ['newDispatch', '/dispatch-edit/[id]/step1'],
+    ['grnEdit', '/grn-edit/[id]/step1'],
   ])('%s: Correct opens the kind\'s own form on the held id, and asks the server for nothing', async (kind, pathname) => {
     await openItem(listRow('h9', { kind }), { accept_possible: false });
     await user.press(screen.getByTestId('held-item-correct'));
@@ -520,9 +521,14 @@ describe('A-4: Correct on the Held item', () => {
     expect(decideCalls()).toHaveLength(0);
   });
 
-  it.each(['grnEdit', 'photos'])('%s: there is no Correct button', async kind => {
-    await openItem(listRow('h9', { kind, reason: 'other', reason_data: {} }), { accept_possible: true });
+  it('photos: there is no Correct button', async () => {
+    await openItem(listRow('h9', { kind: 'photos', reason: 'other', reason_data: {} }), { accept_possible: true });
     expect(screen.queryByTestId('held-item-correct')).not.toBeOnTheScreen();
+  });
+
+  it('grnEdit: Correct is offered, next to Accept and Reject', async () => {
+    await openItem(listRow('h9', { kind: 'grnEdit', reason: 'other', reason_data: {} }), { accept_possible: true });
+    expect(screen.getByTestId('held-item-correct')).toBeOnTheScreen();
   });
 
   it('a field change: Correct opens the sheet with the held value and "Accept with changes"; Save decides with the corrected body, once', async () => {
@@ -602,6 +608,77 @@ describe('A-6: the photos of a held item on the Held item page', () => {
   it('an item with no photos draws no grid', async () => {
     await openItem(listRow('h1'), { photos: [] });
     expect(screen.queryByTestId('held-item-photos')).not.toBeOnTheScreen();
+  });
+});
+
+describe('DQ13 (Design 7.11d): the Held item page of a held GRN edit', () => {
+  const GRN = 'g-B1';
+  const editRow = () => listRow('ge1', { kind: 'grnEdit', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['customer_id', 'linesAdded'] } } });
+  const editBody = (extra: Record<string, unknown> = {}) => ({
+    v: 1, grnId: GRN, loadedAt: '2026-11-27T08:00:00Z', recordedAt: '2026-11-27T09:00:00+05:30',
+    header: { customer_id: { from: { id: 'c1', name: 'asha Traders' }, to: { id: 'c2', name: 'Beta Traders' } } },
+    linesAdded: [{ clientLineId: 'n1', item_id: 'i9', item_name: 'Potato', packaging: 'Bag', qty: 40, weight: 0, rack: null, package_mark: 'AB-12' }],
+    linesRemoved: [{ lotId: 'l07', item_name: 'Rice', qty: 30 }],
+    ...extra,
+  });
+  const open = (body: unknown = editBody()) => openItem(editRow(), { accept_possible: true, body });
+
+  it('lists the lines added and removed under their titles, "item, mark, quantity", and a changed header field by its form label', async () => {
+    mockGrn.answer = () => ({ success: true, data: { grn: { items: [{ id: 'l07', item_name: 'Rice', qty: 30, packaging: 'Bag', package_mark: 'K-1' }] } } });
+    await open();
+    const added = screen.getByTestId('held-item-linesAdded');
+    expect(within(added).getByRole('header')).toHaveTextContent('Lines added');
+    expect(within(added).getByText(/^Potato, AB-12, 40 /)).toBeOnTheScreen();
+    const removed = screen.getByTestId('held-item-linesRemoved');
+    expect(within(removed).getByRole('header')).toHaveTextContent('Lines removed');
+    expect(within(removed).getByText(/^Rice, K-1, 30 /)).toBeOnTheScreen();
+    expect(within(screen.getByTestId('held-item-record')).getByText('Customer Beta Traders')).toBeOnTheScreen();
+  });
+
+  it('a removed line the server still holds with the same quantity has no "Now on the server" line, and an added line never has one', async () => {
+    mockGrn.answer = () => ({ success: true, data: { grn: { items: [{ id: 'l07', item_name: 'Rice', qty: 30, packaging: 'Bag', package_mark: null }] } } });
+    await open();
+    await screen.findByTestId('held-item-linesRemoved');
+    expect(screen.queryByTestId('held-item-line-current')).not.toBeOnTheScreen();
+  });
+
+  it('a removed line whose quantity differs on the server: "Now on the server: Rice 35 …"', async () => {
+    mockGrn.answer = () => ({ success: true, data: { grn: { items: [{ id: 'l07', item_name: 'Rice', qty: 35, packaging: 'Bag', package_mark: null }] } } });
+    await open();
+    expect(await screen.findByTestId('held-item-line-current')).toHaveTextContent(/^Now on the server: Rice 35 /);
+  });
+
+  it('a removed line that is gone from the server: "Already removed on the server"', async () => {
+    mockGrn.answer = () => ({ success: true, data: { grn: { items: [{ id: 'l99', item_name: 'Beans', qty: 1, packaging: 'Bag', package_mark: null }] } } });
+    await open();
+    expect(await screen.findByTestId('held-item-line-current')).toHaveTextContent('Already removed on the server');
+  });
+
+  it('Gujarati: the group titles and "Already removed on the server" in Design\'s words', async () => {
+    await setLanguage('gu');
+    mockGrn.answer = () => ({ success: true, data: { grn: { items: [{ id: 'l99', item_name: 'Beans', qty: 1, packaging: 'Bag', package_mark: null }] } } });
+    await open();
+    expect(within(screen.getByTestId('held-item-linesAdded')).getByRole('header')).toHaveTextContent('આઇટમ ઉમેરી');
+    expect(within(screen.getByTestId('held-item-linesRemoved')).getByRole('header')).toHaveTextContent('આઇટમ કાઢી');
+    expect(await screen.findByTestId('held-item-line-current')).toHaveTextContent('સર્વર પર પહેલેથી કાઢી નાખેલી');
+  });
+
+  it('a group with no lines is not drawn', async () => {
+    await open(editBody({ linesAdded: undefined, linesRemoved: undefined }));
+    expect(screen.queryByTestId('held-item-linesAdded')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('held-item-linesRemoved')).not.toBeOnTheScreen();
+  });
+
+  it('offline: the needs-connection state replaces the item, with no Correct, and nothing is asked or written', async () => {
+    mockNet.offline = true;
+    await setReachable(false);
+    engine.setCopyOffline(true);
+    mockParams = { id: 'ge1' };
+    mockServer.answers.get_held_item = () => itemAnswer(editRow(), { accept_possible: true, body: editBody() });
+    await show(HeldItemScreen());
+    expect(await screen.findByTestId('held-item-needs-connection')).toBeOnTheScreen();
+    expect(screen.queryByTestId('held-item-correct')).not.toBeOnTheScreen();
+    expect(mockServer.calls).toHaveLength(0);
   });
 });
 
