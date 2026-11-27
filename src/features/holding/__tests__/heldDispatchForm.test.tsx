@@ -96,6 +96,8 @@ jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError
 jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
   uploadDeferredDispatchImages: jest.fn(), unpreparedDispatchPhotos: () => 'ready', generateTempDispatchId: () => 'temp_dispatch_fixture',
   deleteDispatchImage: jest.fn(), prepareDispatchImageForDeferredUpload: jest.fn(), uploadDispatchImage: jest.fn(),
+  // A held dispatch photo is signed through the real dispatch signing service (heldPhotoLinks); only storage's answer is faked, above.
+  getDispatchImageSignedUrl: (...args: [string, number?]) => jest.requireActual('@/features/dispatch/services/dispatchImageService').getDispatchImageSignedUrl(...args),
 }));
 jest.mock('@/features/dispatch/services/grnDetailService', () => ({ getGRNDetailByNumber: jest.fn().mockResolvedValue({ success: true, data: { items: [] } }) }));
 jest.mock('@/services/print-service', () => ({ printDispatchRange: jest.fn() }));
