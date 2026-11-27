@@ -5,6 +5,7 @@
  * item, and how a decision's answer reads.
  */
 import { t as tr, formatIdentifier } from '@/i18n';
+import { refusalFamilyOf } from '@/features/unsent/refusalTags';
 import { describeReason } from './heldReason';
 import { decideHeldItem, type HeldItemDetail } from './holdingApi';
 
@@ -44,7 +45,7 @@ export async function acceptWithChanges(item: Pick<HeldItemDetail, 'id' | 'kind'
     return { kind: 'alreadyDecided', toast: tr(key, { name: outcome.decidedByName ?? '' }) };
   }
   if (outcome.kind === 'refused') {
-    const words = describeReason(outcome.code, { kind: item.kind, what: item.what, customer: item.customerName, data: outcome.data, followsWhat: null });
+    const words = describeReason(refusalFamilyOf(outcome.code), { kind: item.kind, what: item.what, customer: item.customerName, data: outcome.data, followsWhat: null });
     return { kind: 'refused', message: [words.sentence ?? words.tag, words.hint].join(' ') };
   }
   return { kind: 'failed' };
