@@ -7,6 +7,7 @@ import { COPY_FORMAT_V3 } from '../copySchema';
 import { enCompare, parseTimestampUs } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
 import { getUnsentOverlay, netStock } from '../unsentOverlay';
+import { lotsOfGrn, removedLotIds } from './lotOverlay';
 import { customerDetails, itemDetailsById, supervisorDetails } from './documentParts';
 import { compareNullsLast, compareNumbers, compareText, comparePhotos, distinctSorted, numberOf, parseRow, parseRows, pick, sumMoney, textOf, type Row } from './rows';
 
@@ -69,7 +70,10 @@ export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnD
   const gOver = { ...g, ...overlay.grn(grnId) };
 
   const lotRecords = await q.all<{ row: string }>('SELECT row FROM goodsreceived_trl WHERE gr_id = ? ORDER BY id', [grnId]);
-  const lots: Row[] = parseRows(lotRecords).map(l => ({ ...l, ...overlay.lot(String(l.id)), stock: netStock(overlay, String(l.id), numberOf(l.stock)) }));
+  const lots: Row[] = lotsOfGrn(parseRows(lotRecords), grnId, overlay, true);
+  // A line the person removed and has not sent stays in its place, but the totals are without it (Design 6.x DQ4).
+  const removedIds = new Set(removedLotIds(overlay, grnId));
+  const counted = lots.filter(l => !removedIds.has(String(l.id)));
   const lotIds = lots.map(l => String(l.id));
   const items = await itemDetailsById(q, [...new Set(lots.map(l => textOf(l.item_id)).filter((id): id is string => id !== null))]);
 
@@ -98,9 +102,9 @@ export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnD
   const lock = await q.get<{ row: string }>('SELECT row FROM grn_lock WHERE id = ?', [grnId]);
   const lockRow = lock ? parseRow(lock.row) : null;
 
-  const weights = lots.reduce((sum, l) => sum + (numberOf(l.weight) ?? 0) * (numberOf(l.qty) ?? 0), 0);
+  const weights = counted.reduce((sum, l) => sum + (numberOf(l.weight) ?? 0) * (numberOf(l.qty) ?? 0), 0);
   const dispatchIds = new Set(dispatched.map(line => line.disp_id));
-  const itemIdsOfLots = new Set(lots.map(l => textOf(l.item_id)).filter(id => id !== null));
+  const itemIdsOfLots = new Set(counted.map(l => textOf(l.item_id)).filter(id => id !== null));
   const grn: Row = {
     id: g.id,
     gr_no: pick(gOver, 'gr_no'),
@@ -130,11 +134,11 @@ export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnD
     })),
     statistics: {
       total_items: itemIdsOfLots.size,
-      total_qty: lots.reduce((sum, l) => sum + (numberOf(l.qty) ?? 0), 0),
-      total_stock: lots.reduce((sum, l) => sum + (numberOf(l.stock) ?? 0), 0),
+      total_qty: counted.reduce((sum, l) => sum + (numberOf(l.qty) ?? 0), 0),
+      total_stock: counted.reduce((sum, l) => sum + (numberOf(l.stock) ?? 0), 0),
       total_weight: weights,
       total_dispatched: totalDispatched,
-      has_out_of_stock: lots.some(l => (numberOf(l.stock) ?? 0) <= 0),
+      has_out_of_stock: counted.some(l => (numberOf(l.stock) ?? 0) <= 0),
     },
     invoices_summary: {
       total_invoices: live.length,

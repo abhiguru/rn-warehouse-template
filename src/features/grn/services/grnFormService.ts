@@ -20,6 +20,12 @@ import {
   type PendingGRNPhoto,
 } from './imageUploadService';
 import { isTemporaryGRNImageId } from './imageId';
+import { backendHasFeature } from '@/config/backendFeatures';
+import { hasCapability } from '@/config/facilityCapabilities';
+import { readGrnEditForm } from '@/features/phone-copy/reads/grnEditForm';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { isCopyOffline } from '@/features/phone-copy/syncEngine';
+import { firstDispatchDayOf, invoiceRefOf, locksOfLines, updatedAtOf } from './grnEditState';
 // M3 Fix: Import executeRPC for potential future refactoring
 // Note: Current RPC methods have custom error handling (E5 fix) or extensive debug logging
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
@@ -28,7 +34,7 @@ import { isLostAnswer } from '@/utils/lostAnswer';
 import { isServerRefusal, reportSaveError } from '@/utils/reportOutcome';
 import { forgetUnfinishedSave, rememberUnfinishedSave } from '@/services/unfinishedSaves';
 import { possibleDuplicateOf, type PossibleDuplicate } from '@/utils/possibleDuplicate';
-import { t, formatIdentifier } from '@/i18n';
+import { t } from '@/i18n';
 import { REFUSAL, refusalOf, type ServerRefusal } from '@/utils/serverRefusal';
 import { isNumberFormatRefusal } from '@/utils/numberFormatRefusal';
 import { emptyAnswerAsError, isUnsettledFailure, serverText, withHttpStatus } from '@/utils/serverText';
@@ -1020,9 +1026,6 @@ export interface GRNEditState {
   lines: Map<string, GRNLineLocks>;
 }
 
-const textOrUndefined = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim() !== '' ? value : typeof value === 'number' ? String(value) : undefined;
-
 /** The edit state of a GRN, or null when this server does not have the function (the form then opens as it did before). */
 const readGrnEditState = async (
   authenticatedClient: Awaited<ReturnType<typeof getAuthenticatedClient>>,
@@ -1043,36 +1046,47 @@ const readGrnEditState = async (
     throw new Error(serverText(answer?.message ?? answer?.error, t('grn.form.loadFailed')));
   }
   const data = answer.data && typeof answer.data === 'object' ? answer.data : {};
-  const invoice =
-    data.invoice && typeof data.invoice === 'object' && data.invoice.id
-      ? {
-          id: String(data.invoice.id),
-          invNo: formatIdentifier(textOrUndefined(data.invoice.invoice_label) ?? textOrUndefined(data.invoice.inv_no) ?? ''),
-        }
-      : null;
-  const lines = new Map<string, GRNLineLocks>();
-  for (const line of Array.isArray(data.lines) ? data.lines : []) {
-    if (!line || typeof line.id !== 'string') continue;
-    const dispatchedQty = Number(line.dispatched_qty);
-    lines.set(line.id, {
-      dispatched: Number.isFinite(dispatchedQty) && dispatchedQty > 0,
-      hasHistory: line.has_history === true,
-      invoiced: line.on_invoice === true,
-      invoiceNo: textOrUndefined(line.invoice_label) ?? textOrUndefined(line.invoice_no),
-      onOrder: line.on_order === true,
-      customerName: textOrUndefined(line.order_customer_name),
-    });
-  }
   return {
-    updatedAt: typeof data.updated_at === 'string' && data.updated_at !== '' ? data.updated_at : null,
-    invoice,
-    firstDispatchDate: typeof data.first_dispatch_date === 'string' && data.first_dispatch_date !== '' ? data.first_dispatch_date.slice(0, 10) : null,
-    lines,
+    updatedAt: updatedAtOf(data.updated_at),
+    invoice: invoiceRefOf(data.invoice),
+    firstDispatchDate: firstDispatchDayOf(data.first_dispatch_date),
+    lines: locksOfLines(data.lines),
   };
+};
+
+/** The "Edit GRN" form's data from the phone copy; the failure envelope when the copy is not ready or has no such GRN. */
+const loadGRNDataFromCopy = async (grnId: string) => {
+  const failure = { success: false as const, error: t('components.offlineRead.screenNeedsConnection') };
+  try {
+    const copy = await readVia('all', q => readGrnEditForm(q, grnId));
+    const form = copy?.value;
+    if (!form) return failure;
+    return {
+      success: true as const,
+      data: {
+        header: form.header,
+        items: form.items,
+        grnRates: grnRatesFromDetails(form.rates),
+        grnInvoiced: form.grnInvoiced,
+        grnImported: form.grnImported,
+        updatedAt: form.updatedAt,
+        invoice: form.invoice,
+        firstDispatchDate: form.firstDispatchDate,
+        source: 'copy' as const,
+        ratesNeedServer: true as const,
+      },
+    };
+  } catch (error) {
+    log.error('The GRN could not be read from the phone copy', loggableError(error));
+    return failure;
+  }
 };
 
 // Load GRN data for editing
 export const loadGRNData = async (grnId: string) => {
+  // WH-303: with no connection (and a server that takes the edit as field changes) the form reads the phone copy; while the
+  // server is reachable the code below runs as it always did, so its version token is never a minute old.
+  if (hasCapability('sync') && backendHasFeature('grnFieldChanges') && isCopyOffline()) return loadGRNDataFromCopy(grnId);
   try {
 
     // Use authenticated client to ensure RLS policies are satisfied

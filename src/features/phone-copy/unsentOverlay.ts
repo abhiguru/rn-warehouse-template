@@ -71,6 +71,8 @@ export interface UnsentOverlay {
   /** Lines an unsent edit adds to a GRN, and the lot ids it removes. */
   lotsAdded(grnId: string): readonly Row[];
   lotsRemoved(grnId: string): readonly string[];
+  /** Lot ids an edit removed that is sent: the row is gone from the screen until the copy has the delete (WH-303). */
+  lotsGone?(grnId: string): readonly string[];
 }
 
 const EMPTY_FIELDS: ReadonlyMap<string, Fields> = new Map();
@@ -90,6 +92,7 @@ const NOTHING: UnsentOverlay = {
   newDocuments: () => [],
   lotsAdded: () => [],
   lotsRemoved: () => [],
+  lotsGone: () => [],
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
@@ -159,6 +162,7 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
   const documents: NewDocRow[] = [];
   const added = new Map<string, Row[]>();
   const removed = new Map<string, string[]>();
+  const gone = new Map<string, string[]>();
   const lotFields = new Map<string, { lotId: string; grnId: string; label: string; from: unknown; to: unknown; state: 'notSent' | 'sending' }>();
   // One row, one marker: "not sent" wins over "sending" when two items change the same record.
   const mark = (key: string, state: 'notSent' | 'sending') => {
@@ -182,9 +186,14 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
     mergeInto(lots, part.lot);
     mergeInto(dispatches, part.dispatch);
     for (const [grnId, rowsAdded] of Object.entries(part.lotsAdded ?? {})) added.set(grnId, [...(added.get(grnId) ?? []), ...rowsAdded]);
-    for (const [grnId, ids] of Object.entries(part.lotsRemoved ?? {})) removed.set(grnId, [...(removed.get(grnId) ?? []), ...ids]);
+    for (const [grnId, ids] of Object.entries(part.lotsRemoved ?? {})) {
+      const into = unsent ? removed : gone;
+      into.set(grnId, [...(into.get(grnId) ?? []), ...ids]);
+    }
     if (!unsent) continue;
     add(own, part.lessUnsent);
+    for (const rowsAdded of Object.values(part.lotsAdded ?? {})) for (const lot of rowsAdded) mark(`lot:${String(lot.id)}`, row.state === 'sending' ? 'sending' : 'notSent');
+    for (const ids of Object.values(part.lotsRemoved ?? {})) for (const lotId of ids) mark(`lot:${lotId}`, row.state === 'sending' ? 'sending' : 'notSent');
     documents.push(...(part.newDocuments ?? []));
     const state = row.state === 'sending' ? 'sending' : 'notSent';
     for (const id of Object.keys(part.grn ?? {})) mark(`grn:${id}`, state);
@@ -209,7 +218,7 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
     const key = `grn:${entry.grnId}`;
     changed.set(key, (changed.get(key) ?? new Set<string>()).add(entry.label));
   }
-  if (grns.size + lots.size + dispatches.size + own.size + others.size + documents.length + added.size + removed.size === 0) {
+  if (grns.size + lots.size + dispatches.size + own.size + others.size + documents.length + added.size + removed.size + gone.size === 0) {
     return { overlay: NOTHING, touched };
   }
   const deductions = new Map<string, number>();
@@ -228,6 +237,7 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
     newDocuments: kind => documents.filter(doc => doc.kind === kind),
     lotsAdded: id => added.get(id) ?? [],
     lotsRemoved: id => removed.get(id) ?? [],
+    lotsGone: id => gone.get(id) ?? [],
   };
   return { overlay, touched };
 }
