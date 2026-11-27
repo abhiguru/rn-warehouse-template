@@ -48,6 +48,8 @@ type GrnHeaderStepProps = {
   mode: 'create' | 'edit';
 };
 
+import { useFormNumberMode, useNumberModeHelp } from '@/features/unsent/formNumberMode';
+
 export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -70,6 +72,11 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
     resetFormState,
   } = useGRNForm({ mode, grnIdParam: id });
 
+  // The server gives the number at send (WH-161): the box is read-only and says so, with its helper line.
+  const numberMode = useFormNumberMode('grn');
+  const numberPending = isCreateMode && numberMode === 'pending';
+  const modeHelp = useNumberModeHelp('grn');
+
   // Items still needed for dispatched check
   const items = useAppSelector(selectGRNFormItems);
   const { userProfile } = useAppSelector((state) => state.auth);
@@ -83,7 +90,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   const loadedDate = useAppSelector(selectGRNLoadedDate);
   const dateLocked = !isCreateMode && editInvoice !== null;
   // Why the box is empty, when the facility's numbering offered no number (typed by hand, or the series is used up).
-  const numberNote = isCreateMode && !isGeneratingNumber && !header.gr_no && !validationErrors.gr_no ? numberBoxNote('grn', numberReason) : null;
+  const numberNote = (isCreateMode ? modeHelp : null) ?? (isCreateMode && !isGeneratingNumber && !header.gr_no && !validationErrors.gr_no ? numberBoxNote('grn', numberReason) : null);
 
   // Local UI state (not form data)
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -303,7 +310,17 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
               {renderLabel(tr('common.grnNumber'), true)}
               {/* The box and the lines under it, the block the wizard bar keeps above itself: in a row beside the date this field can be stretched, so not the field's own View. */}
               <View nativeID={FIELD_BLOCK_ID}>
-                {isCreateMode && isGeneratingNumber ? (
+                {numberPending ? (
+                  <View
+                    style={[styles.input, styles.rowInput, styles.inputReadOnly]}
+                    testID="grn-header-number-pending"
+                    accessible
+                    accessibilityLabel={`${tr('common.grnNumber')}, ${tr('offline.offlineNew.numberPending')}`}
+                  >
+                    <Icon name="lock-outline" size={iconSize.md} color={t.icon.secondary} />
+                    <Text style={[styles.grNoTextInput, { color: t.text.secondary }]}>{tr('offline.offlineNew.numberPending')}</Text>
+                  </View>
+                ) : isCreateMode && isGeneratingNumber ? (
                   <View
                     style={[styles.input, styles.loadingInputContainer]}
                     accessibilityLabel={tr('grn.header.gettingNumber')}

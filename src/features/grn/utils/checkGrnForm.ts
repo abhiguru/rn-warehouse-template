@@ -9,6 +9,8 @@ export type GrnFormCheck = { isValid: boolean; errors: Record<string, string> };
 
 export type GrnCheckScope = {
   isCreateMode: boolean;
+  /** The server gives the number at send (WH-161): the box is empty on purpose, so "number required" does not apply. */
+  numberPending?: boolean;
 };
 
 export const checkGrnForm = async (
@@ -21,6 +23,10 @@ export const checkGrnForm = async (
   else if (step === 2) result = await validateStep2({ items: data.items }, { keepWeight: true });
   else result = await validateStep3({ header: data.header, items: data.items });
 
+  if (scope.numberPending) {
+    const errors = Object.fromEntries(Object.entries(result.errors).filter(([field]) => field !== 'gr_no'));
+    result = { isValid: Object.keys(errors).length === 0, errors };
+  }
   if (scope.isCreateMode) return result;
   return withoutStoredNumberError(result);
 };
