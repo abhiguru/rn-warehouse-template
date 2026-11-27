@@ -63,6 +63,8 @@ interface GRNOverviewTabProps {
   ratesNeedConnection?: boolean;
   /** The phone is offline and reads its copy: every action needs the server. */
   needsConnection?: boolean;
+  /** Why they wait, when it is not "Needs a connection" (WH-161). */
+  needsConnectionNote?: string;
   /** What the GRN's items are counted in (see sharedPackaging): the rates note says "per box" for boxes. */
   packaging?: string;
   /** What each lot (GRN item id) is counted in, for the Your-rate page. */
@@ -91,6 +93,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   rates,
   ratesNeedConnection = false,
   needsConnection = false,
+  needsConnectionNote,
   packaging,
   packagingByLot,
 }) => {
@@ -194,6 +197,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
         // deleted): the person is asked once, not twice.
         confirmDelete={false}
         needsConnectionTestId={needsConnection ? 'grn-details-bottom-bar-needs-connection' : undefined}
+        needsConnectionNote={needsConnectionNote}
       />
 
       {/* Bottom Spacing */}

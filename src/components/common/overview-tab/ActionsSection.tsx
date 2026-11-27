@@ -75,6 +75,8 @@ interface ActionsSectionProps {
    * reason in its screen-reader label, and one line above them says so once. The value is that line's testID.
    */
   needsConnectionTestId?: string;
+  /** Why the actions wait, when it is not "Needs a connection" (a document only on this phone: "Available once this is sent", WH-161). */
+  needsConnectionNote?: string;
   /** testIDs of the buttons: `<prefix>-share-pdf`, `-print`, `-cancel` (the second action) and `-delete` (WH-348). */
   testIDPrefix?: string;
 }
@@ -99,6 +101,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   deleteIcon = 'trash-can-outline',
   secondAction,
   needsConnectionTestId,
+  needsConnectionNote,
   testIDPrefix,
 }) => {
   const idOf = (name: string): string | undefined => (testIDPrefix ? `${testIDPrefix}-${name}` : undefined);
@@ -115,7 +118,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   // An invoice that is being deleted or cancelled is not edited, and neither action starts over the other.
   const needsServer = needsConnectionTestId !== undefined;
   const busyAny = isDeleting || !!secondAction?.busy || needsServer;
-  const labelled = (label: string) => (needsServer ? needsConnectionLabel(label) : label);
+  const labelled = (label: string) => (needsServer ? (needsConnectionNote ? `${label}, ${needsConnectionNote.charAt(0).toLowerCase()}${needsConnectionNote.slice(1)}` : needsConnectionLabel(label)) : label);
 
   // Don't render if no actions available
   if (!showShareButton && !showPrintButton && !showDeleteButton && !showSecondAction) {
@@ -159,7 +162,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
     <>
       <SectionHeader title={t('components.actions.title')} inset={false} />
       <View style={overviewStyles.actionsContainer}>
-        {needsServer ? <NeedsConnectionLine testID={needsConnectionTestId} text={t('components.offlineRead.needsConnection')} /> : null}
+        {needsServer ? <NeedsConnectionLine testID={needsConnectionTestId} text={needsConnectionNote ?? t('components.offlineRead.needsConnection')} /> : null}
         {/* Share PDF Button - Secondary Tint */}
         {showShareButton && (
           <Pressable

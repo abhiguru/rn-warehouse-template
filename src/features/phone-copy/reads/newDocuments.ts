@@ -69,7 +69,8 @@ function listRowOf(doc: NewDocRow, line: Row): GRNItem {
   return {
     id: doc.localId,
     grn_id: doc.localId,
-    gr_no: typeof doc.number === 'string' ? doc.number : null,
+    // An empty number is a real receipt to the list (it stays visible); the card says "Number when sent" for it (WH-161).
+    gr_no: typeof doc.number === 'string' ? doc.number : '',
     date: header.date ?? null,
     customer_id: header.customer_id ?? null,
     customer_name: header.customer_name ?? null,

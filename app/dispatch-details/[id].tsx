@@ -68,6 +68,7 @@ import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
 import type { EntityName } from '@/features/phone-copy/copySchema';
 import { UnsentDetailsStrip } from '@/features/unsent/UnsentMarkers';
 import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { onceSentLabel, useNewDocumentActions } from '@/features/unsent/UnsentMarkers';
 
 /** The records this page reads from the phone copy: a sync that changed one of them reads the page again. */
 const DISPATCH_PAGE_KINDS: readonly EntityName[] = [
@@ -124,7 +125,9 @@ function DispatchDetailScreen() {
   // WH-299: the page was read from the phone copy, which has no invoice amounts; offline, every action needs the server.
   const [amountsNeedServer, setAmountsNeedServer] = useState(false);
   const fromCopyRef = useRef(false);
-  const needsConnection = useNeedsConnection();
+  // A dispatch that exists only on this phone: its actions wait for the server, whatever the connection (WH-161, Design 10.3).
+  const newDocument = useNewDocumentActions('dispatch', String(id));
+  const needsConnection = useNeedsConnection() || newDocument.isNew;
   const [isDeletingImage, setIsDeletingImage] = useState(false);
   // A delete is running (the ref is read by the Back key and by a second tap, the state draws the button)
   const [isDeleting, setIsDeleting] = useState(false);
@@ -616,7 +619,7 @@ function DispatchDetailScreen() {
                 type="tertiary"
                 onPress={handleEditDispatch}
                 disabled={isDeleting || isCheckingDelete || needsConnection}
-                accessibilityLabel={needsConnection ? needsConnectionLabel(tr('common.edit')) : undefined}
+                accessibilityLabel={needsConnection ? (newDocument.note ? onceSentLabel(tr('common.edit'), newDocument.note) : needsConnectionLabel(tr('common.edit'))) : undefined}
               >
                 {tr('common.edit')}
               </Button>
@@ -680,6 +683,7 @@ function DispatchDetailScreen() {
               is_share_loading={isShareLoading}
               onPrint={canPrint ? handlePrint : undefined}
               needs_connection={needsConnection}
+              needs_connection_note={newDocument.note}
             />
           )}
 

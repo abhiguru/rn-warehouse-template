@@ -88,7 +88,7 @@ import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
 import { ReplacedStrip } from '@/components/grn-details/ReplacedStrip';
 import { markGrnReplacementsChecked } from '@/services/replacedEntriesService';
-import { UnsentDetailsStrip, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
+import { onceSentLabel, UnsentDetailsStrip, useNewDocumentActions, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
 import { useQuickChange } from '@/features/quick-change/useQuickChange';
 
 const log = createLogger('grn');
@@ -210,12 +210,15 @@ function GRNDetailScreen() {
   // WH-299: the page was read from the phone copy, which has no rates; offline, every action needs the server.
   const [ratesNeedServer, setRatesNeedServer] = useState(false);
   const fromCopyRef = useRef(false);
-  const needsConnection = useNeedsConnection();
+  // A GRN that exists only on this phone: its actions wait for the server, whatever the connection (WH-161, Design 10.3).
+  const newDocument = useNewDocumentActions('grn', String(id));
+  const phoneNeedsConnection = useNeedsConnection();
+  const needsConnection = phoneNeedsConnection || newDocument.isNew;
   const unsentOverlay = useUnsentOverlay();
   // WH-303: marking the replaced entries as checked (administrators), and whether that is being sent.
   const [markingChecked, setMarkingChecked] = useState(false);
   // WH-303: with a server that takes the edit as field changes, Edit works with no connection (the form reads the phone copy).
-  const editNeedsConnection = needsConnection && !(hasCapability('sync') && backendHasFeature('grnFieldChanges'));
+  const editNeedsConnection = newDocument.isNew || (phoneNeedsConnection && !(hasCapability('sync') && backendHasFeature('grnFieldChanges')));
 
   // Check edit permissions
   useEffect(() => {
@@ -952,7 +955,7 @@ function GRNDetailScreen() {
                 type="tertiary"
                 onPress={handleEditGRN}
                 disabled={isDeleting || deleteChecking || editNeedsConnection}
-                accessibilityLabel={editNeedsConnection ? needsConnectionLabel(tr('common.edit')) : undefined}
+                accessibilityLabel={editNeedsConnection ? (newDocument.note ? onceSentLabel(tr('common.edit'), newDocument.note) : needsConnectionLabel(tr('common.edit'))) : undefined}
               >
                 {tr('common.edit')}
               </Button>
@@ -1010,6 +1013,7 @@ function GRNDetailScreen() {
               rates={(grn as { rates?: RpcGrnRate[] }).rates}
               ratesNeedConnection={ratesNeedServer}
               needsConnection={needsConnection}
+              needsConnectionNote={newDocument.note}
               packaging={sharedPackaging(items.map((item) => item.packaging))}
               packagingByLot={Object.fromEntries(items.map((item) => [item.id, item.packaging]))}
               pricing_mode={grn.pricing_mode}

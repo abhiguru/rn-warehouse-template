@@ -7,6 +7,7 @@ import React, { useSyncExternalStore } from 'react';
 import { Text, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { subscribeSyncRunEnd } from '@/features/phone-copy/syncEngine';
+import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
 import { getUnsentOverlay, type UnsentOverlay } from '@/features/phone-copy/unsentOverlay';
 import { subscribeUnsent } from './unsentStore';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -213,3 +214,18 @@ export function OrderChangesLater() {
     </Text>
   );
 }
+
+/**
+ * Print, PDF, Share, Edit and Delete of a document that exists only on this phone wait for the server (WH-161, Design 10.3 and
+ * 10.6 DQ2): `isNew` disables them; `note` is the line that says why while the phone is reachable ("Available once this is sent").
+ * Offline `note` is undefined and the screen's own "Needs a connection" stays.
+ */
+export function useNewDocumentActions(kind: 'grn' | 'dispatch', id: string): { isNew: boolean; note: string | undefined } {
+  const overlay = useUnsentOverlay();
+  const offline = useCopyOffline();
+  const isNew = overlay.newDocuments(kind).some(doc => doc.localId === id);
+  return { isNew, note: isNew && !offline ? tr('offline.offlineNew.onceSent') : undefined };
+}
+
+/** "<label>, available once this is sent": the spoken label of a disabled action while the phone is reachable. */
+export const onceSentLabel = (label: string, note: string): string => `${label}, ${note.charAt(0).toLowerCase()}${note.slice(1)}`;
