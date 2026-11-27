@@ -12,7 +12,7 @@ import { formatIdentifier, t as tr, type TranslationKey } from '@/i18n';
 import { fontWeight, iconSize, layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatLoadedAt } from '@/utils/formatters';
-import { formatOrderNotes, type UnsentListRow } from './unsentList';
+import type { UnsentListRow } from './unsentList';
 
 const makeStyles = (t: ThemeTokens) => ({
   row: {
@@ -77,20 +77,19 @@ export const UnsentRow = memo(function UnsentRow({ row, divider, onOpen, onDelet
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
   const swipeable = useRef<SwipeableMethods>(null);
-  const opens = row.form !== null || row.target.grnId !== undefined || row.target.dispatchId !== undefined || (row.heldId !== undefined && row.tag !== 'accepted');
+  const opens = row.form !== null || row.target.grnId !== undefined || (row.heldId !== undefined && row.tag !== 'accepted');
   const deletable = row.section === 'unsent' || row.section === 'unfinished';
   const tagText = row.tag === null ? null : tr(TAG_TEXT[row.tag]);
   // "Sent · GRN 312": the number is an identifier, so it keeps 0-9. An accepted held item names its document: "Accepted · GRN 311".
   const tagLabel =
     row.tag === 'accepted' && row.sentNumber !== null
-      ? tr(row.sentDoc === 'dispatch' ? 'offline.holding.acceptedDispatch' : 'offline.holding.acceptedGrn', { number: formatIdentifier(row.sentNumber) })
+      ? tr('offline.holding.acceptedGrn', { number: formatIdentifier(row.sentNumber) })
       : tagText !== null && row.sentNumber !== null
         ? `${tagText} · ${formatIdentifier(row.sentNumber)}`
         : tagText;
   // A form says when it was started; a record, when it was recorded.
   const recorded = row.form === null ? tr('offline.unsent.recordedAt', { time: formatLoadedAt(row.recordedAt) }) : tr('offline.unsent.startedAt', { time: formatLoadedAt(row.recordedAt) });
-  const orderNotesText = formatOrderNotes(row.orderNotes);
-  const label = [row.title, row.customer, recorded, tagLabel, row.reason, orderNotesText].filter(Boolean).join(', ');
+  const label = [row.title, row.customer, recorded, tagLabel, row.reason].filter(Boolean).join(', ');
 
   const content = (
     <Pressable
@@ -114,14 +113,9 @@ export const UnsentRow = memo(function UnsentRow({ row, divider, onOpen, onDelet
             {row.reason}
           </Text>
         ) : null}
-        {orderNotesText ? (
-          <Text testID={`unsent-row-order-notes-${row.id}`} style={styles.footnote}>
-            {orderNotesText}
-          </Text>
-        ) : null}
         {row.photoMissing ? (
           <Text testID={`unsent-row-photo-missing-${row.id}`} style={styles.footnote}>
-            {tr(row.photoMissingDispatch ? 'offline.unsent.photoMissingDispatch' : 'offline.unsent.photoMissing')}
+            {tr('offline.unsent.photoMissing')}
           </Text>
         ) : null}
       </View>

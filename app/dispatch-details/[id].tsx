@@ -67,7 +67,7 @@ import { photoAddFailure } from '@/utils/photoUploadError';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
 import type { EntityName } from '@/features/phone-copy/copySchema';
-import { DispatchSentOrderNotes, onceSentLabel, UnsentDetailsStrip, useFollowSentRoute, useNewDocumentActions } from '@/features/unsent/UnsentMarkers';
+import { onceSentLabel, UnsentDetailsStrip, useFollowSentRoute, useNewDocumentActions } from '@/features/unsent/UnsentMarkers';
 import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 
 /** The records this page reads from the phone copy: a sync that changed one of them reads the page again. */
@@ -653,8 +653,6 @@ function DispatchDetailScreen() {
         />
 
         <UnsentDetailsStrip kind="dispatch" id={String(id)} testID="dispatch-details-unsent-strip" />
-
-        <DispatchSentOrderNotes id={String(id)} />
 
         {isCheckingDelete ? <LostAnswerStrip kind="delete" testID="dispatch-details-checking-delete" /> : null}
 

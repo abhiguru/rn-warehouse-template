@@ -8,7 +8,6 @@
  */
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import * as Crypto from 'expo-crypto';
 import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
@@ -67,13 +66,6 @@ import { sourceColumnWidth, sourceText } from '@/components/dispatch-details/Dis
 import { getLanguage } from '@/i18n/language';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
-import { keepFailedPhotos } from '@/features/unsent/keepFailedPhotos';
-import { OfflineSavedDialog } from '@/features/unsent/OfflineSavedDialog';
-import { OrderChangesLater } from '@/features/unsent/UnsentMarkers';
-import { offlineNewOn } from '@/features/unsent/offlineNew';
-import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
-import { acceptWithChanges, heldIdOfRoute } from '@/features/holding/heldForm';
-import { correctedDispatchBody, loadHeldDispatch } from '@/features/holding/heldDispatch';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
@@ -95,10 +87,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     const t = useTokens();
 
     const { id } = useLocalSearchParams<{ id: string }>();
-    // WH-304: a held dispatch being corrected; its Save is the decision on the held item, nothing is saved or queued here.
-    const heldId = mode === 'edit' ? heldIdOfRoute(id) : null;
-    // One decision key for this visit: a double tap is one decision (Design 7.7).
-    const heldDecisionKey = useRef(Crypto.randomUUID());
 
     // Use the consolidated dispatch form hook
     const {
@@ -128,7 +116,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // An older server has no preview: null, and the question is asked as it always was.
     const effectsKey = JSON.stringify([header.customer_id, header.disp_date, header.source_order_id, items.map((item) => [item.grnItems_id, item.disp_quantity])]);
     const { effects: orderEffects, refresh: refreshOrderEffects } = useOrderEffectsPreview(
-        items.length > 0 && !!header.customer_id && heldId === null,
+        items.length > 0 && !!header.customer_id,
         effectsKey,
         () => (isCreateMode ? previewCreateDispatch(header, items) : previewUpdateDispatch(id!, header, items, getLoadedUpdatedAt?.()))
     );
@@ -166,9 +154,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     const [showSuccessDialog, setShowSuccessDialog] = useState(false);
     const [successDialogData, setSuccessDialogData] = useState<DocumentData | null>(null);
     // A new dispatch kept on the phone and not sent (WH-161): the dialog that says so, with what it needs.
-    const [offlineSaved, setOfflineSaved] = useState<{ localId: string; number: string | undefined; afterEarlierEntries: boolean } | null>(null);
     // Offline, the order-effects preview is not asked: the note says the changes come after the send (PQ5).
-    const offlineNow = useCopyOffline();
     const [isShareLoading, setIsShareLoading] = useState(false);
     const [shareError, setShareError] = useState<string | null>(null);
 
@@ -308,38 +294,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     }, [isCheckingAnswer, showConfirmDialog]);
 
     // Handle form submission
-    const acceptHeld = async (held: string) => {
-        if (isSubmitting) return;
-        setIsSubmitting(true);
-        try {
-            const loadedHeld = await loadHeldDispatch(held);
-            if (loadedHeld.kind !== 'loaded') {
-                void triggerError();
-                showAlert(tr('dispatch.wizard.errorTitle'), tr('common.couldNotLoad'));
-                return;
-            }
-            const decided = await acceptWithChanges(loadedHeld.item, correctedDispatchBody(loadedHeld.held, { header, items }), heldDecisionKey.current);
-            if (decided.kind === 'accepted' || decided.kind === 'alreadyDecided') {
-                void triggerSuccess();
-                showToast(decided.toast);
-                resetFormState();
-                router.dismissTo('/holding-list');
-            } else {
-                void triggerError();
-                showAlert(tr('dispatch.wizard.errorTitle'), decided.kind === 'refused' ? decided.message : tr('common.somethingWentWrong'));
-            }
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     const handleSubmit = async () => {
         if (orderEmpty) return;
-        // "Accept with changes" is the decision itself: no 2-hour gate, no question first (Design 7.3, contract 5.2).
-        if (heldId !== null) {
-            void acceptHeld(heldId);
-            return;
-        }
         // The 2-hour rule: old unsent work stops a new save; the form stays as it is (WH-301, Design 4.3).
         if (refuseAtLimit({ formOpen: true })) return;
         // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
@@ -447,13 +403,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             return;
         }
 
-        if (result.savedOnPhone) {
-            const { savedOnPhone } = result;
-            void triggerSuccess();
-            afterDialog.current = () => setOfflineSaved(savedOnPhone);
-            return;
-        }
-
         triggerSuccess();
         if (isCreateMode) {
             setCreatedDispatchNumber(header.disp_no);
@@ -480,27 +429,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             if (result.dispatchId && result.failedPhotos && result.failedPhotos.length > 0) {
                 triggerWarning();
                 const failure = { dispatchId: result.dispatchId, failed: result.failedPhotos };
-                const dispatchNumber = header.disp_no;
-                const customerName = header.customer_name;
-                afterDialog.current = () => {
-                    // With the offline feature the photos are kept on the phone and sent later; the success dialog says so (Design 4.9).
-                    void keepFailedPhotos({
-                        doc: 'dispatch',
-                        recordId: failure.dispatchId,
-                        number: dispatchNumber,
-                        customer: customerName,
-                        photos: failure.failed.map(photo => ({ file: photo.image_url, role: 'dispatch' as const })),
-                    }).then(kept => {
-                        if (kept > 0) {
-                            // What stays on the phone is no longer this form's to retry.
-                            giveUpDispatchPhotos(failure.dispatchId, failure.failed);
-                            setSuccessDialogData(current => (current ? { ...current, messageAddition: tr('offline.photosKept', { count: kept }) } : current));
-                            setShowSuccessDialog(true);
-                        } else {
-                            setPhotosNotUploaded(failure);
-                        }
-                    });
-                };
+                afterDialog.current = () => setPhotosNotUploaded(failure);
                 return;
             }
             afterDialog.current = () => setShowSuccessDialog(true);
@@ -732,7 +661,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         await navigateToStep(stepNumber);
     };
 
-    const submitLabel = heldId !== null ? tr('offline.holding.acceptCorrected') : isCreateMode ? tr('dispatch.review.createDispatch') : tr('dispatch.review.saveChanges');
+    const submitLabel = isCreateMode ? tr('dispatch.review.createDispatch') : tr('dispatch.review.saveChanges');
     const submitBusyLabel = isReloading ? tr('dispatch.form.loading') : isCreateMode ? tr('dispatch.review.creating') : tr('dispatch.review.savingChanges');
 
     const imageDataForGrid = images.map((img) => ({
@@ -934,7 +863,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             />
                         </ReviewSection>
                     </ReviewCard>
-                    {isCreateMode && offlineNow && offlineNewOn() ? <OrderChangesLater /> : null}
                     {orderEffectsNotice(orderEffects) ? (
                         <View style={styles.errorStrip} testID="dispatch-review-order-effects">
                             <InlineValidation variant="warning" message={orderEffectsNotice(orderEffects)} />
@@ -997,28 +925,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 busy={isRetryingPhotos}
                 onDismissed={runAfterDialog}
             />
-
-            {/* Saved on this phone (create mode, WH-161) */}
-            {isCreateMode && (
-                <OfflineSavedDialog
-                    isVisible={offlineSaved !== null}
-                    document="dispatch"
-                    customer={header.customer_name || tr('dispatch.review.noCustomer')}
-                    number={offlineSaved?.number}
-                    afterEarlierEntries={offlineSaved?.afterEarlierEntries ?? false}
-                    onView={() => {
-                        const localId = offlineSaved?.localId;
-                        setOfflineSaved(null);
-                        resetFormState();
-                        void router.replace(localId ? `/dispatch-details/${localId}` : '/dispatch');
-                    }}
-                    onCreateAnother={() => {
-                        setOfflineSaved(null);
-                        resetFormState();
-                        void router.replace('/dispatch-form/step1');
-                    }}
-                />
-            )}
 
             {/* Success Dialog (create mode) */}
             {isCreateMode && (

@@ -1,5 +1,5 @@
 /**
- * The number box's mode for the GRN and dispatch form that is open (WH-161, product/tech/app-offline-new-records.md section 4,
+ * The number box's mode for the GRN form that is open (WH-161, product/tech/app-offline-new-records.md section 4,
  * Design 10.1 and 10.8): decided once when the form opens (`offlineNew.openNumberMode`) and kept here until the form is reset, so
  * a connection that comes back or an older entry that is sent meanwhile changes nothing under the person's eyes.
  */
@@ -11,18 +11,16 @@ import { t } from '@/i18n';
 import { openNumberMode, type NumberMode } from './offlineNew';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
-type DocType = 'grn' | 'dispatch';
+type DocType = 'grn';
 
-const modes: Record<DocType, NumberMode> = { grn: 'online', dispatch: 'online' };
-const generation: Record<DocType, number> = { grn: 0, dispatch: 0 };
+const modes: Record<DocType, NumberMode> = { grn: 'online' };
+const generation: Record<DocType, number> = { grn: 0 };
 // True when an unfinished form restored its saved mode (N5): a fresh open's decision does not overwrite it.
-const restoredForOpen: Record<DocType, boolean> = { grn: false, dispatch: false };
+const restoredForOpen: Record<DocType, boolean> = { grn: false };
 const listeners = new Set<() => void>();
 registerSessionScoped('form-number-mode', () => {
   modes.grn = 'online';
-  modes.dispatch = 'online';
   restoredForOpen.grn = false;
-  restoredForOpen.dispatch = false;
   for (const listener of [...listeners]) listener();
 });
 const subscribe = (listener: () => void): (() => void) => {
@@ -81,8 +79,7 @@ export function useNumberModeHelp(type: DocType): string | null {
   const offline = useCopyOffline();
   if (mode === 'typed') return t('offline.offlineNew.typedNumberHelp');
   if (mode !== 'pending') return null;
-  if (type === 'grn') return t(offline ? 'offline.offlineNew.numberPendingHelpGrn' : 'offline.offlineNew.numberPendingQueuedGrn');
-  return t(offline ? 'offline.offlineNew.numberPendingHelpDispatch' : 'offline.offlineNew.numberPendingQueuedDispatch');
+  return t(offline ? 'offline.offlineNew.numberPendingHelpGrn' : 'offline.offlineNew.numberPendingQueuedGrn');
 }
 
 /**
@@ -92,7 +89,6 @@ export function useNumberModeHelp(type: DocType): string | null {
 export async function typedNumberUsed(type: DocType, number: string): Promise<boolean> {
   const own = getUnsentOverlay().newDocuments(type).some(doc => doc.number === number);
   if (own) return true;
-  const sql = type === 'grn' ? 'SELECT id FROM goodsreceived WHERE gr_no = ? AND deleted_at IS NULL' : 'SELECT id FROM dispatch WHERE disp_no_lc = ? AND deleted_at IS NULL';
-  const found = await readCopyOnly(q => q.get<{ id: string }>(sql, [type === 'grn' ? number : number.toLowerCase()]));
+  const found = await readCopyOnly(q => q.get<{ id: string }>('SELECT id FROM goodsreceived WHERE gr_no = ? AND deleted_at IS NULL', [number]));
   return found.kind === 'answer' && found.answer.value !== null;
 }

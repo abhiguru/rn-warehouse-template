@@ -1,5 +1,5 @@
 /**
- * Unfinished forms (WH-301, contract section 8): while a GRN, dispatch or Edit GRN form is open, its state is saved to the
+ * Unfinished forms (WH-301, contract section 8): while a GRN or Edit GRN form is open, its state is saved to the
  * phone one second after the last change and at once when the app goes to the background or the form closes. It is kept by
  * every close but the person's own "Discard" and a successful save (`endFormDraft`), and offered again when that form is
  * opened. Where the facility has no phone copy the hook does nothing.
@@ -10,8 +10,6 @@ import { hasCapability } from '@/config/facilityCapabilities';
 import { t, formatIdentifier } from '@/i18n';
 import { useAppStore } from '@/store/hooks';
 import { hydrateDraft as hydrateGrn, selectGRNFormChanged, type GRNFormState } from '@/store/slices/grnFormSlice';
-import { hydrateDraft as hydrateDispatch } from '@/store/slices/dispatchFormSlice';
-import type { DispatchFormState } from '@/types/dispatch.types';
 import { askAlert } from '@/utils/alert';
 import { formatLoadedAt } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
@@ -26,8 +24,6 @@ const SAVE_DELAY_MS = 1000;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 const isGrnState = (value: unknown): value is GRNFormState => isRecord(value) && isRecord(value.header) && Array.isArray(value.items);
-const isDispatchState = (value: unknown): value is DispatchFormState =>
-  isRecord(value) && isRecord(value.header) && Array.isArray(value.items) && Array.isArray(value.images);
 
 // "Not finished" opens a form that is to be continued without the question.
 let continueNext: { kind: FormKind; grnId: string | null } | null = null;
@@ -52,13 +48,6 @@ export function flushFormDraft(): Promise<void> {
 /** The form has something the person entered (as the first step's own "discard?" question reckons it). */
 const filled = (...texts: (string | null | undefined)[]): boolean => texts.some(text => typeof text === 'string' && text !== '');
 
-const dispatchHasData = (state: DispatchFormState): boolean =>
-  state.dispNoTyped === true ||
-  state.dateChosenByUser === true ||
-  filled(state.header.customer_id, state.header.registration, state.header.note) ||
-  state.items.length > 0 ||
-  state.images.length > 0;
-
 const grnHasData = (state: GRNFormState): boolean =>
   state.grNoTyped ||
   state.dateChosen ||
@@ -68,7 +57,7 @@ const grnHasData = (state: GRNFormState): boolean =>
 
 const askResume = (kind: FormKind, number: string | null, startedAt: number, customer: string | null): Promise<'continue' | 'new'> => {
   const title =
-    kind === 'grn' ? t('offline.resume.grnTitle') : kind === 'dispatch' ? t('offline.resume.dispatchTitle') : t('offline.resume.editTitle', { number: formatIdentifier(number) });
+    kind === 'grn' ? t('offline.resume.grnTitle') : t('offline.resume.editTitle', { number: formatIdentifier(number) });
   const time = formatLoadedAt(startedAt);
   const message = customer ? t('offline.resume.message', { time, customer }) : t('offline.resume.messageNoCustomer', { time });
   return askAlert<'continue' | 'new'>(
@@ -84,7 +73,7 @@ const askResume = (kind: FormKind, number: string | null, startedAt: number, cus
 
 /** Today's discard question, asked before a kept form goes. */
 const confirmDiscard = async (kind: FormKind): Promise<boolean> => {
-  const title = kind === 'grn' ? t('components.steps.discardFor.grn') : kind === 'dispatch' ? t('components.steps.discardFor.dispatch') : t('common.discardChangesTitle');
+  const title = kind === 'grn' ? t('components.steps.discardFor.grn') : t('common.discardChangesTitle');
   const message = kind === 'grnEdit' ? t('common.discardChangesMessage') : t('grn.form.discardMessage');
   const answer = await askAlert<'keep' | 'discard'>(
     title,
@@ -118,7 +107,7 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
     let live = true;
     const decide = async () => {
       const draft = await loadFormDraft(kind, grnId);
-      if (draft === null || !(kind === 'dispatch' ? isDispatchState(draft.state) : isGrnState(draft.state))) {
+      if (draft === null || !isGrnState(draft.state)) {
         if (live) setReady(true);
         return;
       }
@@ -133,11 +122,10 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
       if (!live) return;
       if (answer === 'continue') {
         const savedMode = isRecord(draft.state) && isNumberMode(draft.state.numberMode) ? draft.state.numberMode : null;
-        if ((kind === 'grn' || kind === 'dispatch') && savedMode !== null) {
+        if (kind === 'grn' && savedMode !== null) {
           restoreFormNumberMode(kind, savedMode);
         }
-        if (isDispatchState(draft.state)) store.dispatch(hydrateDispatch(draft.state));
-        else if (isGrnState(draft.state)) store.dispatch(hydrateGrn(draft.state));
+        if (isGrnState(draft.state)) store.dispatch(hydrateGrn(draft.state));
       }
       setReady(true);
     };
@@ -151,7 +139,7 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
   }, [on, enabled, ready, kind, grnId, store]);
 
   // Save as the person types.
-  const latest = useRef<{ state: GRNFormState | DispatchFormState; epoch: number } | null>(null);
+  const latest = useRef<{ state: GRNFormState; epoch: number } | null>(null);
   useEffect(() => {
     if (!on || !ready || !enabled) return undefined;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -164,7 +152,7 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
       const name = kept.state.header.customer_name;
       const customer = name === '' ? null : name;
       // N5 (WH-161): keep the form's number mode with the unfinished form so continuing online still stays pending/typed.
-      const stateToSave = kind === 'grn' || kind === 'dispatch' ? { ...kept.state, numberMode: getFormNumberMode(kind) } : kept.state;
+      const stateToSave = kind === 'grn' ? { ...kept.state, numberMode: getFormNumberMode(kind) } : kept.state;
       await saveFormDraft({ kind, grnId, state: stateToSave, customer });
     };
     const flush = async () => {
@@ -173,10 +161,10 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
     flushOpenForm = flush;
     const look = () => {
       const root = store.getState();
-      const state = kind === 'dispatch' ? root.dispatchForm : root.grnForm;
-      const saving = kind === 'dispatch' ? root.dispatchForm.is_saving : root.grnForm.isSaving;
+      const state = root.grnForm;
+      const saving = root.grnForm.isSaving;
       if (saving) return;
-      const changed = kind === 'dispatch' ? dispatchHasData(root.dispatchForm) : kind === 'grnEdit' ? selectGRNFormChanged(root) : grnHasData(root.grnForm);
+      const changed = kind === 'grnEdit' ? selectGRNFormChanged(root) : grnHasData(root.grnForm);
       if (!changed) {
         // Something was entered and now nothing is: the person discarded the form, or it was saved. Not when the session
         // ended (the reset of a sign-out), and not when the form's screen is already left (a layout empties its form as it
@@ -202,7 +190,7 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
       appState.remove();
       if (flushOpenForm === flush) flushOpenForm = null;
       void write();
-      if (kind === 'grn' || kind === 'dispatch') clearRestoredFormNumberMode(kind);
+      if (kind === 'grn') clearRestoredFormNumberMode(kind);
     };
   }, [on, ready, enabled, kind, grnId, store]);
 

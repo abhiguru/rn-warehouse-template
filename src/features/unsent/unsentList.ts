@@ -6,7 +6,6 @@
 import { useEffect, useState } from 'react';
 import { createLogger, loggableError } from '@/utils/logger';
 import { t as tr, formatIdentifier } from '@/i18n';
-import { orderEffectLines, parseOrderEffects } from '@/services/orderEffects';
 import { describeReason, reasonOf } from '@/features/holding/heldReason';
 import { heldWhatText } from '@/features/holding/heldWhat';
 import { ownHeldCopyRows, type HeldCopyRow } from '@/features/holding/heldRows';
@@ -32,8 +31,6 @@ export interface UnsentListRow {
   sentNumber: string | null;
   /** A photo file of this item is gone from the phone (the record was sent without it). */
   photoMissing: boolean;
-  /** True when the item with the missing photo is a dispatch's (its footnote says "dispatch", not "GRN"). */
-  photoMissingDispatch?: boolean;
   /** The tag shown at the right; an unfinished form has none. */
   tag: 'saved' | 'sending' | 'sent' | 'waiting' | 'held' | 'notPassedOn' | 'rejected' | 'accepted' | null;
   /** Set for an unfinished form (the row of "Not finished"): which form it is. */
@@ -41,15 +38,13 @@ export interface UnsentListRow {
   /** Under "Held": why it was not sent (the footnote); null when nothing is known. */
   reason: string | null;
   /** The document an accepted held item became ("Accepted · GRN 311"): which kind of document `sentNumber` is the number of. */
-  sentDoc?: 'grn' | 'dispatch';
+  sentDoc?: 'grn';
   /** Set on a row that comes from the copy (the server holds the item): the id its page opens by. */
   heldId?: string;
   /** A refused item that could not be handed over: the reason's tag, for the Delete confirmation (Design 7.11). */
   notPassedOnReason?: string;
-  /** Under "Sent today" for a dispatch whose send changed open orders (WH-161, PQ5). */
-  orderNotes?: string[];
   /** The record a tap opens, when it exists. */
-  target: { grnId?: string; dispatchId?: string };
+  target: { grnId?: string };
 }
 
 export interface UnsentListState {
@@ -65,25 +60,13 @@ const numberOf = (value: unknown): string | null => {
   const record = value as Record<string, unknown>;
   if (typeof record.number === 'string' || typeof record.number === 'number') return String(record.number);
   if (typeof record.gr_no === 'string' && record.gr_no !== '') return `${tr('common.grn')} ${record.gr_no}`;
-  if (typeof record.disp_no === 'string' && record.disp_no !== '') return `${tr('common.dispatch')} ${record.disp_no}`;
   return null;
 };
-
-/** The lines of `order_effects` from a sent dispatch answer, in the online dialog's words (WH-161, PQ5). */
-export const orderNotesOfResult = (result: unknown): string[] => {
-  if (typeof result !== 'object' || result === null || !('order_effects' in result)) return [];
-  return orderEffectLines(parseOrderEffects((result as { order_effects?: unknown }).order_effects));
-};
-
-/** The lead and bulleted lines behind `document-success-order-notes`, or null when empty. */
-export const formatOrderNotes = (lines: readonly string[] | undefined): string | null =>
-  lines && lines.length > 0 ? `${tr('orders.effect.doneLead')}\n${lines.map(line => `• ${line}`).join('\n')}` : null;
 
 const sentTargetOf = (target: UnsentRowView['target'], result: unknown): UnsentRowView['target'] => {
   if (typeof result !== 'object' || result === null) return target;
   const record = result as Record<string, unknown>;
   if (typeof record.grn_id === 'string' && record.grn_id !== '') return { ...target, grnId: record.grn_id };
-  if (typeof record.dispatch_id === 'string' && record.dispatch_id !== '') return { ...target, dispatchId: record.dispatch_id };
   return target;
 };
 
@@ -92,16 +75,9 @@ async function titleOf(row: UnsentRowView): Promise<{ title: string; photoMissin
   if (row.kind !== 'photos') return { title: row.what, photoMissing: false };
   const photos = await photosOfItem(row.id);
   const count = photos.length;
-  const dispatch = row.photoDoc === 'dispatch';
   const number = row.targetNumber;
-  // A document with no number yet (a new one not sent) is "the new GRN" or "the new dispatch" (Design 4.10).
-  const key = number
-    ? dispatch
-      ? 'offline.unsent.whatPhotosDispatch'
-      : 'offline.unsent.whatPhotos'
-    : dispatch
-      ? 'offline.unsent.whatPhotosNewDispatch'
-      : 'offline.unsent.whatPhotosNewGrn';
+  // A document with no number yet (a new one not sent) is "the new GRN" (Design 4.10).
+  const key = number ? 'offline.unsent.whatPhotos' : 'offline.unsent.whatPhotosNewGrn';
   return {
     title: tr(key, { count, number: formatIdentifier(number) }),
     photoMissing: photos.some(photo => photo.missing === 1),
@@ -176,12 +152,10 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
       recordedAt: view.recordedAt,
       sentNumber: view.section === 'sent' ? numberOf(view.result) : null,
       photoMissing,
-      ...(photoMissing && view.photoDoc === 'dispatch' ? { photoMissingDispatch: true } : {}),
       tag: passing ? passing.tag : tagOf(view.state),
       form: null,
       reason: passing ? passing.reason : view.section === 'held' ? heldReason(view.reason, view.result, view) : null,
       ...(passing?.tag === 'notPassedOn' ? { notPassedOnReason: reasonTagOf(view.result) } : {}),
-      orderNotes: view.section === 'sent' && view.kind === 'newDispatch' ? orderNotesOfResult(view.result) : [],
       target: view.section === 'sent' ? sentTargetOf(view.target, view.result) : view.target,
     });
   }
@@ -233,8 +207,6 @@ function copyRow(held: HeldCopyRow): { row: UnsentListRow; follows: string | nul
   if (held.state === 'accepted') {
     const result = typeof raw.result === 'object' && raw.result !== null ? (raw.result as Record<string, unknown>) : {};
     const grn = text(result.grn_id);
-    const dispatch = text(result.dispatch_id);
-    const dispatchNumber = text(result.disp_no);
     return {
       follows,
       row: {
@@ -242,10 +214,10 @@ function copyRow(held: HeldCopyRow): { row: UnsentListRow; follows: string | nul
         state: 'sent',
         section: 'sent',
         tag: 'accepted',
-        sentNumber: dispatchNumber ?? text(result.gr_no),
-        sentDoc: dispatchNumber === null ? 'grn' : 'dispatch',
+        sentNumber: text(result.gr_no),
+        sentDoc: 'grn',
         reason: null,
-        target: { ...(grn === null ? {} : { grnId: grn }), ...(dispatch === null ? {} : { dispatchId: dispatch }) },
+        target: grn === null ? {} : { grnId: grn },
       },
     };
   }
@@ -270,11 +242,7 @@ function copyRow(held: HeldCopyRow): { row: UnsentListRow; follows: string | nul
 /** A row of "Not finished": the form's words, when it was started, no tag. */
 function formRow(form: Awaited<ReturnType<typeof listOwnForms>>[number]): UnsentListRow {
   const title =
-    form.kind === 'grn'
-      ? tr('offline.unsent.whatFormGrn')
-      : form.kind === 'dispatch'
-        ? tr('offline.unsent.whatFormDispatch')
-        : tr('offline.unsent.whatFormEdit', { number: formatIdentifier(form.number) });
+    form.kind === 'grn' ? tr('offline.unsent.whatFormGrn') : tr('offline.unsent.whatFormEdit', { number: formatIdentifier(form.number) });
   return {
     id: form.id,
     state: 'saved',

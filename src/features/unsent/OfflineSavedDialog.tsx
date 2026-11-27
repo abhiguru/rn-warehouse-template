@@ -1,5 +1,5 @@
 /**
- * "Saved on this phone" (WH-161, Design 10.2 and 10.8): what a new GRN or dispatch shows after Save when it was kept on the phone
+ * "Saved on this phone" (WH-161, Design 10.2 and 10.8): what a new GRN shows after Save when it was kept on the phone
  * and not sent. View and Create another only: Print and Share wait for the server. The message says whether the record is sent
  * when the phone reconnects, or after the person's earlier entries (the phone is reachable but older work is still unsent), and
  * whether the number is given at send or was typed.
@@ -11,7 +11,7 @@ import { t, type TranslationKey } from '@/i18n';
 
 export interface OfflineSavedDialogProps {
   isVisible: boolean;
-  document: 'grn' | 'dispatch';
+  document: 'grn';
   customer: string;
   /** The number the person typed; absent when the server gives it at send. An identifier, shown as typed (0-9). */
   number?: string | undefined;
@@ -22,14 +22,13 @@ export interface OfflineSavedDialogProps {
 }
 
 /** The message's key: document, typed or issued number, and when it is sent. */
-export function savedMessageKey(document: 'grn' | 'dispatch', typed: boolean, afterEarlierEntries: boolean): TranslationKey {
-  const base = document === 'grn' ? 'savedGrn' : 'savedDispatch';
-  return `offline.offlineNew.${base}${typed ? 'Typed' : ''}${afterEarlierEntries ? 'Queued' : ''}` as TranslationKey;
+export function savedMessageKey(typed: boolean, afterEarlierEntries: boolean): TranslationKey {
+  return `offline.offlineNew.savedGrn${typed ? 'Typed' : ''}${afterEarlierEntries ? 'Queued' : ''}` as TranslationKey;
 }
 
 export function OfflineSavedDialog({ isVisible, document, customer, number, afterEarlierEntries, onView, onCreateAnother }: OfflineSavedDialogProps) {
   const typed = number !== undefined && number !== '';
-  const message = t(savedMessageKey(document, typed, afterEarlierEntries), { customer, ...(typed ? { number } : {}) });
+  const message = t(savedMessageKey(typed, afterEarlierEntries), { customer, ...(typed ? { number } : {}) });
   const title = t('offline.offlineNew.savedTitle');
   return (
     <Modal visible={isVisible} transparent animationType="fade" onRequestClose={onView}>

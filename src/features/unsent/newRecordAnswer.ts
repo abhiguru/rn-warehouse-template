@@ -19,26 +19,18 @@ const sentenceOf = (answer: Fields, code: string | null): string => {
 };
 
 /** Everything of the answer but its `success` flag, as flat members: `save_grn` keeps its figures under `data`. */
-function flatResult(doc: 'grn' | 'dispatch', answer: Fields): Fields | null {
-  if (doc === 'grn') {
-    const data = isFields(answer.data) ? answer.data : null;
-    if (!data || typeof data.grn_id !== 'string') return null;
-    return { grn_id: data.grn_id, gr_no: data.gr_no, item_mapping: Array.isArray(data.item_mapping) ? data.item_mapping : [] };
-  }
-  if (typeof answer.dispatch_id !== 'string') return null;
-  return {
-    dispatch_id: answer.dispatch_id,
-    disp_no: answer.disp_no,
-    ...(answer.order_effects === undefined ? {} : { order_effects: answer.order_effects }),
-  };
+function flatResult(answer: Fields): Fields | null {
+  const data = isFields(answer.data) ? answer.data : null;
+  if (!data || typeof data.grn_id !== 'string') return null;
+  return { grn_id: data.grn_id, gr_no: data.gr_no, item_mapping: Array.isArray(data.item_mapping) ? data.item_mapping : [] };
 }
 
-/** The outcome of one answer of `save_grn` or `create_dispatch_with_stock_check`; `error` is what the call failed with. */
-export function outcomeOfAnswer(doc: 'grn' | 'dispatch', answer: unknown, error: unknown = null): SendOutcome {
+/** The outcome of one answer of `save_grn`; `error` is what the call failed with. */
+export function outcomeOfAnswer(answer: unknown, error: unknown = null): SendOutcome {
   if (error !== null && error !== undefined && error !== false) return classify(null, error);
   if (!isFields(answer)) return classify(answer, null);
   if (answer.success === true) {
-    const result = flatResult(doc, answer);
+    const result = flatResult(answer);
     // A success that names no record is no answer to act on: asked about again by its request ID.
     return result ? { kind: 'sent', result } : { kind: 'lost' };
   }

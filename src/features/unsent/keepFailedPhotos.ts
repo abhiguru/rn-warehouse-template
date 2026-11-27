@@ -14,13 +14,13 @@ const logger = createLogger('[unsent-photos]');
 export interface KeptPhoto {
   /** The local file (an app-private file address). */
   file: string;
-  role: 'header' | 'item' | 'dispatch';
+  role: 'header' | 'item';
   /** The GRN item id of an item photo. */
   lineRef?: string | undefined;
 }
 
 export interface KeepFailedPhotosInput {
-  doc: 'grn' | 'dispatch';
+  doc: 'grn';
   /** The saved record's id on the server. */
   recordId: string;
   /** Its number, for the row's words ("3 photos for GRN 311"). */
@@ -36,7 +36,7 @@ export async function keepFailedPhotos(input: KeepFailedPhotosInput): Promise<nu
     await enqueue({
       kind: 'photos',
       body: { doc: input.doc, recordId: input.recordId },
-      targetRef: input.doc === 'grn' ? { grnId: input.recordId, number: input.number } : { dispatchId: input.recordId, number: input.number },
+      targetRef: { grnId: input.recordId, number: input.number },
       what: 'photos',
       ...(input.customer ? { customer: input.customer } : {}),
       photos: input.photos.map(photo => ({ file: photo.file, role: photo.role, ...(photo.lineRef ? { lineRef: photo.lineRef } : {}) })),

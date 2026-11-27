@@ -4,8 +4,8 @@
  * form's upload, `imageUploadService.ts`), up to four at a time, after their record is sent. A photo done stays done, so a
  * later try sends only the others. A file gone from the phone was marked missing by the engine; the rest go.
  *
- * Body: `{ doc: 'grn' | 'dispatch', recordId?: string }`; without `recordId` it comes from the record this item depended on
- * (`ctx.resolved`). Each photo row's `role` is `header` or `item` (GRN; `lineRef` is then the GRN item id) or `dispatch`.
+ * Body: `{ doc: 'grn', recordId?: string }`; without `recordId` it comes from the record this item depended on
+ * (`ctx.resolved`). Each photo row's `role` is `header` or `item` (`lineRef` is then the GRN item id).
  *
  * Not verified: the client photo id is not sent yet (the backend topic "photo upload by client photo id" is not built), so a
  * lost answer to a register can leave an unconfirmed row, which the server expires (`delete_expired_pending_images`).
@@ -24,7 +24,7 @@ import { markPhoto, photosOf, type PhotoRow } from './unsentRows';
 const logger = createLogger('[unsent-photos]');
 
 export interface PhotosBody {
-  doc: 'grn' | 'dispatch';
+  doc: 'grn';
   recordId?: string;
   /** GRN photos the person removed in an offline edit (WH-303); deleted after this item's uploads are confirmed. */
   remove?: string[];
@@ -43,11 +43,11 @@ function addedLineIdOf(lineRef: string, resolved: Record<string, unknown>): stri
 }
 
 const SLOTS = 4;
-const BUCKET = { grn: 'grn-images', dispatch: 'dispatch-images' } as const;
+const BUCKET = 'grn-images';
 
 const isBody = (value: unknown): value is PhotosBody => {
   const doc = typeof value === 'object' && value !== null ? (value as { doc?: unknown }).doc : undefined;
-  return doc === 'grn' || doc === 'dispatch';
+  return doc === 'grn';
 };
 
 /** The record's id from what it answered when it was sent. */
@@ -56,7 +56,7 @@ function recordIdOf(body: PhotosBody, resolved: Record<string, unknown>): string
   for (const answer of Object.values(resolved)) {
     if (typeof answer !== 'object' || answer === null) continue;
     const fields = answer as Record<string, unknown>;
-    const id = body.doc === 'grn' ? (fields.grn_id ?? fields.grnId ?? fields.id) : (fields.dispatch_id ?? fields.dispatchId ?? fields.id);
+    const id = fields.grn_id ?? fields.grnId ?? fields.id;
     if (typeof id === 'string' && id) return id;
   }
   return null;
@@ -98,42 +98,32 @@ const asOutcome = (answer: Answer): SendOutcome => {
 };
 
 /** One photo through register, upload and confirm. `sent` means it is attached. */
-async function uploadOne(client: Client, body: PhotosBody, recordId: string, photo: PhotoRow, resolved: Record<string, unknown>): Promise<SendOutcome> {
+async function uploadOne(client: Client, recordId: string, photo: PhotoRow, resolved: Record<string, unknown>): Promise<SendOutcome> {
   const itemId = lineItemOf(photo.line_ref, resolved);
   if (itemId === undefined) return { kind: 'refused', reason: 'photos: the line of this photo is not known' };
   const file = new File(photo.file);
   const fileName = photo.file.slice(photo.file.lastIndexOf('/') + 1).replace(/^[0-9a-f-]{36}-/, '');
   const mimeType = mimeOf(fileName);
-  const registered =
-    body.doc === 'grn'
-      ? await client.rpc('register_grn_image_upload', {
-          p_grn_id: recordId,
-          p_image_type: photo.role === 'item' ? 'item' : 'header',
-          p_file_name: fileName,
-          p_file_size: file.size,
-          p_mime_type: mimeType,
-          p_grn_item_id: itemId,
-        })
-      : await client.rpc('register_dispatch_image_upload', {
-          p_dispatch_id: recordId,
-          p_file_name: fileName,
-          p_file_size: file.size,
-          p_mime_type: mimeType,
-        });
+  const registered = await client.rpc('register_grn_image_upload', {
+    p_grn_id: recordId,
+    p_image_type: photo.role === 'item' ? 'item' : 'header',
+    p_file_name: fileName,
+    p_file_size: file.size,
+    p_mime_type: mimeType,
+    p_grn_item_id: itemId,
+  });
   const registration = asOutcome(registered);
   if (registration.kind !== 'sent') return registration.kind === 'lost' ? { kind: 'transient' } : registration;
   const { image_id: imageId, storage_path: storagePath, upload_token: uploadToken } = registration.result as Record<string, string>;
 
-  const confirm = body.doc === 'grn' ? 'confirm_grn_image_upload' : 'confirm_dispatch_image_upload';
-  const cancel = body.doc === 'grn' ? 'cancel_grn_image_upload' : 'cancel_dispatch_image_upload';
   let failure: SendOutcome;
   try {
     const bytes = await file.arrayBuffer();
-    const { error } = await client.storage.from(BUCKET[body.doc]).upload(storagePath, bytes, { contentType: mimeType, upsert: false });
+    const { error } = await client.storage.from(BUCKET).upload(storagePath, bytes, { contentType: mimeType, upsert: false });
     if (error) {
       failure = classify(null, error);
     } else {
-      const confirmed = asOutcome(await client.rpc(confirm, { p_image_id: imageId, p_upload_token: uploadToken }));
+      const confirmed = asOutcome(await client.rpc('confirm_grn_image_upload', { p_image_id: imageId, p_upload_token: uploadToken }));
       if (confirmed.kind === 'sent') return confirmed;
       failure = confirmed;
     }
@@ -141,7 +131,7 @@ async function uploadOne(client: Client, body: PhotosBody, recordId: string, pho
     failure = classify(null, error);
   }
   // Undo the pending row; a confirm that did commit (its answer was lost) shows as already confirmed.
-  const rollback = await rollbackPendingUpload(client, { rpc: cancel, bucket: BUCKET[body.doc], imageId, storagePath });
+  const rollback = await rollbackPendingUpload(client, { rpc: 'cancel_grn_image_upload', bucket: BUCKET, imageId, storagePath });
   if (rollback.outcome === 'already_confirmed') return { kind: 'sent', result: { success: true } };
   // A lost answer is not asked about: the pending row was cancelled, so this photo is sent again from the start.
   return failure.kind === 'lost' ? { kind: 'transient' } : failure;
@@ -161,7 +151,7 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
   const outcomes = await Promise.all(
     rows.map(row =>
       limit(async () => {
-        const outcome = await uploadOne(client, rawBody, recordId, row, ctx.resolved);
+        const outcome = await uploadOne(client, recordId, row, ctx.resolved);
         if (outcome.kind === 'sent') await markPhoto(row.item_id, row.client_photo_id, { done: 1 });
         return outcome;
       }).catch((error: unknown) => {

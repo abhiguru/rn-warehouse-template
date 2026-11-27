@@ -1,6 +1,6 @@
 /**
- * New GRNs and dispatches saved on the phone (WH-161, product/tech/app-offline-new-records.md 3, 4, 17.1): when the queue is
- * used, the number box's mode, and the two Save paths. With `offlineNewOn()` false nothing here changes any form: the screens
+ * New GRNs saved on the phone (WH-161, product/tech/app-offline-new-records.md 3, 4, 17.1): when the queue is
+ * used, the number box's mode, and the Save path (a dispatch is saved online only, WH-381). With `offlineNewOn()` false nothing here changes any form: the screens
  * keep today's direct save, number and errors.
  *
  * Save answers `{ path: 'direct' | 'sent' | 'saved' | 'refused' | 'duplicate' }`. `refused` and `duplicate` leave no item (the
@@ -12,13 +12,9 @@ import { backendHasFeature } from '@/config/backendFeatures';
 import { hasCapability } from '@/config/facilityCapabilities';
 import { createGRN } from '@/features/grn/services/grnFormService';
 import { buildSaveGrnArgs, type CreateGRNPayload } from '@/features/grn/services/saveGrnArgs';
-import { createDispatch } from '@/features/dispatch/services/dispatchFormService';
-import { buildCreateDispatchArgs, type CreateDispatchFormPayload } from '@/features/dispatch/services/saveDispatchArgs';
 import { copyRoute } from '@/features/phone-copy/readRoute';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
-import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
 import { t, formatIdentifier } from '@/i18n';
-import type { NewDispatchBody } from './newDispatchKind';
 import type { NewGrnBody, SaveGrnArgs } from './newGrnKind';
 import { refusalCodeOf } from './newRecordAnswer';
 import { refreshNumbering, serverIssues } from './numberingCache';
@@ -33,7 +29,7 @@ import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 export { SAVE_WAIT_MS };
 
 export type NumberMode = 'online' | 'pending' | 'typed';
-type DocType = 'grn' | 'dispatch';
+type DocType = 'grn';
 
 export interface SavePhoto {
   file: string;
@@ -214,48 +210,6 @@ export function saveNewGrn(payload: CreateGRNPayload, form: NewRecordForm): Prom
       ],
       'grn',
       localId
-    );
-  });
-}
-
-/** Save of a new dispatch: today's direct save, or an item in the queue (3). */
-export function saveNewDispatch(payload: CreateDispatchFormPayload, form: NewRecordForm): Promise<SaveAnswer> {
-  return once('dispatch', async () => {
-    await refreshNumbering();
-    const withWarning = { ...payload, ...(form.warnDuplicate === undefined ? {} : { warnDuplicate: form.warnDuplicate }) };
-    if (!savesByQueue(form)) return { path: 'direct', result: await createDispatch(withWarning) };
-    if (payload.header.source_order_id) throw new Error('A dispatch made from an order is not saved on the phone');
-    const ownLots = new Set(getUnsentOverlay().newLots().map(lot => lot.lot_id));
-    if (payload.items.some(item => ownLots.has(item.grnItems_id))) throw new Error('A dispatch cannot take from a GRN that is not sent yet');
-    const { number, issue } = numberFor('dispatch', payload.header.disp_no, form);
-    const built = buildCreateDispatchArgs(withWarning);
-    // Never from an order: the order's members are left out.
-    const data = Object.fromEntries(Object.entries(built.p_dispatch_data).filter(([key]) => !key.startsWith('source_order')));
-    const body: NewDispatchBody = {
-      v: 1,
-      localId: Crypto.randomUUID(),
-      args: {
-        p_dispatch_data: { ...data, disp_no: number, issue_number: issue, recorded_at: new Date().toISOString() },
-        p_dispatch_items: built.p_dispatch_items,
-        p_generate_invoice: true,
-        p_retry_count: 0,
-      },
-      show: { customerName: payload.header.customer_name },
-    };
-    const customer = payload.header.customer_name;
-    return saveAndWait(
-      [
-        {
-          kind: 'newDispatch',
-          body,
-          what: number ? t('offline.unsent.whatNewDispatchNumber', { number: formatIdentifier(number) }) : t('offline.unsent.whatNewDispatch'),
-          customer,
-          targetRef: { dispatchId: body.localId, ...(number ? { number } : {}) },
-        },
-        ...photoInput('dispatch', form.photos, t('offline.unsent.whatPhotosNewDispatch', { count: form.photos?.length ?? 0 }), customer),
-      ],
-      'dispatch',
-      body.localId
     );
   });
 }

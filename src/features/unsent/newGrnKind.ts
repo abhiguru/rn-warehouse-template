@@ -38,7 +38,7 @@ async function sendNewGrn(body: NewGrnBody, requestKey: string): Promise<SendOut
   const answer = await client.rpc('save_grn', { ...body.args, p_idempotency_key: requestKey });
   // An unreadable or empty HTTP 200 and a gateway's 502 / 504 are a LOST answer (the record may be saved), not a transient one.
   const error = answer.error ?? emptyAnswerAsError({ data: answer.data, error: answer.error, status: answer.status });
-  return outcomeOfAnswer('grn', answer.data, error ? withHttpStatus(error, answer.status) : null);
+  return outcomeOfAnswer(answer.data, error ? withHttpStatus(error, answer.status) : null);
 }
 
 /** The row an unsent GRN shows in lists and details, and its lots at stock = qty (6, 17.4). */
@@ -89,7 +89,7 @@ function overlayOf(body: NewGrnBody, state: ItemState, item?: { id: string; reco
 const newGrnKind: SendKind = {
   lane: 'record',
   send: (body, ctx) => sendNewGrn(body, ctx.requestKey),
-  outcomeOf: answer => outcomeOfAnswer('grn', answer),
+  outcomeOf: answer => outcomeOfAnswer(answer),
   overlay: overlayOf,
 };
 

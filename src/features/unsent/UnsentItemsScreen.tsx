@@ -133,7 +133,6 @@ export function UnsentItemsScreen() {
     if (row.form !== null) {
       requestContinue(row.form.kind, row.form.grnId);
       if (row.form.kind === 'grn') router.push('/grn-form/step1');
-      else if (row.form.kind === 'dispatch') router.push('/dispatch-form/step1');
       else router.push(`/grn-edit/${row.form.grnId ?? ''}/step1`);
       return;
     }
@@ -143,14 +142,13 @@ export function UnsentItemsScreen() {
       return;
     }
     if (row.target.grnId !== undefined) router.push(`/grn-details/${row.target.grnId}`);
-    else if (row.target.dispatchId !== undefined) router.push(`/dispatch-details/${row.target.dispatchId}`);
   }, []);
 
   const remove = useCallback(async (row: UnsentListRow) => {
     if (row.form !== null) {
       // A form asks today's discard question (Design 4.3).
       const form = row.form;
-      const title = form.kind === 'grn' ? tr('components.steps.discardFor.grn') : form.kind === 'dispatch' ? tr('components.steps.discardFor.dispatch') : tr('common.discardChangesTitle');
+      const title = form.kind === 'grn' ? tr('components.steps.discardFor.grn') : tr('common.discardChangesTitle');
       const discard = await askAlert<'keep' | 'discard'>(
         title,
         form.kind === 'grnEdit' ? tr('common.discardChangesMessage') : tr('grn.form.discardMessage'),

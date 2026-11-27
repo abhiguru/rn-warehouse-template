@@ -1,7 +1,7 @@
 /**
- * Keeps the open GRN, dispatch or Edit GRN form as an unfinished form (WH-301, contract section 8). It watches the route:
- * while one of the three forms is open it runs `useFormDraft` for it. It renders nothing. Mounted once beside the phone
- * copy's lifecycle, so the three form layouts are left as they are.
+ * Keeps the open GRN or Edit GRN form as an unfinished form (WH-301, contract section 8). It watches the route:
+ * while one of the two forms is open it runs `useFormDraft` for it. It renders nothing. Mounted once beside the phone
+ * copy's lifecycle, so the two form layouts are left as they are.
  */
 import { useLayoutEffect } from 'react';
 import { usePathname } from 'expo-router';
@@ -18,7 +18,6 @@ interface OpenForm {
 /** Which form the route is, or null. */
 export function formOfPath(path: string): OpenForm | null {
   if (path === '/grn-form' || path.startsWith('/grn-form/')) return { kind: 'grn', grnId: null };
-  if (path === '/dispatch-form' || path.startsWith('/dispatch-form/')) return { kind: 'dispatch', grnId: null };
   const edit = /^\/grn-edit\/([^/]+)/.exec(path);
   // A held GRN being corrected (WH-304) is never kept as an unfinished form: its Save is the supervisor's decision.
   return edit?.[1] && heldIdOfRoute(decodeURIComponent(edit[1])) === null ? { kind: 'grnEdit', grnId: decodeURIComponent(edit[1]) } : null;

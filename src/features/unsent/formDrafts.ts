@@ -14,8 +14,8 @@ import { announceUnsentChange, removePhotoFile } from './unsentRows';
 
 const logger = createLogger('[unsent-forms]');
 
-/** The forms that are kept: a new GRN, a new dispatch, and the changes to one GRN. */
-export type FormKind = 'grn' | 'dispatch' | 'grnEdit';
+/** The forms that are kept: a new GRN and the changes to one GRN. */
+export type FormKind = 'grn' | 'grnEdit';
 
 /** An unfinished form as it is read back. */
 export interface FormDraft {

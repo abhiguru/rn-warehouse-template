@@ -10,9 +10,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { subscribeSyncRunEnd } from '@/features/phone-copy/syncEngine';
 import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
 import { getUnsentOverlay, type UnsentOverlay } from '@/features/phone-copy/unsentOverlay';
-import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { currentUnsentScope, loadedUnsentRows, subscribeUnsent } from './unsentStore';
-import { formatOrderNotes, orderNotesOfResult } from './unsentList';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { iconSize, radius, space, typography } from '@/theme/tokens';
@@ -49,12 +47,11 @@ function subscribeOverlayVersion(listener: () => void): () => void {
 
 const readOverlayVersion = (): number => overlayVersion;
 
-// What an overlay that does not say anything about markers means: no marker, no changed field, no other person's bags.
-const WITHOUT_MARKERS: Pick<UnsentOverlay, 'marker' | 'changedFields' | 'lessOthersUnsent' | 'newDocuments'> = {
+// What an overlay that does not say anything about markers means: no marker, no changed field.
+const WITHOUT_MARKERS: Pick<UnsentOverlay, 'marker' | 'changedFields' | 'newDocuments'> = {
   newDocuments: () => [],
   marker: () => null,
   changedFields: () => [],
-  lessOthersUnsent: () => 0,
 };
 
 /** The overlay as it is now, drawn again when it changes. */
@@ -87,7 +84,6 @@ const makeStyles = (t: ThemeTokens) => ({
   stripText: { ...typography.footnote, color: t.status.informative.text, flexShrink: 1 },
   line: { ...typography.footnote, color: t.text.secondary },
   lineInset: { paddingHorizontal: space.lg },
-  orderNotes: { paddingHorizontal: space.lg, paddingVertical: space.xs },
 });
 
 /** Design 2.2: a footnote at the bottom of a card or row, icon and words, never a tag. Nothing when there is no marker. */
@@ -142,42 +138,13 @@ export function UnsentDetailsStrip({ kind, id, lotIds = [], testID }: { kind: 'g
   return <UnsentStrip marker={marker} fields={overlay.changedFields(kind, id)} testID={testID} wholeDocument={wholeDocument} />;
 }
 
-/** A lot row's unsent footnote (Design 2.2) and its deduction lines (Design 2.4), under the lot's item name. */
+/** A lot row's unsent footnote (Design 2.2), under the lot's item name. No deduction lines since WH-381. */
 export function UnsentLotLines({ lotId, removed = false }: { lotId: string; removed?: boolean }) {
   const overlay = useUnsentOverlay();
   return (
     <>
       {/* A line the person removed and has not sent: "Removed, not sent yet" in place of "Not sent yet" (Design 6.x DQ4). */}
       <UnsentFootnote inline marker={overlay.marker('lot', lotId)} testID={`grn-lot-unsent-${lotId}`} {...(removed ? { text: tr('offline.lineRemovedNotSent') } : {})} />
-      <DeductionLines lotId={lotId} />
-    </>
-  );
-}
-
-/** Design 2.4: one line per deduction under a lot's stock, only above zero. */
-export function DeductionLines({ lotId }: { lotId: string }) {
-  const styles = useThemedStyles(makeStyles);
-  const overlay = useUnsentOverlay();
-  const lessUnsent = overlay.lessUnsent(lotId);
-  const lessHeld = overlay.lessHeld(lotId);
-  const lessOthers = overlay.lessOthersUnsent?.(lotId) ?? 0;
-  return (
-    <>
-      {lessUnsent > 0 ? (
-        <Text style={styles.line} testID={`lot-less-unsent-${lotId}`}>
-          {tr('components.offlineRead.lessNotSent', { count: lessUnsent })}
-        </Text>
-      ) : null}
-      {lessOthers > 0 ? (
-        <Text style={styles.line} testID={`lot-less-others-${lotId}`}>
-          {tr('components.offlineRead.lessOtherPerson', { count: lessOthers })}
-        </Text>
-      ) : null}
-      {lessHeld > 0 ? (
-        <Text style={styles.line} testID={`lot-less-held-${lotId}`}>
-          {tr('components.offlineRead.lessHeld', { count: lessHeld })}
-        </Text>
-      ) : null}
     </>
   );
 }
@@ -215,16 +182,6 @@ export function RatesCheckedWhenSent() {
   );
 }
 
-/** Design 10.7 (PQ5): where the dispatch Review step shows the order-effects note online, offline it says the changes come after the send. */
-export function OrderChangesLater() {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <Text style={styles.line} testID="dispatch-review-order-changes-later">
-      {tr('offline.offlineNew.orderChangesLater')}
-    </Text>
-  );
-}
-
 /**
  * Print, PDF, Share, Edit and Delete of a document that exists only on this phone wait for the server (WH-161, Design 10.3 and
  * 10.6 DQ2): `isNew` disables them; `note` is the line that says why while the phone is reachable ("Available once this is sent").
@@ -256,15 +213,14 @@ export function sentServerIdOf(kind: 'grn' | 'dispatch', localId: string, overla
   if (typeof fromOverlay === 'string' && fromOverlay.length > 0) return fromOverlay;
   const scope = currentUnsentScope();
   if (scope === null) return null;
-  const itemKind = kind === 'grn' ? 'newGrn' : 'newDispatch';
-  const targetKey = kind === 'grn' ? 'grnId' : 'dispatchId';
-  const resultKey = kind === 'grn' ? 'grn_id' : 'dispatch_id';
+  // Only a new GRN is queued on the phone (WH-381); a dispatch has no local record to follow.
+  if (kind !== 'grn') return null;
   for (const row of loadedUnsentRows()) {
-    if (row.scope !== scope || row.kind !== itemKind || row.state !== 'sent') continue;
+    if (row.scope !== scope || row.kind !== 'newGrn' || row.state !== 'sent') continue;
     const target = parseJsonObject(row.target_ref);
-    if (target?.[targetKey] !== localId) continue;
+    if (target?.grnId !== localId) continue;
     const result = parseJsonObject(row.result);
-    const serverId = result?.[resultKey];
+    const serverId = result?.grn_id;
     if (typeof serverId === 'string' && serverId.length > 0) return serverId;
   }
   return null;
@@ -281,31 +237,4 @@ export function useFollowSentRoute(kind: 'grn' | 'dispatch', id: string): void {
       router.replace(kind === 'grn' ? `/grn-details/${serverId}` : `/dispatch-details/${serverId}`);
     }
   }, [kind, id, serverId]);
-}
-
-/**
- * WH-161 (§7, PQ5): order lines changed by an offline dispatch once sent, shown under the hero while that sent item is in the
- * store (local or server id). Uses the same wording as `document-success-order-notes`; nothing when empty.
- */
-export function DispatchSentOrderNotes({ id }: { id: string }) {
-  useUnsentOverlay();
-  const styles = useThemedStyles(makeStyles);
-  const scope = currentUnsentScope();
-  if (scope === null) return null;
-  let notes: string[] = [];
-  for (const row of loadedUnsentRows()) {
-    if (row.scope !== scope || row.kind !== 'newDispatch' || row.state !== 'sent') continue;
-    const target = parseJsonObject(row.target_ref);
-    const result = parseJsonObject(row.result);
-    if (target?.dispatchId !== id && result?.dispatch_id !== id) continue;
-    notes = orderNotesOfResult(result);
-    if (notes.length > 0) break;
-  }
-  const message = formatOrderNotes(notes);
-  if (message === null) return null;
-  return (
-    <View style={styles.orderNotes} testID="dispatch-details-order-notes">
-      <InlineValidation variant="warning" message={message} />
-    </View>
-  );
 }

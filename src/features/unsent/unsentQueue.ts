@@ -16,7 +16,6 @@ import { persistWorkClock, workNow } from './workClock';
 export interface TargetRef {
   grnId?: string;
   lotIds?: string[];
-  dispatchId?: string;
   number?: string;
 }
 
@@ -52,20 +51,13 @@ export interface UnsentRowView {
   /** The number of the record the item is about (a GRN's number, for its photos), as an identifier. */
   targetNumber: string | null;
   /** The record the item is about, when it already exists on the server (a tap opens it). */
-  target: { grnId?: string; dispatchId?: string };
+  target: { grnId?: string };
   /** Which kind of document a photos item is for (its body's `doc`), or null for any other item. */
-  photoDoc: 'grn' | 'dispatch' | null;
+  photoDoc: 'grn' | null;
 }
 
-function photoDocOf(kind: string, raw: string): UnsentRowView['photoDoc'] {
-  if (kind !== 'photos') return null;
-  try {
-    const body: unknown = JSON.parse(raw);
-    if (typeof body === 'object' && body !== null && 'doc' in body) return body.doc === 'dispatch' ? 'dispatch' : 'grn';
-  } catch {
-    return 'grn';
-  }
-  return 'grn';
+function photoDocOf(kind: string): UnsentRowView['photoDoc'] {
+  return kind === 'photos' ? 'grn' : null;
 }
 
 async function ownScope(): Promise<string> {
@@ -112,7 +104,7 @@ export type EnqueueAllInput = Omit<EnqueueInput, 'dependsOn'> & { dependsOn?: nu
  * Saves a record and the items that follow it (its photos) in one step, in input order, and removes the person's unfinished
  * form of `form.kind` in the same step, taking over its photo files (WH-161). A failure writes nothing and leaves the form.
  */
-export async function enqueueAll(inputs: readonly EnqueueAllInput[], form?: { kind: 'grn' | 'dispatch' }): Promise<{ id: string; requestKey: string }[]> {
+export async function enqueueAll(inputs: readonly EnqueueAllInput[], form?: { kind: 'grn' }): Promise<{ id: string; requestKey: string }[]> {
   const scope = await ownScope();
   const db = await getUnsentDb();
   const made = inputs.map(input => ({ id: Crypto.randomUUID(), requestKey: `warehouse-${input.kind}-${Crypto.randomUUID()}` }));
@@ -223,8 +215,8 @@ function targetNumberOf(raw: string | null): string | null {
 
 function targetOf(raw: string | null): UnsentRowView['target'] {
   if (raw === null) return {};
-  const { grnId, dispatchId } = JSON.parse(raw) as TargetRef;
-  return { ...(grnId === undefined ? {} : { grnId }), ...(dispatchId === undefined ? {} : { dispatchId }) };
+  const { grnId } = JSON.parse(raw) as TargetRef;
+  return grnId === undefined ? {} : { grnId };
 }
 
 /**
@@ -239,7 +231,7 @@ export async function replaceItem(
     what: string;
     customer?: string;
     photos: { file: string; role: string; lineRef?: string }[];
-    photoDoc: 'grn' | 'dispatch';
+    photoDoc: 'grn';
     photoWhat: string;
     formGrnId?: string;
   }
@@ -303,7 +295,7 @@ export async function listItems(): Promise<UnsentRowView[]> {
       result: row.result === null ? null : (JSON.parse(row.result) as unknown),
       targetNumber: targetNumberOf(row.target_ref),
       target: targetOf(row.target_ref),
-      photoDoc: photoDocOf(row.kind, row.body),
+      photoDoc: photoDocOf(row.kind),
     }));
 }
 

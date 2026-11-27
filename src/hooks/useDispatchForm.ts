@@ -103,8 +103,6 @@ import {
   validateDispatchDateVsGRNDates,
   dateRuleScope,
 } from '@/features/dispatch/schemas/dispatchValidation';
-import { runQueuedDispatchSave } from '@/features/unsent/queuedDispatchSave';
-import { decideFormNumberMode, getFormNumberMode, setFormNumberMode, typedNumberUsed } from '@/features/unsent/formNumberMode';
 import {
   getNextDispatchNumber,
   createDispatch,
@@ -212,8 +210,6 @@ export type DispatchSubmitResult = {
    * `submitForm` again with `warnDuplicate: false`.
    */
   duplicate?: PossibleDuplicate;
-  /** A new dispatch kept on the phone, not sent (WH-161): the screen says so in "Saved on this phone". */
-  savedOnPhone?: { localId: string; number: string | undefined; afterEarlierEntries: boolean };
 };
 
 /** What a caller may change about one submit. */
@@ -438,12 +434,8 @@ export function useDispatchForm({
     // it was reset on, and the app stays open overnight); a date the person picked is left alone.
     dispatch(refreshDefaultDate(toLocalISODate(new Date())));
 
-    // How the number box works for this form: today's fetch, or none when it is given at send (WH-161).
-    const numberMode = await decideFormNumberMode('dispatch');
-    if (currentDispatchFormSession() !== currentSessionId) return;
-
     // Generate dispatch number
-    if (!header.disp_no && !hasGeneratedDispNo.current && numberMode === 'online') {
+    if (!header.disp_no && !hasGeneratedDispNo.current) {
       hasGeneratedDispNo.current = true;
       setIsGeneratingNumber(true);
       const request = ++dateNumberRequest.current;
@@ -456,9 +448,8 @@ export function useDispatchForm({
           console.log('[useDispatchForm] Dispatch number generation cancelled - session changed from', currentSessionId, 'to', currentDispatchFormSession());
           return;
         }
-        // A newer request put a number in the box meanwhile, or the date went back to the year of the number held,
-        // or a resumed draft put the form back in pending/typed mode (WH-161, N5).
-        if (request <= appliedRequest.current || request <= supersededUpTo.current || getFormNumberMode('dispatch') !== 'online') return;
+        // A newer request put a number in the box meanwhile, or the date went back to the year of the number held.
+        if (request <= appliedRequest.current || request <= supersededUpTo.current) return;
         setNumberOffer(answered.offer);
         if (fetchDate) numberYear.current = calculateFinancialYear(fetchDate);
         // '' is no suggestion (free text, a full series): the box stays empty for the person to type.
@@ -526,7 +517,7 @@ export function useDispatchForm({
    * form's number was fetched for, not the previous date: a request that failed is asked again on the next change.
    */
   const askNumberForDate = useCallback(async (newDate: unknown) => {
-    if (!isCreateMode || typeof newDate !== 'string' || !newDate || dispNoTypedRef.current || getFormNumberMode('dispatch') !== 'online') return;
+    if (!isCreateMode || typeof newDate !== 'string' || !newDate || dispNoTypedRef.current) return;
     const year = calculateFinancialYear(newDate);
     if (numberYear.current === year) {
       // The number the form holds is right for this date: an answer still on its way for another year is out of date.
@@ -611,16 +602,6 @@ export function useDispatchForm({
       await new Promise(r => setTimeout(r, 750));
       if (signal.aborted) {
         log.debug('Number check dropped after the wait');
-        return;
-      }
-
-      // No connection, or older entries still unsent (WH-161): the phone's copy answers, and the server decides at send.
-      if (getFormNumberMode('dispatch') !== 'online') {
-        if ((await typedNumberUsed('dispatch', newDispNo)) && !signal.aborted) {
-          const used = t('dispatch.wizard.numberTaken', { number: formatIdentifier(newDispNo) });
-          dispatch(setTakenNumberError(used));
-          setLocalValidationErrors((prev) => ({ ...prev, disp_no: used }));
-        }
         return;
       }
 
@@ -778,12 +759,6 @@ export function useDispatchForm({
           },
         };
       }
-    }
-
-    // The server gives the number at send (WH-161): the empty box is not a missing number.
-    if (getFormNumberMode('dispatch') === 'pending') {
-      const errors = Object.fromEntries(Object.entries(result.errors).filter(([field]) => field !== 'disp_no'));
-      result = { ...result, isValid: Object.keys(errors).length === 0, errors };
     }
 
     // A number another dispatch holds keeps step 1 from passing until it is changed.
@@ -1085,21 +1060,7 @@ export function useDispatchForm({
       submitAbortRef.current = controller;
       const lostAnswer = { onLostAnswer: () => dispatch(setCheckingAnswer(true)), signal: controller.signal };
 
-      // On the queue (offline, or an older entry still unsent): the same Save, kept on the phone (WH-161).
-      const queued = isCreateMode
-        ? await runQueuedDispatchSave({ ...payload, submissionNonce, warnDuplicate: submitOptions.warnDuplicate }, { numberTyped: dispNoTypedRef.current }, createDispatch)
-        : { kind: 'not-queued' as const };
-      if (queued.kind === 'alert') {
-        report(t('dispatch.wizard.errorTitle'), queued.message);
-        return { success: false, error: queued.message, toDetails: { message: queued.message } };
-      }
-      if (queued.kind === 'saved') {
-        return { success: true, savedOnPhone: { localId: queued.localId, number: queued.number, afterEarlierEntries: queued.afterEarlierEntries } };
-      }
-
-      const result = queued.kind === 'result'
-        ? queued.result
-        : isCreateMode
+      const result = isCreateMode
         ? await createDispatch({ ...payload, submissionNonce, warnDuplicate: submitOptions.warnDuplicate }, lostAnswer)
         : await updateDispatch(
             dispatchIdParam!,
@@ -1234,7 +1195,6 @@ export function useDispatchForm({
     // End the form's session to invalidate any pending async operations across all hook instances
     console.log('[useDispatchForm] Form session ended; new session:', endDispatchFormSession());
 
-    setFormNumberMode('dispatch', 'online');
     setLocalValidationErrors({});
     releaseFormPhotoFiles(formImagesRef.current);
     dispatch(resetForm());
