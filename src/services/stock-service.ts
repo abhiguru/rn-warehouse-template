@@ -23,7 +23,8 @@ import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import { localizeDigits, t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { getActiveOperatorServer } from '@/config/operatorServer';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
+import { ownsInCopy } from '@/features/phone-copy/reads/customer/customerScope';
 import { readItemStock } from '@/features/phone-copy/reads/reports/itemStock';
 import { createLogger } from '@/utils/logger';
 
@@ -780,16 +781,26 @@ export class StockService {
     const { customerId, searchQuery, limit = 50, offset = 0, sortBy, sortOrder } = options;
 
     // The phone copy answers when it can (WH-299); a later page whose source changed is told to start again.
+    // A customer account is refused a customer that is not a row of its copy; the server is not asked (WH-306).
     const copy = await readVia(
       'all',
-      q => readItemStock(q, { customerId: customerId || null, searchQuery: searchQuery || null, limit, offset, sortBy, sortOrder }),
+      forCustomerAccounts(async q => {
+        if (customerId && !(await ownsInCopy(q, customerId))) return { refused: true as const };
+        return {
+          refused: false as const,
+          data: await readItemStock(q, { customerId: customerId || null, searchQuery: searchQuery || null, limit, offset, sortBy, sortOrder }),
+        };
+      }),
       { key: JSON.stringify([customerId ?? null, searchQuery ?? null, sortBy ?? null, sortOrder ?? null]), page: offset > 0 ? 1 : 0 }
     );
     if (copy && 'restart' in copy) {
       return { success: false, message: t('errors.stock.itemWiseFailed'), copyRestart: true };
     }
     if (copy) {
-      const answer = shapeItemList((copy.value as { data: RawItemData }).data, offset, limit, true);
+      if (copy.value.refused) {
+        return { success: false, message: t('errors.customer.accessDenied'), error: 'CUSTOMER_ACCESS_DENIED' };
+      }
+      const answer = shapeItemList((copy.value.data as { data: RawItemData }).data, offset, limit, true);
       return { ...answer, source: copy.source };
     }
 

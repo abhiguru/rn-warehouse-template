@@ -689,7 +689,7 @@ const textOrNull = (value: unknown): string | null => (typeof value === 'string'
 export const getInvoiceReasons = async (invoiceId: string): Promise<InvoiceReasons | null> => {
   try {
     // The phone copy answers when it can (WH-348, contract 15): the reasons are keys of the invoice row.
-    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readInvoiceReasons(q, invoiceId));
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, forCustomerAccounts(q => readInvoiceReasons(q, invoiceId)));
     let h: Record<string, unknown>;
     if (copy) {
       if (!copy.value) return null;
@@ -747,7 +747,7 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
 
     invoiceServiceLogger.debug('Fetching invoice details for ID:', invoiceId);
     // The phone copy answers when it can (WH-348, contract 15): the same `data` as `get_invoice_data`.
-    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readInvoiceData(q, invoiceId));
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, forCustomerAccounts(q => readInvoiceData(q, invoiceId)));
     const authenticatedClient = await getAuthenticatedClient();
     invoiceServiceLogger.debug('Got authenticated client, calling get_invoice_data RPC...');
 
@@ -987,7 +987,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
 
     invoiceServiceLogger.debug('Fetching invoice items for ID:', invoiceId);
     // The phone copy answers when it can (WH-348, contract 15): the same `data` as `get_invoice_items_detailed`.
-    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readInvoiceItemsDetailed(q, invoiceId));
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, forCustomerAccounts(q => readInvoiceItemsDetailed(q, invoiceId)));
     const authenticatedClient = await getAuthenticatedClient();
     const { data, error } = copy?.value
       ? { data: { success: true, data: copy.value }, error: null }

@@ -88,10 +88,12 @@ export async function readCustomerGrnActivity(q: CopyReader, customerId: string,
 
   // The supervisors' names: a person's profile (administrators, supervisors) or the people list (staff).
   const names = new Map<string, string | null>();
-  for (const table of ['people', 'user_profiles'] as const) {
-    for (const record of await q.all<{ row: string }>(`SELECT row FROM ${table}`)) {
-      const person = parseRow(record.row);
-      names.set(String(person.id), textOf(person.name));
+  if (q.role !== 'customer') {
+    for (const table of ['people', 'user_profiles'] as const) {
+      for (const record of await q.all<{ row: string }>(`SELECT row FROM ${table}`)) {
+        const person = parseRow(record.row);
+        names.set(String(person.id), textOf(person.name));
+      }
     }
   }
 
@@ -117,7 +119,8 @@ export async function readCustomerGrnActivity(q: CopyReader, customerId: string,
         grn_date: grn.date ?? null,
         registration: grn.registration ?? null,
         sender_name: grn.sender_name ?? null,
-        supervisor_name: names.get(scalarText(grn.supervisor_id) ?? '') ?? null,
+        // A customer account's copy holds no people and no supervisor id: the name the receipt carries.
+        supervisor_name: q.role === 'customer' ? (textOf(grn.supervisor_name) ?? null) : (names.get(scalarText(grn.supervisor_id) ?? '') ?? null),
         note: grn.note ?? null,
         total_items: lots.length,
         total_qty: totalQty,

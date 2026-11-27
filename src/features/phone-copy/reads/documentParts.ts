@@ -33,13 +33,15 @@ export async function customerDetails(q: CopyReader, customerId: unknown): Promi
  * mobile number: the key is left out then, not made up.
  */
 export async function supervisorDetails(q: CopyReader, supervisorId: unknown, supervisorName?: unknown): Promise<Row | null> {
+  // A customer account's copy holds no people: the supervisor is the name the document carries, and nothing else of them.
+  if (q.role === 'customer') return typeof supervisorName === 'string' ? { name: supervisorName } : null;
   // A row with no supervisor id (older records) is matched by the name it carries.
   const byName = supervisorId === undefined && typeof supervisorName === 'string';
   if (typeof supervisorId !== 'string' && !byName) return null;
   const where = byName ? 'json_extract(row, \'$.name\') = ?' : 'id = ?';
   const key = byName ? supervisorName : supervisorId;
-  const profile = await q.get<{ row: string }>(`SELECT row FROM user_profiles WHERE ${where}`, [key as string]);
-  const found = profile ?? (await q.get<{ row: string }>(`SELECT row FROM people WHERE ${where}`, [key as string]));
+  const profile = await q.get<{ row: string }>(`SELECT row FROM user_profiles WHERE ${where}`, [String(key)]);
+  const found = profile ?? (await q.get<{ row: string }>(`SELECT row FROM people WHERE ${where}`, [String(key)]));
   if (!found) return null;
   const u = parseRow(found.row);
   return {

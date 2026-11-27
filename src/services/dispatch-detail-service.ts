@@ -25,7 +25,7 @@ import type {
   RpcSupervisorDetails,
 } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
-import { copyCarriesFormat3, readVia } from '@/features/phone-copy/readRoute';
+import { copyCarriesFormat3, forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { readDispatchDetails } from '@/features/phone-copy/reads/dispatchDetails';
 import { keepPhoto, photoFile } from '@/features/phone-copy/photoStore';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
@@ -155,7 +155,7 @@ export const getDispatchDetails = async (dispatchId: string): Promise<DispatchDe
       };
     }
 
-    const copy = await readVia('all', q => readDispatchDetails(q, dispatchId));
+    const copy = await readVia('all', forCustomerAccounts(q => readDispatchDetails(q, dispatchId)));
     if (copy) {
       const { value, source } = copy;
       if (value.kind === 'not-found') {

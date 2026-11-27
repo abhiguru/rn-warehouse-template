@@ -3,7 +3,7 @@
 
 import { getAuthenticatedClient } from '../config/supabaseConfig';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { readGrnItemRates } from '@/features/phone-copy/reads/grnRates';
 import { readActiveItems, readItemsWithoutRate } from '@/features/phone-copy/reads/items';
 import { readItemStoragePrices, readStandardRate } from '@/features/phone-copy/reads/itemRates';
@@ -884,7 +884,7 @@ const numOrNull = (v: unknown): number | null => (v === null || v === undefined 
  */
 export const getGrnItemRates = async (grnId: string): Promise<RpcGrnItemRates | null> => {
   // The phone copy answers when it can (WH-348, contract 16.2): the server's own figure per lot, copied as it is.
-  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readGrnItemRates(q, grnId));
+  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, forCustomerAccounts(q => readGrnItemRates(q, grnId)));
   let d: Record<string, unknown>;
   if (copy?.value) {
     d = copy.value as unknown as Record<string, unknown>;

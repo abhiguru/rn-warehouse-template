@@ -10,7 +10,7 @@ import type { CopyReader } from '../readRoute';
 import { getUnsentOverlay, netStock } from '../unsentOverlay';
 import { readNewDispatchDetails, unsentDispatchById } from './newDispatches';
 import { customerDetails, itemDetailsById, supervisorDetails } from './documentParts';
-import { compareText, comparePhotos, distinctSorted, numberOf, parseRow, parseRows, pick, textOf, type Row } from './rows';
+import { answerFor, compareText, comparePhotos, distinctSorted, numberOf, parseRow, parseRows, pick, textOf, type Row } from './rows';
 
 export type DispatchDetailsAnswer = { kind: 'found'; dispatch: Row; needsServer: ['invoiceAmounts'] } | { kind: 'not-found' };
 
@@ -141,5 +141,5 @@ export async function readDispatchDetails(q: CopyReader, dispatchId: string): Pr
       invoice_numbers: [...new Set(numbered.map(inv => numberOf(inv.inv_no)).filter((n): n is number => n !== null))].sort((a, b) => a - b),
     },
   };
-  return { kind: 'found', dispatch, needsServer: ['invoiceAmounts'] };
+  return { kind: 'found', dispatch: answerFor(q.role, dispatch), needsServer: ['invoiceAmounts'] };
 }

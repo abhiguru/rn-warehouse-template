@@ -1,6 +1,6 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { readItemSearch } from '@/features/phone-copy/reads/pickers';
 
 export interface ItemSearchResult {
@@ -13,7 +13,7 @@ export interface ItemSearchResult {
 export async function searchItems(query: string): Promise<ItemSearchResult[]> {
   const generation = getSessionGeneration();
   try {
-    const copy = await readVia('stage1', q => readItemSearch(q, query, true));
+    const copy = await readVia('stage1', forCustomerAccounts(q => readItemSearch(q, query, true)));
     let data: { items?: ItemSearchResult[] } | null;
     if (copy) {
       if (generation !== getSessionGeneration()) return [];

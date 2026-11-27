@@ -18,6 +18,7 @@ import type {
 } from '@/types/report.types';
 
 import { readVia } from '@/features/phone-copy/readRoute';
+import { readForCustomer } from '@/features/phone-copy/reads/customer/customerScope';
 import { readAllDispatchActivity, readCustomerDispatchActivity } from '@/features/phone-copy/reads/reports/dispatchActivity';
 import { t } from '@/i18n';
 import { getDateDaysAgo, getToday } from './reportDates';
@@ -87,7 +88,10 @@ export async function getCustomerDispatchActivity(
     };
 
     // The phone copy answers when it can (WH-299), in the function's own shape.
-    const copy = await readVia('all', q => readCustomerDispatchActivity(q, params.customerId, fromDate, toDate));
+    const copy = await readForCustomer(params.customerId, 'all', q => readCustomerDispatchActivity(q, params.customerId, fromDate, toDate));
+    if (copy && 'refused' in copy) {
+      return { success: false, data: EMPTY_RESPONSE, message: t('errors.customer.accessDenied'), error: 'CUSTOMER_ACCESS_DENIED' };
+    }
     const source = copy?.source;
     const { data, error } = copy
       ? { data: copy.value as unknown, error: null }

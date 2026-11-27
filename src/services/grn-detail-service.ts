@@ -20,7 +20,7 @@ import type {
 import { t } from '@/i18n';
 import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
-import { copyCarriesFormat3, readVia } from '@/features/phone-copy/readRoute';
+import { copyCarriesFormat3, forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { rememberServerLotValues } from '@/features/quick-change/confirmedLotValues';
 import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
 import { readGrnDetails, readItemDispatches } from '@/features/phone-copy/reads/grnDetails';
@@ -259,7 +259,7 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
       };
     }
 
-    const copy = await readVia('all', q => readGrnDetails(q, grnId));
+    const copy = await readVia('all', forCustomerAccounts(q => readGrnDetails(q, grnId)));
     if (copy && 'value' in copy) {
       const { value, source } = copy;
       if (value.kind === 'not-found') {
@@ -393,7 +393,7 @@ export const getGRNItemDispatches = async (grnItemId: string): Promise<GRNItemDi
     summary: ItemDispatchDetailSummary;
   }
 
-  const copy = await readVia('all', q => readItemDispatches(q, grnItemId));
+  const copy = await readVia('all', forCustomerAccounts(q => readItemDispatches(q, grnItemId)));
   if (copy) {
     const { value, source } = copy;
     if (value.kind === 'found') {

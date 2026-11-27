@@ -51,3 +51,23 @@ export const distinctSorted = (values: readonly (string | null)[]): string[] =>
 
 /** A sum of figures the server holds with two decimals: no float dust. */
 export const sumMoney = (values: readonly number[]): number => Math.round(values.reduce((total, value) => total + value, 0) * 100) / 100;
+
+/** The keys no read may answer to a customer account (WH-306 contract 14 item 3): the server's `strip_staff_keys` list. */
+const STAFF_ONLY_KEYS: ReadonlySet<string> = new Set([
+  'created_by', 'updated_by', 'deleted_by', 'supervisor_id', 'sender_id', 'import_batch_id', 'uploaded_by',
+  'created_by_name', 'updated_by_name', 'updated_by_display_name', 'user_access',
+  'created_by_info', 'created_by_display_name', 'created_by_role',
+]);
+
+function withoutStaffKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutStaffKeys);
+  if (value === null || typeof value !== 'object') return value;
+  const own: Row = {};
+  for (const [key, inner] of Object.entries(value)) {
+    if (!STAFF_ONLY_KEYS.has(key)) own[key] = withoutStaffKeys(inner);
+  }
+  return own;
+}
+
+/** What a read answers to this role: for a customer account, the answer with the staff-only keys left out at any depth, as the server does. */
+export const answerFor = <T>(role: string, value: T): T => (role === 'customer' ? (withoutStaffKeys(value) as T) : value);

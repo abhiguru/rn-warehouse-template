@@ -10,7 +10,7 @@ import { getUnsentOverlay, netStock } from '../unsentOverlay';
 import { lotsOfGrn, removedLotIds } from './lotOverlay';
 import { readNewGrnDetails, unsentGrnById } from './newDocuments';
 import { customerDetails, itemDetailsById, supervisorDetails } from './documentParts';
-import { compareNullsLast, compareNumbers, compareText, comparePhotos, distinctSorted, numberOf, parseRow, parseRows, pick, sumMoney, textOf, type Row } from './rows';
+import { answerFor, compareNullsLast, compareNumbers, compareText, comparePhotos, distinctSorted, numberOf, parseRow, parseRows, pick, sumMoney, textOf, type Row } from './rows';
 
 export type GrnDetailsAnswer = { kind: 'found'; grn: Row; needsServer: ['rates'] } | { kind: 'not-found' };
 
@@ -25,7 +25,8 @@ const photo = (p: Row): Row => ({
  * the stored figures, ordered by item name, lower weight and id (WH-348). A copy of format 2 holds none.
  */
 async function ratesOf(q: CopyReader, grnId: string, archived: boolean): Promise<Row[]> {
-  if (q.role === 'staff') return [];
+  // Only administrators and supervisors are answered the rates; staff and a customer account get an empty list.
+  if (q.role !== 'admin' && q.role !== 'supervisor') return [];
   const found = await q.all<{ row: string; item_name: string | null }>(
     'SELECT r.row AS row, i.name AS item_name FROM grn_rates r LEFT JOIN items i ON i.id = json_extract(r.row, \'$.item_id\') WHERE r.gr_id = ?',
     [grnId]
@@ -47,7 +48,8 @@ const labelOf = (inv: Row): string => `${textOf(inv.inv_prefix) ?? ''}${String(i
 
 /** Whether this GRN may be invoiced now (migration 174's rule), as far as the copy can tell. */
 async function canCreateInvoice(q: CopyReader, grn: Row, lockImported: boolean): Promise<boolean> {
-  // Which lines an imported invoice takes as billed is not on the phone: such a GRN is never offered.
+  // A customer account invoices nothing. Which lines an imported invoice takes as billed is not on the phone: such a GRN is never offered.
+  if (q.role === 'customer') return false;
   if (grn.deleted_at !== null && grn.deleted_at !== undefined) return false;
   if (lockImported) return false;
   const free = await q.get<{ n: number }>(
@@ -110,7 +112,7 @@ export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnD
   live.sort(byInvoice);
   const labelPairs = [...new Map(live.filter(inv => numberOf(inv.inv_no) !== null).map(inv => [`${String(inv.inv_no)}|${labelOf(inv)}`, inv])).values()]
     .sort((a, b) => (numberOf(a.inv_no) ?? 0) - (numberOf(b.inv_no) ?? 0) || compareText(labelOf(a), labelOf(b)));
-  const lock = await q.get<{ row: string }>('SELECT row FROM grn_lock WHERE id = ?', [grnId]);
+  const lock = q.role === 'customer' ? null : await q.get<{ row: string }>('SELECT row FROM grn_lock WHERE id = ?', [grnId]);
   const lockRow = lock ? parseRow(lock.row) : null;
 
   const weights = counted.reduce((sum, l) => sum + (numberOf(l.weight) ?? 0) * (numberOf(l.qty) ?? 0), 0);
@@ -171,7 +173,7 @@ export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnD
       dispatch_numbers: distinctSorted(dispatched.map(line => line.disp_no)),
     },
   };
-  return { kind: 'found', grn, needsServer: ['rates'] };
+  return { kind: 'found', grn: answerFor(q.role, grn), needsServer: ['rates'] };
 }
 
 export type ItemDispatchesAnswer =

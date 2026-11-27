@@ -8,7 +8,7 @@
 import type { SqlValue } from '../copyDriver';
 import { pgSearchTerms } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
-import { netLotStock, numberOf, parseRow, parseRows, pick, textOf, type Row } from './rows';
+import { answerFor, netLotStock, numberOf, parseRow, parseRows, pick, textOf, type Row } from './rows';
 
 export interface OrdersListRequest {
   customerId: string | null;
@@ -116,7 +116,7 @@ export async function readOrdersList(q: CopyReader, request: OrdersListRequest):
       dispatch_created_at: pick(dispatch, 'created_at'),
     });
   }
-  return { orders, pagination: { total_count: total, has_more: total > offset + limit, limit, offset } };
+  return { orders: answerFor(q.role, orders), pagination: { total_count: total, has_more: total > offset + limit, limit, offset } };
 }
 
 export type OrderWithItemsAnswer = { kind: 'found'; order_data: Row; items: Row[] } | { kind: 'not-found' };
@@ -162,7 +162,7 @@ export async function readOrderWithItems(q: CopyReader, orderId: string): Promis
       current_stock: netLotStock(lotId, stock),
     };
   });
-  return { kind: 'found', order_data, items };
+  return { kind: 'found', order_data: answerFor(q.role, order_data), items };
 }
 
 /** `get_customer_order`'s `data`: the customer's live order, when it has a line. */

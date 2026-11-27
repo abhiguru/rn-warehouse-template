@@ -1,6 +1,6 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { invoiceStateLabel, parseInvoiceState } from '@/features/charging/invoiceState';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { readCustomerSearch, readItemSearch } from '@/features/phone-copy/reads/pickers';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 
@@ -47,7 +47,7 @@ class SearchService {
       }
 
       // The phone copy answers when it can (WH-299): the same rows as the server's function.
-      const copy = await readVia('stage1', q => readCustomerSearch(q, query, 20, options.includeInactive === true));
+      const copy = await readVia('stage1', forCustomerAccounts(q => readCustomerSearch(q, query, 20, options.includeInactive === true)));
       let data: unknown;
       if (copy) {
         data = copy.value;
@@ -125,7 +125,7 @@ class SearchService {
         return [];
       }
 
-      const copy = await readVia('stage1', q => readItemSearch(q, query, true));
+      const copy = await readVia('stage1', forCustomerAccounts(q => readItemSearch(q, query, true)));
       let data: { items?: RpcItemResult[] } | null;
       if (copy) {
         data = copy.value as unknown as { items?: RpcItemResult[] };

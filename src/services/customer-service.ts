@@ -12,7 +12,7 @@
 
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
 import { readCustomerById, readCustomerCounts, readCustomerList } from '@/features/phone-copy/reads/customers';
 import { readCustomerStates } from '@/features/phone-copy/reads/pickers';
 import {
@@ -159,7 +159,7 @@ class CustomerService {
   async getCustomerStates(ids: string[]): Promise<Map<string, { active: boolean; deleted: boolean }> | null> {
     if (ids.length === 0) return new Map();
     try {
-      const copy = await readVia('stage1', q => readCustomerStates(q, ids));
+      const copy = await readVia('stage1', forCustomerAccounts(q => readCustomerStates(q, ids)));
       if (copy) return copy.value;
       const client = await getAuthenticatedClient();
       const { data, error } = await client.from('customers').select('id, active, deleted_at').in('id', ids);

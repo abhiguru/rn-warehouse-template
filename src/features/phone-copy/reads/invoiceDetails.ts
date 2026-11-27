@@ -9,7 +9,7 @@
 import { stateNameOf } from '@/features/gst/indianStates';
 import { enCompare, parseTimestampUs, uuidTimestampUs } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
-import { compareNullsLast, compareNumbers, compareText, numberOf, parseRow, parseRows, pick, textOf, type Row } from './rows';
+import { answerFor, compareNullsLast, compareNumbers, compareText, numberOf, parseRow, parseRows, pick, textOf, type Row } from './rows';
 
 const isSet = (value: unknown): boolean => value !== null && value !== undefined;
 const label = (invoice: Row): string => `${textOf(invoice.inv_prefix) ?? ''}${numberOf(invoice.inv_no) ?? textOf(invoice.inv_no) ?? ''}`;
@@ -111,8 +111,8 @@ export async function readInvoiceData(q: CopyReader, invoiceId: string): Promise
   if (!customer || !grn) return null;
   const lines = (await linesOf(q, invoiceId)).sort(byLineId);
   requireServerFigures(invoice, lines);
-  const creator = await person(q, invoice.created_by);
-  const canceller = await person(q, invoice.cancelled_by);
+  const creator = q.role === 'customer' ? null : await person(q, invoice.created_by);
+  const canceller = q.role === 'customer' ? null : await person(q, invoice.cancelled_by);
   const keptMode = lines.map(({ line }) => textOf(line.kept_pricing_mode)).find(mode => mode !== null) ?? null;
   const grnMode = keptMode ?? textOf(grn.pricing_mode);
   const duration = textOf(invoice.duration_mode) ?? 'legacy';
@@ -176,7 +176,7 @@ export async function readInvoiceData(q: CopyReader, invoiceId: string): Promise
     // Not for staff: the server's own figures, copied as they are (feed topic "sync invoice amounts").
     ...(q.role === 'staff' ? {} : obj(invoice.payment_state)),
   };
-  return { header, items };
+  return answerFor(q.role, { header, items });
 }
 
 /** `get_invoice_items_detailed`'s `data` (`{ items, summary }`); null when the copy has no such invoice. */
@@ -245,18 +245,18 @@ export async function readInvoicePayments(q: CopyReader, invoiceId: string): Pro
     compareText(textOf(a.paid_on) ?? '', textOf(b.paid_on) ?? '') ||
     compareNullsLast(parseTimestampUs(textOf(a.payment_date)), parseTimestampUs(textOf(b.payment_date)), compareNumbers) ||
     compareNullsLast(numberOf(a.payment_no), numberOf(b.payment_no), compareNumbers));
-  return {
+  return answerFor(q.role, {
     ...obj(invoice.payment_state),
     payments: rows.map(row => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'payment_date' && key !== 'customer_id'))),
-  };
+  });
 }
 
 /** The reasons of `get_invoice_detail` (discount and zero charge, and who set them) from the invoice row; null when none. */
 export async function readInvoiceReasons(q: CopyReader, invoiceId: string): Promise<Row | null> {
   const invoice = await one(q, 'invoice', invoiceId);
   if (!invoice || isSet(invoice.deleted_at)) return null;
-  return {
+  return answerFor(q.role, {
     discount_reason: pick(invoice, 'discount_reason'), discount_set_by_name: pick(invoice, 'discount_set_by_name'), discount_set_at: pick(invoice, 'discount_set_at'),
     zero_charge_reason: pick(invoice, 'zero_charge_reason'), zero_charge_set_by_name: pick(invoice, 'zero_charge_set_by_name'), zero_charge_set_at: pick(invoice, 'zero_charge_set_at'),
-  };
+  });
 }
