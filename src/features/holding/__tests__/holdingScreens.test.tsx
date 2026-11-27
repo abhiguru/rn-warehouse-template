@@ -560,8 +560,7 @@ describe('A-4: Correct on the Held item', () => {
     await user.press(screen.getByTestId('quick-change-save'));
 
     const refused = await screen.findByTestId('quick-change-refused');
-    expect(refused).toHaveTextContent(/was deleted/);
-    expect(refused).toHaveTextContent('Reject.');
+    expect(refused).toHaveTextContent('GRN B1 was deleted. Reject.');
     expect(screen.getByTestId('quick-change-sheet')).toBeOnTheScreen();
     expect(toasts()).toHaveLength(0);
     expect(mockRouter.back).not.toHaveBeenCalled();
@@ -628,6 +627,19 @@ describe('DQ11 (c): the Correct sheet of a held field change names the lot', () 
     expect(within(subtitle).queryByText(/Rice/)).not.toBeOnTheScreen();
     expect(within(subtitle).queryByText(/·/)).not.toBeOnTheScreen();
     expect(within(subtitle).getByText('asha Traders')).toBeOnTheScreen();
+  });
+});
+
+describe('a staff account that is not the recorder gets no held-item data', () => {
+  it('opening a held item it does not own (recorder\'s view) shows nothing of it and asks the server for nothing', async () => {
+    signIn('staff');
+    mockParams = { id: 'someone-elses', own: '1' };
+    mockServer.answers.get_held_item = () => itemAnswer(listRow('someone-elses'));
+    await show(HeldItemScreen());
+    expect(await screen.findByTestId('held-item-screen')).toBeOnTheScreen();
+    expect(screen.getByText("Couldn't load this. Check your connection and try again.")).toBeOnTheScreen();
+    expect(screen.queryByText('asha Traders')).not.toBeOnTheScreen();
+    expect(mockServer.calls.filter(c => c.name === 'get_held_item' || c.name === 'get_held_items')).toHaveLength(0);
   });
 });
 
