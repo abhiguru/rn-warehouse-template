@@ -8,7 +8,7 @@
  * server's answers (`server`), expo-sqlite, files, NetInfo, AppState, the signed-in person (newRecordPhone.ts).
  */
 import { eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
-import { files } from '@/tests/phoneCopy/fakeFiles';
+import { DOCUMENT_DIRECTORY, files } from '@/tests/phoneCopy/fakeFiles';
 import { addPhoto, GATEWAY_TIMEOUT, keptPhotoFiles, NO_NETWORK, rawRows, server } from '@/tests/unsent/unsentPhone';
 import { bootNewRecords, grnPayload, type NewRecordPhone } from '@/tests/unsent/newRecordPhone';
 
@@ -110,8 +110,12 @@ describe('S6: saving the edited GRN in place', () => {
     expect(photosItem[0].depends_on).toBe(record.id);
     const kept = await photos();
     expect(kept).toHaveLength(2);
-    expect(kept[0].file).toBe(keptFront);
-    expect(kept[1].file).toMatch(/unsent-work\/photos\/.*side\.jpg$/);
+    // Stored relative to the documents folder (WH-301p); the read side gives full current addresses.
+    expect(kept[0].file).toBe(keptFront.slice(DOCUMENT_DIRECTORY.length));
+    expect(kept[0].file.startsWith('unsent-work/photos/')).toBe(true);
+    expect(kept[1].file).toMatch(/^unsent-work\/photos\/.*side\.jpg$/);
+    const read = await (require('@/features/unsent/unsentQueue') as typeof import('@/features/unsent/unsentQueue')).photosOfItem(photosItem[0].id);
+    expect(read.map(row => row.file)).toEqual([keptFront, `${DOCUMENT_DIRECTORY}${kept[1].file}`]);
     expect(files.held.has(droppedBack)).toBe(false);
     expect(files.held.has(added)).toBe(false); // moved into the unsent folder
     expect(server.calls.length).toBe(callsBefore);

@@ -20,7 +20,7 @@
  * =====================================================================================
  */
 import { env, eraseEverything, resetEnv, setReachable } from '@/tests/phoneCopy/phoneEnv';
-import { files } from '@/tests/phoneCopy/fakeFiles';
+import { DOCUMENT_DIRECTORY, files } from '@/tests/phoneCopy/fakeFiles';
 import { addPhoto, bootUnsent, GATEWAY_TIMEOUT, NO_NETWORK, rawRows, restart, rpcKind, server, type RpcAnswer } from '@/tests/unsent/unsentPhone';
 
 const advance = (ms: number) => jest.advanceTimersByTimeAsync(ms);
@@ -171,7 +171,7 @@ describe('Q3, Q12: waiting photos', () => {
     await phone.queue.enqueue(photoItem(record, kept, gone));
     const stored = await rawRows<{ file: string; client_photo_id: string }>('item_photos');
     const goneRow = stored.find(r => r.file.endsWith('gone.jpg'))!;
-    files.held.delete(goneRow.file);
+    files.held.delete(`${DOCUMENT_DIRECTORY}${goneRow.file}`); // stored relative to the documents folder (WH-301p)
     server.answers[SAVE] = () => ok('GRN 1');
     server.answers.save_photo = () => ok('photo');
     await online(phone);

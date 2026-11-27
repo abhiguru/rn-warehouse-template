@@ -205,3 +205,39 @@ describe('addresses that are not the unsent folder', () => {
     expect(imagesOf((await loadFormDraft('grn'))?.state)).toEqual([cache, copyPhoto]);
   });
 });
+
+describe('an address that climbs out of the unsent folder (WH-301p: `..` is never accepted)', () => {
+  const climbing = [
+    `${LEGACY_ROOT}unsent-work/../../x.jpg`,
+    `${ROOT_B}unsent-work/photos/../../../secret.jpg`,
+    `${LEGACY_ROOT}unsent-work/%2e%2e/%2e%2e/x.jpg`,
+  ];
+
+  it('is not rebased onto the current folder in a form text', async () => {
+    await start();
+    const { saveFormDraft, loadFormDraft } = formsModule();
+    await saveFormDraft({ kind: 'grn', state: formState([]) });
+    moveDocumentRoot(ROOT_A, ROOT_B);
+    await rawRun(`UPDATE forms SET state = '${JSON.stringify(formState(climbing))}' WHERE kind = 'grn'`);
+
+    const images = imagesOf((await loadFormDraft('grn'))?.state);
+
+    expect(images).toEqual(climbing);
+    expect(images[0].startsWith(ROOT_B)).toBe(false);
+  });
+
+  it('is never handed to a send as a file of the queued item', async () => {
+    const phone = await start();
+    await setReachable(false);
+    phone.phone.engine.setCopyOffline(true);
+    const record = await phone.queue.enqueue({ kind: 'testRecord', body: {}, what: 'GRN 1 for Asha Fictional Traders' });
+    const photo = await phone.queue.enqueue({ kind: 'testPhoto', body: {}, what: 'Photos of the GRN', dependsOn: record.id, photos: [{ file: addPhoto('a.jpg'), role: 'goods' }] });
+    for (const bad of ['unsent-work/../../x.jpg', 'unsent-work/%2e%2e/x.jpg', `${LEGACY_ROOT}unsent-work/../../x.jpg`]) {
+      await rawRun(`UPDATE item_photos SET file = '${bad}'`);
+      const [read] = await photosOf(phone, photo.id);
+      expect(read.file.startsWith(ROOT_A)).toBe(false);
+      expect(read.file).not.toContain('..');
+      expect(read.file).not.toContain('%2e');
+    }
+  });
+});
