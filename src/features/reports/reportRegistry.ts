@@ -23,7 +23,8 @@ export type ReportId =
   | 'statement'
   | 'temperature-report'
   | 'accountant-pack'
-  | 'replaced-entries';
+  | 'replaced-entries'
+  | 'holding-list';
 
 export type ReportCategory = 'stock' | 'movement' | 'financial' | 'operations';
 
@@ -35,7 +36,7 @@ export interface ReportDefinition {
   readonly description: string;
   /** MaterialCommunityIcons name */
   icon: IconName;
-  route: `/reports/${ReportId}`;
+  route: string;
   category: ReportCategory;
   /** Whether the report covers a chosen period. False: it shows the stock as it is now. */
   hasPeriod: boolean;
@@ -64,6 +65,8 @@ interface ReportEntry {
   gate?: RoleGatedScreen;
   hubGate?: RoleGatedScreen;
   feature?: BackendFeature;
+  /** Where the row opens, when it is not the report screen `/reports/<id>`. */
+  route?: string;
 }
 
 // Title and description are getters, so they follow the app's language (docs/I18N.md
@@ -74,7 +77,7 @@ const define = (entry: ReportEntry): ReportDefinition => ({
   get title() { return t(entry.title); },
   get description() { return t(entry.description); },
   icon: entry.icon,
-  route: `/reports/${entry.id}`,
+  route: entry.route ?? `/reports/${entry.id}`,
   category: entry.category,
   hasPeriod: entry.hasPeriod,
   gate: entry.gate,
@@ -209,9 +212,26 @@ export const REPORTS: readonly ReportDefinition[] = [
 ];
 
 /**
+ * The Holding list's row of the Reports tab (WH-304, Design offline-capture.md 7.1): offered to administrators and supervisors of a
+ * facility whose server has the holding list, so it is always reachable when the strip on the GRN and Dispatch tabs is gone. It
+ * opens the Holding list screen, not a report screen, so it is not one of `REPORTS`; its line is the list's own note.
+ */
+export const HOLDING_LIST_REPORT: ReportDefinition = define({
+  id: 'holding-list',
+  title: 'offline.holding.title',
+  description: 'offline.holding.listNote',
+  icon: 'inbox-arrow-down',
+  category: 'operations',
+  hasPeriod: false,
+  gate: 'holdingList',
+  feature: 'holdingList',
+  route: '/holding-list',
+});
+
+/**
  * The report with this id. The id is compared with the ids of the table only, so a word
  * that names something every object has ("__proto__", "constructor") finds nothing.
  */
 export function reportById(id: string): ReportDefinition | undefined {
-  return REPORTS.find((report) => report.id === id);
+  return REPORTS.find((report) => report.id === id) ?? (id === HOLDING_LIST_REPORT.id ? HOLDING_LIST_REPORT : undefined);
 }

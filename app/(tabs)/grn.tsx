@@ -14,6 +14,7 @@ import { GrnViewSwitch } from '@/features/find-goods/GrnViewSwitch';
 import { useFindGoodsState } from '@/features/find-goods/findGoodsGate';
 import { useFindGoodsSession } from '@/features/find-goods/findGoodsSession';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
+import { HeldStrip } from '@/features/holding/HeldStrip';
 import { useThemedStyles } from '@/hooks/useTheme';
 import type { ThemeTokens } from '@/theme/tokens';
 
@@ -46,6 +47,7 @@ export default function GRNTab() {
 
   return (
     <View style={styles.container}>
+      <HeldStrip />
       <ListErrorBoundary listName="GRN items">
         {offered && view === 'find-goods' ? (
           <FindGoodsScreen switcher={switcher} />

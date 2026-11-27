@@ -56,6 +56,8 @@ export const ROLE_GATED_ROUTES: Readonly<Record<string, RoleGatedScreen>> = {
   'reports/temperature-report': 'temperatureReport',
   'reports/accountant-pack': 'accountantPack',
   'reports/replaced-entries': 'replacedEntries',
+  // The Holding list of refused items (WH-304): administrators and supervisors. The held item page is also the recorder's own read-only view.
+  'holding-list': 'holdingList',
 };
 
 /**

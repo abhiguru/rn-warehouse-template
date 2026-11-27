@@ -170,6 +170,13 @@ export const queryKeys = {
     lists: () => [...queryKeys.user.all, 'list'] as const,
     supervisors: () => [...queryKeys.user.lists(), 'supervisors'] as const,
   },
+
+  // Holding list queries (WH-304)
+  holding: {
+    all: ['holding'] as const,
+    list: () => [...queryKeys.holding.all, 'list'] as const,
+    detail: (id: string) => [...queryKeys.holding.all, 'detail', id] as const,
+  },
 };
 
 export default queryClient;

@@ -13,7 +13,7 @@
 import { backendHasFeature } from '@/config/backendFeatures';
 import { canOpenScreen } from '@/config/roles';
 import type { FacilityCapabilities } from '@/config/facilityCapabilities';
-import { REPORTS, reportById, type ReportCategory, type ReportDefinition } from '@/features/reports/reportRegistry';
+import { HOLDING_LIST_REPORT, REPORTS, reportById, type ReportCategory, type ReportDefinition } from '@/features/reports/reportRegistry';
 
 export type ReportHubSectionId = 'pinned' | 'recent' | ReportCategory;
 
@@ -68,7 +68,7 @@ export function reportHubSections(
     { id: 'recent', reports: recentReports },
     ...CATEGORIES.map((category) => ({
       id: category,
-      reports: REPORTS.filter((report) => report.category === category && mayOpenReport(role, report, capabilities)),
+      reports: [...REPORTS, HOLDING_LIST_REPORT].filter((report) => report.category === category && mayOpenReport(role, report, capabilities)),
     })),
   ];
   return sections.filter((section) => section.reports.length > 0);

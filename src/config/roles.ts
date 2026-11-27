@@ -84,7 +84,8 @@ export type RoleGatedScreen =
   | 'customerDues'
   | 'customerStatement'
   | 'customerStatementCard'
-  | 'temperatureReport';
+  | 'temperatureReport'
+  | 'holdingList';
 
 /**
  * Whether the app offers `screen` to `role`. With `capabilities` (the facility's, from
@@ -114,6 +115,9 @@ export function canOpenScreen(
       // refuses staff from migration 90. The price history and the standard rate were
       // manager-only before (get_item_price_history, migration 48; set_standard_rate, 85).
       return isManager(role);
+    case 'holdingList':
+      // The Holding list of refused items (WH-304): administrators and supervisors, where the facility keeps a phone copy (`sync`).
+      return isManager(role) && (capabilities === undefined || capabilities.sync);
     case 'enrollmentReview':
       return normalizeRole(role) === 'admin';
     case 'rackPresets':
