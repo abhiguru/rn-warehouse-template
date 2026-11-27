@@ -247,6 +247,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // Never for a new GRN still on this phone: its waiting item is replaced in place (WH-161).
   const savesAsFieldChanges = () =>
     !editingUnsent && hasCapability('sync') && backendHasFeature('grnFieldChanges') && !grnImported && !!loadedBaseline && (loadedFrom === 'copy' || isCopyOffline());
+  // WH-304: this save sends no rates: field changes, or a corrected held GRN edit (a GrnEditBody never carries rates;
+  // the server decides, a missing rate comes back as its refusal). A held new GRN sends its rates and is checked here.
+  const savesNoRates = () => savesAsFieldChanges() || (heldId !== null && loadedFrom === 'heldEdit');
   // Set once this form has created its GRN. A further press of Create never creates again:
   // save_grn would answer the repeat with the same GRN and every photo would go up twice.
   const createdRef = useRef(false);
@@ -555,13 +558,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
 
     // Every line needs a rate before the GRN is saved (and the rates must be known).
-    if (canSetRates && !savesAsFieldChanges() && stored.status !== 'ready' && !ratesOffline) {
+    if (canSetRates && !savesNoRates() && stored.status !== 'ready' && !ratesOffline) {
       showAlert(tr('grn.review.ratesNotLoadedTitle'), tr('grn.review.ratesNotLoadedMessage'));
       scrollToRates();
       return;
     }
     // An invoiced GRN is not checked: its invoice keeps its own figures and the server skips the check too.
-    if (canSetRates && !savesAsFieldChanges() && !ratesOffline && !grnInvoiced && missingCount(pricedRows) > 0) {
+    if (canSetRates && !savesNoRates() && !ratesOffline && !grnInvoiced && missingCount(pricedRows) > 0) {
       showAlert(tr('grn.review.ratesMissingTitle'), tr('grn.review.ratesMissingMessage'));
       scrollToRates();
       return;
