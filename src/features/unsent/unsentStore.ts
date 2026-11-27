@@ -10,6 +10,7 @@ import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger, loggableError } from '@/utils/logger';
 import './lotChangeKind';
 import './photosKind';
+import { ownHeldCopyRows, subscribeHeldRows } from '@/features/holding/heldRows';
 import { startSendEngine } from './sendEngine';
 import { getUnsentDb } from './unsentDb';
 import { allItems, onUnsentChange, UNSENT_STATES, type ItemRow } from './unsentRows';
@@ -28,6 +29,8 @@ export interface UnsentSummary {
   unreadable: boolean;
   /** Own items kept but not sendable because the role is now customer (Product PQ5). */
   waitingForAdmin: number;
+  /** Own items the server holds (and rejections not opened yet): the status bar says so when nothing is unsent (WH-304, Design 7.9 DQ6). */
+  held: number;
 }
 
 const state = {
@@ -37,7 +40,7 @@ const state = {
   rows: [] as ItemRow[],
   version: 0,
   loading: Promise.resolve(),
-  summary: { count: 0, sendBy: 0, limitReached: false, unreadable: false, waitingForAdmin: 0 } as UnsentSummary,
+  summary: { count: 0, sendBy: 0, limitReached: false, unreadable: false, waitingForAdmin: 0, held: 0 } as UnsentSummary,
 };
 
 function createListeners() {
@@ -67,13 +70,24 @@ export const ownUnsentRows = (): ItemRow[] =>
 export const countEntries = (rows: readonly ItemRow[]): number =>
   rows.filter(row => !(row.kind === 'photos' && row.depends_on !== null && rows.some(other => other.id === row.depends_on))).length;
 
+/**
+ * How many items the person has that the server holds: their own rows in `held` and the rows of the copy that are held or
+ * rejected and not opened yet, one per held id (the file's row and the copy's are the same item; WH-304).
+ */
+export function ownHeldCount(): number {
+  const ids = new Set<string>();
+  for (const row of state.rows) if (row.scope === state.scope && row.state === 'held') ids.add(row.held_id ?? row.id);
+  for (const row of ownHeldCopyRows()) if (row.state === 'held' || row.state === 'rejected') ids.add(row.id);
+  return ids.size;
+}
+
 /** The count of the person's own unsent entries. */
 export const ownUnsentCount = (): number => countEntries(ownUnsentRows());
 
 function build(): UnsentSummary {
-  if (state.unreadable) return { count: 0, sendBy: 0, limitReached: true, unreadable: true, waitingForAdmin: 0 };
+  if (state.unreadable) return { count: 0, sendBy: 0, limitReached: true, unreadable: true, waitingForAdmin: 0, held: 0 };
   const counted = ownUnsentRows();
-  if (counted.length > 0 && cannotSendUnsent()) return { count: 0, sendBy: 0, limitReached: false, unreadable: false, waitingForAdmin: counted.length };
+  if (counted.length > 0 && cannotSendUnsent()) return { count: 0, sendBy: 0, limitReached: false, unreadable: false, waitingForAdmin: counted.length, held: 0 };
   // Waiting photos are the only copy of a photo but never start the clock (Product PQ2).
   const starting = counted.filter(row => row.kind !== 'photos');
   let sendBy = 0;
@@ -83,7 +97,7 @@ function build(): UnsentSummary {
     limitReached = age >= UNSENT_LIMIT_MS;
     sendBy = Date.now() + (UNSENT_LIMIT_MS - age);
   }
-  return { count: countEntries(counted), sendBy, limitReached, unreadable: false, waitingForAdmin: 0 };
+  return { count: countEntries(counted), sendBy, limitReached, unreadable: false, waitingForAdmin: 0, held: ownHeldCount() };
 }
 
 /** The summary now. The same object while nothing in it changed (for `useSyncExternalStore`). */
@@ -95,6 +109,7 @@ export function getUnsentSummary(): UnsentSummary {
     next.limitReached === last.limitReached &&
     next.unreadable === last.unreadable &&
     next.waitingForAdmin === last.waitingForAdmin &&
+    next.held === last.held &&
     Math.abs(next.sendBy - last.sendBy) < 1000;
   if (!same) state.summary = next;
   return state.summary;
@@ -147,6 +162,7 @@ export async function initUnsent(): Promise<void> {
     state.started = true;
     startSendEngine();
     onUnsentChange(refreshUnsent);
+    subscribeHeldRows(() => listeners.fire());
     onSessionChange(() => {
       state.scope = null;
       listeners.fire();

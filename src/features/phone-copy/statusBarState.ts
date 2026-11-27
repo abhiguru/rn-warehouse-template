@@ -14,6 +14,8 @@ export interface UnsentSummary {
   unreadable?: boolean;
   /** Own items kept but not sendable (role lowered, account deactivated): information only (Design 4.9). */
   waitingForAdmin?: number;
+  /** Own items the server holds or rejected and the person has not opened (WH-304, Design 7.9 DQ6); line 2 says so when nothing is unsent. */
+  held?: number;
 }
 
 export interface StatusBarInput {
@@ -50,7 +52,7 @@ export interface StatusBarView {
   tone: 'neutral' | 'critical';
   icon: StatusBarIcon;
   line1: { key: OfflineStatusKey; time?: number }[];
-  line2: { key: 'unsent' | 'sending' | 'unsentLimit' | 'unsentUnreadable' | 'waitingForAdmin'; count: number; time?: number } | null;
+  line2: { key: 'unsent' | 'sending' | 'unsentLimit' | 'unsentUnreadable' | 'waitingForAdmin' | 'heldLine'; count: number; time?: number } | null;
   action: 'retry' | null;
   actionDisabled: boolean;
 }
@@ -128,6 +130,9 @@ export function deriveStatusBar(input: StatusBarInput): StatusBarView {
     if (limit) line2 = { key: 'unsentLimit', count: unsent.count };
     else if (input.offline) line2 = { key: 'unsent', count: unsent.count, time: unsent.sendBy };
     else line2 = { key: 'sending', count: unsent.count };
+  } else if (unsent && (unsent.held ?? 0) > 0) {
+    // Nothing unsent: the person's held items are told (the unsent text wins when there is one).
+    line2 = { key: 'heldLine', count: unsent.held ?? 0 };
   }
   if (limit) {
     icon = 'clock-alert-outline';

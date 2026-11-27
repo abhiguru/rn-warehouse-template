@@ -12,7 +12,7 @@ export const SCHEMA_VERSION = 4;
 /** The format from which Customer dues, Statement and Customer activity are kept as the server answered (WH-305; the feed's money marks). */
 export const MONEY_FORMAT = 6;
 /** The payload formats of the change-log feed this build reads (feed formats follow build order). */
-export const SYNC_FORMATS: readonly number[] = [1, 2, 3, 4, MONEY_FORMAT];
+export const SYNC_FORMATS: readonly number[] = [1, 2, 3, 4, 5, MONEY_FORMAT];
 /** The format from which the screens may read the copy: it carries what their rows need (WH-299, section 6). */
 export const READ_FORMAT = 2;
 /** The format from which the WH-348 screens (invoices, rates, users, settings) read the copy; the one constant (contract section 2). */
@@ -24,7 +24,7 @@ export type EntityName =
   | 'customers' | 'items' | 'settings' | 'people' | 'goodsreceived' | 'goodsreceived_trl' | 'grn_images'
   | 'dispatch' | 'dispatch_trl' | 'dispatch_images' | 'invoice' | 'invoice_trl' | 'grn_lock' | 'user_profiles'
   | 'users_customers_new' | 'grn_rates' | 'item_storage_prices' | 'standard_rate_tiers' | 'item_price_history' | 'payments'
-  | 'orders' | 'order_items' | 'grn_replacements';
+  | 'orders' | 'order_items' | 'grn_replacements' | 'held_items';
 
 /**
  * A column copied out of the row: `from` are the row keys tried in order; `lower` keeps it lower-cased for search;
@@ -111,6 +111,9 @@ export const ENTITY_SPECS: Readonly<Record<EntityName, EntitySpec>> = {
       lower('item_name_lc', 'grn_items_item_name'), lower('package_mark_lc', 'grn_items_package_mark'), lower('gr_no_lc', 'grns_gr_no')],
     indexes: ['order_id', 'grn_items_id'],
   },
+  // WH-304 (product/tech/app-offline-holding-list.md 11.7): held items, in the shape the reader's role gets (the recorder's own
+  // rows carry `body`; a manager's and staff's carry the state and the bags of a held dispatch only). Never a customer account's.
+  held_items: { columns: [col('kind'), col('state')], indexes: [] },
 };
 
 /** The texts a read sorts in the server's en_US order: where each comes from (reads/textRank.ts, `text_rank`). */

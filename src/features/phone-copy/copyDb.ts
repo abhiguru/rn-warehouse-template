@@ -104,7 +104,11 @@ async function openExisting(key: CopyKey, scope: string): Promise<CopyDriver | n
       await writeEmptyCopy(db, scope);
       return db;
     }
-    if ((await metaValue(db, 'schema_version')) === String(SCHEMA_VERSION) && (await metaValue(db, 'scope')) === scope) return db;
+    if ((await metaValue(db, 'schema_version')) === String(SCHEMA_VERSION) && (await metaValue(db, 'scope')) === scope) {
+      // A table an entity added since this copy was made (WH-304: `held_items`) is made now, empty; the feed's format change loads it.
+      await createSchema(db);
+      return db;
+    }
   } catch (error) {
     await db?.close().catch(() => undefined);
     if (!isUnreadableFile(error)) throw error;

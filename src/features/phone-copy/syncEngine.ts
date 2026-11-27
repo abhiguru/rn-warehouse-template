@@ -14,7 +14,7 @@ import { isOfflineState } from '@/config/netOffline';
 import { noteRpcSupport } from '@/config/facilityRpcSupport';
 import { captureMessage } from '@/config/sentryConfig';
 import { getSessionCacheScope } from '@/utils/cacheManager';
-import { createLogger } from '@/utils/logger';
+import { createLogger, loggableError } from '@/utils/logger';
 import { applyChanges, finishReload, stageRows, writeRows } from './applyBatch';
 import { compareChecksums } from './checksums';
 import { forgetCopyChanges, noteCopyChange, publishCopyChanges } from './copyChanges';
@@ -114,7 +114,7 @@ const engine = {
   /** Screens that follow the connection; each removes itself on unmount. */
   offlineListeners: new Set<() => void>(),
   /** Listeners told when a sync run ended well (the unsent work is sent again then). */
-  runEndListeners: new Set<() => void>(),
+  runEndListeners: new Set<() => void | Promise<void>>(),
   backoff: 0,
   timer: null as ReturnType<typeof setTimeout> | null,
   currentTimer: null as ReturnType<typeof setTimeout> | null,
@@ -737,7 +737,16 @@ export async function syncNow(trigger: SyncTrigger): Promise<SyncOutcome> {
     if (engine.run === running) engine.run = null;
   }
   if (epoch !== engine.epoch) return outcome;
-  if (outcome === 'done') for (const listener of [...engine.runEndListeners]) listener();
+  if (outcome === 'done') {
+    // A listener that works (WH-304: the held rows are read, an opened rejection is sent) is waited for, so what a caller reads after the run is current.
+    for (const listener of [...engine.runEndListeners]) {
+      try {
+        await listener();
+      } catch (error) {
+        logger.warn('A listener of the end of a sync run failed', loggableError(error));
+      }
+    }
+  }
   if (engine.again && outcome !== 'off' && outcome !== 'stopped') {
     engine.again = false;
     void syncNow('interval');
@@ -783,7 +792,7 @@ export function isCopyOffline(): boolean {
 }
 
 /** Told after each sync run that ended well (WH-301: the 'sync' trigger of the send engine). */
-export function subscribeSyncRunEnd(listener: () => void): () => void {
+export function subscribeSyncRunEnd(listener: () => void | Promise<void>): () => void {
   engine.runEndListeners.add(listener);
   return () => {
     engine.runEndListeners.delete(listener);

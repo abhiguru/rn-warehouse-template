@@ -488,6 +488,10 @@ export const components = {
       other: '{{count}} items not sent for over 2 hours. Connect and send them to record more.',
     },
     unsentUnreadable: "Couldn't read this phone's unsent entries. Close the app and open it again.",
+    heldLine: {
+      one: '1 of your items is held. Tap to see it.',
+      other: '{{count}} of your items are held. Tap to see them.',
+    },
     waitingForAdmin: {
       one: '1 item you recorded is waiting for an administrator.',
       other: '{{count}} items you recorded are waiting for an administrator.',

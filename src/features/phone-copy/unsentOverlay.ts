@@ -4,11 +4,14 @@
  * stock is the copy's less what is dispatched but not sent and what is held. It is built from the unsent-work store, rebuilt
  * when the store changes, and read synchronously.
  *
- * - The signed-in person's own items (not sent, sending, refused) give values and markers. A sent item that changes fields
+ * - The signed-in person's own items (not sent, sending) give values and markers. A refused or held item gives none (the server
+ *   refused it, so the screen shows the server's value; WH-304): its dispatch bags are "held" (`lessHeld`) instead, with the copy's
+ *   held dispatches, each held item once. A sent item that changes fields
  *   keeps its values, with no marker, until the first sync run that ends after its send (the copy then has them).
  * - Another person's unsent dispatches on this phone take their bags off the stock (`lessOthersUnsent`) and show nothing else.
  * - Items of another facility are not read at all (Product PQ4a).
  */
+import { heldBagsByLot, heldCopyRows, subscribeHeldRows } from '@/features/holding/heldRows';
 import { getSendKind } from '@/features/unsent/sendKinds';
 import { currentUnsentScope, loadedUnsentRows, subscribeUnsent } from '@/features/unsent/unsentStore';
 import type { ItemRow } from '@/features/unsent/unsentRows';
@@ -193,7 +196,15 @@ interface Built {
 
 function build(rows: readonly ItemRow[], scope: string | null): Built {
   const touched = new Set<EntityName>();
-  if (scope === null || rows.length === 0) return { overlay: NOTHING, touched };
+  const copyHeld = heldBagsByLot();
+  if (copyHeld.size > 0) {
+    touched.add('goodsreceived_trl');
+    touched.add('dispatch_trl');
+  }
+  if (scope === null || (rows.length === 0 && copyHeld.size === 0)) return { overlay: NOTHING, touched };
+  const copyIds = new Set(heldCopyRows().map(row => row.id));
+  // Bags of this person's refused and held dispatches the copy does not hold yet (the copy's row, once it has it, counts them).
+  const fileHeld = new Map<string, number>();
   const grns = new Map<string, Fields>();
   const lots = new Map<string, Fields>();
   const dispatches = new Map<string, Fields>();
@@ -213,6 +224,12 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
   for (const row of rows) {
     if (!sameServer(row.scope, scope)) continue;
     const mine = row.scope === scope;
+    if (mine && (row.state === 'refused' || row.state === 'held')) {
+      const part = partOf(row);
+      if (part.lessUnsent && !(row.held_id && copyIds.has(row.held_id))) add(fileHeld, part.lessUnsent);
+      for (const entity of entitiesOf(part)) touched.add(entity);
+      continue;
+    }
     const unsent = row.state === 'saved' || row.state === 'sending' || row.state === 'refused' || row.state === 'waiting';
     // A sent item keeps its field values until a sync run has ended after its send.
     const holding = mine && row.state === 'sent' && lastSyncEnd < (row.last_sent_at ?? 0);
@@ -262,17 +279,19 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
     const key = `grn:${entry.grnId}`;
     changed.set(key, (changed.get(key) ?? new Set<string>()).add(entry.label));
   }
-  if (grns.size + lots.size + dispatches.size + own.size + others.size + documents.length + added.size + removed.size + gone.size === 0) {
+  const heldTotal = new Map<string, number>(copyHeld);
+  add(heldTotal, Object.fromEntries(fileHeld));
+  if (grns.size + lots.size + dispatches.size + own.size + others.size + heldTotal.size + documents.length + added.size + removed.size + gone.size === 0) {
     return { overlay: NOTHING, touched };
   }
   const deductions = new Map<string, number>();
-  for (const source of [own, others]) for (const [id, bags] of source) deductions.set(id, (deductions.get(id) ?? 0) + bags);
+  for (const source of [own, others, heldTotal]) for (const [id, bags] of source) deductions.set(id, (deductions.get(id) ?? 0) + bags);
   const overlay: UnsentOverlay = {
     grn: id => grns.get(id) ?? null,
     lot: id => lots.get(id) ?? null,
     dispatch: id => dispatches.get(id) ?? null,
     lessUnsent: id => own.get(id) ?? 0,
-    lessHeld: () => 0,
+    lessHeld: id => heldTotal.get(id) ?? 0,
     lessOthersUnsent: id => others.get(id) ?? 0,
     deductions: () => deductions,
     lotValues: () => lots,
@@ -288,10 +307,11 @@ function build(rows: readonly ItemRow[], scope: string | null): Built {
 }
 
 // The overlay is rebuilt when the store's rows change (a new array each load) or a sync run ends.
-const cache: { rows: readonly ItemRow[] | null; scope: string | null; syncEnd: number; built: Built } = {
+const cache: { rows: readonly ItemRow[] | null; scope: string | null; syncEnd: number; held: readonly unknown[] | null; built: Built } = {
   rows: null,
   scope: null,
   syncEnd: -1,
+  held: null,
   built: { overlay: NOTHING, touched: new Set() },
 };
 let installed = false;
@@ -299,7 +319,9 @@ let installed = false;
 function current(): Built {
   const rows = loadedUnsentRows();
   const scope = currentUnsentScope();
-  if (cache.rows !== rows || cache.scope !== scope || cache.syncEnd !== lastSyncEnd) {
+  const held = heldCopyRows();
+  if (cache.rows !== rows || cache.scope !== scope || cache.syncEnd !== lastSyncEnd || cache.held !== held) {
+    cache.held = held;
     cache.rows = rows;
     cache.scope = scope;
     cache.syncEnd = lastSyncEnd;
@@ -325,6 +347,7 @@ function install(): void {
     publish(before);
   };
   subscribeUnsent(changed);
+  subscribeHeldRows(changed);
   subscribeSyncRunEnd(() => {
     lastSyncEnd = Date.now();
     changed();
