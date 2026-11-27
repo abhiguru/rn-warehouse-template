@@ -8,15 +8,14 @@ import {
   ActivityIndicator,
   type LayoutChangeEvent,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { LanImage } from '@/components/LanImage';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { GRNImageData } from '@/store/slices/grnFormSlice';
+import type { GRNImageData } from '@/store/slices/grnFormSlice';
 import { deleteGRNImage } from '../services/imageUploadService';
-import { getSupabaseClient } from '@/config/supabaseConfig';
+import { isTemporaryGRNImageId } from '../services/imageId';
 
 import { showAlert } from '@/utils/alert';
 import { localizeDigits, t as tr } from '@/i18n';
@@ -47,6 +46,13 @@ interface ImagePreviewGridProps {
   removeFromServer?: boolean;
 }
 
+/** A tile narrower than this shows only the icon; the words stay in its spoken label. */
+const WORDS_MIN_TILE = 88;
+
+/** A photo that is on the server but has no file on this phone (an Edit GRN form loaded from the phone copy). */
+const isSavedPhotoNotOnPhone = (img: GRNImageData): boolean =>
+  !img.imageUrl && img.uploadStatus === 'completed' && !!img.id && !isTemporaryGRNImageId(img.id);
+
 const { width: screenWidth } = Dimensions.get('window');
 /** Gap between thumbnails (docs/STYLE_GUIDE.md 13.10). */
 const GRID_GAP = space.xs;
@@ -76,7 +82,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
   const [gridWidth, setGridWidth] = useState<number | null>(null);
 
   // Use enhanced imageData if available, otherwise fall back to legacy images
-  const rawImages = imageData.length > 0 ? imageData : images.map(url => ({
+  const rawImages: GRNImageData[] = imageData.length > 0 ? imageData : images.map(url => ({
     id: url,
     imageUrl: url,
     fileName: 'image.jpg',
@@ -86,10 +92,12 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
     uploadStatus: 'completed' as const,
   }));
 
-  // Filter out images with empty/invalid URLs to prevent load errors
+  // Filter out images with empty/invalid URLs to prevent load errors. A saved photo (a real id, completed) with no file on
+  // the phone stays: its tile says it needs a connection (Design offline-capture.md 2.5, WH-303 DQ13).
   const effectiveImages = rawImages.filter(img => {
     if (!img.imageUrl || img.imageUrl.trim() === '') {
-      log.warn('Skipping image with empty URL', { id: img.id, storagePath: (img as GRNImageData).storagePath });
+      if (isSavedPhotoNotOnPhone(img)) return true;
+      log.warn('Skipping image with empty URL', { id: img.id, storagePath: img.storagePath });
       return false;
     }
     return true;
@@ -119,7 +127,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
     );
   };
 
-  const handleRemoveImage = async (imageData: GRNImageData) => {
+  const handleRemoveImage = (imageData: GRNImageData) => {
     if (!editable) return;
 
     const imageId = imageData.id || imageData.imageUrl;
@@ -143,7 +151,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                 const result = await deleteGRNImage(imageData.id, imageData.imageUrl);
                 if (!result.success) {
                   // The photo is still on the document: keep it and say why.
-                  showAlert(tr('grn.photos.removeFailedTitle'), result.error || tr('common.checkConnection'));
+                  showAlert(tr('grn.photos.removeFailedTitle'), result.error ?? tr('common.checkConnection'));
                   return;
                 }
               }
@@ -213,6 +221,8 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
             .filter(Boolean)
             .join(', ');
 
+          const notOnPhone = isSavedPhotoNotOnPhone(imageData);
+
           return (
             <View
               key={`${imageId}-${index}`}
@@ -225,7 +235,25 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                 hasFailed && styles.imageContainerError,
               ]}
             >
+              {/* A saved photo with no file on the phone: icon and words, nothing opens (Design 2.5) */}
+              {notOnPhone && (
+                <View
+                  style={[styles.imageWrapper, styles.notOnPhone]}
+                  accessible
+                  accessibilityRole="image"
+                  accessibilityLabel={`${photoLabel}, ${tr('components.offlineRead.photoNeedsConnection')}`}
+                  testID={`photo-needs-connection-${imageData.id}`}
+                >
+                  <Icon name="image-off-outline" size={iconSize.xl} color={t.icon.secondary} importantForAccessibility="no" />
+                  {imageSize >= WORDS_MIN_TILE && (
+                    <Text style={styles.notOnPhoneText} maxFontSizeMultiplier={1.4} importantForAccessibility="no">
+                      {tr('components.offlineRead.photoNeedsConnection')}
+                    </Text>
+                  )}
+                </View>
+              )}
               {/* Main Image */}
+              {!notOnPhone && (
               <Pressable
                 style={({ pressed }) => [styles.imageWrapper, pressed && !!onImagePress && styles.imagePressed]}
                 onPress={() => onImagePress?.(imageData)}
@@ -276,6 +304,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                   </View>
                 )}
               </Pressable>
+              )}
 
               {/* Remove Button: 44/48 target with a scrim circle (guide 13.10) */}
               {editable && !isDeleting && (
@@ -363,6 +392,17 @@ const makeStyles = (t: ThemeTokens) => ({
     width: '100%' as const,
     height: '100%' as const,
     position: 'relative' as const,
+  },
+  notOnPhone: {
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xs,
+  },
+  notOnPhoneText: {
+    ...typography.caption2,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginTop: space.xs,
   },
   imagePressed: {
     opacity: 0.85,

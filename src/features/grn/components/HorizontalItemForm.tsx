@@ -719,7 +719,32 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         {/* Image Previews */}
                         {imageCount > 0 && (
                             <View style={styles.imagePreviewRow}>
-                                {currentItem.trl_images.slice(0, 2).map((img, idx) => (
+                                {currentItem.trl_images.slice(0, 2).map((img, idx) => !img.imageUrl ? (
+                                    // A saved photo with no file on the phone: icon and words, a tap does nothing, remove stays (Design 2.5)
+                                    <View
+                                        key={img.id}
+                                        style={[styles.miniThumb, styles.miniThumbMissing]}
+                                        accessible
+                                        accessibilityRole="image"
+                                        accessibilityLabel={`${tr('grn.item.removeMarkPhoto', { position: idx + 1 })}, ${tr('components.offlineRead.photoNeedsConnection')}`}
+                                        testID={`photo-needs-connection-${img.id}`}
+                                    >
+                                        <Icon name="image-off-outline" size={iconSize.xl} color={t.icon.secondary} importantForAccessibility="no" />
+                                        <Text style={styles.miniThumbMissingText} maxFontSizeMultiplier={1.4} importantForAccessibility="no">
+                                            {tr('components.offlineRead.photoNeedsConnection')}
+                                        </Text>
+                                        <Pressable
+                                            style={styles.missingRemove}
+                                            onPress={() => onImageRemove(img.id)}
+                                            accessibilityRole="button"
+                                            accessibilityLabel={tr('grn.item.removeMarkPhoto', { position: idx + 1 })}
+                                        >
+                                            <View style={styles.removeBadge}>
+                                                <Icon name="close" size={iconSize.sm} color={t.overlay.onImage} />
+                                            </View>
+                                        </Pressable>
+                                    </View>
+                                ) : (
                                     <Pressable
                                         key={img.id}
                                         style={({ pressed }) => [styles.miniThumb, pressed && styles.thumbPressed]}
@@ -1003,6 +1028,24 @@ const makeStyles = (t: ThemeTokens) => ({
         borderRadius: radius.card,
         backgroundColor: t.surface.cardActive,
         overflow: 'hidden' as const,
+    },
+    miniThumbMissing: {
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        padding: space.xs,
+    },
+    miniThumbMissingText: {
+        ...typography.caption2,
+        color: t.text.secondary,
+        textAlign: 'center' as const,
+        marginTop: space.xs,
+    },
+    missingRemove: {
+        position: 'absolute' as const,
+        top: 0,
+        right: 0,
+        width: touchTarget,
+        height: touchTarget,
     },
     thumbPressed: {
         opacity: 0.8,
