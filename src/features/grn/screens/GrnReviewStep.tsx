@@ -1365,7 +1365,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         if (formLeft()) return;
         if (decided.kind === 'accepted' || decided.kind === 'alreadyDecided') {
           void triggerSuccess();
-          showToast(decided.toast);
+          if (decided.kind === 'accepted' && decided.durationMs !== undefined) showToast(decided.toast, { durationMs: decided.durationMs });
+          else showToast(decided.toast);
           resetFormState();
           router.dismissTo('/holding-list');
         } else {

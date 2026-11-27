@@ -6,6 +6,7 @@
  */
 import { t as tr, formatIdentifier } from '@/i18n';
 import { refusalFamilyOf } from '@/features/unsent/refusalTags';
+import { TOAST_DURATION_MS } from '@/utils/toast';
 import { describeReason } from './heldReason';
 import { decideHeldItem, type HeldItemDetail } from './holdingApi';
 
@@ -19,9 +20,12 @@ export function heldIdOfRoute(routeId: string | null | undefined): string | null
   return typeof routeId === 'string' && routeId.startsWith(ROUTE_PREFIX) && routeId.length > ROUTE_PREFIX.length ? routeId.slice(ROUTE_PREFIX.length) : null;
 }
 
+/** How long the "It replaced a newer entry" toast stays: twice the normal time (the sentence is longer). */
+const REPLACED_TOAST_MS = TOAST_DURATION_MS * 2;
+
 /** What a corrected Accept ended in, as the form acts on it. */
 export type CorrectedOutcome =
-  | { kind: 'accepted'; toast: string }
+  | { kind: 'accepted'; toast: string; /** Set when the toast needs longer than the normal time (a newer entry was replaced). */ durationMs?: number }
   | { kind: 'alreadyDecided'; toast: string }
   /** The save refused the corrected item again: the item stays held, with this reason in words. */
   | { kind: 'refused'; message: string }
@@ -38,6 +42,11 @@ export async function acceptWithChanges(item: Pick<HeldItemDetail, 'id' | 'kind'
     // A change to a record reads "Accepted: GRN {{number}} updated" (Design 7.9 DQ5), a new record "Accepted as {{number}}".
     const change = item.kind === 'lotChange' || item.kind === 'grnEdit' || item.kind === 'photos';
     const number = change ? (textOf(done.gr_no) ?? textOf(done.disp_no)) : (textOf(done.disp_no) ?? textOf(done.gr_no));
+    // DQ14: a held GRN edit that replaced a newer entry says so, with the long toast.
+    const replaced: unknown = done.replaced;
+    if (item.kind === 'grnEdit' && Array.isArray(replaced) && replaced.length > 0 && number !== null) {
+      return { kind: 'accepted', toast: tr('offline.holding.acceptedReplaced', { number: formatIdentifier(number) }), durationMs: REPLACED_TOAST_MS };
+    }
     return { kind: 'accepted', toast: tr(change ? 'offline.holding.acceptedChange' : 'offline.holding.accepted', { number: formatIdentifier(number) }) };
   }
   if (outcome.kind === 'alreadyDecided') {

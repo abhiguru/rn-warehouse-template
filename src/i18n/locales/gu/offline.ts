@@ -116,6 +116,7 @@ export const offline: Translation<typeof source> = {
     rejectReason: 'શા માટે? નોંધનાર વ્યક્તિ આ જોશે.',
     accepted: '{{number}} તરીકે સ્વીકાર્યું',
     acceptedChange: 'સ્વીકાર્યું: આવક પાવતી {{number}} અપડેટ થઈ',
+    acceptedReplaced: 'સ્વીકાર્યું: આવક પાવતી {{number}} અપડેટ થઈ. તેનાથી એક નવી એન્ટ્રી બદલાઈ. આવક પાવતી તપાસો.',
     rejected: 'નકાર્યું',
     alreadyAccepted: '{{name}} એ આ એન્ટ્રી પહેલેથી સ્વીકારી છે.',
     alreadyRejected: '{{name}} એ આ એન્ટ્રી પહેલેથી નકારી છે.',

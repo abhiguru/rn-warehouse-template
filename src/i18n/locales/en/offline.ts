@@ -113,6 +113,7 @@ export const offline = {
     rejectReason: 'Why? The person who recorded it will see this.',
     accepted: 'Accepted as {{number}}',
     acceptedChange: 'Accepted: GRN {{number}} updated',
+    acceptedReplaced: 'Accepted: GRN {{number}} updated. It replaced a newer entry. Check the GRN.',
     rejected: 'Rejected',
     alreadyAccepted: '{{name}} already accepted this item.',
     alreadyRejected: '{{name}} already rejected this item.',
