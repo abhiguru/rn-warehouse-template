@@ -141,7 +141,7 @@ import { acceptWithChanges, heldIdOfRoute } from '@/features/holding/heldForm';
 import { correctedGrnBody, loadHeldGrnOf } from '@/features/holding/heldGrn';
 import { correctedGrnEditBody } from '@/features/holding/heldGrnEdit';
 import { getHeldItem, type HeldItemDetail } from '@/features/holding/holdingApi';
-import { isGrnEditBody } from '@/features/grn/offline-edit/grnEditChanges';
+import { diffGrnEdit, isGrnEditBody } from '@/features/grn/offline-edit/grnEditChanges';
 import { saveEditedUnsentGrn, useUnsentGrnEditState } from '@/features/unsent/editUnsentGrn';
 import { getFormNumberMode } from '@/features/unsent/formNumberMode';
 import { OfflineSavedDialog } from '@/features/unsent/OfflineSavedDialog';
@@ -1326,10 +1326,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             return;
           }
           target = heldItem;
-          // A form equal to the server's values sends the smallest body (as an edit of photos only does); the server takes it as no change.
-          body =
-            correctedGrnEditBody(heldItem.body, loadedBaseline, { header, items }, loadedUpdatedAt) ??
-            { v: 1, grnId: heldItem.body.grnId, loadedAt: loadedUpdatedAt ?? heldItem.body.loadedAt, recordedAt: heldItem.body.recordedAt };
+          // A form equal to the server's values sends nothing: the button is off then (Design 7.11d), this is only a guard.
+          const corrected = correctedGrnEditBody(heldItem.body, loadedBaseline, { header, items }, loadedUpdatedAt);
+          if (corrected === null) return;
+          body = corrected;
         } else {
           const held = await loadHeldGrnOf(heldItem);
           if (formLeft()) return;
@@ -1553,7 +1553,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // the device under a temporary id and go up when the GRN is saved, so "Discard changes"
   // leaves the saved GRN's photos as they were.
   const imageUploadGrnId = tempGrnId ?? undefined;
-  const ctaLabel = heldId !== null ? tr('offline.holding.acceptCorrected') : isCreateMode ? tr('grn.review.createGrn') : tr('grn.review.saveGrn');
+  // A held edit whose corrected form equals what the server holds now: nothing would change (Design 7.11d), so it cannot be accepted.
+  const heldSameAsServer =
+    heldId !== null && loadedFrom === 'heldEdit' && !!loadedBaseline && diffGrnEdit({ header: loadedBaseline.header, items: loadedBaseline.items }, { header, items }, { grnId: '', loadedAt: null, recordedAt: '' }) === null;
+  const ctaLabel = heldId !== null ?tr('offline.holding.acceptCorrected') : isCreateMode ? tr('grn.review.createGrn') : tr('grn.review.saveGrn');
 
   // The Qty column is as wide as its widest number, the total included.
   const qtyWidth = numberColumnWidth(screen, 40, items.map((item) => formatNumber(item.qty || 0)), [formatNumber(totalQty)]);
@@ -1846,6 +1849,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
         </ScrollView>
 
+        {heldSameAsServer ? (
+          <Text testID="held-same-as-server" style={styles.heldSameAsServer}>
+            {tr('offline.holding.sameAsServer')}
+          </Text>
+        ) : null}
+
         {/* Bottom action bar */}
         <WizardBottomBar
           currentStep={STEP_NUMBERS.REVIEW}
@@ -1853,6 +1862,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           onPrevious={handlePrevious}
           onNext={handleSubmit}
           nextLabel={ctaLabel}
+          nextDisabled={heldSameAsServer}
+          {...(heldSameAsServer ? { nextAccessibilityLabel: `${ctaLabel}, ${tr('offline.holding.sameAsServer')}` } : {})}
           isLoading={isSubmittingState}
           loadingLabel={
             isRetryingPhotos
@@ -2085,6 +2096,8 @@ const makeStyles = (t: ThemeTokens) => ({
   scrollContent: { padding: space.lg, paddingBottom: space.xxl },
 
   photosBody: { padding: space.sm },
+
+  heldSameAsServer: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.lg, paddingVertical: space.sm, backgroundColor: t.surface.card },
 
   notesSection: { paddingVertical: space.sm, paddingHorizontal: space.sm },
   notesLabel: { ...typography.subhead, color: t.text.secondary, marginBottom: space.xs },

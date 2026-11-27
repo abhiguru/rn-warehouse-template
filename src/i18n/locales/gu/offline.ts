@@ -121,6 +121,8 @@ export const offline: Translation<typeof source> = {
     alreadyRejected: '{{name}} એ આ એન્ટ્રી પહેલેથી નકારી છે.',
     rejectedStrip: '{{name}} એ {{date}} એ નકારી: {{reason}}',
     currentValue: 'હાલ સર્વર પર: {{field}} {{value}}',
+    lineGone: 'સર્વર પર પહેલેથી કાઢી નાખેલી',
+    sameAsServer: 'હાલ સર્વર પર છે તેવું જ છે. કંઈ બદલાશે નહીં. આ એન્ટ્રી ન જોઈએ તો પાછા જઈને નકારો.',
     handingOver: 'નકારાયું. સુપરવાઇઝરને મોકલાઈ રહ્યું છે…',
     notPassedOn: 'આગળ મોકલાયું નથી',
     notPassedOnText: 'નકારાયું: {{reason}}. સુપરવાઇઝરને મોકલી શકાયું નથી; ફરી પ્રયાસ થઈ રહ્યો છે.',

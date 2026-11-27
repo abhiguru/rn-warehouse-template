@@ -94,7 +94,7 @@ export interface RemovedGRNImage {
 }
 
 /** Where an edit form was loaded from. */
-export type GRNLoadSource = 'copy' | 'server';
+export type GRNLoadSource = 'copy' | 'server' | 'heldEdit';
 
 /** The header and lines of an edit form as loaded: what an offline Save is compared with. */
 export interface GRNLoadedBaseline {

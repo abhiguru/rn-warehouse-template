@@ -6,10 +6,21 @@
  */
 import { loadGRNData as loadServerGrn } from '@/features/grn/services/grnFormService';
 import { diffGrnEdit, isGrnEditBody, type GrnEditBody, type Named } from '@/features/grn/offline-edit/grnEditChanges';
-import type { GRNHeaderData, GRNItemData, GRNLoadedBaseline } from '@/store/slices/grnFormSlice';
+import type { GrnRate } from '@/features/grn/rates/types';
+import type { GRNHeaderData, GRNInvoiceRef, GRNItemData, GRNLoadedBaseline } from '@/store/slices/grnFormSlice';
 import { getHeldItem, type HeldItemDetail } from './holdingApi';
 
-type ServerGrn = NonNullable<Extract<Awaited<ReturnType<typeof loadServerGrn>>, { success: true }>['data']>;
+/** What the server's read of the GRN gives the edit form (rates, invoice and the version token as that read answers them). */
+interface ServerGrn {
+  header: GRNHeaderData;
+  items: GRNItemData[];
+  grnRates: GrnRate[];
+  grnInvoiced: boolean;
+  grnImported: boolean;
+  updatedAt?: string | null;
+  invoice?: GRNInvoiceRef | null;
+  firstDispatchDate?: string | null;
+}
 
 export type LoadedHeldGrnEdit =
   | {

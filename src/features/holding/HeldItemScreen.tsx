@@ -40,6 +40,8 @@ import { decideHeldItem, getHeldItem, type HeldCurrent, type HeldItemDetail, typ
 import { describeReason } from './heldReason';
 import { heldCopyRows, markHeldSeen } from './heldRows';
 import { heldFieldLabel, heldWhatText } from './heldWhat';
+import { lineGroups, removedLinesNow, type ServerLine } from './heldEditLines';
+import { isGrnEditBody } from '@/features/grn/offline-edit/grnEditChanges';
 import { HeldPhotos } from './HeldPhotos';
 
 type Fields = Record<string, unknown>;
@@ -62,6 +64,7 @@ const makeStyles = (t: ThemeTokens) => ({
   hint: { ...typography.footnote, color: t.text.secondary },
   record: { backgroundColor: t.surface.card, paddingHorizontal: layout.marginCompact, paddingVertical: space.md, gap: space.xs },
   recordLine: { ...typography.body, color: t.text.primary },
+  groupTitle: { ...typography.subhead, color: t.text.secondary },
   current: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: layout.marginCompact, paddingTop: space.sm },
   bar: {
     paddingHorizontal: layout.marginCompact,
@@ -86,7 +89,7 @@ const valueText = (value: unknown): string | null => {
   return null;
 };
 
-/** One line per changed header field and lot field of a held edit, and per line added or removed (the form's own labels, Design 6.x). */
+/** One line per changed header field and lot field of a held edit (the form's own labels). */
 function editLines(body: Fields): string[] {
   const lines: string[] = [];
   const fieldLine = (field: string, change: unknown) => {
@@ -97,21 +100,28 @@ function editLines(body: Fields): string[] {
   if (isFields(body.lots)) {
     for (const lot of Object.values(body.lots)) if (isFields(lot)) for (const [field, change] of Object.entries(lot)) fieldLine(field, change);
   }
-  const lineText = (line: unknown): string | null => {
-    if (!isFields(line)) return null;
-    const name = textOf(line.item_name);
-    const qty = valueText(line.qty);
-    return name === null ? null : [name, qty].filter(part => part !== null).join(' ');
-  };
-  for (const line of Array.isArray(body.linesAdded) ? (body.linesAdded as unknown[]) : []) {
-    const text = lineText(line);
-    if (text !== null) lines.push(`${tr('offline.linesAdded')} ${text}`);
-  }
-  for (const line of Array.isArray(body.linesRemoved) ? (body.linesRemoved as unknown[]) : []) {
-    const text = lineText(line);
-    if (text !== null) lines.push(`${tr('offline.linesRemoved')} ${text}`);
-  }
   return lines;
+}
+
+/** The lines a held edit added and removed, each group under its title (Design 7.11d (a)). */
+function LineGroups({ body, server, styles }: { body: unknown; server: readonly ServerLine[] | null; styles: ReturnType<typeof makeStyles> }) {
+  const groups = lineGroups(body, server);
+  return (
+    <>
+      {groups.map(group => (
+        <View key={group.id} testID={`held-item-${group.id}`} style={styles.record}>
+          <Text accessibilityRole="header" style={styles.groupTitle}>
+            {group.title}
+          </Text>
+          {group.rows.map((rowText, index) => (
+            <Text key={`${rowText}-${index}`} style={styles.recordLine}>
+              {rowText}
+            </Text>
+          ))}
+        </View>
+      ))}
+    </>
+  );
 }
 
 /** The lines of the record a held item holds, as its details page would name them (identifiers are never shown as words). */
@@ -250,6 +260,7 @@ function OwnHeldItem() {
               </Text>
             ))}
           </View>
+          <LineGroups body={isFields(raw) ? raw.body : null} server={null} styles={styles} />
         </ScrollView>
       )}
     </View>
@@ -304,12 +315,20 @@ function ManagerHeldItem() {
   const { refetch } = query;
   // The GRN of a held rack and mark change, for the Correct sheet to name the lot (Design 7.11b); no lot found gives the GRN alone.
   const lotBody = query.data && isLotChangeBody(query.data.body) ? query.data.body : null;
+  // A held edit of a GRN reads the same GRN: its lines as the server holds them now (Design 7.11d (c)).
+  const editBody = query.data?.kind === 'grnEdit' && isGrnEditBody(query.data.body) ? query.data.body : null;
+  const grnId = lotBody?.grnId ?? editBody?.grnId ?? '';
   const grnQuery = useQuery({
-    queryKey: queryKeys.grn.detail(lotBody?.grnId ?? ''),
-    queryFn: () => getGRNDetails(lotBody?.grnId ?? ''),
-    enabled: !offline && lotBody !== null,
+    queryKey: queryKeys.grn.detail(grnId),
+    queryFn: () => getGRNDetails(grnId),
+    enabled: !offline && grnId !== '',
     retry: false,
   });
+  const grnLines = grnQuery.data?.data?.grn.items;
+  const serverLines: ServerLine[] | null = grnLines
+    ? grnLines.map(line => ({ id: line.id, item_name: line.item_name, qty: line.qty, packaging: line.packaging, package_mark: line.package_mark }))
+    : null;
+  const removedNow = editBody ? removedLinesNow(editBody, serverLines) : [];
   const lotItemName = grnQuery.data?.data?.grn.items?.find(line => line.id === lotBody?.lotId)?.item_name ?? '';
   // One decision key for this visit: a double tap, or a repeat after a lost answer, is one decision (the server keeps its first answer).
   const decisionKey = useRef(Crypto.randomUUID());
@@ -427,6 +446,7 @@ function ManagerHeldItem() {
               </Text>
             ))}
           </View>
+          <LineGroups body={item.acceptedBody ?? item.body} server={serverLines} styles={styles} />
           <HeldPhotos item={item} />
         </ScrollView>
         {current !== null ? (
@@ -434,6 +454,11 @@ function ManagerHeldItem() {
             {current}
           </Text>
         ) : null}
+        {removedNow.map((text, index) => (
+          <Text key={`${text}-${index}`} testID="held-item-line-current" style={styles.current}>
+            {text}
+          </Text>
+        ))}
         {open ? (
           <View style={styles.bar}>
             {waiting ? (

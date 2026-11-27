@@ -81,7 +81,7 @@ export default function GRNEditLayout() {
           const edit = await loadHeldGrnEditOf(item);
           if (request !== loadRequest.current) return;
           if (edit.kind === 'loaded') {
-            dispatch(loadGRNData({ ...edit.server, header: edit.header, items: edit.items, baseline: edit.baseline, grnId: id }));
+            dispatch(loadGRNData({ ...edit.server, header: edit.header, items: edit.items, baseline: edit.baseline, source: 'heldEdit', grnId: id }));
             setPhase('ready');
           } else {
             setErrorMessage(edit.kind === 'failed' ? serverText(edit.message, tr('common.checkConnection')) : tr('common.couldNotLoad'));

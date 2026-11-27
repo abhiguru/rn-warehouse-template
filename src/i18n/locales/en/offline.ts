@@ -118,6 +118,8 @@ export const offline = {
     alreadyRejected: '{{name}} already rejected this item.',
     rejectedStrip: 'Rejected by {{name}} on {{date}}: {{reason}}',
     currentValue: 'Now on the server: {{field}} {{value}}',
+    lineGone: 'Already removed on the server',
+    sameAsServer: 'Same as on the server now. Nothing would change. To drop this item, go back and reject it.',
     handingOver: 'Refused. Passing it to a supervisor…',
     notPassedOn: 'Not passed on',
     notPassedOnText: "Refused: {{reason}}. It couldn't be passed to a supervisor; trying again.",
