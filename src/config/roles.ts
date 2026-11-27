@@ -76,6 +76,7 @@ export type RoleGatedScreen =
   | 'charging'
   | 'gstDetails'
   | 'accountantPack'
+  | 'replacedEntries'
   | 'accountantExport'
   | 'connectionHistory'
   | 'rackPresets'
@@ -124,6 +125,9 @@ export function canOpenScreen(
       return normalizeRole(role) === 'admin';
     case 'gstDetails':
       // The facility's GST details: administrators only (get_gst_details, set_gst_details, migration 173).
+      return normalizeRole(role) === 'admin';
+    case 'replacedEntries':
+      // The list of changes that replaced someone's newer entry: administrators only (get_grn_replacements, WH-303).
       return normalizeRole(role) === 'admin';
     case 'accountantPack':
       // The accountant pack of a period: administrators and supervisors (generate-accountant-pack, get_accountant_pack, migration 204).

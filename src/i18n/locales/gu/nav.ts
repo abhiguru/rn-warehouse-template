@@ -59,6 +59,7 @@ export const nav: Translation<typeof source> = {
       statement: 'સ્ટોરમાં તમારો માલ અને તમારી બાકી રકમ',
       temperatureReport: 'પસંદ કરેલા સમયગાળાની સેન્સર નોંધ, PDF તરીકે',
       accountantPack: 'મહિનાના ઇન્વૉઇસ, આવક અને સ્ટોક, તમારા હિસાબનીશ માટે',
+      replacedEntries: 'કોઈની નવી એન્ટ્રી પર લખાયેલા ફેરફાર',
     },
   },
 };

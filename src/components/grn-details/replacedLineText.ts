@@ -67,6 +67,13 @@ function valueText(value: unknown, t: typeof Translate): string {
   return t('offline.replaced.empty');
 }
 
+/** The label of the field an entry is about (a line added reads "Lines added"), without the lot's name. */
+export function entryFieldLabel(entry: ReplacedEntry, t: typeof Translate): string {
+  if (entry.kind === 'line_added') return t('offline.linesAdded');
+  const key = FIELD_LABELS[entry.field ?? ''];
+  return key ? t(key) : (entry.field ?? '');
+}
+
 function fieldName(entry: ReplacedEntry, t: typeof Translate, options: ReplacedTextOptions): string {
   const field = entry.field ?? '';
   const key = FIELD_LABELS[field];

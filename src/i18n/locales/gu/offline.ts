@@ -126,6 +126,14 @@ export const offline: Translation<typeof source> = {
     lotFieldMark: '{{item}} ({{mark}}), {{field}}',
     lotFieldRack: '{{item}} (રેક {{rack}}), {{field}}',
   },
+  replacedList: {
+    title: 'બદલાયેલી એન્ટ્રી',
+    subtitle: 'કોઈની નવી એન્ટ્રી પર લખાયેલા ફેરફાર',
+    empty: 'આ સમયગાળામાં કોઈ એન્ટ્રી બદલાઈ નથી',
+    toCheck: 'તપાસવાનું બાકી',
+    checked: 'તપાસ્યું',
+    rowTitle: 'આવક પાવતી {{number}} · {{field}}',
+  },
   duration: {
     hoursMinutes: '{{hours}} કલાક {{minutes}} મિનિટ',
     hours: '{{hours}} કલાક',

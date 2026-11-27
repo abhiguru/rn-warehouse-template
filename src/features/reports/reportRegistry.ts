@@ -22,7 +22,8 @@ export type ReportId =
   | 'customer-dues'
   | 'statement'
   | 'temperature-report'
-  | 'accountant-pack';
+  | 'accountant-pack'
+  | 'replaced-entries';
 
 export type ReportCategory = 'stock' | 'movement' | 'financial' | 'operations';
 
@@ -193,6 +194,17 @@ export const REPORTS: readonly ReportDefinition[] = [
     hasPeriod: true,
     gate: 'accountantPack',
     feature: 'accountantPack',
+  }),
+  // Changes that replaced someone's newer entry, for the administrators (WH-303, Design 6.3).
+  define({
+    id: 'replaced-entries',
+    title: 'reports.titles.replacedEntries',
+    description: 'nav.reports.descriptions.replacedEntries',
+    icon: 'history',
+    category: 'operations',
+    hasPeriod: true,
+    gate: 'replacedEntries',
+    feature: 'grnFieldChanges',
   }),
 ];
 

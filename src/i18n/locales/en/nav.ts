@@ -62,6 +62,7 @@ export const nav = {
       statement: 'Your goods in store and what you owe',
       temperatureReport: "A sensor's readings for a period, as a PDF",
       accountantPack: "Month's invoices, receipts and stock for your accountant",
+      replacedEntries: "Changes that overwrote someone's newer entry",
     },
   },
 };

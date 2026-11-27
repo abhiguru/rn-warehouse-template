@@ -123,6 +123,14 @@ export const offline = {
     lotFieldMark: '{{item}} ({{mark}}), {{field}}',
     lotFieldRack: '{{item}} (rack {{rack}}), {{field}}',
   },
+  replacedList: {
+    title: 'Replaced entries',
+    subtitle: "Changes that overwrote someone's newer entry",
+    empty: 'No replaced entries in this period',
+    toCheck: 'To check',
+    checked: 'Checked',
+    rowTitle: 'GRN {{number}} · {{field}}',
+  },
   duration: {
     hoursMinutes: '{{hours}} h {{minutes}} min',
     hours: '{{hours}} h',

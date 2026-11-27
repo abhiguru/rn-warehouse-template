@@ -16,6 +16,7 @@ export const reports: Translation<typeof source> = {
     statement: 'સ્ટેટમેન્ટ',
     temperatureReport: 'તાપમાનનો અહેવાલ',
     accountantPack: 'હિસાબનીશ માટેની ફાઇલો',
+    replacedEntries: 'બદલાયેલી એન્ટ્રી',
   },
   shared: {
     units: { one: 'નંગ', other: 'નંગ' },
