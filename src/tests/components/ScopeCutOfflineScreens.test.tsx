@@ -1141,6 +1141,31 @@ describe('WH-381 Section 4.2: GRN details tabs, expanded lot and already-mounted
     expect(screen.queryByRole('button', { name: /Record payment/i })).not.toBeOnTheScreen();
     expect(screen.queryByTestId('payments-new-needs-connection')).not.toBeOnTheScreen();
   });
+
+  it('PaymentsTab opened offline: loads nothing (no server call, no raw error), shows the DS1 line in English and Gujarati, and loads on reconnect', async () => {
+    coldStartOffline('admin');
+    await render(<PaymentsTab invoiceId="inv-1" invoiceNumber="INV-8001" total={4200} cancelled={false} canManage />);
+    expect(await screen.findByTestId('invoice-details-section-needs-connection-payments')).toHaveTextContent(NEEDS_EN);
+    expect(mockRpcCalls).toEqual([]);
+    expect(screen.queryByTestId('payments-summary')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /Record payment/i })).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
+
+    await setOffline(false);
+    expect(await screen.findByTestId('payments-summary')).toBeOnTheScreen();
+    expect(screen.queryByTestId('invoice-details-section-needs-connection-payments')).not.toBeOnTheScreen();
+    expect(mockRpcCalls.length).toBeGreaterThan(0);
+  });
+
+  it('PaymentsTab opened offline, Gujarati: the DS1 line says the Part 13.3 words', async () => {
+    await setLanguage('gu');
+    coldStartOffline('admin');
+    await render(<PaymentsTab invoiceId="inv-1" invoiceNumber="INV-8001" total={4200} cancelled={false} canManage />);
+    expect(await screen.findByTestId('invoice-details-section-needs-connection-payments')).toHaveTextContent(NEEDS_GU);
+    expect(mockRpcCalls).toEqual([]);
+  });
 });
 
 // ===========================================================================

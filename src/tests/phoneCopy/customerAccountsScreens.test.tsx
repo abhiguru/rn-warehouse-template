@@ -368,3 +368,18 @@ describe('WH-381: customer account Orders and Invoices tabs (Design 13.1 A & C)'
     expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();
   });
 });
+
+describe('WH-381: a customer account\'s GRN list and the Invoicing filter (contract "Agreed with Test" item 7)', () => {
+  it.each([[false], [true]])('offline: %s: the cards show from the copy, with no Invoicing chip, footnote, wait state or invoice tag', async offline => {
+    seedCustomerAccount(['c1']);
+    signIn('customer', ['c1']);
+    await loadCopy();
+    if (offline) await connection(true);
+    await render(<Tab />);
+    expect(await screen.findByTestId('grn-card-g-B1')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /invoicing/i })).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('grn-invoicing-filter-off')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('grn-invoicing-wait')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId(/^grn-card-invoice-state-/)).not.toBeOnTheScreen();
+  });
+});

@@ -440,3 +440,20 @@ describe('PR12: the Invoicing filter offline over a ready copy (Design 2.10a, Pa
     expect(t(`grn.offline.${key}` as never)).toBe(text);
   });
 });
+
+describe('WH-381: the invoice-state tag on a GRN card is the server\'s', () => {
+  it('offline over the copy: the card of a partly invoiced GRN shows no tag', async () => {
+    await loadCopy();
+    await connection(true);
+    await render(<GRNListFiori />);
+    expect(await screen.findByTestId('grn-card-g-A2')).toBeOnTheScreen();
+    expect(screen.queryByTestId('grn-card-invoice-state-g-A2')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Partly invoiced')).not.toBeOnTheScreen();
+  });
+
+  it('online over the same copy: the card shows its "Partly invoiced" tag', async () => {
+    await loadCopy();
+    await render(<GRNListFiori />);
+    expect(await screen.findByTestId('grn-card-invoice-state-g-A2')).toHaveTextContent('Partly invoiced');
+  });
+});
