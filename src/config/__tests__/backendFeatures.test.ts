@@ -43,3 +43,10 @@ it('knows nothing when no server is selected', () => {
   mockActive = null;
   expect(getFacilityRelease()).toEqual({ backendRelease: null, schemaHead: null });
 });
+
+it('the quick change of a lot starts at migration 226 (WH-302), not before', () => {
+  setFacilityRelease(one, { schemaHead: '00000000000225_before_lot_rack_and_mark' });
+  expect(backendHasFeature('lotQuickChange')).toBe(false);
+  setFacilityRelease(one, { schemaHead: '00000000000226_lot_rack_and_mark_change' });
+  expect(backendHasFeature('lotQuickChange')).toBe(true);
+});

@@ -113,7 +113,14 @@ describe('K2, K3, K4: one own item per lot while it can still change', () => {
     const rows = await items();
     expect(rows).toHaveLength(1);
     // The merged item carries the later save's time.
-    expect(bodyOf(rows[0])).toEqual({ lotId: LOT, grnId: GRN, recordedAt: '2026-11-26T03:30:05.000Z', changes: { rack: { to: 'C-3', from: 'A-1' } } });
+    expect(bodyOf(rows[0])).toEqual({
+      lotId: LOT,
+      grnId: GRN,
+      recordedAt: '2026-11-26T03:30:05.000Z',
+      changes: { rack: { to: 'C-3', from: 'A-1' } },
+      // Phone only (PQ7): the item as it was before the later save merged in.
+      previous: { recordedAt: T0, changes: { rack: { to: 'B-2', from: 'A-1' } }, what: 'GRN 12: Rack changed' },
+    });
     expect(rows[0].what).toBe('GRN 12: Rack changed');
     expect((await phone.queue.listItems())).toHaveLength(1);
   });
@@ -499,5 +506,105 @@ describe('WH-302 Medium: an answer that did not come through is LOST, never a pl
     expect(bodyOf((await items())[1]).changes.rack).toEqual({ to: 'C-3', from: 'B-2' });
     expect(rackOnServer).toBe('C-3');
     expect((await items()).map(r => r.state)).toEqual(['sent', 'sent']);
+  });
+});
+
+describe('K10 (PQ7): a refusal told at once on the open sheet', () => {
+  type Undo = { undoRefusedSave(saved: { id: string; merged: boolean }): Promise<void> };
+  const refuse = () => ({ data: { success: false, error: 'Lot not found', code: 'LOT_NOT_FOUND' }, error: null });
+  const undo = () => (service as unknown as Undo).undoRefusedSave;
+
+  async function mergedAndRefused() {
+    const phone = await start();
+    await offline(phone);
+    await change({ rack: 'B-2' });
+    await jest.advanceTimersByTimeAsync(5_000);
+    const merged = await change({ package_mark: 'M9' });
+    expect(merged.merged).toBe(true);
+    server.answers[RPC] = refuse;
+    await online(phone);
+    await pass(phone);
+    const [row] = await items();
+    expect(row.state).toBe('refused');
+    return { phone, merged, refusedKey: row.request_key };
+  }
+
+  it('a merged item goes back to the earlier change alone: body, title, waiting, counted, and a new request key', async () => {
+    const { phone, merged, refusedKey } = await mergedAndRefused();
+    await undo()(merged);
+    const rows = await items();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(merged.id);
+    expect(rows[0].state).toBe('saved');
+    expect(rows[0].attempts).toBe(0);
+    expect(bodyOf(rows[0])).toMatchObject({ lotId: LOT, grnId: GRN, recordedAt: T0, changes: { rack: { to: 'B-2', from: 'A-1' } } });
+    expect(bodyOf(rows[0]).changes.package_mark).toBeUndefined();
+    expect(rows[0].what).toBe('GRN 12: Rack changed');
+    expect(rows[0].request_key).not.toBe(refusedKey);
+    expect(phone.store.getUnsentSummary().count).toBe(1);
+  });
+
+  it('the restored change is sent alone, with the earlier values only and its new key', async () => {
+    const { phone, merged } = await mergedAndRefused();
+    await undo()(merged);
+    const before = calls().length;
+    server.answers[RPC] = () => answer('B-2');
+    await pass(phone);
+    const sent = calls().slice(before);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].args).toEqual({ p_lot_id: LOT, p_changes: { rack: { to: 'B-2', from: 'A-1' }, recorded_at: T0 }, p_request_key: (await items())[0].request_key });
+    expect(JSON.stringify(sent[0].args)).not.toContain('M9');
+    expect(JSON.stringify(sent[0].args)).not.toContain('previous');
+    expect((await items())[0].state).toBe('sent');
+  });
+
+  it('the restored change refused on its own stays a refused item, not dropped (it goes Held)', async () => {
+    const { phone, merged } = await mergedAndRefused();
+    await undo()(merged);
+    await pass(phone);
+    const rows = await items();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].state).toBe('refused');
+    expect(phone.store.getUnsentSummary().count).toBe(1);
+  });
+
+  it('dependants of the refused item wait again, still attached to it (WH-301 section 3)', async () => {
+    const phone = await start();
+    await offline(phone);
+    await change({ rack: 'B-2' });
+    const merged = await change({ package_mark: 'M9' });
+    let answerWith: (value: RpcAnswer) => void = () => undefined;
+    server.answers[RPC] = () => new Promise(resolve => { answerWith = resolve; });
+    server.answers.get_submission_result = () => ({ data: { found: false }, error: null });
+    await online(phone);
+    const done = phone.engine.sendNow('send-now');
+    await jest.advanceTimersByTimeAsync(1_000);
+    const later = await change({ rack: 'D-4' });
+    expect(later.merged).toBe(false);
+    answerWith(refuse());
+    await jest.advanceTimersByTimeAsync(60_000);
+    await done;
+    expect((await items()).map(r => r.state)).toEqual(['refused', 'refused']);
+    expect((await rawRows<{ last_error: string | null }>('items', 'ORDER BY seq'))[1].last_error).toBe('dependsOnRefused');
+    await undo()(merged);
+    const rows = await items();
+    expect(rows.map(r => r.state)).toEqual(['saved', 'saved']);
+    expect(rows[1].depends_on).toBe(merged.id);
+    expect((await rawRows<{ last_error: string | null }>('items', 'ORDER BY seq')).map(r => r.last_error)).toEqual([null, null]);
+    expect(phone.store.getUnsentSummary().count).toBe(2);
+  });
+
+  it('a refused item that was not merged is removed as before', async () => {
+    const phone = await start();
+    await offline(phone);
+    const saved = await change({ rack: 'B-2' });
+    expect(saved.merged).toBe(false);
+    server.answers[RPC] = refuse;
+    await online(phone);
+    await pass(phone);
+    expect((await items())[0].state).toBe('refused');
+    await undo()(saved);
+    expect(await items()).toEqual([]);
+    expect(phone.store.getUnsentSummary().count).toBe(0);
   });
 });
