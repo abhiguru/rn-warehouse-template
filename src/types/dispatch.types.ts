@@ -192,10 +192,10 @@ export interface CreateDispatchPayload {
      */
     warn_duplicate?: boolean;
   };
-  p_dispatch_items: Array<{
+  p_dispatch_items: {
     gr_trl_id: string;          // Lot ID (maps to grnItems_id)
     disp_qty: number;           // Dispatch quantity
-  }>;
+  }[];
   p_generate_invoice: boolean;  // Auto-generate invoice
   p_retry_count: number;        // Retry count for idempotency (default 0)
   p_idempotency_key: string;    // Unique key to prevent duplicate submissions
@@ -215,10 +215,10 @@ export interface UpdateDispatchPayload extends CreateDispatchPayload {
 export interface DispatchApiResponse {
   success: boolean;
   dispatch_id?: string;
-  dispatch_items?: any[];
+  dispatch_items?: unknown[];
   message?: string;
   error?: string;
-  invoice_data?: any;
+  invoice_data?: unknown;
   invoiceGenerated?: boolean;
   invoiceNumber?: string;
   source_order_cleared?: boolean;  // True when dispatch was created from an order and the order was soft-deleted
@@ -308,6 +308,8 @@ export interface GRNAutocompleteItem {
   gr_no: string;               // GRN number for display
   date: string;                // Date for display
   customer_name: string;
+  /** A GRN that exists only on this phone (WH-161): listed, disabled, until it is sent. */
+  unsent?: boolean;
 }
 
 /**
@@ -402,7 +404,7 @@ export interface BackendDispatchData {
   total_items?: number;
   totalQty?: number;
   total_qty?: number;
-  items?: Array<{
+  items?: {
     itemId?: string;
     item_id?: string;
     itemName?: string;
@@ -424,7 +426,7 @@ export interface BackendDispatchData {
     /** What the lot is counted in (Bag, Box, Crate), when the backend sends it (migration 133). */
     packaging?: string | null;
     rack?: string;
-  }>;
+  }[];
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
