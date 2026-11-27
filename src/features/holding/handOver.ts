@@ -14,7 +14,7 @@ import { hasCapability } from '@/config/facilityCapabilities';
 import { normalizeRole } from '@/config/roles';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
-import { SAVE_WAIT_MS } from '@/features/unsent/offlineNew';
+import { SAVE_WAIT_MS } from '@/features/unsent/saveWait';
 import { answerFiguresOf, answerCodeOf } from '@/features/unsent/refusalAnswer';
 import { classify, DEPENDS_ON_REFUSED } from '@/features/unsent/sendEngine';
 import { getSessionCacheScope } from '@/utils/cacheManager';

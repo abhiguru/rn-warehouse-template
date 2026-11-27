@@ -25,11 +25,11 @@ import { refreshNumbering, serverIssues } from './numberingCache';
 import { sendNow } from './sendEngine';
 import { getSendKind } from './sendKinds';
 import { enqueueAll, returnToForm, type EnqueueAllInput } from './unsentQueue';
+import { SAVE_WAIT_MS } from './saveWait';
 import { itemById, onUnsentChange, type ItemRow } from './unsentRows';
 import { ownUnsentRows } from './unsentStore';
 
-/** How long the form waits for its own item to be sent while the phone is reachable (the one wait of C302 and C303). */
-export const SAVE_WAIT_MS = 8_000;
+export { SAVE_WAIT_MS };
 
 export type NumberMode = 'online' | 'pending' | 'typed';
 type DocType = 'grn' | 'dispatch';
