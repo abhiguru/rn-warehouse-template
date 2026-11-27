@@ -9,8 +9,10 @@ import type { CopyDriver, SqlValue } from './copyDriver';
 import { mobileDigits, mobileKey, parseTimestampUs } from './pgCompat';
 
 export const SCHEMA_VERSION = 4;
-/** The payload formats of the change-log feed this build reads. */
-export const SYNC_FORMATS: readonly number[] = [1, 2, 3, 4];
+/** The format from which Customer dues, Statement and Customer activity are kept as the server answered (WH-305; the feed's money marks). */
+export const MONEY_FORMAT = 6;
+/** The payload formats of the change-log feed this build reads (feed formats follow build order). */
+export const SYNC_FORMATS: readonly number[] = [1, 2, 3, 4, MONEY_FORMAT];
 /** The format from which the screens may read the copy: it carries what their rows need (WH-299, section 6). */
 export const READ_FORMAT = 2;
 /** The format from which the WH-348 screens (invoices, rates, users, settings) read the copy; the one constant (contract section 2). */
@@ -154,6 +156,13 @@ export const vParts = (v: string): [number, number] => [parseInt(v.slice(0, 7), 
 
 const ENTITY_NAMES = Object.keys(ENTITY_SPECS) as EntityName[];
 
+/**
+ * The answers of Customer dues, Statement and Customer activity as the server last gave them (WH-305). `moneyStore`
+ * also makes it when a copy made before this step lacks it.
+ */
+export const MONEY_ANSWERS_SQL =
+  'CREATE TABLE IF NOT EXISTS money_answers (kind TEXT NOT NULL, key TEXT NOT NULL, as_of TEXT NOT NULL, today TEXT, body TEXT NOT NULL, used_at INTEGER NOT NULL, PRIMARY KEY (kind, key));';
+
 function entityTableSql(entity: EntityName): string {
   const extra = extractedColumns(entity).map(name => `, ${name}`).join('');
   return `CREATE TABLE IF NOT EXISTS ${entity} (id TEXT PRIMARY KEY, v TEXT NOT NULL, v_hi INTEGER NOT NULL, v_lo INTEGER NOT NULL, row TEXT NOT NULL${extra});`;
@@ -168,6 +177,7 @@ export async function createSchema(tx: CopyDriver): Promise<void> {
     'CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);',
     'CREATE TABLE IF NOT EXISTS stage_rows (entity TEXT NOT NULL, id TEXT NOT NULL, v TEXT NOT NULL, v_hi INTEGER NOT NULL, v_lo INTEGER NOT NULL, row TEXT NOT NULL, PRIMARY KEY (entity, id));',
     'CREATE TABLE IF NOT EXISTS money_stale (customer_id TEXT PRIMARY KEY);',
+    MONEY_ANSWERS_SQL,
     ...ENTITY_NAMES.map(entityTableSql),
     'CREATE TABLE IF NOT EXISTS lot_search (rowid INTEGER PRIMARY KEY, lot_id TEXT NOT NULL UNIQUE, gr_id TEXT NOT NULL, haystack TEXT NOT NULL);',
     "CREATE VIRTUAL TABLE IF NOT EXISTS lot_fts USING fts5(haystack, content='lot_search', content_rowid='rowid', tokenize='trigram');",

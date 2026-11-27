@@ -121,6 +121,7 @@ export async function applyChanges(tx: CopyDriver, changes: readonly Change[], s
     await flush();
     if (entry.op === 'stale') {
       await tx.run('INSERT OR IGNORE INTO money_stale (customer_id) VALUES (?)', [entry.id]);
+      await tx.run("INSERT INTO meta (k, v) VALUES ('money_dues_stale', '1') ON CONFLICT(k) DO UPDATE SET v = excluded.v");
       continue;
     }
     if (searchBuilt && entry.e === 'dispatch_trl') await dispatchesOfLines(tx, 'id', [entry.id], dispatches);
@@ -175,8 +176,14 @@ export async function finishReload(tx: CopyDriver, entities: readonly EntityName
       await writeRows(tx, entity, kept.map(r => ({ id: r.id, v: r.v, row: JSON.parse(r.row) as Record<string, unknown> })));
     }
   }
-  if (whole) await tx.run('DELETE FROM money_stale');
-  if (entities.includes('invoice') || whole) await tx.run('INSERT OR IGNORE INTO money_stale (customer_id) SELECT id FROM customers');
+  if (whole) {
+    await tx.run('DELETE FROM money_stale');
+    await tx.run('DELETE FROM money_answers');
+  }
+  if (entities.includes('invoice') || whole) {
+    await tx.run('INSERT OR IGNORE INTO money_stale (customer_id) SELECT id FROM customers');
+    await tx.run("INSERT INTO meta (k, v) VALUES ('money_dues_stale', '1') ON CONFLICT(k) DO UPDATE SET v = excluded.v");
+  }
   const lotsChanged = whole || entities.includes('goodsreceived') || entities.includes('goodsreceived_trl');
   if (lotsChanged) await rebuildAllSearch(tx);
   if (lotsChanged || entities.includes('dispatch') || entities.includes('dispatch_trl')) await rebuildAllDispatchSearch(tx);

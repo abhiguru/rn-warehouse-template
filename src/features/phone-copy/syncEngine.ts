@@ -229,7 +229,7 @@ async function publishFromMeta(db: CopyDriver, offline: boolean): Promise<void> 
 /** Empties the copy's data, keeping its file, key, schema and scope. */
 async function clearData(tx: CopyDriver): Promise<void> {
   for (const entity of ALL_ENTITIES) await tx.run(`DELETE FROM ${entity}`);
-  await tx.exec('DELETE FROM lot_search; DELETE FROM dispatch_search; DELETE FROM text_rank; DELETE FROM stage_rows; DELETE FROM money_stale;');
+  await tx.exec('DELETE FROM lot_search; DELETE FROM dispatch_search; DELETE FROM text_rank; DELETE FROM stage_rows; DELETE FROM money_stale; DELETE FROM money_answers;');
   await tx.run("DELETE FROM meta WHERE k NOT IN ('schema_version', 'scope')");
   await setMeta(tx, 'phase', 'empty');
 }
