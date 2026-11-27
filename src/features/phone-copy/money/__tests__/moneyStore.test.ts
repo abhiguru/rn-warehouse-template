@@ -67,6 +67,16 @@ describe('T1: answers are stored as the server sent them', () => {
     expect((await store().readMoneyAnswer('dues', ''))?.body).toEqual(newer);
     expect(await rowsOfMoney(w)).toHaveLength(1);
   });
+
+  it('an equal as_of replaces the kept answer', async () => {
+    const w = await ready();
+    const first = duesBody({ asOf: MORNING, invoices: 1000 });
+    const replacement = duesBody({ asOf: MORNING, invoices: 1500 });
+    expect(await store().writeMoneyAnswer({ kind: 'dues', key: '', asOf: first.as_of, today: first.today, body: first })).toBe(true);
+    expect(await store().writeMoneyAnswer({ kind: 'dues', key: '', asOf: replacement.as_of, today: replacement.today, body: replacement })).toBe(true);
+    expect((await store().readMoneyAnswer('dues', ''))?.body).toEqual(replacement);
+    expect(await rowsOfMoney(w)).toHaveLength(1);
+  });
 });
 
 describe('T2: no money maths on the phone', () => {

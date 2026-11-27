@@ -23,6 +23,8 @@ import { duesBody, mark, NAMES, NOW, queueRun, seedMoney, statementBody } from '
 import { businessDate } from '@/features/phone-copy/pgCompat';
 
 const MIN = 60_000;
+// The pass waits 2,000 ms between statement requests for real, so even a first load takes several seconds.
+jest.setTimeout(30000);
 let clock = Date.parse(NOW);
 let stopPass: (() => void) | null = null;
 let inflight = 0;
@@ -73,6 +75,10 @@ async function ready(role: Role = 'admin', opts: { capability?: boolean } = {}):
   const inner = env.feed.rpc;
   env.feed.rpc = async (name, args = {}) => {
     if (name === 'get_customer_dues' || name === 'get_customer_statement' || name === 'get_customer_dues_for') {
+      // The wrapped server answers a read at once and does not look at held calls, so a held money read waits here.
+      for (const gate of env.feed.gates) {
+        if (gate.matches({ name, args })) { gate.onHit(); await gate.wait; }
+      }
       times.push({ name, id: args.p_customer_id as string | undefined, at: performance.now() });
       inflight += 1; maxInflight = Math.max(maxInflight, inflight);
       await pause(30);
@@ -119,22 +125,22 @@ describe('T7: the first money load', () => {
     const w = await ready();
     startPass();
     await runEnd(w);
-    await until(async () => (await money(w)).length === 4);
+    await until(async () => (await money(w)).length === 4, 15000);
     expect(w.serverCalls.map(c => c.name)).toEqual(['get_customer_dues', 'get_customer_statement', 'get_customer_statement', 'get_customer_statement']);
     expect(statementIds(w)).toEqual(['c3', 'c1', 'c2']);
     expect(w.serverCalls.some(c => c.name === 'get_customer_dues_for')).toBe(false);
     expect((await money(w)).map(r => `${r.kind}:${r.key}`)).toEqual(['dues:', 'statement:c1', 'statement:c2', 'statement:c3']);
-  });
+  }, 25000);
 
   it('T1: what is kept is the server\'s answer, byte for byte', async () => {
     const w = await ready();
     startPass();
     await runEnd(w);
-    await until(async () => (await money(w)).length === 4);
+    await until(async () => (await money(w)).length === 4, 15000);
     const keptDues = JSON.parse((await money(w)).find(r => r.kind === 'dues')!.body);
     expect(keptDues).toEqual(duesBody({ asOf: iso(), today: businessDate(clock), ids: dues.ids }));
     expect(keptDues.totals.invoices_amount).toBe(3007); // the server's own sum; the rows add up to 3,003
-  });
+  }, 25000);
 });
 
 describe('T5: the pass', () => {

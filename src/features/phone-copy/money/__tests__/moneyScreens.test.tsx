@@ -19,7 +19,7 @@
  * ==================================
  */
 import React from 'react';
-import { act, render, screen, userEvent } from '@testing-library/react-native';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { configureStore } from '@reduxjs/toolkit';
 import DuesScreen from '../../../../../app/reports/customer-dues';
@@ -33,6 +33,7 @@ import { resetScreenFocus } from '@/tests/components/focusHarness';
 import { forgetQueries, makeQueryUpdatesImmediate } from '@/tests/helpers/reportQueries';
 import { saveOperatorServer } from '@/config/operatorServer';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
+import { runSessionScopedClears } from '@/config/sessionScopedRegistry';
 import authReducer, { setUserProfile } from '@/store/slices/authSlice';
 import listFilterReducer from '@/store/slices/listFilterSlice';
 import reportPrefsReducer from '@/store/slices/reportPrefsSlice';
@@ -137,6 +138,10 @@ beforeEach(async () => {
   env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
     if (name.startsWith('get_sync_')) return feedRpc(name, args);
     serverCalls.push({ name, args });
+    // A held read waits here: this wrapper answers money reads itself, so the feed's own gates are not reached.
+    for (const gate of env.feed.gates) {
+      if (gate.matches({ name, args })) { gate.onHit(); await gate.wait; }
+    }
     const answer = serverAnswers[name];
     if (typeof answer === 'function') return (answer as (a: Record<string, unknown>) => unknown)(args) as never;
     return name in serverAnswers ? { data: answer, error: null } : LOST;
@@ -148,6 +153,8 @@ beforeEach(async () => {
   await signInAs('admin');
 });
 afterEach(async () => {
+  forgetQueries();
+  await runSessionScopedClears({ dispatch: () => undefined });
   await engine.stopPhoneCopy();
   engine.setCopyOffline(false);
   await copyDb.eraseCopy();
@@ -173,8 +180,8 @@ const order = (first: string, second: string) => {
   return tree.indexOf(first) !== -1 && tree.indexOf(first) < tree.indexOf(second);
 };
 const statementFor = (id: string) => { mockParams = { customerId: id, customerName: id }; return <StatementScreen />; };
-const EARLIER = /These figures are from .*26 Nov.*\. Rent has built up since; connect for today's figures\./;
-const EARLIER_NO_STOCK = /^These figures are from .*26 Nov.*\. Connect for today's figures\.$/;
+const EARLIER = /^These figures are from 26\/11\/26, 2:35\s?pm\. Rent has built up since; connect for today.s figures\.$/;
+const EARLIER_NO_STOCK = /^These figures are from 26\/11\/26, 2:35\s?pm\. Connect for today.s figures\.$/;
 
 describe('T12: Customer dues offline, from the kept answer', () => {
   it('draws the kept figures with the time computed above the first figure, and the old "As of" line is gone (DQ2)', async () => {
@@ -213,8 +220,8 @@ describe('T12: Customer dues offline, from the kept answer', () => {
     await connection(true);
     await render(<DuesScreen />);
     const empty = await screen.findByTestId('dues-not-here');
-    expect(empty).toHaveTextContent("Customer dues aren't on this phone yet");
-    expect(empty).toHaveTextContent('It will load when you reconnect.');
+    expect(within(empty).getByText("Customer dues aren't on this phone yet")).toBeOnTheScreen();
+    expect(within(empty).getByText('It will load when you reconnect.')).toBeOnTheScreen();
     expect(screen.queryByText('Try again')).not.toBeOnTheScreen();
     expect(serverCalls).toEqual([]);
   });
@@ -264,8 +271,8 @@ describe('T12: Statement offline', () => {
     await connection(true);
     await render(statementFor('c3'));
     const empty = await screen.findByTestId('statement-not-here');
-    expect(empty).toHaveTextContent("This statement isn't on this phone yet");
-    expect(empty).toHaveTextContent('It will load when you reconnect.');
+    expect(within(empty).getByText("This statement isn't on this phone yet")).toBeOnTheScreen();
+    expect(within(empty).getByText('It will load when you reconnect.')).toBeOnTheScreen();
     expect(screen.queryByText('Try again')).not.toBeOnTheScreen();
     expect(serverCalls).toEqual([]);
   });
@@ -352,7 +359,7 @@ describe('T14: Customer activity with the copy routing', () => {
     const first = await render(<ActivityScreen />);
     expect(await screen.findByText('Bhavin Foods')).toBeOnTheScreen();
     const asked = serverCalls.find(c => c.name === 'get_all_customer_activity_summary')!.args;
-    first.unmount();
+    await first.unmount();
     forgetQueries();
     serverCalls.length = 0;
     await connection(true);
@@ -374,7 +381,7 @@ describe('T14: Customer activity with the copy routing', () => {
     await render(<ActivityScreen />);
     expect(await screen.findByText('Bhavin Foods')).toBeOnTheScreen();
     expect(screen.queryByTestId('customer-activity-not-here')).not.toBeOnTheScreen();
-    expect(screen.getByTestId('money-age-strip')).toHaveTextContent(/These figures are from .*27 Nov/);
+    expect(screen.getByTestId('money-age-strip')).toHaveTextContent(/^These figures are from 27\/11\/26, 11:00\s?am\. Rent has built up since; connect for today.s figures\.$/);
     const chip = screen.getByRole('button', { name: new RegExp(`^${formatCardDate(asked.p_from_date)} – ${formatCardDate(asked.p_to_date)}`) });
     expect(chip).toBeDisabled();
   });
@@ -384,15 +391,15 @@ describe('T14: Customer activity with the copy routing', () => {
     await connection(true);
     await render(<ActivityScreen />);
     const empty = await screen.findByTestId('customer-activity-not-here');
-    expect(empty).toHaveTextContent("Customer activity isn't on this phone yet");
-    expect(empty).toHaveTextContent('It will load when you reconnect.');
+    expect(within(empty).getByText("Customer activity isn't on this phone yet")).toBeOnTheScreen();
+    expect(within(empty).getByText('It will load when you reconnect.')).toBeOnTheScreen();
     expect(serverCalls).toEqual([]);
   });
 });
 
 describe('T15, T16: where today\'s screens stay', () => {
   it('a customer account\'s Statement is a live read: no kept answer, no age line, its own "As of" line', async () => {
-    await signInAs('customer');
+    mockStore.dispatch(setUserProfile({ id: 'profile-2', role: 'customer', name: 'Bhavin Fictional', assignedCustomerIds: ['c2'] } as never) as never);
     await loadCopy();
     serverAnswers.get_customer_statement = statementBody('c2');
     await render(statementFor('c2'));
@@ -408,7 +415,7 @@ describe('T15, T16: where today\'s screens stay', () => {
     const first = await render(<DuesScreen />);
     expect(await screen.findByText(/^As of /)).toBeOnTheScreen();
     expect(screen.queryByTestId('money-age-line')).not.toBeOnTheScreen();
-    first.unmount();
+    await first.unmount();
     serverAnswers = {};
     await render(<DuesScreen />);
     await screen.findByText("Couldn't load customer dues");
@@ -436,19 +443,19 @@ describe('T17: Gujarati', () => {
     const line = await screen.findByTestId('money-age-line');
     expect(line).toHaveTextContent(/^આજે [૦-૯]+:[૦-૯]+.* સુધીના આંકડા$/);
     expect(line).not.toHaveTextContent(/[0-9]/);
-    expect(screen.getByText(/[૦-૯],[૦-૯]{3}\.[૦-૯]{2}/)).toBeOnTheScreen(); // 3,007.00 in Gujarati digits
-    dues.unmount();
+    expect(screen.getByText(/૩,૦૦૭\.૦૦/)).toBeOnTheScreen(); // 3,007.00 in Gujarati digits
+    await dues.unmount();
     forgetQueries();
     const statement = await render(statementFor('c2'));
     const strip = await screen.findByTestId('money-age-strip');
     expect(strip).toHaveTextContent(/^આ આંકડા .* ના છે\. ત્યાર પછી ભાડું વધ્યું છે; આજના આંકડા માટે ઇન્ટરનેટ જોડો\.$/);
     expect(strip).not.toHaveTextContent(/[0-9]/);
-    statement.unmount();
+    await statement.unmount();
     forgetQueries();
     await render(statementFor('c3'));
     const none = await screen.findByTestId('statement-not-here');
-    expect(none).toHaveTextContent('આ સ્ટેટમેન્ટ હજુ આ ફોનમાં નથી');
-    expect(none).toHaveTextContent('ફરી જોડાશો ત્યારે લોડ થશે.');
+    expect(within(none).getByText('આ સ્ટેટમેન્ટ હજુ આ ફોનમાં નથી')).toBeOnTheScreen();
+    expect(within(none).getByText('ફરી જોડાશો ત્યારે લોડ થશે.')).toBeOnTheScreen();
   });
 
   it('Customer dues and Customer activity never-fetched titles', async () => {
@@ -456,10 +463,10 @@ describe('T17: Gujarati', () => {
     await loadCopy();
     await connection(true);
     const dues = await render(<DuesScreen />);
-    expect(await screen.findByTestId('dues-not-here')).toHaveTextContent('વેપારીઓની બાકી રકમ હજુ આ ફોનમાં નથી');
-    dues.unmount();
+    expect(within(await screen.findByTestId('dues-not-here')).getByText('વેપારીઓની બાકી રકમ હજુ આ ફોનમાં નથી')).toBeOnTheScreen();
+    await dues.unmount();
     forgetQueries();
     await render(<ActivityScreen />);
-    expect(await screen.findByTestId('customer-activity-not-here')).toHaveTextContent('વેપારીની કામગીરી હજુ આ ફોનમાં નથી');
+    expect(within(await screen.findByTestId('customer-activity-not-here')).getByText('વેપારીની કામગીરી હજુ આ ફોનમાં નથી')).toBeOnTheScreen();
   });
 });
