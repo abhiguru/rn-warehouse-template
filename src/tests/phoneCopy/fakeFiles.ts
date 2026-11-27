@@ -43,6 +43,11 @@ class FakeFile {
     files.held.delete(this.uri);
     this.uri = target;
   }
+  /** A copy: the source stays, the target holds the same bytes. */
+  copy(to: { uri: string }) {
+    const target = to instanceof FakeDirectory ? join([to.uri, this.name]) : to.uri;
+    files.held.set(target, this.size);
+  }
   static async downloadFileAsync(url: string, to: { uri: string }) {
     const target = to instanceof FakeDirectory ? join([to.uri, url.split('?')[0].split('/').pop()]) : to.uri;
     await download(url, target);
