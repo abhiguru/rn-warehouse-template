@@ -755,7 +755,7 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
     const { data, error } = copy?.value
       ? { data: { success: true, data: copy.value }, error: null }
       : copy
-        ? { data: { success: false, error: 'Invoice not found' }, error: null }
+        ? { data: { success: false, error: t('invoice.details.notFoundTitle') }, error: null }
         : await authenticatedClient.rpc('get_invoice_data', {
           p_invoice_id: invoiceId
         });
@@ -992,7 +992,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
     const { data, error } = copy?.value
       ? { data: { success: true, data: copy.value }, error: null }
       : copy
-        ? { data: { success: false, error: 'Invoice not found' }, error: null }
+        ? { data: { success: false, error: t('invoice.details.notFoundTitle') }, error: null }
         : await authenticatedClient.rpc('get_invoice_items_detailed', {
           p_invoice_id: invoiceId
         });

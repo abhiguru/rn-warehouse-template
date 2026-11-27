@@ -267,7 +267,7 @@ class AdminUserService {
 
       const client = await getAuthenticatedClient();
       const { data, error } = copy
-        ? { data: copy.value.kind === 'found' ? { success: true, user: copy.value.user, assigned_customers: copy.value.assigned_customers } : { success: false, error_code: 'NOT_FOUND', message: 'User not found' }, error: null }
+        ? { data: copy.value.kind === 'found' ? { success: true, user: copy.value.user, assigned_customers: copy.value.assigned_customers } : { success: false, error_code: 'NOT_FOUND', message: t('errors.user.notFound') }, error: null }
         : await client.rpc('get_user_details', {
           p_user_id: userId,
         });
