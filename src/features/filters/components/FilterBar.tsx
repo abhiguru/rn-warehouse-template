@@ -25,6 +25,8 @@ export interface FilterBarProps {
   filters: ReturnType<typeof useListFilters>;
   /** Open the full "Sort and filter" page. Omit for lists that have none. */
   onOpenAll?: () => void;
+  /** Kept Customer activity offline (WH-305): the period chip shows these dates and is disabled. */
+  periodChip?: { label: string; accessibilityLabel: string };
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -54,7 +56,7 @@ const makeStyles = (t: ThemeTokens) => ({
 
 const opensSheet = (field: FilterFieldDef) => field.kind !== 'toggle';
 
-export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
+export function FilterBar({ config, filters, onOpenAll, periodChip }: FilterBarProps) {
   const styles = useThemedStyles(makeStyles);
   const [open, setOpen] = useState<OpenFilter>(null);
   const { fields, values, sort, activeCount } = filters;
@@ -64,7 +66,7 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
   const active = fields.filter(field => !isRequiredField(field) && isFieldActive(field, values[field.key]));
   const idleFast = config.fastFilters
     .map(key => fields.find(field => field.key === key))
-    .filter((field): field is FilterFieldDef => Boolean(field) && !isRequiredField(field as FilterFieldDef) && !isFieldActive(field as FilterFieldDef, values[(field as FilterFieldDef).key]));
+    .filter((field): field is FilterFieldDef => field !== undefined && !isRequiredField(field) && !isFieldActive(field, values[field.key]));
   const recognised = readSearch(config, values);
   const unavailable = (field: FilterFieldDef) => field.unavailable?.(filters.ctx);
   // Said once under the row for a filter that is off; a filter already set is explained by the list in its place.
@@ -115,10 +117,11 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
                 key={field.key}
                 variant="action"
                 icon={field.icon}
-                label={value}
-                chevron
+                label={periodChip ? periodChip.label : value}
+                chevron={!periodChip}
+                disabled={Boolean(periodChip)}
                 onPress={() => press(field)}
-                accessibilityLabel={translate('filters.bar.activeChip', { label: field.label, value: spokenValue })}
+                accessibilityLabel={periodChip ? periodChip.accessibilityLabel : translate('filters.bar.activeChip', { label: field.label, value: spokenValue })}
               />
             );
           })}
