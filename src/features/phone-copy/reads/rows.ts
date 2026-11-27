@@ -57,6 +57,7 @@ const STAFF_ONLY_KEYS: ReadonlySet<string> = new Set([
   'created_by', 'updated_by', 'deleted_by', 'supervisor_id', 'sender_id', 'import_batch_id', 'uploaded_by',
   'created_by_name', 'updated_by_name', 'updated_by_display_name', 'user_access',
   'created_by_info', 'created_by_display_name', 'created_by_role',
+  'cancelled_by', 'cancelled_by_name', 'ignored_by', 'discount_set_by', 'zero_charge_set_by',
 ]);
 
 function withoutStaffKeys(value: unknown): unknown {

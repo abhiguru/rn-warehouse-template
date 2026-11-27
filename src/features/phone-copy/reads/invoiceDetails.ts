@@ -255,6 +255,8 @@ export async function readInvoicePayments(q: CopyReader, invoiceId: string): Pro
 export async function readInvoiceReasons(q: CopyReader, invoiceId: string): Promise<Row | null> {
   const invoice = await one(q, 'invoice', invoiceId);
   if (!invoice || isSet(invoice.deleted_at)) return null;
+  // The server answers a customer account none of these (get_invoice_detail adds them for staff roles only).
+  if (q.role === 'customer') return {};
   return answerFor(q.role, {
     discount_reason: pick(invoice, 'discount_reason'), discount_set_by_name: pick(invoice, 'discount_set_by_name'), discount_set_at: pick(invoice, 'discount_set_at'),
     zero_charge_reason: pick(invoice, 'zero_charge_reason'), zero_charge_set_by_name: pick(invoice, 'zero_charge_set_by_name'), zero_charge_set_at: pick(invoice, 'zero_charge_set_at'),

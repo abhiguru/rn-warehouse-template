@@ -20,6 +20,8 @@ export interface DispatchListRequest {
   page: number;
   limit: number;
   includeItems: boolean;
+  /** Answer as `get_customer_dispatch_list` does: `total_items`, `supervisor_name`, and `total_weight` cast to bigint. */
+  customerShape?: boolean;
 }
 
 export interface DispatchListData {
@@ -146,6 +148,9 @@ interface LineRecord {
   lot_id: string;
 }
 
+/** A numeric cast to bigint rounds half away from zero. */
+const roundHalfAway = (value: number): number => Math.sign(value) * Math.round(Math.abs(value));
+
 function itemsOf(lines: readonly LineRecord[], includeItems: boolean) {
   const totalQty = lines.reduce((sum, l) => sum + (l.disp_qty ?? 0), 0);
   const parsed = lines.map(l => ({ l, t: parseRow(l.trow), g: parseRow(l.grow) }));
@@ -160,7 +165,7 @@ function itemsOf(lines: readonly LineRecord[], includeItems: boolean) {
           package_mark: pick(t, 'package_mark'), rack: pick(t, 'rack'),
         }))
     : null;
-  return { totalQty, totalWeight, itemCount, items };
+  return { totalQty, totalWeight, itemCount, totalItems: lines.length, items };
 }
 
 export async function readDispatchList(q: CopyReader, raw: DispatchListRequest): Promise<DispatchListData> {
@@ -191,7 +196,9 @@ export async function readDispatchList(q: CopyReader, raw: DispatchListRequest):
     return [{
       id, disp_no: pick(row, 'disp_no'), imported: row.import_batch_id !== null && row.import_batch_id !== undefined,
       dispatch_date: pick(row, 'disp_date'), customer_id: pick(row, 'customer_id'), customer_name: pick(row, 'customer_name'),
-      registration: pick(row, 'registration'), total_qty: own.totalQty, total_weight: own.totalWeight, item_count: own.itemCount,
+      registration: pick(row, 'registration'), total_qty: own.totalQty,
+      total_weight: request.customerShape ? roundHalfAway(own.totalWeight) : own.totalWeight, item_count: own.itemCount,
+      ...(request.customerShape ? { total_items: own.totalItems, supervisor_name: pick(row, 'supervisor_name') } : {}),
       items: own.items, notes: pick(row, 'note'), created_at: pick(row, 'created_at'), updated_at: pick(row, 'updated_at'),
       created_by: pick(row, 'created_by'), updated_by: pick(row, 'updated_by'), ...overlay.dispatch(id),
     }];

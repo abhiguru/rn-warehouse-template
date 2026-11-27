@@ -22,7 +22,7 @@ export async function readCustomerDispatchList(
   // The list asks for pages from a multiple of its page size; any other start is the server's to answer.
   if (offset % limit !== 0) throw new Error('page start is not a page');
   const data = await readDispatchList(q, {
-    customerId, filters: {}, sortBy: 'dispatch_date', sortOrder: 'desc', page: offset / limit + 1, limit, includeItems,
+    customerId, filters: {}, sortBy: 'dispatch_date', sortOrder: 'desc', page: offset / limit + 1, limit, includeItems, customerShape: true,
   });
   const dispatches = data.dispatches.map(row => {
     const own: Row = { ...row };
