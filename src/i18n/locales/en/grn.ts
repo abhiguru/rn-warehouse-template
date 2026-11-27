@@ -2,11 +2,10 @@
 export const grn = {
   // The GRN list read from the phone copy (WH-299, Design offline-capture.md 2.6 and 2.10a)
   offline: {
-    olderLoadingSearch: 'Older records are still loading. Some may be missing.',
     invoicingFilterOff: 'The Invoicing filter works when you reconnect.',
     invoicingFilterOffLabel: 'Invoicing, works when you reconnect',
-    invoicingWaitTitle: "Can't filter by invoicing yet",
-    invoicingWaitMessage: "The phone doesn't have invoice details yet. They load when you reconnect. Clear the filter to see GRNs now.",
+    invoicingWaitTitle: 'Filtering by invoicing needs a connection',
+    invoicingWaitMessage: 'Clear the filter to see GRNs offline.',
     clearInvoicingFilter: 'Clear Invoicing filter',
   },
 

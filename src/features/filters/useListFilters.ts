@@ -54,7 +54,7 @@ export function useFilterContext(): FilterContext {
   // The facility's capability and release, read from the stores directly (like `usePaymentsVisible`, which the list's tags use).
   const payments = useSyncExternalStore(subscribePayments, paymentsOn, paymentsOn);
   const grnInvoiceFilter = useSyncExternalStore(subscribePayments, grnInvoiceFilterOn, grnInvoiceFilterOn);
-  // Offline the copy cannot tell what is invoiced (WH-381, Design 13.3); the Invoicing filter, offered to warehouse roles only, waits.
+  // Offline the phone holds no invoices (WH-381): the GRN Invoicing filter waits for the connection (warehouse roles only).
   const grnInvoiceWaiting = useNeedsConnection();
   return useMemo(() => {
     const role = profile?.role ?? null;
@@ -63,7 +63,7 @@ export function useFilterContext(): FilterContext {
     const assigned = named ?? (profile?.assignedCustomerIds ?? []).map(id => ({ id, label: '' }));
     return {
       role, isWarehouseRole, assignedCustomers: isWarehouseRole ? [] : assigned, pagesByReceipt, payments, grnInvoiceFilter,
-      ...(grnInvoiceWaiting ? { grnInvoiceWaiting } : null),
+      ...(grnInvoiceWaiting && isWarehouseRole ? { grnInvoiceWaiting } : null),
     };
   }, [profile?.role, profile?.assignedCustomers, profile?.assignedCustomerIds, pagesByReceipt, payments, grnInvoiceFilter, grnInvoiceWaiting]);
 }

@@ -1,9 +1,5 @@
 /** English text: recording payments on invoices (WH-143). English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const payments = {
-  // The Payments tab's footnote while the phone is offline (WH-348, Design offline-capture.md 2.10b).
-  offline: {
-    newNeedsConnection: 'New payments need a connection.',
-  },
   switch: {
     label: 'Record payments',
     help: 'Record what customers pay against each invoice, and show what is still due.',

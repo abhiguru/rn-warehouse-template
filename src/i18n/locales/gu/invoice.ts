@@ -3,9 +3,6 @@ import type { invoice as source } from '../en/invoice';
 import type { Translation } from '../../types';
 
 export const invoice: Translation<typeof source> = {
-  offline: {
-    newNeedsConnection: 'નવા ઇન્વૉઇસ માટે કનેક્શન જોઈએ.',
-  },
   // Words used on several invoice screens
   label: {
     financialYear: 'નાણાકીય વર્ષ',

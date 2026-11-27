@@ -324,6 +324,8 @@ const GRNCardFiori = memo<GRNCardProps>(({
   // Edit and Print need the server: with no connection they are disabled and say why (WH-299, Design 2.5).
   // For an unsent new GRN: Print still waits until sent, while Edit works offline until sending starts (WH-161, Design 10.3 & 10.6 DQ4).
   const needsConnection = useNeedsConnection();
+  // The invoice state is the server's: with no connection a card does not tell it (WH-381).
+  const invoiceState = needsConnection ? undefined : group.invoiceState;
   const newDocument = useNewDocumentActions('grn', group.grnId);
   const unsentEditState = useUnsentGrnEditState(group.grnId);
   const printDisabled = needsConnection || newDocument.isNew;
@@ -446,7 +448,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
             stock,
             badgeLabel,
             weightText,
-            group.invoiceState === 'partly_invoiced' ? invoiceStateLabel('partly_invoiced') : null,
+            invoiceState === 'partly_invoiced' ? invoiceStateLabel('partly_invoiced') : null,
             filteredNote,
             matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
             unsentMarker === null ? null : markerText(unsentMarker),
@@ -488,10 +490,10 @@ const GRNCardFiori = memo<GRNCardProps>(({
                 <Text style={styles.itemCountText} {...singleLineText()}>{itemCountLabel}</Text>
               </View>
             </View>
-            {group.invoiceState === 'partly_invoiced' || group.imported ? (
+            {invoiceState === 'partly_invoiced' || group.imported ? (
               <View style={{ alignItems: 'flex-start', marginTop: space.xs, gap: space.xs }}>
                 {group.imported ? <ImportedTag testID={`grn-card-imported-${group.grnId}`} /> : null}
-                {group.invoiceState === 'partly_invoiced' ? <StatusTag status={invoiceStateKind('partly_invoiced')} label={invoiceStateLabel('partly_invoiced')} testID={`grn-card-invoice-state-${group.grnId}`} /> : null}
+                {invoiceState === 'partly_invoiced' ? <StatusTag status={invoiceStateKind('partly_invoiced')} label={invoiceStateLabel('partly_invoiced')} testID={`grn-card-invoice-state-${group.grnId}`} /> : null}
               </View>
             ) : null}
             {filteredNote ? (
@@ -636,9 +638,8 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange, subHead
   const sortedByNumber = sort?.field === 'gr_no';
   const linesHidden = useMemo(() => grnLinesHidden(request), [request]);
   const words = useMemo(() => searchWords(readSearch(GRN_FILTERS, filters.values).text), [filters.values]);
-  // Offline, the copy cannot tell what is invoiced: the Invoicing filter waits for a connection (WH-381, Design 13.3).
-  const offlineNow = useNeedsConnection();
-  const invoiceFilterWaits = offlineNow && !isCustomerAccount && request.p_filters?.invoiced !== undefined;
+  // Offline the phone holds no invoices (WH-381, Design 2.10a): a warehouse role's Invoicing filter waits for the connection.
+  const invoiceFilterWaits = useNeedsConnection() && !isCustomerAccount && request.p_filters?.invoiced !== undefined;
   const listRef = useRef<FlashListRef<FlattenedItem<GRNGroupData>>>(null);
 
   // Open cells
@@ -1102,7 +1103,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({ initialNumberRange, subHead
         {offlineUpdatedAt !== undefined ? <LastUpdatedLine at={offlineUpdatedAt} top withDate testID="grn-last-updated" /> : null}
       </>
     ),
-    [offlineUpdatedAt, styles]
+    [offlineUpdatedAt]
   );
 
   // While the Invoicing filter waits there are no rows to show, whatever was loaded before.

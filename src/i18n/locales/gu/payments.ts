@@ -3,9 +3,6 @@ import type { Translation } from '../../types';
 
 // Drafts for the owner's wording review (WH-143), from the spec's table and docs/GUJARATI_GLOSSARY.md.
 export const payments: Translation<typeof source> = {
-  offline: {
-    newNeedsConnection: 'નવી ચુકવણી માટે કનેક્શન જોઈએ.',
-  },
   switch: {
     label: 'ચુકવણી નોંધો',
     help: 'દરેક ઇન્વૉઇસ સામે વેપારીઓએ ચૂકવેલી રકમ નોંધો, અને બાકી રકમ બતાવો.',
