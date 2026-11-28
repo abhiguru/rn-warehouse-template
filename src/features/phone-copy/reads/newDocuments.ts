@@ -21,7 +21,6 @@ const linesOf = (doc: NewDocRow): Row[] => (Array.isArray(doc.lines) ? (doc.line
 
 /** Local ids of sent GRNs the copy already holds (by server id, else by number); they add no row, lot or total (WH-404). */
 export type HeldBySync = ReadonlySet<string>;
-const NONE_HELD: HeldBySync = new Set();
 
 /**
  * The sent new GRNs whose record the copy already has, matched by the server's id only: a GRN number can repeat across
@@ -30,7 +29,7 @@ const NONE_HELD: HeldBySync = new Set();
  */
 export async function sentHeldByCopy(q: CopyReader): Promise<HeldBySync> {
   const sent = documentsOf().filter(doc => doc.state === 'sent');
-  if (sent.length === 0) return NONE_HELD;
+  if (sent.length === 0) return new Set<string>();
   const held = new Set<string>();
   for (const doc of sent) {
     if (typeof doc.serverId !== 'string' || doc.serverId === '') continue;
@@ -41,7 +40,7 @@ export async function sentHeldByCopy(q: CopyReader): Promise<HeldBySync> {
 }
 
 /** The unsent GRNs that give rows to a list: not refused (a refused one adds nothing to totals; Product PQ3), and not held by the copy. */
-const liveDocuments = (held: HeldBySync): NewDocRow[] => documentsOf().filter(doc => doc.refused !== true && !held.has(String(doc.localId)));
+const liveDocuments = (held?: HeldBySync): NewDocRow[] => documentsOf().filter(doc => doc.refused !== true && !held?.has(String(doc.localId)));
 
 /** The start of a document's day in India, as the copy keeps dates; null when it is not a day. */
 function dayMicros(day: unknown): number | null {
@@ -125,7 +124,7 @@ export interface UnsentListPart {
 }
 
 /** The unsent new GRNs that match the list's request. */
-export function unsentGrnPart(params: GRNListParams, held: HeldBySync = NONE_HELD): UnsentListPart {
+export function unsentGrnPart(params: GRNListParams, held?: HeldBySync): UnsentListPart {
   const part: UnsentListPart = { rows: [], receipts: 0, qty: 0, stock: 0, weight: 0 };
   const documents = [...liveDocuments(held)].sort((a, b) => Number(b.recordedAt ?? 0) - Number(a.recordedAt ?? 0));
   for (const doc of documents) {
@@ -200,7 +199,7 @@ export interface UnsentStock {
 }
 
 /** The unsent lots of one customer, or of everyone, summed. */
-export function unsentStockOf(customerId?: string, held: HeldBySync = NONE_HELD): UnsentStock {
+export function unsentStockOf(customerId?: string, held?: HeldBySync): UnsentStock {
   const lots: NewLotRow[] = unsentLotsOf(customerId, held);
   return {
     bags: lots.reduce((sum, lot) => sum + lot.stock, 0),
@@ -208,6 +207,6 @@ export function unsentStockOf(customerId?: string, held: HeldBySync = NONE_HELD)
     receipts: new Set(lots.map(lot => lot.grn_id)).size,
   };
 }
-export function unsentLotsOf(customerId?: string, held: HeldBySync = NONE_HELD): NewLotRow[] {
-  return lotsOfOverlay().filter(lot => (customerId === undefined || lot.customer_id === customerId) && !held.has(lot.grn_id));
+export function unsentLotsOf(customerId?: string, held?: HeldBySync): NewLotRow[] {
+  return lotsOfOverlay().filter(lot => (customerId === undefined || lot.customer_id === customerId) && !held?.has(lot.grn_id));
 }
