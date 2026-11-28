@@ -24,6 +24,7 @@ import {
   bootUnsent,
   DOCUMENT_PHOTOS,
   rawRows,
+  rawRun,
   restart,
   server,
   unsentFileNames,
@@ -112,6 +113,9 @@ async function seedSchema2Db(plant: readonly string[], seed: (helpers: { scope: 
   await db.runAsync('DELETE FROM item_photos');
   await db.runAsync('DELETE FROM items');
   await db.runAsync('DELETE FROM forms');
+  // The file the first start made has today's shape; take out what version 4 added, so it really is a version-2 file.
+  await db.runAsync('ALTER TABLE item_photos DROP COLUMN report_queued');
+  await db.runAsync('DROP TABLE photo_reports');
   // The files are planted only now: the first start's sweep (above) would remove unnamed form-* files planted earlier.
   for (const name of plant) files.held.set(photoUri(name), 1200);
   await db.runAsync("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '2')");
@@ -197,10 +201,29 @@ afterEach(async () => {
 });
 
 describe('1. unsent-work.db schema upgrade 2 -> 3 in-place (never wipes GRN work)', () => {
-  it('bumps UNSENT_SCHEMA_VERSION to 3', async () => {
+  it('UNSENT_SCHEMA_VERSION is 4 (3 removed the dispatch work, 4 added the photo reports)', async () => {
     await bootUnsent();
     const schema = require('@/features/unsent/unsentSchema') as { UNSENT_SCHEMA_VERSION: number };
-    expect(schema.UNSENT_SCHEMA_VERSION).toBe(3);
+    expect(schema.UNSENT_SCHEMA_VERSION).toBe(4);
+  });
+
+  it('WH-385: the 3 -> 4 step deletes no row and no file: dispatch work a version-3 file still holds stays, and the report column and table appear', async () => {
+    const photo = photoUri('v3-grn-photo.jpg');
+    await seedSchema2Db(['v3-grn-photo.jpg'], async ({ insertItem, insertPhoto }) => {
+      // A row only step 3 would remove: it shows that step 3 is not run again on a version-3 file.
+      await insertItem({ id: 'disp-v3', seq: 1, kind: 'newDispatch', body: sampleDispatchBody(), what: 'New dispatch' });
+      await insertItem({ id: 'photos-v3', seq: 2, kind: 'photos', body: { doc: 'grn', recordId: 'g-B1' }, what: 'Photos' });
+      await insertPhoto('photos-v3', 'unsent-work/photos/v3-grn-photo.jpg', 'cp-v3-1', 'header');
+    });
+    await rawRun(`UPDATE meta SET value = '3' WHERE key = 'schema_version'`);
+
+    await restart();
+
+    expect((await rawRows<{ value: string; key: string }>('meta')).find(row => row.key === 'schema_version')?.value).toBe('4');
+    expect((await rawRows<{ id: string }>('items', 'ORDER BY seq')).map(row => row.id)).toEqual(['disp-v3', 'photos-v3']);
+    expect(await rawRows('item_photos')).toEqual([expect.objectContaining({ client_photo_id: 'cp-v3-1', report_queued: 0 })]);
+    expect(await rawRows('photo_reports' as never)).toEqual([]);
+    expect(files.held.has(photo)).toBe(true);
   });
 
   it('upgrades schema-2 DB in-place: deletes legacy dispatch forms, items, item_photos and photo files while preserving all GRN work and files', async () => {
@@ -299,10 +322,10 @@ describe('1. unsent-work.db schema upgrade 2 -> 3 in-place (never wipes GRN work
 
     await restart();
 
-    // Upgraded in-place: same single DB file, now at schema version 3.
+    // Upgraded in-place: same single DB file, now at the newest schema version.
     expect(unsentFileNames()).toHaveLength(1);
     const meta = await rawRows<{ key: string; value: string }>('meta');
-    expect(meta.find(row => row.key === 'schema_version')?.value).toBe('3');
+    expect(meta.find(row => row.key === 'schema_version')?.value).toBe('4');
 
     // Legacy dispatch forms and items are deleted; every GRN form and item survives.
     const forms = await rawRows<{ id: string; kind: string }>('forms', 'ORDER BY id');

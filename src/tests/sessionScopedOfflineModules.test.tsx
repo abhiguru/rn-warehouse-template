@@ -186,18 +186,26 @@ describe('the facility\'s numbering rule (numberingCache, WH-391)', () => {
   });
 });
 
-describe('the after-write sync and the write seen while quiet (WH-299, WH-395)', () => {
+describe('the after-write sync and the photo reports (WH-299, WH-395, WH-385, WH-411)', () => {
   it('the real sync engine registers its after-write state with the session teardown', () => {
     jest.requireActual('@/features/phone-copy/syncEngine');
+    jest.requireActual('@/features/unsent/photoReports');
+    jest.requireActual('@/config/sessionDeviceName');
     const { registeredSessionScopedNames } = require('@/config/sessionScopedRegistry') as typeof import('@/config/sessionScopedRegistry');
-    expect(registeredSessionScopedNames()).toContain('after-write-sync');
-    expect(registeredSessionScopedNames()).toContain('facility-write-seen-while-quiet');
+    expect(registeredSessionScopedNames()).toEqual(expect.arrayContaining(['after-write-sync', 'facility-write-upload-holds', 'photo-reports-run', 'session-device-name']));
   });
 
-  it('a write seen while quiet by the first person is gone after the session ends', async () => {
+  // WH-393 removed the app-wide "write seen while quiet" flag; what facilityWrite still keeps for a session is the upload holds.
+  it('a photo upload hold of the first person is gone after the session ends, and its late release does nothing', async () => {
     const real = jest.requireActual('@/config/facilityWrite') as typeof import('@/config/facilityWrite');
-    await real.withoutWriteNote(async () => real.noteDataWrite('https://warehouse.example.test/rest/v1/rpc/save_grn'));
+    const released = jest.fn();
+    const stop = real.subscribeUploadHoldReleased(released);
+    const release = real.holdAfterWriteSync();
+    expect(real.hasActiveUploadHold()).toBe(true);
     await endSession();
-    expect(real.takeWriteSeenWhileQuiet()).toBe(false);
+    expect(real.hasActiveUploadHold()).toBe(false);
+    release();
+    expect(released).not.toHaveBeenCalled();
+    stop();
   });
 });

@@ -658,17 +658,17 @@ describe('WH-410: the phone names itself with a held item', () => {
   }
 
   it('sends p_device_name to a server that takes it', async () => {
-    const args = await handedOver('00000000000245_held_item_device_name', true);
+    const args = await handedOver('00000000000246_held_item_device_name', true);
     expect(args.p_device_name).toMatch(/^Samsung SM-A156E \([0-9A-F]{4}\)$/);
   });
 
   it('sends no p_device_name to an older server', async () => {
-    const args = await handedOver('00000000000244_wh304_holding_list', true);
+    const args = await handedOver('00000000000245_grn_missing_photos', true);
     expect(args).not.toHaveProperty('p_device_name');
   });
 
   it('sends no p_device_name when the phone has no name', async () => {
-    const args = await handedOver('00000000000245_held_item_device_name', false);
+    const args = await handedOver('00000000000246_held_item_device_name', false);
     expect(args).not.toHaveProperty('p_device_name');
   });
 });

@@ -1,5 +1,7 @@
 import React, { useLayoutEffect } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
+import { setLanguage } from '@/i18n';
+import { en } from '@/i18n/locales/en';
 import { GRNImagesTab } from '../GRNImagesTab';
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -86,4 +88,80 @@ it('says "Photo missing" for a load error while the phone is online', async () =
   await render(<GRNImagesTab images={wh286Images} />);
   await fireEvent(photoImage(), 'error', {});
   expect(screen.getByText('Photo missing')).toBeOnTheScreen();
+});
+
+// WH-385 (contract product/tech/app-missing-photo-note.md S1 to S6; Design offline-capture.md Part 14): the lasting line.
+describe('photos taken with the GRN that could not be sent (WH-385)', () => {
+  const one = '1 photo taken with this GRN could not be sent.';
+  const line = () => screen.getByTestId('grn-photos-missing');
+  // The sentence and the photo tiles, in the order they are drawn (and read).
+  const orderOf = (sentence: string) => {
+    const tree = JSON.stringify(screen.toJSON());
+    return { line: tree.indexOf(sentence), filters: tree.indexOf('"All'), photo: tree.indexOf('GRN photo') };
+  };
+  afterEach(async () => {
+    await setLanguage('en');
+  });
+
+  it('one missing: the sentence is above the filter chips and the photos, and the counts stay the photos present', async () => {
+    await render(<GRNImagesTab images={wh286Images} missingCount={1} />);
+    expect(line()).toHaveTextContent(one);
+    const at = orderOf(one);
+    expect(at.line).toBeGreaterThan(-1);
+    expect(at.line).toBeLessThan(at.filters);
+    expect(at.line).toBeLessThan(at.photo);
+    expect(screen.getByRole('button', { name: /^All/ })).toHaveTextContent(/1/);
+    expect(screen.getByRole('imagebutton', { name: 'GRN photo' })).toBeOnTheScreen();
+  });
+
+  it('several missing: the count is said', async () => {
+    await render(<GRNImagesTab images={wh286Images} missingCount={3} />);
+    expect(line()).toHaveTextContent('3 photos taken with this GRN could not be sent.');
+  });
+
+  it('is one screen-reader stop with the sentence as its label, not a live region, with nothing to press', async () => {
+    await render(<GRNImagesTab images={wh286Images} missingCount={1} />);
+    expect(line()).toHaveAccessibleName(one);
+    expect(line().props.accessible).toBe(true);
+    expect(line().props.accessibilityLiveRegion).toBeUndefined();
+    expect(line().props.onPress).toBeUndefined();
+    expect(screen.queryByRole('button', { name: /could not be sent/ })).not.toBeOnTheScreen();
+  });
+
+  it('stays while another filter is chosen', async () => {
+    await render(<GRNImagesTab images={wh286Images} missingCount={1} />);
+    await userEvent.press(screen.getByRole('button', { name: /^Items/ }));
+    expect(line()).toHaveTextContent(one);
+  });
+
+  it('no photo arrived: the empty state says the sentence instead of "no photos", and an editor can still add one', async () => {
+    const onUpload = jest.fn();
+    await render(<GRNImagesTab images={[]} missingCount={2} onUpload={onUpload} />);
+    expect(line()).toHaveTextContent('2 photos taken with this GRN could not be sent.');
+    expect(screen.queryByText(en.grn.images.emptyTitle)).not.toBeOnTheScreen();
+    expect(screen.queryByText(en.grn.images.emptyCanAdd)).not.toBeOnTheScreen();
+    await userEvent.press(screen.getByRole('button', { name: 'Add image' }));
+    expect(onUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['0', 0],
+    ['absent', undefined],
+  ])('missingCount %s: no line, with photos and without', async (_what, missingCount) => {
+    await render(<GRNImagesTab images={wh286Images} missingCount={missingCount} />);
+    expect(screen.queryByTestId('grn-photos-missing')).not.toBeOnTheScreen();
+    await screen.rerender(<GRNImagesTab images={[]} missingCount={missingCount} />);
+    expect(screen.queryByTestId('grn-photos-missing')).not.toBeOnTheScreen();
+    expect(screen.getByText(en.grn.images.emptyTitle)).toBeOnTheScreen();
+  });
+
+  it.each([
+    [1, 'આ આવક પાવતી સાથે લીધેલો ૧ ફોટો મોકલી શકાયો નથી.'],
+    [12, 'આ આવક પાવતી સાથે લીધેલા ૧૨ ફોટા મોકલી શકાયા નથી.'],
+  ])('Gujarati, %s: the Gujarati sentence with Gujarati digits', async (missingCount, sentence) => {
+    await setLanguage('gu');
+    await render(<GRNImagesTab images={wh286Images} missingCount={missingCount} />);
+    expect(line()).toHaveTextContent(sentence);
+    expect(line()).toHaveAccessibleName(sentence);
+  });
 });

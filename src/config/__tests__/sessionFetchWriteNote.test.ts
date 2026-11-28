@@ -126,6 +126,57 @@ describe('sessionFetch tells the copy about an accepted write', () => {
   });
 });
 
+// WH-393: the send pass asks for a client whose accepted writes are not noted; every other request still is, even while
+// the pass runs, because the mark belongs to the request and not to the app.
+describe('the quiet client of a send pass', () => {
+  const fetchOf = () => jest.mocked(createClient).mock.calls.at(-1)?.[2]?.global?.fetch as typeof guardedFetch;
+  const through = async (fetcher: typeof guardedFetch, path = '/rpc/save_grn') => {
+    jest.mocked(global.fetch).mockResolvedValueOnce(reply(200));
+    await (await fetcher(`${BASE}${path}`, { method: 'POST' })).json();
+  };
+  const quietFetch = async () => {
+    jest.mocked(createClient).mockImplementationOnce(() => ({ rpc, from: jest.fn() }) as unknown as ReturnType<typeof createClient>);
+    await getAuthenticatedClient({ quietWrite: true });
+    return fetchOf();
+  };
+
+  it('notes none of its accepted writes, while the ordinary client, made before, still notes its own', async () => {
+    const quiet = await quietFetch();
+    await through(quiet);
+    await through(quiet, '/rpc/hold_items');
+    expect(heard).toBe(0);
+    await through(guardedFetch);
+    expect(heard).toBe(1);
+    await through(quiet);
+    expect(heard).toBe(1);
+  });
+
+  it('is its own cached client: asking quietly does not change what the ordinary client does, in either order', async () => {
+    jest.mocked(createClient).mockImplementationOnce(() => ({ rpc, from: jest.fn() }) as unknown as ReturnType<typeof createClient>);
+    const first = await getAuthenticatedClient({ quietWrite: true });
+    const ordinary = await getAuthenticatedClient();
+    expect(ordinary).not.toBe(first);
+    expect(jest.mocked(createClient).mock.calls.length).toBe(2); // one ordinary (beforeEach) and one quiet
+    expect(await getAuthenticatedClient({ quietWrite: true })).toBe(first);
+    expect(await getAuthenticatedClient()).toBe(ordinary);
+    expect(jest.mocked(createClient).mock.calls.length).toBe(2);
+  });
+
+  it('is made again after the token changes, so the old token is never sent by it', async () => {
+    await quietFetch();
+    const made = jest.mocked(createClient).mock.calls.length;
+    const renewed = `${jwt()}-renewed`;
+    await storeTokens(renewed, 'c'.repeat(64), Date.now() + 3600000);
+    await getAuthenticatedClient({ quietWrite: true });
+    expect(jest.mocked(createClient).mock.calls.length).toBe(made + 1);
+    const headers = jest.mocked(createClient).mock.calls.at(-1)?.[2]?.global?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${renewed}`);
+    // And the new one is still quiet.
+    await through(fetchOf());
+    expect(heard).toBe(0);
+  });
+});
+
 // WH-299 review Medium: createAuthenticatedFetch (the print and document services) classes each request with the same rule.
 describe('createAuthenticatedFetch', () => {
   const FACILITY = 'http://localhost:18000';

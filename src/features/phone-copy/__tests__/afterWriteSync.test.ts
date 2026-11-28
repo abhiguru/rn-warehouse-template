@@ -1,13 +1,13 @@
 /**
  * WH-299, release review Medium (contract §10.5 "After an online write"): a record saved online reaches the copy the
- * screens read before a screen shows it. Real: facilityWrite (noteDataWrite, withoutWriteNote), the sync engine, the copy,
+ * screens read before a screen shows it. Real: facilityWrite (noteDataWrite), the sync engine, the copy,
  * grn-service, grn-detail-service, customer-service, admin-user-service. Faked at the edge: the server's answers (feed
  * pages and the RPC/table answers of wh299Phone) and the phone's native modules. The write itself is the real
  * `noteDataWrite` that `sessionFetch` calls (the request layer is tested in src/config/__tests__/sessionFetchWriteNote.test.ts).
  *
  * ===== AGREE WITH DEVELOPMENT =====
  *  - A sync is counted by the feed's get_sync_changes calls after the first load (every run makes one).
- *  - `waitForSyncAfterWrite`, `noteDataWrite`, `withoutWriteNote` and `subscribeFacilityWrite` are the names in the build.
+ *  - `waitForSyncAfterWrite`, `noteDataWrite` and `subscribeFacilityWrite` are the names in the build.
  * ==================================
  */
 import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
@@ -118,10 +118,12 @@ describe('one sync after an online write', () => {
     expect(syncs()).toBe(before);
   });
 
-  it('a write inside withoutWriteNote (a queue send pass) is not noted, and it is noted again after', async () => {
+  // WH-411: naming the session changes nothing the copy holds. A queue send pass's quiet requests (WH-393) are not noted at
+  // all: that is the request layer's part, in src/config/__tests__/sessionFetchWriteNote.test.ts.
+  it('set_session_device_name asks for no sync, and the next real write still does', async () => {
     await ready();
     const before = syncs();
-    await facilityWrite().withoutWriteNote(async () => { note('/rpc/save_grn'); note('/rpc/save_grn'); });
+    note('/rpc/set_session_device_name');
     await sleep(900);
     expect(syncs()).toBe(before);
     note('/rpc/save_grn');

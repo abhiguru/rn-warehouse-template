@@ -15,6 +15,7 @@ jest.mock('@/utils/otpRateLimiter', () => ({
 }));
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { asPhone, SIGN_IN_PHONES } from '@/tests/helpers/phoneKind';
 import { createClient } from '@supabase/supabase-js';
 import {
   beginOperatorSwitch,
@@ -259,4 +260,20 @@ it('ending or replacing a facility session leaves the central session keys alone
   await signOut({ localOnly: true });
   for (const key of Object.values(CENTRAL_SECURE_KEYS)) expect(secure.get(key)).toBe(`central-${key}`);
   expect([...secure.keys()].sort()).toEqual(Object.values(CENTRAL_SECURE_KEYS).sort());
+});
+
+describe('WH-411: the phone names itself in the central exchange body', () => {
+  it.each(SIGN_IN_PHONES)('%s', async (kind, name) => {
+    const restore = asPhone(kind);
+    try {
+      jest.mocked(global.fetch).mockResolvedValue(answer({ success: true, data: loginData() }));
+      await exchangeCentralIdentity(IDENTITY_TOKEN);
+      const body = JSON.parse(String(jest.mocked(global.fetch).mock.calls[0][1]?.body));
+      expect(body.identity_token).toBe(IDENTITY_TOKEN);
+      if (name === null) expect(body).not.toHaveProperty('device_name');
+      else expect(body.device_name).toMatch(name);
+    } finally {
+      restore();
+    }
+  });
 });

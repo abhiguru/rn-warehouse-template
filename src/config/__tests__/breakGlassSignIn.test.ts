@@ -14,6 +14,7 @@ jest.mock('@/utils/otpRateLimiter', () => ({
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { createClient } from '@supabase/supabase-js';
+import { asPhone, SIGN_IN_PHONES } from '@/tests/helpers/phoneKind';
 import {
   beginOperatorSwitch,
   endOperatorSwitch,
@@ -208,4 +209,20 @@ it('removes the tokens and revokes the session when sign-in fails after they wer
   expect(rpc).toHaveBeenCalledWith('logout_session', expect.objectContaining({ p_refresh_token: 'e'.repeat(64) }));
   expect((await getStoredToken()).isValid).toBe(false);
   expect(secure.has(SESSION_ENDS_AT_KEY)).toBe(false);
+});
+
+describe('WH-411: the phone names itself in the break-glass body', () => {
+  it.each(SIGN_IN_PHONES)('%s', async (kind, name) => {
+    const restore = asPhone(kind);
+    try {
+      jest.mocked(global.fetch).mockResolvedValue(answer({ success: true, data: loginData() }));
+      await breakGlassSignIn('+919000000002', '482913');
+      const body = JSON.parse(String(jest.mocked(global.fetch).mock.calls[0][1]?.body));
+      expect(body).toMatchObject({ phone_number: '919000000002', code: '482913' });
+      if (name === null) expect(body).not.toHaveProperty('device_name');
+      else expect(body.device_name).toMatch(name);
+    } finally {
+      restore();
+    }
+  });
 });

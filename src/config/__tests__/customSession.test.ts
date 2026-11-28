@@ -24,6 +24,7 @@ jest.mock('@/store/sessionScopedState', () => ({
   clearSessionScopedState: jest.fn(async () => {}),
 }));
 import { store as appStore } from '@/store';
+import { asPhone, SIGN_IN_PHONES } from '@/tests/helpers/phoneKind';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { createClient } from '@supabase/supabase-js';
@@ -1619,8 +1620,10 @@ describe('P2-AUTH-002: an enrollment token written late is refused after a switc
       secure.set(key, value);
     });
     const verifying = verifyOTP('0000000002', '654321');
-    await flush();
-    await flush();
+    // Until the write is the thing being waited on (how many microtasks that takes is not the test's business).
+    const holding = () => jest.mocked(SecureStore.setItemAsync).mock.calls.some(call => call[0] === 'secure_enrollment_token');
+    for (let i = 0; i < 20 && !holding(); i += 1) await flush();
+    expect(holding()).toBe(true);
     // What a server switch does: the logout advances the session generation.
     // (Its cleanup queues behind the held write, so it is awaited after the release.)
     const switching = signOut({ localOnly: true });
@@ -1761,5 +1764,22 @@ describe('WH-405: a token refresh that waits for a connection is not an error', 
     expect(await ensureValidTokens()).toBe(false);
     expect(logged(errors).length).toBeGreaterThan(0);
     expect(secure.has('secure_refresh_token')).toBe(false);
+  });
+});
+
+describe('WH-411: the phone names itself in the SMS code check body', () => {
+  it.each(SIGN_IN_PHONES)('%s', async (kind, name) => {
+    const restore = asPhone(kind);
+    try {
+      jest.mocked(global.fetch).mockResolvedValue(operatorResponse({ success: false, error: 'Invalid code' }) as Response);
+      await verifyOTP('0000000002', '654321');
+      const call = jest.mocked(global.fetch).mock.calls.find(each => String(each[0]).endsWith('/functions/v1/operator-otp/verify'))!;
+      const body = JSON.parse(String(call[1]?.body));
+      expect(body).toMatchObject({ otp_code: '654321' });
+      if (name === null) expect(body).not.toHaveProperty('device_name');
+      else expect(body.device_name).toMatch(name);
+    } finally {
+      restore();
+    }
   });
 });

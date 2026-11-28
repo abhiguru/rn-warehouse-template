@@ -4,7 +4,7 @@
  */
 import { setLanguage } from '@/i18n';
 import { phoneNameOf, listRowOf } from '@/features/holding/holdingApi';
-import { newGrnLines } from '@/features/holding/heldEditLines';
+import { newGrnLines, removedLinesNow } from '@/features/holding/heldEditLines';
 import { describeReason } from '@/features/holding/heldReason';
 
 afterEach(async () => {
@@ -121,5 +121,26 @@ describe('the duplicate sentence and hint (7.5, 7.11f)', () => {
     const shown = words(data);
     expect(shown.sentence).toBe('આ જ વેપારી, આઇટમ અને નંગની આવક પાવતી પહેલેથી છે.');
     expect(shown.hint).toBe('સરખાવવા તેને આવક પાવતીની યાદીમાં શોધો; બંને સાચી હોય તો સ્વીકારો, નહીં તો નકારો.');
+  });
+});
+
+describe('WH-412 (Design\'s code read): a removed line whose server line has no quantity', () => {
+  const removed = { linesRemoved: [{ lotId: 'l1', item_name: 'Apple', qty: 40 }] };
+  const server = (qty: unknown) => [{ id: 'l1', item_name: 'Apple', qty: qty as number, packaging: 'bag', package_mark: null }];
+
+  it.each([
+    ['null', null],
+    ['absent', undefined],
+    ['not a number', 'many'],
+  ])('a quantity that is %s shows no figure: never "null", "undefined", "NaN" or a 0', (_what, qty) => {
+    const rows = removedLinesNow(removed, server(qty));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].text.trimEnd()).toBe('Now on the server: Apple');
+    expect(rows[0].text).not.toMatch(/null|undefined|NaN|\d/);
+  });
+
+  it('a server quantity that is there is shown, a real 0 included', () => {
+    expect(removedLinesNow(removed, server(12)).map(row => row.text)).toEqual(['Now on the server: Apple 12 Bag']);
+    expect(removedLinesNow(removed, server(0)).map(row => row.text)).toEqual(['Now on the server: Apple 0 Bag']);
   });
 });
