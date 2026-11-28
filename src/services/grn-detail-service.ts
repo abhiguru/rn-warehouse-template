@@ -259,7 +259,9 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
       };
     }
 
-    const copy = await readVia('all', forCustomerAccounts(q => readGrnDetails(q, grnId)));
+    const fromCopy = await readVia('all', forCustomerAccounts(q => readGrnDetails(q, grnId)));
+    // Online, a record the copy does not hold may be one saved a moment ago: the whole read comes from the server (WH-299).
+    const copy = fromCopy && 'value' in fromCopy && fromCopy.value.kind === 'not-found' && !isCopyOffline() ? null : fromCopy;
     if (copy && 'value' in copy) {
       const { value, source } = copy;
       if (value.kind === 'not-found') {

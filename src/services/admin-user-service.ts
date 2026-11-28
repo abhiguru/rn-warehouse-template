@@ -14,6 +14,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { readVia } from '@/features/phone-copy/readRoute';
+import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { readUserDetails, readUsersList } from '@/features/phone-copy/reads/users';
 import type { DataSource } from '@/features/phone-copy/sourced';
 import {
@@ -263,7 +264,9 @@ class AdminUserService {
   ): Promise<{ success: boolean; data?: UserDetails; error?: string; code?: UserFailureCode; source?: DataSource }> {
     try {
       // The phone copy answers when it can (WH-348): the same answer as `get_user_details`.
-      const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readUserDetails(q, userId));
+      const fromCopy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readUserDetails(q, userId));
+      // Online, a user the copy does not hold may be one saved a moment ago: the whole read comes from the server (WH-299).
+      const copy = fromCopy?.value.kind === 'not-found' && !isCopyOffline() ? null : fromCopy;
 
       const client = await getAuthenticatedClient();
       const { data, error } = copy

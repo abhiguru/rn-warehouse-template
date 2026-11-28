@@ -13,6 +13,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
 import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
+import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { readCustomerById, readCustomerCounts, readCustomerList } from '@/features/phone-copy/reads/customers';
 import { readCustomerStates } from '@/features/phone-copy/reads/pickers';
 import {
@@ -330,7 +331,9 @@ class CustomerService {
         };
       }
 
-      const copy = await readVia(V3, q => readCustomerById(q, customerId));
+      const fromCopy = await readVia(V3, q => readCustomerById(q, customerId));
+      // Online, a customer the copy does not hold may be one saved a moment ago: the whole read comes from the server (WH-299).
+      const copy = fromCopy && !fromCopy.value && !isCopyOffline() ? null : fromCopy;
       if (copy && !copy.value) {
         return { success: false, message: t('errors.customer.notFound'), error: 'NOT_FOUND', source: copy.source };
       }
