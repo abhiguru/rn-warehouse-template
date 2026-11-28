@@ -323,3 +323,107 @@ describe('one file per photo when a saved form becomes items and comes back (bat
     expect(exists(`${PHOTOS}form-left.jpg`)).toBe(true);
   });
 });
+
+describe('WH-390: the sweep and a form save never see each other half done', () => {
+  const rowsMod = () => require('@/features/unsent/unsentRows') as typeof import('@/features/unsent/unsentRows');
+  const formsMod = () => require('@/features/unsent/formDrafts') as typeof import('@/features/unsent/formDrafts');
+  const formOf = (uri: string) => ({ header: { gr_images: [{ uri }] }, items: [] });
+  const modified = new Map<string, number>();
+  let restoreModified: () => void = () => undefined;
+
+  beforeEach(() => {
+    modified.clear();
+    // A file's change time, as the phone gives it: the fake files have none, so a test sets the ones it needs.
+    const proto = fileSystemModule().File.prototype as object;
+    Object.defineProperty(proto, 'lastModified', { configurable: true, get(this: { uri: string }) { return modified.get(this.uri); } });
+    restoreModified = () => { delete (proto as Record<string, unknown>).lastModified; };
+  });
+  afterEach(() => restoreModified());
+
+  it('a sweep started while a save has copied its form file but not yet written its row does not delete the file', async () => {
+    await firstStart();
+    const { sweepOrphanFormFiles } = rowsMod();
+    const File = fileSystemModule().File;
+    const original = File.prototype.copy;
+    let sweep: Promise<void> | null = null;
+    // The save's row is written a little later than its copy (the commit waits for the connection), so a sweep that does not wait
+    // for the save reads the rows before the row is there.
+    const db = require('@/features/unsent/unsentDb') as typeof import('@/features/unsent/unsentDb');
+    const realDb = db.getUnsentDb;
+    let slow = false;
+    jest.spyOn(db, 'getUnsentDb').mockImplementation(async () => {
+      const real = await realDb();
+      return slow ? { ...real, transaction: async (work) => { for (let i = 0; i < 100; i += 1) await Promise.resolve(); return real.transaction(work); } } : real;
+    });
+    jest.spyOn(File.prototype, 'copy').mockImplementation(function (this: { uri: string }, to: { uri: string }) {
+      const result = original.call(this, to);
+      slow = true;
+      sweep = sweepOrphanFormFiles(); // the copy is there, the row is not yet
+      return result;
+    });
+
+    expect(await formsMod().saveFormDraft({ kind: 'grn', state: formOf(addPhoto('pick.jpg')) })).toBe(true);
+    await sweep;
+
+    expect(sweep).not.toBeNull();
+    expect(exists(`${PHOTOS}form-pick.jpg`)).toBe(true);
+    expect((await rawRows<{ photos: string }>('forms'))[0].photos).toContain('form-pick.jpg');
+  });
+
+  it('a save started while a sweep is running waits for it: the new file and its row both stay', async () => {
+    await firstStart();
+    const { sweepOrphanFormFiles } = rowsMod();
+    const orphan = plant('form-old-orphan.jpg');
+    const File = fileSystemModule().File;
+    const original = File.prototype.delete;
+    let save: Promise<boolean> | null = null;
+    jest.spyOn(File.prototype, 'delete').mockImplementation(function (this: { uri: string }) {
+      if (this.uri === orphan && save === null) save = formsMod().saveFormDraft({ kind: 'grn', state: formOf(addPhoto('late.jpg')) });
+      return original.call(this);
+    });
+
+    await sweepOrphanFormFiles();
+    expect(save).not.toBeNull();
+    expect(await save).toBe(true);
+
+    expect(exists(orphan)).toBe(false);
+    expect(exists(`${PHOTOS}form-late.jpg`)).toBe(true);
+    expect((await rawRows<{ photos: string }>('forms'))[0].photos).toContain('form-late.jpg');
+  });
+
+  it('a form file changed at or after the start of this run is kept although no row names it; an older one is swept', async () => {
+    await firstStart();
+    await restart();
+    const startedAt = Date.now();
+    const fresh = plant('form-fresh.jpg');
+    const atStart = plant('form-at-start.jpg');
+    const old = plant('form-old.jpg');
+    modified.set(fresh, startedAt + 5_000);
+    modified.set(atStart, startedAt);
+    modified.set(old, startedAt - 60_000);
+
+    await rowsMod().sweepOrphanFormFiles();
+
+    expect([exists(fresh), exists(atStart), exists(old)]).toEqual([true, true, false]);
+  });
+
+  it('a failing guarded job does not hold the guard: a later save and a later sweep still run', async () => {
+    await firstStart();
+    const { withFormFileGuard, sweepOrphanFormFiles } = rowsMod();
+    await expect(withFormFileGuard(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+
+    expect(await formsMod().saveFormDraft({ kind: 'grn', state: formOf(addPhoto('after.jpg')) })).toBe(true);
+    await expect(sweepOrphanFormFiles()).resolves.toBeUndefined();
+    expect(exists(`${PHOTOS}form-after.jpg`)).toBe(true);
+  });
+
+  it('a save that fails gives false (never throws) and releases the guard: the next save works', async () => {
+    await firstStart();
+    const circular: Record<string, unknown> = { header: { gr_images: [] }, items: [] };
+    circular.self = circular; // cannot be written as text
+
+    expect(await formsMod().saveFormDraft({ kind: 'grn', state: circular })).toBe(false);
+    expect(await formsMod().saveFormDraft({ kind: 'grn', state: formOf(addPhoto('two.jpg')) })).toBe(true);
+    expect(exists(`${PHOTOS}form-two.jpg`)).toBe(true);
+  });
+});

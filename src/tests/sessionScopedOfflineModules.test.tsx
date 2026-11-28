@@ -41,6 +41,8 @@ jest.mock('@/features/phone-copy/syncEngine', () => ({ subscribeSyncRunEnd: () =
 // A save or a download that never answers: the work in flight stays in flight.
 jest.mock('@/features/unsent/numberingCache', () => ({ refreshNumbering: () => Promise.resolve(), serverIssues: () => false }));
 jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: () => new Promise(() => undefined) }));
+let mockNumbering: unknown = null;
+jest.mock('@/features/phone-copy/copyQueries', () => ({ readSetting: async () => mockNumbering }));
 jest.mock('@/config/lanSigner', () => ({ sha256Hex: () => new Promise(() => undefined) }));
 jest.mock('@/features/phone-copy/copyDb', () => ({ currentCopy: () => ({}) }));
 jest.mock('@/features/phone-copy/photoFolder', () => ({ photoDirectory: () => ({ exists: true }), erasePhotoFolder: async () => undefined }));
@@ -167,5 +169,19 @@ describe('"Not finished" opens the form to be continued (useFormDraft)', () => {
     const form = await renderHook(() => useFormDraft('grn', null, true, () => true));
     await waitFor(() => expect(form.result.current.ready).toBe(true));
     expect(askAlert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the facility\'s numbering rule (numberingCache, WH-391)', () => {
+  it('one facility\'s rule is gone after the session ends: the next person starts at "not known yet"', async () => {
+    // The offlineNew case above holds this module's fake; the real one is read here.
+    const real = jest.requireActual('@/features/unsent/numberingCache') as typeof import('@/features/unsent/numberingCache');
+    mockNumbering = { grn: { scheme: 'server', server_issues: true }, dispatch: { scheme: 'server', server_issues: true } };
+    await real.refreshNumbering();
+    expect(real.serverIssues('grn')).toBe(true);
+
+    await endSession();
+
+    expect([real.serverIssues('grn'), real.serverIssues('dispatch')]).toEqual([null, null]);
   });
 });
