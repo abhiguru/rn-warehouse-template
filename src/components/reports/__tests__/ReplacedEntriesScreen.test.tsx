@@ -6,7 +6,7 @@
 import React from 'react';
 import { render, screen, userEvent } from '@testing-library/react-native';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import { setLanguage } from '@/i18n';
+import { setLanguage, t as tr } from '@/i18n';
 import ReplacedEntriesScreen from '../../../../app/reports/replaced-entries';
 
 const mockPush = jest.fn();
@@ -89,10 +89,21 @@ describe('Replaced entries report', () => {
     expect(mockPush).toHaveBeenCalledWith('/grn-details/g1');
   });
 
-  it('says there are none for the period when the list is empty', async () => {
+  it('says there are none for the period when the list is empty, with no generic subtitle (EN)', async () => {
     rpc.mockResolvedValue({ data: { success: true, total: 0, rows: [] }, error: null });
     await render(<ReplacedEntriesScreen />);
     expect(await screen.findByText('No replaced entries in this period')).toBeOnTheScreen();
+    expect(screen.getByTestId('replaced-entries-empty')).toHaveTextContent(/^No replaced entries in this period$/);
+    expect(screen.queryByText(tr('lists.empty.subtitle'))).not.toBeOnTheScreen();
+  });
+
+  it('says there are none for the period when the list is empty, with no generic subtitle (GU)', async () => {
+    setLanguage('gu');
+    rpc.mockResolvedValue({ data: { success: true, total: 0, rows: [] }, error: null });
+    await render(<ReplacedEntriesScreen />);
+    expect(await screen.findByText('આ સમયગાળામાં કોઈ એન્ટ્રી બદલાઈ નથી')).toBeOnTheScreen();
+    expect(screen.getByTestId('replaced-entries-empty')).toHaveTextContent(/^આ સમયગાળામાં કોઈ એન્ટ્રી બદલાઈ નથી$/);
+    expect(screen.queryByText(tr('lists.empty.subtitle'))).not.toBeOnTheScreen();
   });
 
   it('says to check the connection when the server does not answer, and Try again asks once more', async () => {

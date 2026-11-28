@@ -10,9 +10,9 @@
  * Not here: where the button sits on GRN details and Find goods rows (S1 placement, S9, S10, S12).
  */
 import React from 'react';
-import { Text } from 'react-native';
+import { ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { act, render, screen, userEvent } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import { env } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
 import { rawRows, rawRun, server, unsentFileNames } from '@/tests/unsent/unsentPhone';
@@ -370,5 +370,62 @@ describe('S11: the words', () => {
     await render(<QuickChangeButton item="Fictional Peas" grn="12" onPress={() => undefined} testID="qc-button" />);
     expect(screen.getByText('રેક કે માર્કો બદલો')).toBeOnTheScreen();
     expect(screen.getByTestId('qc-button').props.accessibilityLabel).toContain('12');
+  });
+});
+
+describe('WH-302 design fix: scrollable body, fixed footer, and Mark scroll-to-end without fighting user drag', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('SheetFrame content has flexShrink: 1, QuickChangeSheet wraps fields in a ScrollView, and Cancel/Save stay in footer outside it', async () => {
+    await openSheet();
+    const scroll = screen.getByTestId('quick-change-sheet');
+    expect(scroll.type).toBe('RCTScrollView');
+    expect(scroll.props.keyboardShouldPersistTaps).toBe('handled');
+    expect(scroll.props.bounces).toBe(false);
+    expect(StyleSheet.flatten(scroll.props.style)).toMatchObject({ flexGrow: 0, flexShrink: 1 });
+
+    expect(within(scroll).getByTestId('quick-change-rack')).toBeOnTheScreen();
+    expect(within(scroll).getByTestId('quick-change-mark')).toBeOnTheScreen();
+    expect(within(scroll).queryByTestId('quick-change-cancel')).not.toBeOnTheScreen();
+    expect(within(scroll).queryByTestId('quick-change-save')).not.toBeOnTheScreen();
+
+    const modalSheet = screen.container.queryAll(node => node.props.accessibilityViewIsModal === true)[0];
+    const sheetViews = modalSheet.children.filter((child): child is typeof scroll => typeof child !== 'string');
+    const content = sheetViews.find(view => within(view).queryByTestId('quick-change-sheet') !== null);
+    const footer = sheetViews.find(view => within(view).queryByTestId('quick-change-save') !== null);
+    expect(content).toBeDefined();
+    expect(footer).toBeDefined();
+    expect(footer).not.toBe(content);
+    expect(StyleSheet.flatten(content!.props.style).flexShrink).toBe(1);
+    expect(within(footer!).getByTestId('quick-change-cancel')).toBeOnTheScreen();
+    expect(within(footer!).getByTestId('quick-change-save')).toBeOnTheScreen();
+  });
+
+  it('focusing Mark and layout shrink call scrollToEnd, and onScrollBeginDrag stops subsequent layout-shrink scrollToEnd', async () => {
+    const scrollToEnd = jest
+      .spyOn(ScrollView.prototype as unknown as { scrollToEnd: (options?: { animated?: boolean }) => void }, 'scrollToEnd')
+      .mockImplementation(() => undefined);
+    await openSheet();
+    const scroll = screen.getByTestId('quick-change-sheet');
+    const markInput = screen.getByTestId('quick-change-mark');
+
+    await fireEvent(scroll, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 420 } } });
+    await fireEvent(scroll, 'contentSizeChange', 320, 420);
+    expect(scrollToEnd).not.toHaveBeenCalled();
+
+    await fireEvent(markInput, 'focus');
+    expect(scrollToEnd).toHaveBeenCalledTimes(1);
+    expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: true });
+
+    await fireEvent(scroll, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 220 } } });
+    expect(scrollToEnd).toHaveBeenCalledTimes(2);
+    expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: false });
+
+    await fireEvent(scroll, 'scrollBeginDrag');
+    await fireEvent(scroll, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 180 } } });
+    await fireEvent(scroll, 'contentSizeChange', 320, 480);
+    expect(scrollToEnd).toHaveBeenCalledTimes(2);
   });
 });

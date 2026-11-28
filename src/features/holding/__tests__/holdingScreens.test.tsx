@@ -26,7 +26,8 @@
  * ============================================
  */
 import React from 'react';
-import { act, render, screen, userEvent, within } from '@testing-library/react-native';
+import { ScrollView, StyleSheet } from 'react-native';
+import { act, fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { configureStore } from '@reduxjs/toolkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -870,5 +871,54 @@ describe('S14: accepting a field change', () => {
     await user.press(screen.getByTestId('held-item-accept'));
     expect(toasts()).toContain('Accepted: GRN B1 updated');
     expect(toasts()).not.toContain('Accepted as B1');
+  });
+});
+
+describe('WH-302 design fix: held-item Correct mode keeps QuickChangeSheet scrollable with fixed footer and drag guard', () => {
+  const lotRow = () => listRow('lc1', { kind: 'lotChange', reason: 'other', reason_data: {}, what: { key: 'offline.unsent.whatChange', params: { number: 'B1', fields: ['rack'] } } });
+  const lotExtra = {
+    accept_possible: true,
+    body: { lotId: 'l06', grnId: 'g-B1', recordedAt: '2026-11-27T09:00:00+05:30', changes: { rack: { from: 'B-2', to: 'C-2' } } },
+    current: [{ field: 'rack', line_ref: 'l06', current: 'D-4', held: 'C-2' }],
+  };
+
+  it('keeps Cancel and Accept with changes in footer outside the ScrollView and guards scrollToEnd after drag', async () => {
+    const scrollToEnd = jest
+      .spyOn(ScrollView.prototype as unknown as { scrollToEnd: (options?: { animated?: boolean }) => void }, 'scrollToEnd')
+      .mockImplementation(() => undefined);
+    await openItem(lotRow(), lotExtra);
+    await user.press(screen.getByTestId('held-item-correct'));
+
+    const scroll = await screen.findByTestId('quick-change-sheet');
+    expect(scroll.type).toBe('RCTScrollView');
+    expect(scroll.props.keyboardShouldPersistTaps).toBe('handled');
+    expect(scroll.props.bounces).toBe(false);
+    expect(StyleSheet.flatten(scroll.props.style)).toMatchObject({ flexGrow: 0, flexShrink: 1 });
+    expect(within(scroll).queryByTestId('quick-change-cancel')).not.toBeOnTheScreen();
+    expect(within(scroll).queryByTestId('quick-change-save')).not.toBeOnTheScreen();
+
+    const modalSheet = screen.container.queryAll(node => node.props.accessibilityViewIsModal === true)[0];
+    const sheetViews = modalSheet.children.filter((child): child is typeof scroll => typeof child !== 'string');
+    const content = sheetViews.find(view => within(view).queryByTestId('quick-change-sheet') !== null);
+    const footer = sheetViews.find(view => within(view).queryByTestId('quick-change-save') !== null);
+    expect(content).toBeDefined();
+    expect(footer).toBeDefined();
+    expect(footer).not.toBe(content);
+    expect(StyleSheet.flatten(content!.props.style).flexShrink).toBe(1);
+    expect(within(footer!).getByRole('button', { name: 'Cancel' })).toBeOnTheScreen();
+    expect(within(footer!).getByRole('button', { name: 'Accept with changes' })).toBeOnTheScreen();
+
+    await fireEvent(scroll, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 420 } } });
+    await fireEvent(screen.getByTestId('quick-change-mark'), 'focus');
+    expect(scrollToEnd).toHaveBeenCalledTimes(1);
+    expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: true });
+
+    await fireEvent(scroll, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 220 } } });
+    expect(scrollToEnd).toHaveBeenCalledTimes(2);
+    expect(scrollToEnd).toHaveBeenLastCalledWith({ animated: false });
+
+    await fireEvent(scroll, 'scrollBeginDrag');
+    await fireEvent(scroll, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 180 } } });
+    expect(scrollToEnd).toHaveBeenCalledTimes(2);
   });
 });
