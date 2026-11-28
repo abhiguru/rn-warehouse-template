@@ -160,7 +160,7 @@ export default function DocumentNumberingScreen() {
       >
         {/* No bottom bar here: the one line sits at the top of the content, under the header (Design DQ4). */}
         {needsConnection ? (
-          <NeedsConnectionLine testID="numbering-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+          <NeedsConnectionLine inset testID="numbering-needs-connection" text={tr('components.offlineRead.needsConnection')} />
         ) : null}
         <Text style={styles.intro}>{tr('numbering.screen.intro')}</Text>
         {rules === null && busy ? (
