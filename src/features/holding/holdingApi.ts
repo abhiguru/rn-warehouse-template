@@ -74,10 +74,17 @@ export class HoldingCallError extends Error {
 }
 
 /**
- * The phone's name for a held row (Design 7.11f): the server's `device_name` when it sends one. The row's `phone` is the sign-in's
- * user agent ("okhttp/4.9.2"), never a name, so it is not read; without a name the fact is left out.
+ * The phone's name for a held row (Design 7.11f): the server's `device_name`, else `phone` when it is a name. Today the server's
+ * `phone` is the sign-in's user agent ("okhttp/4.9.2", "Mozilla/5.0 ..."): a value that looks like one is never shown. Without a
+ * name the fact is left out.
  */
-export const phoneNameOf = (raw: Record<string, unknown>): string | null => textOf(raw.device_name);
+const LOOKS_LIKE_USER_AGENT = /[A-Za-z][\w.-]*\/\d|Mozilla|okhttp|Dalvik|CFNetwork/i;
+export const phoneNameOf = (raw: Record<string, unknown>): string | null => {
+  const name = textOf(raw.device_name);
+  if (name !== null) return name;
+  const phone = textOf(raw.phone);
+  return phone !== null && !LOOKS_LIKE_USER_AGENT.test(phone) ? phone : null;
+};
 
 export function listRowOf(raw: unknown): HeldListRow | null {
   if (!isFields(raw) || typeof raw.id !== 'string') return null;
