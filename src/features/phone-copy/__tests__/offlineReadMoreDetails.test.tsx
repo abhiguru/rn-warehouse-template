@@ -1,7 +1,6 @@
 /**
  * WH-348 (contract product/tech/app-offline-read-more.md section 8, S3 and S4; Design offline-capture.md 2.5 and 2.11):
- *  - dispatch details over a copy that carries invoice amounts: no WH-299 DS1 line in their place; over a format-2 copy the
- *    DS1 line stays;
+ *  - dispatch details need a connection (WH-381 replaces the amounts-from-the-copy cases of S3);
  *  - Sensor details, Enrollment review and Accountant export say they need a connection, with no "Try again"; reachable they
  *    are as today.
  *
@@ -180,27 +179,31 @@ async function connection(offline: boolean) {
   });
 }
 
-describe('S3: dispatch details, invoice amounts', () => {
-  const AMOUNTS_LINE = 'dispatch-details-section-needs-connection-invoice-amounts';
-  async function openInvoices() {
+// WH-381 (Design Part 13.1 A, criterion 17a) replaces WH-348's S3: dispatch details never read the copy, so there are no
+// invoice amounts to carry or to lack; the whole screen needs a connection offline, whatever the copy's format.
+describe('S3 (WH-381): dispatch details need a connection', () => {
+  const STATE = 'dispatch-details-needs-connection';
+  async function openDetails() {
     mockParams = { id: 'd-D2' };
     await render(<DispatchDetailScreen />);
-    await userEvent.press(await screen.findByRole('tab', { name: /invoices/i }));
   }
 
-  it.each([[false], [true]])('a copy that carries the amounts (offline: %s): no "needs a connection" line in their place', async offline => {
+  it.each([[2], [3]])('offline over a format-%s copy: the whole-screen state, no tabs, no amounts line', async format => {
+    env.feed.format = format;
     await load({ expectDone: true });
-    await connection(offline);
-    await openInvoices();
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
-    expect(screen.queryByTestId(AMOUNTS_LINE)).not.toBeOnTheScreen();
+    await connection(true);
+    await openDetails();
+    expect(await screen.findByTestId(STATE)).toHaveTextContent(NEEDS);
+    expect(screen.queryByRole('tab', { name: /invoices/i })).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('dispatch-details-section-needs-connection-invoice-amounts')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
   });
 
-  it('a format-2 copy keeps WH-299\'s line, as today', async () => {
-    env.feed.format = 2;
+  it('reachable: no needs-a-connection state', async () => {
     await load({ expectDone: true });
-    await openInvoices();
-    expect(await screen.findByTestId(AMOUNTS_LINE)).toHaveTextContent(NEEDS);
+    await openDetails();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    expect(screen.queryByTestId(STATE)).not.toBeOnTheScreen();
   });
 });
 

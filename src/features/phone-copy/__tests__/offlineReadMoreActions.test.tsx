@@ -1,8 +1,7 @@
 /**
  * WH-348 (contract product/tech/app-offline-read-more.md sections 8, 11 S2, S3, S6 and 14; Design offline-capture.md 2.5, 2.11 and
  * the DQ answers): with no connection, over a copy of the format that carries these records,
- *  - Invoice details: Edit, Cancel, Delete, Share PDF and Print are disabled and say ", needs a connection" in their label, one
- *    line above them; the Payments tab has no "+" and says new payments need a connection;
+ *  - Invoice details (WH-381 replaces the WH-348 actions and Payments footnote): the whole screen needs a connection;
  *  - Customer details and Item details: Edit is disabled and says so;
  *  - GRN details shows its rates from the copy, in place of WH-299's line, and its rate actions are disabled with one line;
  *  - the editors (Standard rate, GST details, Document numbering, Charging) show the copy's values with their controls disabled,
@@ -244,9 +243,6 @@ const settle = () => act(async () => { await new Promise(resolve => setTimeout(r
 type Actions = { name: string; Screen: React.ComponentType; params: Record<string, string>; ready: string; controls: string[]; line: string; lineText: string; tab?: RegExp };
 const NEEDS_LINE = 'Needs a connection';
 const ACTION_SCREENS: Actions[] = [
-  { name: 'Invoice details', Screen: InvoiceDetailsScreen, params: { id: 'inv1' }, ready: 'invoice-details-cancel', tab: /overview/i,
-    controls: ['invoice-details-edit', 'invoice-details-cancel', 'invoice-details-delete', 'invoice-details-share-pdf', 'invoice-details-print'],
-    line: 'invoice-details-actions-needs-connection', lineText: NEEDS_LINE },
   { name: 'Customer details', Screen: CustomerDetailsScreen, params: { id: 'c2' }, ready: 'customer-details-edit',
     controls: ['customer-details-edit'], line: 'customer-details-actions-needs-connection', lineText: NEEDS_LINE },
   { name: 'Item details', Screen: ItemDetailsScreen, params: { id: 'i2' }, ready: 'item-details-edit',
@@ -292,26 +288,24 @@ describe.each(ACTION_SCREENS)('$name', ({ Screen, params, ready, controls, line,
   });
 });
 
-describe('Invoice details, Payments tab', () => {
-  const openPayments = async () => {
+// WH-381 (Design Part 13.1 A, criterion 17a): invoices and payments need a connection. Invoice details no longer read the copy
+// and have no disabled actions or "New payments" footnote offline: the whole screen is the needs-a-connection state. (Reachable,
+// the screen is as today; ScopeCutOfflineScreens covers it online.)
+describe('Invoice details (WH-381): needs a connection', () => {
+  it.each([[2], [3]])('offline over a format-%s copy: the whole-screen state, no actions, no Payments tab, no removed footnote', async format => {
+    env.feed.format = format;
     mockParams = { id: 'inv1' };
-    await render(<InvoiceDetailsScreen />);
-    await userEvent.press(await screen.findByRole('tab', { name: /payments/i }));
-  };
-
-  it('with no connection: no "+" to record a payment, and the footnote says new payments need a connection', async () => {
     await load({ expectDone: true });
     await connection(true);
-    await openPayments();
-    expect(await screen.findByTestId('payments-new-needs-connection')).toHaveTextContent('New payments need a connection.');
-    expect(screen.queryByTestId('payment-record')).not.toBeOnTheScreen();
-  });
-
-  it('reachable: the "+" is there and there is no footnote', async () => {
-    await load({ expectDone: true });
-    await openPayments();
-    expect(await screen.findByTestId('payment-record')).toBeEnabled();
+    await render(<InvoiceDetailsScreen />);
+    expect(await screen.findByTestId('invoice-details-needs-connection')).toHaveTextContent('This needs a connection. It will load when you reconnect.');
+    for (const id of ['invoice-details-edit', 'invoice-details-cancel', 'invoice-details-delete', 'invoice-details-share-pdf', 'invoice-details-print', 'payment-record']) {
+      expect(screen.queryByTestId(id)).not.toBeOnTheScreen();
+    }
+    expect(screen.queryByRole('tab', { name: /payments/i })).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('invoice-details-actions-needs-connection')).not.toBeOnTheScreen();
     expect(screen.queryByTestId('payments-new-needs-connection')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
   });
 });
 

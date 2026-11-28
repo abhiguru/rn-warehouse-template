@@ -346,12 +346,18 @@ describe('T9: an access refusal the server raises', () => {
   });
 });
 
+// WH-381, owner decision Q1 (Design 13.1 A): Customer activity is kept offline for a customer account only; a warehouse role
+// (administrator, supervisor, staff) sees the needs-a-connection state with no kept row, as for every activity report.
 describe('T14: Customer activity with the copy routing', () => {
   const activity = (id = 'c2') => ({
     success: true, data: { summary: { total_customers: 1, total_current_stock: 21, total_grns: 2, total_dispatches: 1, total_invoice_amount: 4321 },
       customers: [{ customer_id: id, customer_name: 'Bhavin Foods', customer_city: 'Fictional City', current_stock: 21, total_grns: 2, total_dispatches: 1, total_invoice_amount: 4321, last_activity_date: '2026-11-24', last_activity_type: 'grn' }] },
   });
 
+  async function signInCustomer() {
+    env.feed.format = 7;
+    mockStore.dispatch(setUserProfile({ id: 'profile-2', role: 'customer', name: 'Bhavin Fictional', assignedCustomerIds: ['c2'] } as never) as never);
+  }
   async function openOnlineThenOffline(role: 'admin' | 'staff') {
     await signInAs(role);
     await loadCopy();
@@ -366,27 +372,20 @@ describe('T14: Customer activity with the copy routing', () => {
     return asked as { p_from_date: string; p_to_date: string };
   }
 
-  it.each(['admin', 'staff'] as const)('%s: a key opened online shows offline with its time, as the strip family says', async role => {
+  it.each(['admin', 'staff'] as const)('%s: opened online, then offline: the needs-a-connection state, no kept row, no age line (criterion 17a, Q1)', async role => {
     await openOnlineThenOffline(role);
     await render(<ActivityScreen />);
-    expect(await screen.findByText('Bhavin Foods')).toBeOnTheScreen();
-    expect(screen.getByTestId('money-age-line')).toHaveTextContent(/Figures as of 11:00\s?am today/i);
-    expect(screen.queryByText(/Last updated/)).not.toBeOnTheScreen();
+    expect(await screen.findByTestId('customer-activity-needs-connection')).toHaveTextContent('This needs a connection. It will load when you reconnect.');
+    expect(screen.queryByText('Bhavin Foods')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('money-age-line')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('money-age-strip')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('customer-activity-not-here')).not.toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
     expect(serverCalls).toEqual([]);
   });
 
-  it('PQ4: the next day, the default period is another one, and the last kept answer still shows with its own dates; the chip is disabled', async () => {
-    const asked = await openOnlineThenOffline('admin');
-    jest.setSystemTime(Date.parse('2026-11-28T05:30:00.000Z'));
-    await render(<ActivityScreen />);
-    expect(await screen.findByText('Bhavin Foods')).toBeOnTheScreen();
-    expect(screen.queryByTestId('customer-activity-not-here')).not.toBeOnTheScreen();
-    expect(screen.getByTestId('money-age-strip')).toHaveTextContent(/^These figures are from 27\/11\/26, 11:00\s?am\. Rent has built up since; connect for today.s figures\.$/);
-    const chip = screen.getByRole('button', { name: new RegExp(`^${formatCardDate(asked.p_from_date)} – ${formatCardDate(asked.p_to_date)}`) });
-    expect(chip).toBeDisabled();
-  });
-
-  it('nothing ever kept: "Customer activity isn\'t on this phone yet" and the second line', async () => {
+  it('a customer account, nothing ever kept: "Customer activity isn\'t on this phone yet" and the second line', async () => {
+    await signInCustomer();
     await loadCopy();
     await connection(true);
     await render(<ActivityScreen />);
@@ -473,15 +472,29 @@ describe('T17: Gujarati', () => {
     expect(within(none).getByText('ફરી જોડાશો ત્યારે લોડ થશે.')).toBeOnTheScreen();
   });
 
-  it('Customer dues and Customer activity never-fetched titles', async () => {
+  it('Customer dues never-fetched title', async () => {
     await setLanguage('gu');
     await loadCopy();
     await connection(true);
-    const dues = await render(<DuesScreen />);
+    await render(<DuesScreen />);
     expect(within(await screen.findByTestId('dues-not-here')).getByText('વેપારીઓની બાકી રકમ હજુ આ ફોનમાં નથી')).toBeOnTheScreen();
-    await dues.unmount();
-    forgetQueries();
+  });
+
+  it('Customer activity never-fetched title, for a customer account', async () => {
+    await setLanguage('gu');
+    env.feed.format = 7;
+    mockStore.dispatch(setUserProfile({ id: 'profile-2', role: 'customer', name: 'Bhavin Fictional', assignedCustomerIds: ['c2'] } as never) as never);
+    await loadCopy();
+    await connection(true);
     await render(<ActivityScreen />);
     expect(within(await screen.findByTestId('customer-activity-not-here')).getByText('વેપારીની કામગીરી હજુ આ ફોનમાં નથી')).toBeOnTheScreen();
+  });
+
+  it('Customer activity for a warehouse role offline says the Part 13.3 words', async () => {
+    await setLanguage('gu');
+    await loadCopy();
+    await connection(true);
+    await render(<ActivityScreen />);
+    expect(await screen.findByTestId('customer-activity-needs-connection')).toHaveTextContent('આ માટે કનેક્શન જોઈએ. ફરી જોડાશો ત્યારે લોડ થશે.');
   });
 });

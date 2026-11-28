@@ -16,6 +16,7 @@
  */
 import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { bootWarehouse, loadCopy, type Warehouse } from '@/tests/phoneCopy/wh299Phone';
+import { grnFeedRow, grnNamed } from '@/tests/phoneCopy/grnDataset';
 import { duesBody, queueRun, seedMoney, statementBody, MORNING, YESTERDAY } from '@/tests/phoneCopy/moneyDataset';
 
 beforeEach(() => { resetEnv(); seedMoney(); });
@@ -80,16 +81,15 @@ describe('T1: answers are stored as the server sent them', () => {
 });
 
 describe('T2: no money maths on the phone', () => {
-  it('a payment and an invoice arriving in the copy leave the kept answers as they were', async () => {
+  // WH-381: payments and invoices are no longer in the copy; a kept entity arriving (a GRN) must leave the answers as they were too.
+  it('a GRN arriving in the copy leaves the kept answers as they were', async () => {
     const w = await ready();
     const dues = duesBody();
     const statement = statementBody('c2');
     await store().writeMoneyAnswer({ kind: 'dues', key: '', asOf: dues.as_of, today: dues.today, body: dues });
     await store().writeMoneyAnswer({ kind: 'statement', key: 'c2', asOf: statement.as_of, today: statement.today, body: statement });
     queueRun([
-      { e: 'payments', id: 'pay-9', op: 'upsert', v: 'b000000000000009', row: { id: 'pay-9', payment_no: 19, payment_date: '2026-11-27T04:00:00+00:00', paid_on: '2026-11-27',
-        customer_id: 'c2', invoice_id: 'inv1', amount: 4000, payment_mode: 'cash', note: null, updated_at: '2026-11-27T04:00:00+00:00', imported: false, recorded_in_app: true, entered_by_name: 'Meera Fictional' } },
-      { e: 'invoice', id: 'inv1', op: 'upsert', v: 'b000000000000010', row: { id: 'inv1', gr_id: 'g-A10', customer_id: 'c2', inv_no: 7001, inv_date: '2026-11-24', total: 9999, deleted_at: null } },
+      { e: 'goodsreceived', id: 'g-A10', op: 'upsert', v: 'b000000000000010', row: { ...grnFeedRow(grnNamed('A10')), note: 'Changed fictional note' } },
     ]);
     expect(await w.phone.engine.syncNow('interval')).toBe('done');
     expect((await store().readMoneyAnswer('dues', ''))?.body).toEqual(dues);
@@ -150,14 +150,16 @@ describe('T10: erase', () => {
     expect(await rowsOfMoney(w)).toEqual([]);
   });
 
-  it('a reload of invoice keeps the answers and marks every customer stale', async () => {
+  // WH-381: no invoice or payment is in the copy, so a reload of one cannot happen; the server's own money mark ('stale') is
+  // what tells the phone a customer's money changed (contract 1.2). Answers stay; only that customer is marked.
+  it('a money mark for one customer keeps the answers and marks only that customer stale', async () => {
     const w = await ready();
     await keepSome(w);
-    env.feed.changeAnswers.push({ position: '1048600', as_of: env.feed.asOf, more: false, reload_all: null, reload: ['invoice'], changes: [] });
+    queueRun([{ e: 'money', id: 'c2', op: 'stale' }]);
     expect(await w.phone.engine.syncNow('interval')).toBe('done');
     expect(await rowsOfMoney(w)).toHaveLength(2);
     const db = await w.phone.copyDb.openCopy((await w.phone.scope())!);
     const stale = (await db.all<{ customer_id: string }>('SELECT customer_id FROM money_stale ORDER BY customer_id')).map(r => r.customer_id);
-    expect(stale).toEqual(expect.arrayContaining(['c1', 'c2', 'c3']));
+    expect(stale).toEqual(['c2']);
   });
 });
