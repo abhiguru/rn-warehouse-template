@@ -316,6 +316,97 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
   });
 });
 
+describe('WH-304 (migration 244): a late photo whose line or document is gone is marked missing', () => {
+  const missingCalls = () => rpcCalls('mark_held_photo_missing');
+  const BAD_GATEWAY: RpcAnswer = { data: null, error: { message: 'Bad gateway', status: 502 } };
+  const photosRow = async () => (await itemRows()).find(row => row.kind === 'photos')!;
+
+  describe.each([
+    ['HELD_PHOTO_LINE_GONE', 'line_gone'],
+    ['HELD_PHOTO_DOCUMENT_GONE', 'document_gone'],
+  ] as const)('%s', (code, reason) => {
+    it.each([
+      ['register', () => { server.answers.register_held_photo_upload = () => serverRefusal(code, 'gone'); }],
+      ['confirm', () => { server.answers.register_held_photo_upload = () => registered(); server.answers.confirm_held_photo_upload = () => serverRefusal(code, 'gone'); }],
+    ] as [string, () => void][])(`answered by %s: reported with reason ${reason}, the row finishes and is not tried again, the tile says missing`, async (_stage, arrange) => {
+      const phone = await startStaff();
+      await refusedGrnWithPhotos(phone);
+      arrange();
+      server.answers.mark_held_photo_missing = () => okAnswer;
+      await phone.pass();
+
+      const item = await photosRow();
+      expect(missingCalls()).toHaveLength(1);
+      expect(missingCalls()[0].args).toEqual({
+        p_held_id: item.held_id,
+        p_client_photo_id: (await photoRows())[0].client_photo_id,
+        p_role: 'header',
+        p_line_ref: null,
+        p_reason: reason,
+      });
+      expect((await photoRows())[0]).toMatchObject({ missing: 1, done: 0 });
+      expect(item.state).toBe('held');
+      expect(phone.store.getUnsentSummary().count).toBe(0);
+      const { rows } = await (require('@/features/unsent/unsentList') as typeof import('@/features/unsent/unsentList')).loadUnsentList();
+      expect(rows.find(row => row.id === item.id)).toMatchObject({ photoMissing: true });
+
+      // Finished: another pass asks nothing more about this photo.
+      const registersBefore = rpcCalls('register_held_photo_upload').length;
+      await phone.pass();
+      expect(rpcCalls('register_held_photo_upload')).toHaveLength(registersBefore);
+      expect(missingCalls()).toHaveLength(1);
+    });
+
+    it('a report the server could not take (502) leaves the photo for the next pass, which reports again', async () => {
+      const phone = await startStaff();
+      await refusedGrnWithPhotos(phone);
+      server.answers.register_held_photo_upload = () => serverRefusal(code, 'gone');
+      server.answers.mark_held_photo_missing = () => BAD_GATEWAY;
+      await phone.pass();
+      expect((await photoRows())[0]).toMatchObject({ missing: 0 });
+      expect((await photosRow()).state).toBe('refused');
+      expect(phone.store.getUnsentSummary().count).toBe(1);
+
+      server.answers.mark_held_photo_missing = () => okAnswer;
+      await phone.pass(120_000);
+      expect(missingCalls().length).toBeGreaterThanOrEqual(2);
+      expect(missingCalls().every(call => call.args.p_reason === reason)).toBe(true);
+      expect((await photoRows())[0]).toMatchObject({ missing: 1 });
+      expect((await photosRow()).state).toBe('held');
+    });
+
+    it('the report answered HELD_ALREADY_DECIDED still settles the row as decided', async () => {
+      const phone = await startStaff();
+      await refusedGrnWithPhotos(phone);
+      server.answers.register_held_photo_upload = () => serverRefusal(code, 'gone');
+      server.answers.mark_held_photo_missing = () => serverRefusal('HELD_ALREADY_DECIDED', 'decided');
+      await phone.pass();
+      expect(missingCalls()).toHaveLength(1);
+      expect((await photosRow()).state).toBe('held');
+      expect(phone.store.getUnsentSummary().count).toBe(0);
+    });
+  });
+
+  it.each([
+    ['register', () => { server.answers.register_held_photo_upload = () => serverRefusal('HELD_PHOTO_SOMETHING_NEW', 'new'); }],
+    ['confirm', () => { server.answers.register_held_photo_upload = () => registered(); server.answers.confirm_held_photo_upload = () => serverRefusal('HELD_PHOTO_SOMETHING_NEW', 'new'); }],
+  ] as [string, () => void][])('a code the phone does not know, answered by %s, is not "missing": nothing is reported and the photo is tried again', async (_stage, arrange) => {
+    const phone = await startStaff();
+    await refusedGrnWithPhotos(phone);
+    arrange();
+    server.answers.mark_held_photo_missing = () => okAnswer;
+    await phone.pass();
+    expect(missingCalls()).toHaveLength(0);
+    expect((await photoRows())[0]).toMatchObject({ missing: 0, done: 0 });
+    expect((await photosRow()).state).toBe('refused');
+
+    const registersBefore = rpcCalls('register_held_photo_upload').length;
+    await phone.pass(120_000);
+    expect(rpcCalls('register_held_photo_upload').length).toBeGreaterThan(registersBefore);
+    expect(missingCalls()).toHaveLength(0);
+  });
+});
+
 describe('A-6: Move to the holding list carries photos items', () => {
   async function seedOther(subject: string, count = 1) {
     env.subject = subject;
