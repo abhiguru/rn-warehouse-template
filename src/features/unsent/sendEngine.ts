@@ -46,6 +46,8 @@ const engine = {
   running: null as Promise<void> | null,
   again: false,
   retryTimer: null as ReturnType<typeof setTimeout> | null,
+  /** When the pending retry timer fires (Date.now() ms); null while none waits. */
+  retryDue: null as number | null,
   retryStep: 0,
   started: false,
   /** An item was sent, or the server accepted another change of a pass, since the last sync was asked for. */
@@ -459,22 +461,32 @@ function clearRetry(): void {
     clearTimeout(engine.retryTimer);
     engine.retryTimer = null;
   }
+  engine.retryDue = null;
   engine.retryStep = 0;
   engine.held.clear();
 }
 
 /** Arms a retry for the session `abort` belongs to; the timer looks again at that session before it sends. */
 function armRetry(abort: AbortController, wait: number): void {
-  // One retry timer at a time: an older one left running would be orphaned, and could fire early or twice.
-  if (engine.retryTimer) clearTimeout(engine.retryTimer);
+  // One retry timer, at the earliest due time: a later, longer wait never pushes back a retry that is due sooner. Held items
+  // are still protected by their own wait (an early pass defers them).
+  const due = Date.now() + wait;
+  if (engine.retryTimer) {
+    if (engine.retryDue !== null && engine.retryDue <= due) return;
+    clearTimeout(engine.retryTimer);
+  }
   const timer = setTimeout(() => {
-    if (engine.retryTimer === timer) engine.retryTimer = null;
+    if (engine.retryTimer === timer) {
+      engine.retryTimer = null;
+      engine.retryDue = null;
+    }
     if (engine.abort !== abort || abort.signal.aborted) return;
     void sendNow('retry-timer');
   }, wait);
   // Under Node (tests) a waiting retry must not keep the process alive.
   (timer as { unref?: () => void }).unref?.();
   engine.retryTimer = timer;
+  engine.retryDue = due;
 }
 
 /**
@@ -485,6 +497,7 @@ async function onePass(): Promise<boolean | 'session-changed'> {
   if (engine.retryTimer) {
     clearTimeout(engine.retryTimer);
     engine.retryTimer = null;
+    engine.retryDue = null;
   }
   // The session this pass starts in: a session change replaces `engine.abort`, so a pass that ended in another one arms nothing.
   const sessionAbort = engine.abort;
