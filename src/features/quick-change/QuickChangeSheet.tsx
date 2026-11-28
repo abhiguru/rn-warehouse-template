@@ -3,8 +3,8 @@
  * Floor and Chamber chips, a Mark field, Cancel and Save. Nothing is focused when it opens. Save is disabled until a value
  * differs from the row's, and is never disabled for a wrong value (that is told at Save).
  */
-import React, { useMemo, useRef, useState } from 'react';
-import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Keyboard, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SheetFrame } from '@/features/filters/components/SheetFrame';
 import { RackChamberPicker } from '@/features/grn/components/item-form/RackChamberPicker';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
@@ -57,8 +57,19 @@ export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSa
   const scrollRef = useRef<ScrollViewRef>(null);
   // Keep Mark in view when the keyboard shrinks the sheet (Android & iOS), without undoing a drag (STYLE_GUIDE §5.2).
   const revealMarkRef = useRef(false);
+  const markFocusedRef = useRef(false);
   const lastScrollHeightRef = useRef<number | null>(null);
   const lastContentHeightRef = useRef<number | null>(null);
+
+  // The keyboard can reopen while Mark is still focused (Android Back hides it without a blur): re-arm the reveal.
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidShow', () => {
+      if (!markFocusedRef.current) return;
+      revealMarkRef.current = true;
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => subscription.remove();
+  }, []);
 
   const rackChanged = normaliseLotValue(rack) !== normaliseLotValue(target.shown.rack);
   const markChanged = normaliseLotValue(mark) !== normaliseLotValue(target.shown.package_mark);
@@ -87,6 +98,11 @@ export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSa
     const tooLongMark = nextMark !== null && Array.from(nextMark).length > MARK_MAX;
     setRackError(tooLongRack ? tr('grn.validation.rackMax') : null);
     setMarkError(tooLongMark ? tr('grn.validation.packageMarkMax') : null);
+    if (tooLongMark) {
+      // The error grows the content: keep Mark and its error in view, even after a drag.
+      revealMarkRef.current = true;
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }
     if (tooLongRack || tooLongMark) return;
     onSave({ ...(rackChanged ? { rack: nextRack } : {}), ...(markChanged ? { package_mark: nextMark } : {}) });
   };
@@ -180,11 +196,16 @@ export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSa
             label={tr('grn.item.mark')}
             autoCapitalize="characters"
             invalid={markError !== null}
+            onPressIn={() => {
+              revealMarkRef.current = true;
+            }}
             onFocus={() => {
+              markFocusedRef.current = true;
               revealMarkRef.current = true;
               scrollRef.current?.scrollToEnd({ animated: true });
             }}
             onBlur={() => {
+              markFocusedRef.current = false;
               revealMarkRef.current = false;
             }}
             {...identifierInput(mark, text => {
