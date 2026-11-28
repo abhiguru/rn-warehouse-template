@@ -127,11 +127,21 @@ describe('P6: GRN details from the copy', () => {
     expect(w.serverCalls).toEqual([]);
   });
 
-  it('C3: a GRN deleted on the server is "not found" after the sync, with no server call', async () => {
+  it('C3: a GRN deleted on the server: online it is read from the server (it may have been saved a moment ago), offline it is "not found" from the copy with no server call', async () => {
     const w = await ready();
     await sync(w, [{ e: 'goodsreceived', id: 'g-A2', op: 'delete' }]);
-    const result = await grnDetails('g-A2');
-    expect(result).toMatchObject({ success: false, notFound: true });
+    // online (WH-299 §10.5): the copy says not found, so the whole read comes from the server, which also says so
+    w.answers.get_grn_details = () => ({ data: { success: false, message: 'GRN not found or access denied' }, error: null });
+    const online = await grnDetails('g-A2');
+    expect(online).toMatchObject({ success: false, notFound: true });
+    expect(sourceOf(online)).toBeUndefined();
+    expect(w.serverCalls.map(c => c.name)).toEqual(['get_grn_details']);
+    // offline: still the copy's answer, no server call
+    w.serverCalls.length = 0;
+    await goOffline(w);
+    const offline = await grnDetails('g-A2');
+    expect(offline).toMatchObject({ success: false, notFound: true });
+    expect(sourceOf(offline)).toEqual(copySource());
     expect(w.serverCalls).toEqual([]);
   });
 });

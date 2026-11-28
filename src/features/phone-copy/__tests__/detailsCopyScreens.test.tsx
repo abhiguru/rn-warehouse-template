@@ -326,10 +326,37 @@ describe('PR9: GRN details after a sync', () => {
     expect(serverCalls.filter(name => name !== 'get_grn_item_dispatches')).toEqual([]); // online, a lot's dispatches are read from the server (WH-381)
   });
 
+  // WH-299 §10.5: online, a "not found" from the copy reads the server (the GRN may have been saved a moment ago); offline it
+  // is still the copy's answer. Both halves are asserted.
   it('GRN: deleted meanwhile, it says it is not found', async () => {
+    serverAnswers.get_grn_details = { success: false, message: 'GRN not found or access denied' };
     await openGrn();
     await sync([{ e: 'goodsreceived', id: 'g-A2', op: 'delete' }]);
     expect(await screen.findByText('GRN not found')).toBeOnTheScreen();
+    expect(serverCalls).toContain('get_grn_details');   // online: the server was asked before saying so
+  });
+
+  it('GRN: deleted meanwhile and the phone is offline, it says it is not found from the copy, with no server read', async () => {
+    await sync([{ e: 'goodsreceived', id: 'g-A2', op: 'delete' }]);
+    await connection(true);
+    serverCalls.length = 0;
+    mockParams = { id: 'g-A2' };
+    await render(<GRNDetailScreen />);
+    expect(await screen.findByText('GRN not found')).toBeOnTheScreen();
+    expect(serverCalls).toEqual([]);
+  });
+
+  it('GRN: not in the copy but on the server (just saved online), it opens from the server, not "GRN not found"', async () => {
+    await sync([{ e: 'goodsreceived', id: 'g-A2', op: 'delete' }]);
+    serverAnswers.get_grn_details = {
+      success: true,
+      data: { grn: { id: 'g-A2', gr_no: 'A2', date: '2026-11-27T05:00:00+00:00', customer_id: 'c1', customer_name: 'asha Traders', note: 'Saved a moment ago', items: [], header_images: [], statistics: {} } },
+    };
+    mockParams = { id: 'g-A2' };
+    await render(<GRNDetailScreen />);
+    await screen.findByRole('tab', { name: /overview|સારાંશ/i });
+    expect(screen.queryByText('GRN not found')).not.toBeOnTheScreen();
+    expect(serverCalls).toContain('get_grn_details');
   });
 
   it('Q1: a sync that brought nothing does not read the page again', async () => {
