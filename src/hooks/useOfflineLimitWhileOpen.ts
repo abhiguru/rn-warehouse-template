@@ -11,6 +11,7 @@ import { AppState } from 'react-native';
 import { markPastOfflineLimit } from '@/config/offlineStart';
 import { getCachedUserProfile } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
+import { useFacilityCapabilities } from '@/hooks/useCapability';
 import { useIsOffline } from './useNetworkStatus';
 
 /** How often an app kept in front reads the kept profile again while offline; the limit is thirty days long. */
@@ -18,13 +19,14 @@ export const OFFLINE_LIMIT_CHECK_MS = 15 * 60 * 1000;
 
 export function useOfflineLimitWhileOpen(close: (failure: unknown) => void): void {
   const offline = useIsOffline();
+  const syncEnabled = useFacilityCapabilities().sync === true;
   const closeRef = useRef(close);
   useEffect(() => {
     closeRef.current = close;
   });
 
   useEffect(() => {
-    if (!offline) return undefined;
+    if (!offline || !syncEnabled) return undefined;
     let active = true;
     let reading = false;
     const check = async () => {
@@ -56,5 +58,5 @@ export function useOfflineLimitWhileOpen(close: (failure: unknown) => void): voi
       clearInterval(timer);
       subscription.remove();
     };
-  }, [offline]);
+  }, [offline, syncEnabled]);
 }
