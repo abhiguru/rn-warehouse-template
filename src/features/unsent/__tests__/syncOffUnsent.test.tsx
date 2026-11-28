@@ -34,6 +34,18 @@ async function reopenedWithFeatureOff(reachable: boolean) {
   env.feed.calls.length = 0;
   await setReachable(reachable);
   const phone = await bootUnsent({ sync: false });
+  // The sync calls go to the fake feed, every other call to the facility's answers (`server`), as in newRecordPhone.ts.
+  const supabase = require('@/config/supabaseConfig') as Record<string, unknown>;
+  const routed = async () => ({
+    storage: { from: () => ({ upload: async () => ({ error: null }), remove: async () => ({ error: null }) }) },
+    rpc: async (name: string, args: Record<string, unknown> = {}) => {
+      if (name.startsWith('get_sync_')) return env.feed.rpc(name, args);
+      server.calls.push({ name, args });
+      return server.answers[name]?.(args) ?? NO_NETWORK;
+    },
+  });
+  supabase.getAuthenticatedClient = routed;
+  supabase.getSupabaseClient = routed;
   require('@/features/unsent/newGrnKind');
   require('@/features/unsent/photosKind');
   return phone;
