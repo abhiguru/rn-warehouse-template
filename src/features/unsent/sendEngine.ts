@@ -379,6 +379,19 @@ async function onePass(): Promise<boolean> {
  * Sends what can be sent now. Single flight: a second call while a pass runs joins it (and asks for one more look when it
  * ends). It never rejects; what it could not do is tried again by the retry timer and by the next trigger.
  */
+const sendingListeners = new Set<() => void>();
+/** Is a send pass running now? (The unsent-only bar says "Sending…" only then.) */
+export const isSendingUnsent = (): boolean => engine.running !== null;
+export const subscribeSendingUnsent = (listener: () => void): (() => void) => {
+  sendingListeners.add(listener);
+  return () => {
+    sendingListeners.delete(listener);
+  };
+};
+const tellSending = (): void => {
+  for (const listener of [...sendingListeners]) listener();
+};
+
 export function sendNow(reason: SendTrigger): Promise<void> {
   if (engine.running) {
     engine.again = true;
@@ -395,6 +408,7 @@ export function sendNow(reason: SendTrigger): Promise<void> {
       logger.warn('A send pass failed', loggableError(error));
     } finally {
       engine.running = null;
+      tellSending();
     }
     // What was sent changes the numbers and stock the copy holds: ask for a sync (C298 6.6).
     if (engine.sentAny) {
@@ -403,6 +417,7 @@ export function sendNow(reason: SendTrigger): Promise<void> {
     }
   })();
   engine.running = run;
+  tellSending();
   return run;
 }
 

@@ -23,6 +23,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { syncNow } from '@/features/phone-copy/syncEngine';
 import { deriveOpeningBar, deriveStatusBar, deriveUnsentLine, joinSentences, line2OpensUnsent, type StatusBarContent } from '@/features/phone-copy/statusBarState';
 import { useUnsentSummary } from '@/features/unsent/unsentStore';
+import { useSendingUnsent } from '@/features/unsent/useUnsentOnlyBar';
 import { iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { formatLoadedAt } from '@/utils/formatters';
@@ -101,6 +102,7 @@ export function OfflineStatusBar({ unsentOnly = false }: { unsentOnly?: boolean 
   const offline = useIsOffline();
   const { fontScale } = useWindowDimensions();
   const unsent = useUnsentSummary();
+  const sending = useSendingUnsent();
   const [translateY] = React.useState(() => new Animated.Value(HIDDEN_OFFSET));
 
   React.useEffect(() => {
@@ -138,7 +140,7 @@ export function OfflineStatusBar({ unsentOnly = false }: { unsentOnly?: boolean 
     openFailed || (awaitingOpen && openingSlow)
       ? deriveOpeningBar({ failed: openFailed, retrying: snapshot.openRetrying === true })
       : null;
-  const onlyLine = unsentOnly ? deriveUnsentLine(unsent, offline, false) : null;
+  const onlyLine = unsentOnly ? deriveUnsentLine(unsent, offline, { sending }) : null;
   const view: StatusBarContent = onlyLine
     ? {
         tone: onlyLine.key === 'unsentUnreadable' ? 'critical' : 'neutral',

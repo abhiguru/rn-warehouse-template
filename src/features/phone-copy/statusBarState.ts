@@ -50,7 +50,7 @@ export interface StatusBarView {
   tone: 'neutral' | 'critical';
   icon: StatusBarIcon;
   line1: { key: OfflineStatusKey; time?: number }[];
-  line2: { key: 'unsent' | 'sending' | 'unsentLimit' | 'unsentUnreadable' | 'waitingForAdmin' | 'heldLine'; count: number; time?: number } | null;
+  line2: { key: 'unsent' | 'sending' | 'unsentFeatureOff' | 'unsentLimit' | 'unsentUnreadable' | 'waitingForAdmin' | 'heldLine'; count: number; time?: number } | null;
   action: 'retry' | null;
   actionDisabled: boolean;
 }
@@ -80,15 +80,23 @@ const timed = (key: OfflineStatusKey, asOf: number | null): { key: OfflineStatus
   asOf === null ? { key } : { key, time: asOf };
 
 /**
- * Line 2 of the bar: what is unsent, held, waiting for an administrator or unreadable. `limitApplies` is false with the
- * feature off, where the 2-hour limit stops nothing (WH-301, Product 2026-11-28): the count is told without the limit line.
+ * Line 2 of the bar: what is unsent, held, waiting for an administrator or unreadable. `featureOff` is given with the
+ * feature off (WH-301, Product and Design 2026-11-28): the 2-hour limit stops nothing, so there is no limit line, and
+ * while nothing is being sent the count is told with `unsentFeatureOff`, connected or not.
  */
-export function deriveUnsentLine(unsent: UnsentSummary | null, offline: boolean, limitApplies: boolean): StatusBarView['line2'] {
+export function deriveUnsentLine(
+  unsent: UnsentSummary | null,
+  offline: boolean,
+  featureOff: { sending: boolean } | null
+): StatusBarView['line2'] {
   if (unsent === null) return null;
   if (unsent.unreadable === true) return { key: 'unsentUnreadable', count: 0 };
   if ((unsent.waitingForAdmin ?? 0) > 0) return { key: 'waitingForAdmin', count: unsent.waitingForAdmin ?? 0 };
   if (unsent.count > 0) {
-    if (limitApplies && unsent.limitReached) return { key: 'unsentLimit', count: unsent.count };
+    if (featureOff) {
+      return featureOff.sending && !offline ? { key: 'sending', count: unsent.count } : { key: 'unsentFeatureOff', count: unsent.count };
+    }
+    if (unsent.limitReached) return { key: 'unsentLimit', count: unsent.count };
     if (offline) return { key: 'unsent', count: unsent.count, time: unsent.sendBy };
     return { key: 'sending', count: unsent.count };
   }
@@ -139,7 +147,7 @@ export function deriveStatusBar(input: StatusBarInput): StatusBarView {
   const unsent = input.unsent;
   const unreadable = unsent?.unreadable === true;
   const limit = unsent !== null && (unreadable || (unsent.count > 0 && unsent.limitReached));
-  const line2 = deriveUnsentLine(unsent, input.offline, true);
+  const line2 = deriveUnsentLine(unsent, input.offline, null);
   if (limit) {
     icon = 'clock-alert-outline';
     action = null;

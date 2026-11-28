@@ -481,6 +481,10 @@ export const components = {
       other: '{{count}} items not sent yet. Connect and send them by {{time}}.',
     },
     sending: { one: 'Sending 1 item…', other: 'Sending {{count}} items…' },
+    unsentFeatureOff: {
+      one: '1 item not sent yet. Tap to see it.',
+      other: '{{count}} items not sent yet. Tap to see them.',
+    },
     unsentLimit: {
       one: '1 item not sent for over 2 hours. Connect and send it to record more.',
       other: '{{count}} items not sent for over 2 hours. Connect and send them to record more.',
