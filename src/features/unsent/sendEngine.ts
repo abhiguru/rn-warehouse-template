@@ -37,7 +37,7 @@ import {
 
 const logger = createLogger('[unsent-send]');
 
-export type SendTrigger = 'open' | 'foreground' | 'reconnect' | 'saved' | 'send-now' | 'sync' | 'retry-timer';
+export type SendTrigger = 'open' | 'foreground' | 'reconnect' | 'saved' | 'send-now' | 'sync' | 'retry-timer' | 'doubt-settled';
 
 /** Photo items sent at once (the same number as the GRN photo upload, `GRN_PHOTO_UPLOAD_CONCURRENCY`). */
 const PHOTO_LANE_SLOTS = 4;
@@ -105,6 +105,8 @@ const parse = (text: string | null): unknown => (text === null ? null : (JSON.pa
 
 interface Pass {
   scope: string;
+  /** The signal of the session the pass started in: nothing is started or written once it is aborted (WH-413). */
+  signal: AbortSignal;
   transient: boolean;
   stop: boolean;
   tasks: Set<Promise<void>>;
@@ -186,12 +188,18 @@ async function apply(row: ItemRow, outcome: SendOutcome, before: ItemRow): Promi
   }
 }
 
-/** Marks an attempt before the request leaves (a kill in flight must find it) and sends it. */
-async function sendOnce(row: ItemRow, kind: SendKind, byId: Map<string, ItemRow>): Promise<SendOutcome> {
+/**
+ * Marks an attempt before the request leaves (a kill in flight must find it) and sends it. Once `signal` (the session's) is
+ * aborted nothing is started or written for that session: the outcome is `stop` and the item is left as it is (WH-413).
+ */
+async function sendOnce(row: ItemRow, kind: SendKind, byId: Map<string, ItemRow>, signal: AbortSignal): Promise<SendOutcome> {
   const before = row;
+  if (signal.aborted) return { kind: 'stop' };
   await markMissingPhotos(row);
+  if (signal.aborted) return { kind: 'stop' };
   const now = Date.now();
   await updateItem(row.id, { state: 'sending', attempts: row.attempts + 1, first_sent_at: row.first_sent_at ?? now, last_sent_at: now });
+  if (signal.aborted) return { kind: 'stop' };
   const context: SendContext = { itemId: row.id, requestKey: row.request_key, resolved: resolvedFor(row, byId) };
   let outcome: SendOutcome;
   try {
@@ -199,6 +207,8 @@ async function sendOnce(row: ItemRow, kind: SendKind, byId: Map<string, ItemRow>
   } catch (error) {
     outcome = classify(null, error);
   }
+  // The answer came after the session ended: the store it would be written to belongs to that session.
+  if (signal.aborted) return { kind: 'stop' };
   await apply(row, outcome, before);
   return outcome;
 }
@@ -216,11 +226,12 @@ async function resolveDoubt(id: string, byId: () => Promise<Map<string, ItemRow>
       if (answer.found) {
         const outcome = kind.outcomeOf ? kind.outcomeOf(answer.response) : classify(answer.response, null);
         if (outcome.kind === 'sent' || outcome.kind === 'refused') {
-          await apply(row, outcome, row);
+          if (!signal.aborted) await apply(row, outcome, row);
           return;
         }
       }
-      const outcome = await sendOnce(row, kind, await byId());
+      if (signal.aborted) return;
+      const outcome = await sendOnce(row, kind, await byId(), signal);
       if (outcome.kind === 'sent' || outcome.kind === 'refused') return;
       if (outcome.kind === 'stop') return;
       // Lost again, or the request did not leave: ask again (each round waits at least 10 s after the send).
@@ -229,7 +240,8 @@ async function resolveDoubt(id: string, byId: () => Promise<Map<string, ItemRow>
     if (!isAbortError(error)) logger.warn('A lost answer could not be settled', loggableError(error));
   } finally {
     engine.active.delete(id);
-    void sendNow('retry-timer');
+    // A session that ended starts nothing (WH-413); a new one has its own triggers.
+    if (!signal.aborted) void sendNow('doubt-settled');
   }
 }
 
@@ -254,7 +266,7 @@ async function handle(row: ItemRow, pass: Pass, byId: Map<string, ItemRow>): Pro
   engine.active.add(row.id);
   let outcome: SendOutcome;
   try {
-    outcome = await sendOnce(row, kind, byId);
+    outcome = await sendOnce(row, kind, byId, pass.signal);
   } finally {
     engine.active.delete(row.id);
   }
@@ -376,7 +388,7 @@ async function onePass(): Promise<boolean | 'session-changed'> {
     return false;
   }
   await sweepSentRows(businessDate(Date.now()));
-  const pass: Pass = { scope, transient: false, stop: false, tasks: new Set(), deferMs: null };
+  const pass: Pass = { scope, signal: sessionAbort.signal, transient: false, stop: false, tasks: new Set(), deferMs: null };
   // Refused items go to the server's holding list at the start of a pass (a hand-over that failed is tried again) and at its end.
   await handOver(pass);
   await pumpPhotos(pass);
