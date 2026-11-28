@@ -19,8 +19,30 @@ const lotsOfOverlay = (): readonly NewLotRow[] => overlay().newLots?.() ?? [];
 const asRow = (value: unknown): Row => (typeof value === 'object' && value !== null ? (value as Row) : {});
 const linesOf = (doc: NewDocRow): Row[] => (Array.isArray(doc.lines) ? (doc.lines as unknown[]).map(asRow) : []);
 
-/** The unsent GRNs that give rows to a list: not refused (a refused one adds nothing to totals; Product PQ3). */
-const liveDocuments = (): NewDocRow[] => documentsOf().filter(doc => doc.refused !== true);
+/** Local ids of sent GRNs the copy already holds (by server id, else by number); they add no row, lot or total (WH-404). */
+export type HeldBySync = ReadonlySet<string>;
+const NONE_HELD: HeldBySync = new Set();
+
+/**
+ * The sent new GRNs whose record the copy already has: matched by the server's id first, by the number as a fallback.
+ * Until a sync run ends after the send the overlay still lists such a GRN, so the list would show it twice (WH-404).
+ */
+export async function sentHeldByCopy(q: CopyReader): Promise<HeldBySync> {
+  const sent = documentsOf().filter(doc => doc.state === 'sent');
+  if (sent.length === 0) return NONE_HELD;
+  const held = new Set<string>();
+  for (const doc of sent) {
+    const id = typeof doc.serverId === 'string' && doc.serverId !== '' ? doc.serverId : null;
+    const number = typeof doc.number === 'string' && doc.number !== '' ? doc.number : null;
+    const byId = id === null ? null : await q.get<{ id: string }>('SELECT id FROM goodsreceived WHERE id = ?', [id]);
+    const found = byId ?? (number === null ? null : await q.get<{ id: string }>('SELECT id FROM goodsreceived WHERE gr_no = ?', [number]));
+    if (found) held.add(String(doc.localId));
+  }
+  return held;
+}
+
+/** The unsent GRNs that give rows to a list: not refused (a refused one adds nothing to totals; Product PQ3), and not held by the copy. */
+const liveDocuments = (held: HeldBySync): NewDocRow[] => documentsOf().filter(doc => doc.refused !== true && !held.has(String(doc.localId)));
 
 /** The start of a document's day in India, as the copy keeps dates; null when it is not a day. */
 function dayMicros(day: unknown): number | null {
@@ -104,9 +126,9 @@ export interface UnsentListPart {
 }
 
 /** The unsent new GRNs that match the list's request. */
-export function unsentGrnPart(params: GRNListParams): UnsentListPart {
+export function unsentGrnPart(params: GRNListParams, held: HeldBySync = NONE_HELD): UnsentListPart {
   const part: UnsentListPart = { rows: [], receipts: 0, qty: 0, stock: 0, weight: 0 };
-  const documents = [...liveDocuments()].sort((a, b) => Number(b.recordedAt ?? 0) - Number(a.recordedAt ?? 0));
+  const documents = [...liveDocuments(held)].sort((a, b) => Number(b.recordedAt ?? 0) - Number(a.recordedAt ?? 0));
   for (const doc of documents) {
     const passing = linesOf(doc).filter(line => matches(doc, line, params));
     if (passing.length === 0) continue;
@@ -179,12 +201,14 @@ export interface UnsentStock {
 }
 
 /** The unsent lots of one customer, or of everyone, summed. */
-export function unsentStockOf(customerId?: string): UnsentStock {
-  const lots: NewLotRow[] = lotsOfOverlay().filter(lot => customerId === undefined || lot.customer_id === customerId);
+export function unsentStockOf(customerId?: string, held: HeldBySync = NONE_HELD): UnsentStock {
+  const lots: NewLotRow[] = unsentLotsOf(customerId, held);
   return {
     bags: lots.reduce((sum, lot) => sum + lot.stock, 0),
     weight: lots.reduce((sum, lot) => sum + (lot.weight ?? 0) * lot.stock, 0),
     receipts: new Set(lots.map(lot => lot.grn_id)).size,
   };
 }
-export const unsentLotsOf = (customerId?: string): NewLotRow[] => lotsOfOverlay().filter(lot => customerId === undefined || lot.customer_id === customerId);
+export function unsentLotsOf(customerId?: string, held: HeldBySync = NONE_HELD): NewLotRow[] {
+  return lotsOfOverlay().filter(lot => (customerId === undefined || lot.customer_id === customerId) && !held.has(lot.grn_id));
+}

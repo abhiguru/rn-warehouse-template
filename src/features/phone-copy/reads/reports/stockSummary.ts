@@ -5,7 +5,7 @@
  */
 import { copyToday } from '@/features/phone-copy/pgCompat';
 import type { CopyReader } from '@/features/phone-copy/readRoute';
-import { unsentLotsOf, unsentStockOf } from '../newDocuments';
+import { sentHeldByCopy, unsentLotsOf, unsentStockOf } from '../newDocuments';
 import {
   addDays, compareIds, compareText, dayOf, dayStartUs, fromUnits, numberOf, parseRow, textOf, weightSum, weightUnits, type Row,
 } from './reportParts';
@@ -97,7 +97,7 @@ export async function readCustomerStockSummary(q: CopyReader, customerId: string
   );
   const lastGrnRow = lastGrn ? parseRow(lastGrn.row) : null;
   // `MAX(date)` is the newest of all, which the first row of that order is.
-  const unsent = unsentStockOf(customerId);
+  const unsent = unsentStockOf(customerId, await sentHeldByCopy(q));
   const summary: Row = {
     total_items: new Set(inStock.map(line => line.lot.item_id)).size,
     total_quantity: inStock.reduce((sum, line) => sum + numberOf(line.lot.stock), 0) + unsent.bags,
@@ -213,11 +213,12 @@ export async function readAllStockSummary(q: CopyReader): Promise<Row> {
       latest_date: await dayOfUs(record.latest_us),
     });
   }
-  const unsent = unsentStockOf();
+  const held = await sentHeldByCopy(q);
+  const unsent = unsentStockOf(undefined, held);
   const known = new Set(customers.map(customer => customer.customer_id));
-  const unsentCustomers = new Set(unsentLotsOf().map(lot => lot.customer_id).filter((id): id is string => id !== null && !known.has(id)));
+  const unsentCustomers = new Set(unsentLotsOf(undefined, held).map(lot => lot.customer_id).filter((id): id is string => id !== null && !known.has(id)));
   for (const customer of customers) {
-    const own = unsentStockOf(String(customer.customer_id));
+    const own = unsentStockOf(String(customer.customer_id), held);
     if (own.bags > 0) {
       customer.total_stock = Number(customer.total_stock) + own.bags;
       customer.total_weight = Number(customer.total_weight) + own.weight;

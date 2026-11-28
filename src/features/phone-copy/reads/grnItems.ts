@@ -12,7 +12,7 @@ import type { RankKind } from '../copySchema';
 import { parseTimestampUs, pgSearchTerms } from '../pgCompat';
 import type { CopyReader } from '../readRoute';
 import { getUnsentOverlay } from '../unsentOverlay';
-import { unsentGrnPart } from './newDocuments';
+import { sentHeldByCopy, unsentGrnPart } from './newDocuments';
 
 export interface GrnItemsPage {
   success: true;
@@ -303,7 +303,7 @@ export async function readGrnItems(q: CopyReader, params: GRNListParams): Promis
   // After the ranks are up to date, so writing them does not make a first page's totals look old.
   const totals = await totalsOf(q, params, c, offset);
   // This person's unsent new GRNs: rows on top of page 0, and in the count and the totals of every page (WH-161).
-  const unsent = unsentGrnPart(params);
+  const unsent = unsentGrnPart(params, await sentHeldByCopy(q));
   const shown = offset === 0 ? unsent.rows : [];
   return {
     kind: 'page',
