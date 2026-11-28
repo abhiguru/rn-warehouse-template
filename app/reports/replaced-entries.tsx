@@ -122,7 +122,7 @@ export default function ReplacedEntriesScreen() {
               contentContainerStyle={styles.list}
               ListEmptyComponent={
                 <View testID="replaced-entries-empty">
-                  <ListEmptyState activeFilterCount={0} emptyIcon="history" emptyTitle={tr('offline.replacedList.empty')} />
+                  <ListEmptyState activeFilterCount={0} emptyIcon="history" emptyTitle={tr('offline.replacedList.empty')} emptySubtitle="" />
                 </View>
               }
             />
