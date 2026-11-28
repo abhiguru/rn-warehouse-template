@@ -66,7 +66,14 @@ const numberOf = (value: unknown): string | null => {
   return null;
 };
 
-const sentTargetOf = (target: UnsentRowView['target'], result: unknown): UnsentRowView['target'] => {
+/** The document number the server gave a sent record (`gr_no` of its result), or null. */
+const serverNumberOf = (result: unknown): string | null => {
+  if (typeof result !== 'object' || result === null) return null;
+  const grNo = (result as Record<string, unknown>).gr_no;
+  return typeof grNo === 'string' && grNo !== '' ? grNo : null;
+};
+
+const sentTargetOf =(target: UnsentRowView['target'], result: unknown): UnsentRowView['target'] => {
   if (typeof result !== 'object' || result === null) return target;
   const record = result as Record<string, unknown>;
   if (typeof record.grn_id === 'string' && record.grn_id !== '') return { ...target, grnId: record.grn_id };
@@ -74,11 +81,12 @@ const sentTargetOf = (target: UnsentRowView['target'], result: unknown): UnsentR
 };
 
 /** The words for what an item is. A photos item is described from its files; any other kind keeps the words it was saved with. */
-async function titleOf(row: UnsentRowView): Promise<{ title: string; photoMissing: boolean }> {
+async function titleOf(row: UnsentRowView, parent: UnsentRowView | undefined): Promise<{ title: string; photoMissing: boolean }> {
   if (row.kind !== 'photos') return { title: row.what, photoMissing: false };
   const photos = await photosOfItem(row.id);
   const count = photos.length;
-  const number = row.targetNumber;
+  // Once its record is sent, the number the server gave it (the parent's `gr_no`) names the document.
+  const number = row.targetNumber ?? (parent?.section === 'sent' ? serverNumberOf(parent.result) : null);
   // A document with no number yet (a new one not sent) is "the new GRN" (Design 4.10).
   const key = number ? 'offline.unsent.whatPhotos' : 'offline.unsent.whatPhotosNewGrn';
   return {
@@ -144,7 +152,7 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
   const views = await listItems();
   const rows: UnsentListRow[] = [];
   for (const view of views) {
-    const { title, photoMissing } = await titleOf(view);
+    const { title, photoMissing } = await titleOf(view, views.find(other => other.id === view.dependsOn));
     const passing = view.section === 'unsent' && view.state === 'refused' ? handingOver(view) : null;
     rows.push({
       id: view.id,
