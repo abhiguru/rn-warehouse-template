@@ -853,10 +853,6 @@ function armWriteTimer(ms: number, kind: 'delay' | 'hold'): void {
   engine.writeTimer = later(ms, () => {
     engine.writeTimer = null;
     engine.writeTimerKind = null;
-    if (kind === 'delay' && hasActiveUploadHold()) {
-      armWriteTimer(UPLOAD_HOLD_MS, 'hold');
-      return;
-    }
     void syncNow('after-write');
   });
 }
@@ -866,14 +862,16 @@ function armWriteTimer(ms: number, kind: 'delay' | 'hold'): void {
  * changed (and stock, for the writes it does not hold), so ask for a sync once the writes stop coming (WH-299, contract
  * "After an online write"). Reads never reach here; several writes make one sync.
  */
-function noteOnlineWrite(): void {
+function noteOnlineWrite(photoStep: boolean): void {
   if (!copyFollowsWrites()) return;
   engine.writeSeq += 1;
   engine.writePending = true;
-  // Photo uploads run concurrently (WH-397): hold up to UPLOAD_HOLD_MS while an upload hold is active, then wait
-  // WRITE_SYNC_DELAY_MS once the last hold releases. A pre-upload 400 ms delay promotes once to the 30 s hold, while
-  // subsequent writes during the hold keep the existing 30 s safety deadline rather than pushing it out.
-  if (hasActiveUploadHold()) {
+  // Photo uploads run concurrently (WH-397): a photo step (register, confirm, cancel) is held up to UPLOAD_HOLD_MS while
+  // an upload hold is active, then the sync waits WRITE_SYNC_DELAY_MS once the last hold releases. Later photo steps
+  // keep the existing 30 s safety deadline rather than pushing it out. Any other write (a customer or item edit made
+  // while photos still go up) is not held: it takes the normal delay and replaces a pending hold (WH-401). A refused
+  // registration releases its hold at once in the upload service, which re-arms the delay (WH-399).
+  if (photoStep && hasActiveUploadHold()) {
     if (engine.writeTimer === null || engine.writeTimerKind !== 'hold') {
       armWriteTimer(UPLOAD_HOLD_MS, 'hold');
     }

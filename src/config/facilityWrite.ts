@@ -7,7 +7,11 @@
 
 import { registerSessionScoped } from './sessionScopedRegistry';
 
-type FacilityWriteListener = () => void;
+/** `photoStep` is true for a register, confirm or cancel call of a photo upload (WH-401); the sync engine holds only those. */
+type FacilityWriteListener = (photoStep: boolean) => void;
+
+/** The three RPC steps of one photo upload (WH-397). Only these may be held back while a photo upload is active (WH-401). */
+const PHOTO_STEP_RPC = /^(register|confirm|cancel)_(grn|dispatch)_image_upload$/;
 
 const listeners = new Set<FacilityWriteListener>();
 
@@ -33,10 +37,10 @@ export function subscribeQuietWrite(listener: () => void): () => void {
 }
 
 /** Called by the request layer once the server accepted a write. Never throws. */
-export function noteFacilityWrite(): void {
+export function noteFacilityWrite(photoStep = false): void {
   for (const listener of [...listeners]) {
     try {
-      listener();
+      listener(photoStep);
     } catch {
       // A listener's failure must not fail the write that already succeeded.
     }
@@ -153,5 +157,5 @@ export function noteDataWrite(input: RequestInfo | URL): void {
     }
     return;
   }
-  noteFacilityWrite();
+  noteFacilityWrite(rpc !== undefined && PHOTO_STEP_RPC.test(rpc));
 }
