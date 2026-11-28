@@ -176,6 +176,11 @@ export const grn: Translation<typeof source> = {
   },
 
   photos: {
+    // WH-385: the line on the Images tab when a photo taken with the GRN could not be sent
+    couldNotSend: {
+      one: 'આ આવક પાવતી સાથે લીધેલો ૧ ફોટો મોકલી શકાયો નથી.',
+      other: 'આ આવક પાવતી સાથે લીધેલા {{count}} ફોટા મોકલી શકાયા નથી.',
+    },
     addPhotos: 'ફોટો ઉમેરો',
     addPhotoTitle: 'ફોટો ઉમેરો',
     addPhotoMessage: 'નવો ફોટો પાડો અથવા ગૅલેરીમાંથી પસંદ કરો.',
