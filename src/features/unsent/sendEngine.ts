@@ -13,6 +13,7 @@ import { isCopyOffline, subscribeCopyOffline, subscribeSyncRunEnd, syncNow } fro
 import { businessDate } from '@/features/phone-copy/pgCompat';
 import { ROLE_RECHECK_BACKOFF_MS } from '@/config/roleRecheck';
 import { onSessionChange } from '@/config/sessionLifecycle';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { checkSubmission, isAbortError, isLostAnswer } from '@/utils/lostAnswer';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -375,13 +376,11 @@ async function onePass(): Promise<boolean> {
   return !pass.transient && !pass.stop;
 }
 
-/**
- * Sends what can be sent now. Single flight: a second call while a pass runs joins it (and asks for one more look when it
- * ends). It never rejects; what it could not do is tried again by the retry timer and by the next trigger.
- */
+// The unsent-only bar says "Sending…" only while a pass runs. Session state: `sendingShown` is reset on a session or server
+// change and the subscribers are told; the subscriber set holds components (not session data), so it is kept.
 const sendingListeners = new Set<() => void>();
-/** Is a send pass running now? (The unsent-only bar says "Sending…" only then.) */
-export const isSendingUnsent = (): boolean => engine.running !== null;
+let sendingShown = false;
+export const isSendingUnsent = (): boolean => sendingShown;
 export const subscribeSendingUnsent = (listener: () => void): (() => void) => {
   sendingListeners.add(listener);
   return () => {
@@ -391,7 +390,15 @@ export const subscribeSendingUnsent = (listener: () => void): (() => void) => {
 const tellSending = (): void => {
   for (const listener of [...sendingListeners]) listener();
 };
+registerSessionScoped('unsent-sending-flag', () => {
+  sendingShown = false;
+  tellSending();
+});
 
+/**
+ * Sends what can be sent now. Single flight: a second call while a pass runs joins it (and asks for one more look when it
+ * ends). It never rejects; what it could not do is tried again by the retry timer and by the next trigger.
+ */
 export function sendNow(reason: SendTrigger): Promise<void> {
   if (engine.running) {
     engine.again = true;
@@ -408,6 +415,7 @@ export function sendNow(reason: SendTrigger): Promise<void> {
       logger.warn('A send pass failed', loggableError(error));
     } finally {
       engine.running = null;
+      sendingShown = false;
       tellSending();
     }
     // What was sent changes the numbers and stock the copy holds: ask for a sync (C298 6.6).
@@ -417,6 +425,7 @@ export function sendNow(reason: SendTrigger): Promise<void> {
     }
   })();
   engine.running = run;
+  sendingShown = true;
   tellSending();
   return run;
 }
