@@ -1231,6 +1231,9 @@ export const verifyOTP = async (
   token: string,
   userName?: string
 ): Promise<AuthResult> => {
+  // Read the device name before the session starts: nothing may wait between taking the generation and the post,
+  // so the number and code go only to the facility this sign-in began at.
+  const deviceName = await deviceNameField();
   const generation = await startNewSession();
   try {
     const formattedPhone = formatPhoneNumber(phone);
@@ -1239,7 +1242,7 @@ export const verifyOTP = async (
       phone_number: formattedPhone,
       otp_code: token,
       ...(userName ? { name: userName } : {}),
-      ...(await deviceNameField()),
+      ...deviceName,
     });
 
     if (generation !== getSessionGeneration()) {
