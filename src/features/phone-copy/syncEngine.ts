@@ -13,6 +13,7 @@ import { getLanStatus } from '@/config/lanTransport';
 import { isOfflineState } from '@/config/netOffline';
 import { subscribeFacilityWrite, subscribeQuietWrite } from '@/config/facilityWrite';
 import { hasCapability } from '@/config/facilityCapabilities';
+import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { noteRpcSupport } from '@/config/facilityRpcSupport';
 import { captureMessage } from '@/config/sentryConfig';
 import { getSessionCacheScope } from '@/utils/cacheManager';
@@ -711,8 +712,11 @@ export async function stopPhoneCopy(): Promise<void> {
   engine.stop.fire();
   engine.stop = makeStop();
   clearScheduleTimer();
+  clearWriteTimer();
   const running = engine.run;
   if (running) await running.catch(() => undefined);
+  engine.writePending = false;
+  flushWriteWaiters();
   // A load that was cut off is not "not ready" on the next return: the bar waits for the run that resumes it.
   publish(isReadablePhase(getSyncSnapshot().phase) ? { running: null } : { running: null, pending: true });
   setCurrent(false);
@@ -739,7 +743,11 @@ export async function syncNow(trigger: SyncTrigger): Promise<SyncOutcome> {
   } finally {
     if (engine.run === running) engine.run = null;
   }
-  if (epoch !== engine.epoch) return outcome;
+  if (epoch !== engine.epoch) {
+    // The run was cut by a stop or a session change: its waiters go on now, not at their own limit.
+    flushWriteWaiters();
+    return outcome;
+  }
   if (outcome === 'done') {
     // A listener that works (WH-304: the held rows are read, an opened rejection is sent) is waited for, so what a caller reads after the run is current.
     for (const listener of [...engine.runEndListeners]) {
@@ -881,6 +889,14 @@ function noteQuietWrite(): void {
   engine.writeSeq += 1;
   engine.writePending = true;
 }
+
+// The writes noted so far, the timer and the waiting screens belong to one session: nothing of it acts in the next (WH-395).
+registerSessionScoped('after-write-sync', () => {
+  clearWriteTimer();
+  engine.writePending = false;
+  engine.writeSeq = 0;
+  flushWriteWaiters();
+});
 
 subscribeFacilityWrite(noteOnlineWrite);
 subscribeQuietWrite(noteQuietWrite);
