@@ -1,5 +1,6 @@
 /** WH-180: the Imported tag on the lists and the headers of an imported GRN, dispatch and invoice; the Set rates entry. */
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { render, screen, userEvent } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { setLanguage } from '@/i18n';
@@ -26,12 +27,18 @@ jest.mock('@/store/hooks', () => ({
     selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: { id: 'u1', role: mockRole } } }),
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
+// The phone's connection flag is the stand-in (WH-348): the hook's own sources need the whole phone copy.
+let mockNeedsConnection = false;
+jest.mock('@/features/phone-copy/useNeedsConnection', () => ({
+  ...jest.requireActual('@/features/phone-copy/useNeedsConnection'),
+  useNeedsConnectionV3: () => mockNeedsConnection,
+}));
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
   default: () => ({ width: 392, height: 780, scale: 3, fontScale: 1 }),
 }));
 
-afterEach(() => { setLanguage('en'); mockRole = 'admin'; jest.clearAllMocks(); });
+afterEach(() => { setLanguage('en'); mockRole = 'admin'; mockNeedsConnection = false; jest.clearAllMocks(); });
 
 const dispatch = { dispatch_id: 'd1', disp_no: '42', disp_date: '2026-10-09', customer_name: 'Fictional Customer', total_qty: 12, total_items: 1, items: [] } as unknown as Dispatch;
 const invoice = {
@@ -95,6 +102,22 @@ describe('Set rates on an imported GRN', () => {
     expect(button).toBeOnTheScreen();
     await user.press(button);
     expect(router.push).toHaveBeenCalledWith({ pathname: '/grn-edit/[id]/step3', params: { id: 'g1', focus: 'rates' } });
+  });
+
+  it('offline: Set rates is disabled and the line under it is centred, icon and text together (WH-348)', async () => {
+    mockNeedsConnection = true;
+    await render(<GrnItemRates grnId="g1" canEdit imported />);
+    const line = await screen.findByTestId('grn-imported-set-rates-needs-connection');
+    expect(line).toHaveTextContent('Needs a connection');
+    expect(StyleSheet.flatten(line.props.style)).toMatchObject({ justifyContent: 'center' });
+    expect(StyleSheet.flatten(screen.getByText('Needs a connection').props.style)).toMatchObject({ textAlign: 'center' });
+    expect(screen.getByRole('button', { name: 'Set rates, needs a connection' })).toBeDisabled();
+  });
+
+  it('online: no line under Set rates', async () => {
+    await render(<GrnItemRates grnId="g1" canEdit imported />);
+    expect(await screen.findByTestId('grn-imported-set-rates')).toBeOnTheScreen();
+    expect(screen.queryByTestId('grn-imported-set-rates-needs-connection')).not.toBeOnTheScreen();
   });
 
   it('is in Gujarati in Gujarati', async () => {

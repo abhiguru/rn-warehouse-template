@@ -4,7 +4,8 @@
  * router, the theme store and the phone's connection flag are the stand-ins.
  */
 import React from 'react';
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { setLanguage, t as tr } from '@/i18n';
 import ReplacedEntriesScreen from '../../../../app/reports/replaced-entries';
@@ -122,7 +123,11 @@ describe('Replaced entries report', () => {
   it('with no connection it says so, asks the server nothing and offers no Try again', async () => {
     mockOffline = true;
     await render(<ReplacedEntriesScreen />);
-    expect(screen.getByTestId('replaced-entries-needs-connection')).toBeOnTheScreen();
+    // The whole-screen state (ScreenNeedsConnection, the icon and message of an empty report), not an inline line.
+    const state = screen.getByTestId('replaced-entries-needs-connection');
+    expect(state).toHaveTextContent('This needs a connection. It will load when you reconnect.');
+    expect(within(state).getByText('This needs a connection. It will load when you reconnect.')).toBeOnTheScreen();
+    expect(StyleSheet.flatten(state.props.style)).toMatchObject({ flex: 1 });
     expect(screen.queryByRole('button', { name: /retry|try again/i })).not.toBeOnTheScreen();
     expect(rpc).not.toHaveBeenCalled();
   });

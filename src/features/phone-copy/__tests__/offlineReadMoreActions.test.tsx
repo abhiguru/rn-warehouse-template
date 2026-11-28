@@ -16,7 +16,9 @@
  * build to confirm. Design accepted the 14.3 testIDs.
  */
 import React from 'react';
-import { act, render, screen, userEvent } from '@testing-library/react-native';
+import { act, render, screen, userEvent, within } from '@testing-library/react-native';
+import { layout } from '@/theme/tokens';
+import { setLanguage, t as tr } from '@/i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { configureStore } from '@reduxjs/toolkit';
 import InvoiceDetailsScreen from '../../../../app/invoice-details/[id]';
@@ -369,7 +371,7 @@ const EDITORS: Editor[] = [
   { name: 'Document numbering', Screen: DocumentNumberingScreen, ready: 'numbering-row-grn', shows: /G-/, line: 'numbering-needs-connection',
     disabled: ['numbering-row-grn', 'numbering-row-dispatch', 'numbering-row-invoice'], save: null },
   { name: 'Charging', Screen: ChargingScreen, ready: 'charging-row-step', shows: /15/, line: 'charging-needs-connection',
-    disabled: ['charging-row-step', 'charging-row-minimum', 'charging-row-days', 'charging-row-round'], save: null },
+    disabled: ['charging-row-step', 'charging-row-minimum', 'charging-row-days', 'charging-row-round'], save: /^Save charging, needs a connection$/ },
 ];
 
 describe.each(EDITORS)('$name editor', ({ Screen, ready, shows, disabled, line, save }) => {
@@ -392,5 +394,61 @@ describe.each(EDITORS)('$name editor', ({ Screen, ready, shows, disabled, line, 
     await render(<Screen />);
     await settle();
     expect(screen.queryByTestId(line)).not.toBeOnTheScreen();
+  });
+});
+
+describe('Charging: the needs-a-connection line sits in the Save bar (WH-348, Design finding)', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('offline: one line, in the bar with Save above nothing else, and none at the top under the intro', async () => {
+    await load({ expectDone: true });
+    await connection(true);
+    await render(<ChargingScreen />);
+    await screen.findByTestId('charging-row-step');
+    expect(screen.getAllByTestId('charging-needs-connection')).toHaveLength(1);
+    const line = screen.getByTestId('charging-needs-connection');
+    expect(line).toHaveTextContent('Needs a connection');
+    // The line and the Save button share the bar; the intro (the top of the content) does not hold the line.
+    expect(within(line.parent as never).getByTestId('charging-save')).toBeOnTheScreen();
+    const top = screen.getByText(tr('charging.screen.intro')).parent as never;
+    expect(within(top).queryByTestId('charging-needs-connection')).not.toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Save charging, needs a connection' })).toBeDisabled();
+  });
+
+  it('offline in Gujarati: Save is spoken with the reason in the same shape', async () => {
+    await setLanguage('gu');
+    await load({ expectDone: true });
+    await connection(true);
+    await render(<ChargingScreen />);
+    await screen.findByTestId('charging-row-step');
+    expect(screen.getByRole('button', { name: 'ભાડાની ગણતરી સાચવો, કનેક્શન જોઈએ' })).toBeDisabled();
+    expect(screen.getByTestId('charging-needs-connection')).toHaveTextContent('કનેક્શન જોઈએ');
+  });
+
+  it('online: no line anywhere and Save is spoken plainly', async () => {
+    await load({ expectDone: true });
+    await render(<ChargingScreen />);
+    await screen.findByTestId('charging-row-step');
+    expect(screen.queryByTestId('charging-needs-connection')).not.toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Save charging' })).toBeOnTheScreen();
+  });
+});
+
+describe('NeedsConnectionLine inset on the settings and detail screens (WH-348)', () => {
+  it('Document numbering\'s line takes the screen\'s side margin', async () => {
+    await load({ expectDone: true });
+    await connection(true);
+    await render(<DocumentNumberingScreen />);
+    await screen.findByTestId('numbering-row-grn');
+    expect(screen.getByTestId('numbering-needs-connection')).toHaveStyle({ paddingHorizontal: layout.marginCompact });
+  });
+
+  it('a line inside a padded section (Customer details) keeps no side margin of its own', async () => {
+    mockParams = { id: 'c2' };
+    await load({ expectDone: true });
+    await connection(true);
+    await render(<CustomerDetailsScreen />);
+    await screen.findByTestId('customer-details-edit');
+    expect(screen.getByTestId('customer-details-actions-needs-connection')).not.toHaveStyle({ paddingHorizontal: layout.marginCompact });
   });
 });

@@ -14,7 +14,7 @@
  * native modules, the connection, FlashList's native drawing.
  */
 import React from 'react';
-import { act, render, screen } from '@testing-library/react-native';
+import { act, render, screen, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { configureStore } from '@reduxjs/toolkit';
 import CustomersScreen from '../../../../app/customers';
@@ -26,6 +26,9 @@ import TemperatureReportScreen from '../../../../app/reports/temperature-report'
 import * as engine from '@/features/phone-copy/syncEngine';
 import * as copyDb from '@/features/phone-copy/copyDb';
 import { env, resetEnv, setReachable } from '@/tests/phoneCopy/phoneEnv';
+import { guard } from '@/tests/phoneCopy/singleStatementSqlite';
+import { failStatement } from '@/tests/phoneCopy/fakeExpoSqlite';
+import { layout } from '@/theme/tokens';
 import { seedWarehouse } from '@/tests/phoneCopy/grnDataset';
 import { seedDocuments } from '@/tests/phoneCopy/documentsDataset';
 import { resetScreenFocus } from '@/tests/components/focusHarness';
@@ -38,7 +41,8 @@ import reportPrefsReducer from '@/store/slices/reportPrefsSlice';
 import themeReducer from '@/store/slices/themeSlice';
 import { setLanguage } from '@/i18n';
 
-jest.mock('expo-sqlite', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.sqlite(), { virtual: true });
+// The connection rejects a second statement that starts while one runs, as expo-sqlite does (off until a test turns the guard on).
+jest.mock('expo-sqlite', () => require('@/tests/phoneCopy/singleStatementSqlite').singleStatementSqliteModule(), { virtual: true });
 jest.mock('expo-secure-store', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.secureStore());
 jest.mock('expo-file-system', () => require('@/tests/phoneCopy/phoneEnv').mockFactories.fileSystem());
 jest.mock('@/config/supabaseConfig', () => ({
@@ -125,6 +129,8 @@ beforeEach(async () => {
   env.feed.format = WH348_FORMAT;
   forgetQueries();
   mockNet.offline = false;
+  guard.on = false;
+  guard.rejected = 0;
   resetScreenFocus();
   await saveOperatorServer(SERVER);
   setFacilityCapabilities(SERVER, { sync: true });
@@ -185,6 +191,14 @@ describe.each(LISTS)('$name list with no connection (copy, format of WH-348)', (
     expect(screen.getByTestId(footnoteId)).toHaveTextContent(gujarati);
   });
 
+  it('the footnote takes the screen\'s side margin', async () => {
+    await load({ expectDone: true });
+    await connection(true);
+    await render(<Screen />);
+    await screen.findAllByText(new RegExp(row));
+    expect(screen.getByTestId(footnoteId)).toHaveStyle({ paddingHorizontal: layout.marginCompact });
+  });
+
   it('reachable: no footnote' + (plus ? ', the "+" is there' : ''), async () => {
     await load({ expectDone: true });
     await render(<Screen />);
@@ -202,6 +216,53 @@ describe.each(LISTS)('$name list on an older server, offline (today\'s screen)',
     await render(<Screen />);
     expect(screen.queryByTestId(footnoteId)).not.toBeOnTheScreen();
     if (plus) expect(await screen.findByRole('button', { name: plus })).toBeOnTheScreen();
+  });
+});
+
+describe('Users from the copy, one statement at a time (WH-348, Design finding)', () => {
+  // Two more people, so the page needs several per-user statements; the connection then rejects any that overlap.
+  const addPeople = () => {
+    for (const [id, name, mobile] of [['p2', 'Nikhil Fictional', '9000000008'], ['p3', 'Omkar Fictional', '9000000007']]) {
+      env.feed.rows.user_profiles.push({ id, row: { id, name, display_name: name, role: 'staff', mobile, active: true, is_service_account: false } });
+    }
+  };
+  const serverUserCalls = () => env.feed.named('get_users_list');
+
+  it('offline with a ready copy: lists every person from the copy, no overlapping statement, no server call', async () => {
+    addPeople();
+    await load({ expectDone: true });
+    await connection(true);
+    guard.on = true;
+    await render(<UsersScreen />);
+    expect(await screen.findByText('Meera Fictional')).toBeOnTheScreen();
+    expect(screen.getByText('Nikhil Fictional')).toBeOnTheScreen();
+    expect(screen.getByText('Omkar Fictional')).toBeOnTheScreen();
+    expect(guard.rejected).toBe(0);
+    expect(screen.queryByText("Couldn't load users")).not.toBeOnTheScreen();
+    expect(serverUserCalls()).toHaveLength(0);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('offline, a copy read that fails: the quiet "Couldn\'t load users", a warning in the log, no server call, no console.error', async () => {
+    await load({ expectDone: true });
+    await connection(true);
+    failStatement(/users_customers_new/, new Error('disk I/O error'));
+    await render(<UsersScreen />);
+    expect(await screen.findByText("Couldn't load users")).toBeOnTheScreen();
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('A read of the copy failed'), expect.anything());
+    expect(serverUserCalls()).toHaveLength(0);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('online (reachable): the same list, no error', async () => {
+    addPeople();
+    await load({ expectDone: true });
+    guard.on = true;
+    await render(<UsersScreen />);
+    expect(await screen.findByText('Nikhil Fictional')).toBeOnTheScreen();
+    expect(screen.getByText('Meera Fictional')).toBeOnTheScreen();
+    expect(guard.rejected).toBe(0);
+    expect(screen.queryByText("Couldn't load users")).not.toBeOnTheScreen();
   });
 });
 
@@ -261,6 +322,39 @@ describe('Sensors and the temperature report with no connection', () => {
     await render(<Screen />);
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeOnTheScreen();
     expect(screen.queryByTestId(testID)).not.toBeOnTheScreen();
+  });
+
+  describe('the sensor request (WH-348)', () => {
+    const sensorCalls = () => env.feed.named('get_sensor_report_devices');
+    const quiet = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+
+    it('offline: no request goes out', async () => {
+      await load({ expectDone: true });
+      await connection(true);
+      await render(<TemperatureReportScreen />);
+      expect(await screen.findByTestId('temperature-report-needs-connection')).toBeOnTheScreen();
+      await quiet();
+      expect(sensorCalls()).toHaveLength(0);
+    });
+
+    it('on reconnect: exactly one request', async () => {
+      await load({ expectDone: true });
+      await connection(true);
+      await render(<TemperatureReportScreen />);
+      await screen.findByTestId('temperature-report-needs-connection');
+      await connection(false);
+      expect(await screen.findByRole('button', { name: 'Try again' })).toBeOnTheScreen();
+      await quiet();
+      expect(sensorCalls()).toHaveLength(1);
+    });
+
+    it('online: one request on open, as before', async () => {
+      await load({ expectDone: true });
+      await render(<TemperatureReportScreen />);
+      await waitFor(() => expect(sensorCalls()).toHaveLength(1));
+      await quiet();
+      expect(sensorCalls()).toHaveLength(1);
+    });
   });
 
   it('Sensors on an older server, offline: today\'s error state with its retry', async () => {

@@ -3,7 +3,9 @@
  * Real: the strip, InlineValidation, Button, the sentence helper and the translations. Nothing is faked.
  */
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { render, screen, userEvent } from '@testing-library/react-native';
+import { space } from '@/theme/tokens';
 import { ReplacedStrip } from '../ReplacedStrip';
 import { setLanguage } from '@/i18n';
 import type { RpcGrnReplacement } from '@/types/rpc-canonical.types';
@@ -95,6 +97,12 @@ describe('ReplacedStrip', () => {
     expect(screen.getByTestId('grn-details-replaced-mark-checked-needs-connection')).toBeOnTheScreen();
     await userEvent.press(button);
     expect(props.onMarkChecked).not.toHaveBeenCalled();
+  });
+
+  it('with no connection, the line starts where the button\'s text starts (a button\'s side padding)', async () => {
+    await render(<ReplacedStrip {...props} needsConnection entries={entries(2)} />);
+    const style = StyleSheet.flatten(screen.getByTestId('grn-details-replaced-mark-checked-needs-connection').props.style) as { paddingLeft?: number };
+    expect(style.paddingLeft).toBe(space.lg);
   });
 
   it('while the mark is being sent, Mark as checked is disabled', async () => {
