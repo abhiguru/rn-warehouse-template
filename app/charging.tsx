@@ -33,6 +33,7 @@ import {
 } from '@/features/charging/chargingRule';
 import { useAppSelector } from '@/store/hooks';
 import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { formatIdentifier, t as tr } from '@/i18n';
@@ -93,13 +94,17 @@ export default function ChargingScreen() {
     }
   }, []);
 
+  // WH-402: offline, and the read found no stored rule: the screen says it needs a connection (no error, no Retry) and
+  // reads again on reconnect. A read the phone copy can answer offline still shows the rule.
+  const waitsForConnection = needsConnection && stored === null && error !== null;
+
   useEffect(() => {
-    if (!allowed || !isFocused) return undefined;
+    if (!allowed || !isFocused || waitsForConnection) return undefined;
     void load();
     return () => {
       requestRef.current += 1;
     };
-  }, [allowed, isFocused, load]);
+  }, [allowed, isFocused, waitsForConnection, load]);
 
   const dirty = stored !== null && draft !== null && !sameChargingRule(stored.rule, draft);
 
@@ -244,6 +249,16 @@ export default function ChargingScreen() {
     days: tr('charging.days.label'),
     round: tr('charging.round.label'),
   };
+
+  if (waitsForConnection) {
+    return (
+      <View style={styles.screen}>
+        {header}
+        <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+        <ScreenNeedsConnection testID="charging-needs-connection" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
