@@ -36,7 +36,7 @@ import {
 import { isDiskFull, isSpaceShort, readCopyStorage } from './copyStorage';
 import {
   SyncFailedError, SyncRefusedError, SyncSessionEndedError, SyncStoppedError, SyncUnsupportedError, getSyncChanges,
-  getSyncChecksums, getSyncPage, getSyncStart, type SyncPage,
+  getSyncChecksums, getSyncPage, getSyncStart, type Change, type SyncChanges, type SyncPage,
 } from './syncApi';
 import { getSyncSnapshot, resetSyncSnapshot, updateSyncSnapshot, type CopyPhase, type SyncSnapshot } from './syncStore';
 
@@ -82,6 +82,19 @@ interface PendingReload {
   copy?: string;
   format?: number;
   asOf?: string;
+}
+/** A catch-up that is staged (WH-409): where it asks from next, what the copy's time becomes, and the copy a whole reload brought. */
+interface CatchupMark {
+  position: string;
+  asOf: string;
+  copy?: string;
+}
+/** A reload kept as a step of the staged catch-up; its rows are in stage_rows until the last page arrives. */
+interface ReloadStep {
+  entities: EntityName[];
+  whole: boolean;
+  copy?: string;
+  format?: number;
 }
 interface Run {
   epoch: number;
@@ -249,7 +262,7 @@ async function publishFromMeta(db: CopyDriver, offline: boolean): Promise<void> 
 /** Empties the copy's data, keeping its file, key, schema and scope. */
 async function clearData(tx: CopyDriver): Promise<void> {
   for (const entity of ALL_ENTITIES) await tx.run(`DELETE FROM ${entity}`);
-  await tx.exec('DELETE FROM lot_search; DELETE FROM text_rank; DELETE FROM stage_rows; DELETE FROM money_stale; DELETE FROM money_answers;');
+  await tx.exec('DELETE FROM lot_search; DELETE FROM text_rank; DELETE FROM stage_rows; DELETE FROM stage_changes; DELETE FROM money_stale; DELETE FROM money_answers;');
   await tx.run("DELETE FROM meta WHERE k NOT IN ('schema_version', 'scope')");
   await setMeta(tx, 'phase', 'empty');
 }
@@ -300,6 +313,8 @@ async function fetchPage(run: Run, cursor: Cursor): Promise<SyncPage> {
 
 async function firstLoad(run: Run): Promise<void> {
   publish({ running: 'first-load', pending: false });
+  // Everything is loaded; the first catch-up makes the copy readable (WH-409).
+  if ((await meta(run.db, 'load_done')) !== null) return;
   if ((await phaseOf(run.db)) === 'empty') await startLoad(run);
   const db = run.db;
   const entities = entityList(await meta(db, 'entities'));
@@ -328,16 +343,15 @@ async function firstLoad(run: Run): Promise<void> {
   }
   const startPosition = await meta(db, 'start_position');
   await write(run, async tx => {
-    // The phone is usable from here: the indexes, the lot search table and its index, and the phase move together.
+    // The indexes and the lot search table are built here; the phase becomes ready with the first catch-up, so no read
+    // sees a GRN that changed during the load with only some of its lines (WH-409).
     await createIndexes(tx, entities);
     await rebuildAllSearch(tx);
-    await setMeta(tx, 'phase', 'ready');
+    await setMeta(tx, 'load_done', '1');
     await deleteMeta(tx, 'load_cursor');
     if (startPosition) await setMeta(tx, 'position', startPosition);
     await deleteMeta(tx, 'start_position');
   });
-  publish({ phase: 'ready' });
-  noteCopyChange(entities);
   noteStorage(db, true);
 }
 
@@ -361,25 +375,41 @@ async function runReload(run: Run, pending: PendingReload): Promise<void> {
     });
     cursor = next;
   }
+  // The reload is not applied here: it is a step of the catch-up that follows, applied with the rest in one transaction (WH-409).
   await write(run, async tx => {
-    await finishReload(tx, pending.entities, pending.whole);
-    if (pending.whole) {
-      if (pending.copy) await setMeta(tx, 'copy', pending.copy);
-      if (pending.format !== undefined) await setMeta(tx, 'format', String(pending.format));
-      if (pending.asOf) await setMeta(tx, 'as_of', pending.asOf);
-      await setMeta(tx, 'entities', JSON.stringify(pending.entities));
-    }
-    await setMeta(tx, 'position', pending.position);
+    const step: ReloadStep = { entities: pending.entities, whole: pending.whole, copy: pending.copy, format: pending.format };
+    await tx.run('INSERT INTO stage_changes (kind, body) VALUES (?, ?)', ['reload', JSON.stringify(step)]);
+    const before = parseJson<CatchupMark>(await meta(tx, 'catchup'));
+    const mark: CatchupMark = {
+      position: pending.position,
+      asOf: pending.asOf ?? before?.asOf ?? (await meta(tx, 'as_of')) ?? '',
+      copy: pending.copy ?? before?.copy,
+    };
+    await setMeta(tx, 'catchup', JSON.stringify(mark));
     await deleteMeta(tx, 'pending_reload');
   });
-  noteCopyChange(pending.entities);
-  if (pending.whole && pending.asOf) publish({ asOf: pending.asOf, format: pending.format });
+}
+
+/** The reloads of this catch-up that are already staged lose these entities: the newer reload brings them again. */
+async function dropFromStagedReloads(tx: CopyDriver, entities: readonly EntityName[]): Promise<void> {
+  const steps = await tx.all<{ seq: number; body: string }>("SELECT seq, body FROM stage_changes WHERE kind = 'reload'");
+  for (const { seq, body } of steps) {
+    const step = parseJson<ReloadStep>(body);
+    if (!step) continue;
+    const kept = step.entities.filter(entity => !entities.includes(entity));
+    if (kept.length !== step.entities.length) {
+      await tx.run('UPDATE stage_changes SET body = ? WHERE seq = ?', [JSON.stringify({ ...step, entities: kept }), seq]);
+    }
+  }
 }
 
 async function beginReload(run: Run, entities: EntityName[], position: string): Promise<void> {
   const pending: PendingReload = { whole: false, entities, position, cursor: entities.length ? { entity: entities[0], after: null } : null };
   await write(run, async tx => {
-    await tx.run('DELETE FROM stage_rows');
+    if (entities.length) {
+      await tx.run(`DELETE FROM stage_rows WHERE entity IN (${entities.map(() => '?').join(', ')})`, entities);
+      await dropFromStagedReloads(tx, entities);
+    }
     await setMeta(tx, 'pending_reload', JSON.stringify(pending));
   });
   await runReload(run, pending);
@@ -400,7 +430,10 @@ async function reloadAll(run: Run, reason: string): Promise<void> {
       cursor: entities.length ? { entity: entities[0], after: null } : null,
     };
     await write(run, async tx => {
+      // A reload of everything replaces whatever this catch-up had staged.
       await tx.run('DELETE FROM stage_rows');
+      await tx.run('DELETE FROM stage_changes');
+      await deleteMeta(tx, 'catchup');
       await setMeta(tx, 'pending_reload', JSON.stringify(pending));
     });
     await runReload(run, pending);
@@ -413,11 +446,68 @@ async function reloadAll(run: Run, reason: string): Promise<void> {
 
 // ---------- changes (contract 6.3) ----------
 
+/**
+ * The last page of a catch-up (WH-409): what was staged by earlier pages and reloads is applied in order, then this
+ * page, and the position, the time and (after a first load) the ready phase move: one transaction, so no read sees a
+ * document half applied. With nothing staged this is the single transaction of one page.
+ */
+async function finishCatchUp(run: Run, page: SyncChanges, staged: boolean, loadDone: boolean): Promise<void> {
+  const touched = new Set<EntityName>();
+  const whole: { format?: number } = {};
+  await write(run, async tx => {
+    for (let after = 0; staged; ) {
+      // One step at a time: memory holds one page.
+      const step = (await tx.all<{ seq: number; kind: string; body: string }>(
+        'SELECT seq, kind, body FROM stage_changes WHERE seq > ? ORDER BY seq LIMIT 1', [after]
+      ))[0];
+      if (!step) break;
+      after = step.seq;
+      if (step.kind === 'page') {
+        const changes = parseJson<Change[]>(step.body) ?? [];
+        for (const entity of await applyChanges(tx, changes, true)) touched.add(entity);
+        continue;
+      }
+      const reload = parseJson<ReloadStep>(step.body);
+      if (!reload) continue;
+      await finishReload(tx, reload.entities, reload.whole);
+      for (const entity of reload.entities) touched.add(entity);
+      if (reload.whole) {
+        if (reload.copy) await setMeta(tx, 'copy', reload.copy);
+        if (reload.format !== undefined) {
+          await setMeta(tx, 'format', String(reload.format));
+          whole.format = reload.format;
+        }
+        await setMeta(tx, 'entities', JSON.stringify(reload.entities));
+      }
+    }
+    for (const entity of await applyChanges(tx, page.changes, true)) touched.add(entity);
+    await setMeta(tx, 'position', page.position);
+    await setMeta(tx, 'as_of', page.asOf);
+    if (staged) {
+      await tx.run('DELETE FROM stage_changes');
+      await deleteMeta(tx, 'catchup');
+    }
+    if (loadDone) {
+      await setMeta(tx, 'phase', 'ready');
+      await deleteMeta(tx, 'load_done');
+    }
+  });
+  if (loadDone) {
+    publish({ phase: 'ready' });
+    for (const entity of entityList(await meta(run.db, 'entities'))) touched.add(entity);
+  }
+  noteCopyChange(touched);
+  publish({ asOf: page.asOf, ...(whole.format !== undefined ? { format: whole.format } : {}) });
+}
+
 async function catchUp(run: Run): Promise<void> {
   publish({ running: 'changes' });
+  const loadDone = (await meta(run.db, 'load_done')) !== null;
   for (;;) {
-    const position = await meta(run.db, 'position');
-    const copy = await meta(run.db, 'copy');
+    // A staged catch-up goes on from where its last page ended (a kill resumes there).
+    const mark = parseJson<CatchupMark>(await meta(run.db, 'catchup'));
+    const position = mark?.position ?? (await meta(run.db, 'position'));
+    const copy = mark?.copy ?? (await meta(run.db, 'copy'));
     if (!position || !copy) throw new ReloadAllError('POSITION_AHEAD');
     let answer;
     try {
@@ -439,15 +529,16 @@ async function catchUp(run: Run): Promise<void> {
       continue;
     }
     const page = answer;
-    let touched: ReadonlySet<EntityName> = new Set<EntityName>();
+    if (!page.more) {
+      await finishCatchUp(run, page, mark !== null, loadDone);
+      return;
+    }
+    // More follows: this page waits, in its own short write, until the last one arrives.
+    const next: CatchupMark = { position: page.position, asOf: page.asOf, copy: mark?.copy };
     await write(run, async tx => {
-      touched = await applyChanges(tx, page.changes, true);
-      await setMeta(tx, 'position', page.position);
-      await setMeta(tx, 'as_of', page.asOf);
+      await tx.run('INSERT INTO stage_changes (kind, body) VALUES (?, ?)', ['page', JSON.stringify(page.changes)]);
+      await setMeta(tx, 'catchup', JSON.stringify(next));
     });
-    noteCopyChange(touched);
-    publish({ asOf: page.asOf });
-    if (!page.more) return;
   }
 }
 
@@ -489,7 +580,11 @@ async function compareIfDue(run: Run): Promise<void> {
       await deleteMeta(tx, 'checksum_partial_at');
     }
   });
-  if (result.mismatched.length) await beginReload(run, result.mismatched.map(m => m.entity), position);
+  if (result.mismatched.length) {
+    // Staged like any reload, then the catch-up of this run brings what changed meanwhile and applies both together (WH-409).
+    await beginReload(run, result.mismatched.map(m => m.entity), position);
+    await catchUp(run);
+  }
 }
 
 // ---------- one run ----------
