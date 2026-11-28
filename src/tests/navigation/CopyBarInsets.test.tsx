@@ -143,7 +143,7 @@ jest.mock('@/components/OfflineStatusBar', () => {
   return { OfflineStatusBar: () => <Text>phone copy bar</Text> };
 });
 jest.mock('@/features/phone-copy/components/PhoneCopyLifecycle', () => ({ PhoneCopyLifecycle: () => null }));
-jest.mock('@/features/phone-copy/copyDb', () => ({ eraseCopy: jest.fn(async () => {}), setBeforeErase: jest.fn() }));
+jest.mock('@/features/phone-copy/copyDb', () => ({ eraseCopy: jest.fn(async () => {}), setBeforeErase: jest.fn(), currentCopy: () => null }));
 
 // ---------------------------------------------------------------------------
 // Everything else the root draws, as in RootIntoTabs.test.tsx.

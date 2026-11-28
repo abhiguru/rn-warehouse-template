@@ -168,6 +168,7 @@ jest.mock('@/hooks/useTheme', () => {
   return {
     useTheme: () => ({ brand: 'orange', resolvedMode: 'light', tokens, isDarkMode: false }),
     useTokens: () => tokens,
+    useThemedStyles: (factory: (t: unknown) => unknown) => factory(tokens),
   };
 });
 jest.mock('@/lib/queryClient', () => ({ queryClient: {} }));
@@ -185,7 +186,7 @@ jest.mock('@/components/AppStateManager', () => ({ AppStateManager: ({ children 
 jest.mock('@/components/ForceUpdateModal', () => ({ ForceUpdateModal: () => null }));
 jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
 jest.mock('@/components/FioriTabBar', () => () => null);
-jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false }));
+jest.mock('@/hooks/useNetworkStatus', () => ({ useIsOffline: () => false, useNetworkStatus: () => ({ isConnected: true, isInternetReachable: true, type: 'wifi' }) }));
 jest.mock('@/hooks/useColdStartDeepLink', () => ({ useColdStartDeepLink: jest.fn() }));
 jest.mock('@/hooks/useSessionGenerationGuard', () => ({ useSessionGenerationGuard: jest.fn() }));
 jest.mock('@/i18n/useAppLanguage', () => ({ useAppLanguage: () => ({ language: 'en', preference: 'system', setPreference: jest.fn() }) }));
@@ -197,6 +198,11 @@ jest.mock('@/navigation/RouteGuard', () => ({
 jest.mock('@/config/operatorServer', () => ({
   onOperatorServerChange: jest.fn(() => () => undefined),
   getActiveOperatorServer: () => ({ origin: 'https://north-cold.example.test', instanceId: 'instance-north' }),
+}));
+// The unsent-work engine now starts for any signed-in warehouse session (WH-301) and listens to the connection: a stand-in for the native module.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: () => Promise.resolve({ isConnected: true }), addEventListener: () => () => undefined },
 }));
 jest.mock('@/config/lanCheck', () => ({ startDailyLanCheck: jest.fn(() => jest.fn()) }));
 jest.mock('@/config/netReachability', () => ({ installNetReachability: jest.fn(), applyNetReachability: jest.fn() }));

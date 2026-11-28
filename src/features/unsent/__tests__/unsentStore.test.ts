@@ -72,9 +72,26 @@ describe('S1: what is saved is still there', () => {
     expect((await next.queue.listItems()).map(i => i.id)).toEqual([made[0].id]);
   });
 
-  it('the unsent file is not registered with the session-scoped registry (section 1: never registerSessionScoped)', async () => {
-    const { phone } = await phoneWith(record());
-    expect(phone.phone.registry.registeredSessionScopedNames().filter(name => /unsent/i.test(name))).toEqual([]);
+  it('the unsent file, its rows, forms and photo files are never cleared with the session (section 1): only shown flags are registered, and running the registry leaves the saved work', async () => {
+    const { phone } = await phoneWith();
+    // Registrations that only reset a flag the screens show are allowed, and named: nothing of the store, rows, forms or files.
+    const SHOWN_FLAGS_ONLY = ['unsent-sending-flag', 'facility-write-seen-while-quiet'];
+    expect(phone.phone.registry.registeredSessionScopedNames().filter(name => /unsent/i.test(name) && !SHOWN_FLAGS_ONLY.includes(name))).toEqual([]);
+
+    // The registry's teardown, as sign-out, a facility switch and account removal run it: the saved item, its photo, the form and the form's photo stay.
+    const saved = await phone.queue.enqueue({ ...record(), photos: [{ file: addPhoto('item.jpg'), role: 'goods' }] });
+    const { saveFormDraft, loadFormDraft } = require('@/features/unsent/formDrafts') as typeof import('@/features/unsent/formDrafts');
+    expect(await saveFormDraft({ kind: 'grn', state: { header: { gr_images: [{ uri: addPhoto('form.jpg') }] }, items: [] } })).toBe(true);
+    const filesBefore = keptPhotoFiles().sort();
+    expect(filesBefore).toHaveLength(2);
+
+    await phone.phone.registry.runSessionScopedClears({ dispatch: () => undefined });
+
+    expect((await rawRows<{ id: string }>('items')).map(row => row.id)).toEqual([saved.id]);
+    expect(await rawRows('item_photos')).toHaveLength(1);
+    expect(await rawRows('forms')).toHaveLength(1);
+    expect(await loadFormDraft('grn')).not.toBeNull();
+    expect(keptPhotoFiles().sort()).toEqual(filesBefore);
   });
 
   it('is a different file from the phone copy, so the copy and the unsent work never share a database', async () => {

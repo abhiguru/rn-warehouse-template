@@ -61,27 +61,27 @@ const stockOf = (lotId: string) => lotNamed(lotId).stock;
 /** Every page of a search, concatenated. */
 async function allPages(query: string) {
   const rows: Row[] = [];
-  let total = -1;
+  const totals: number[] = [];
   for (let offset = 0; ; offset += 50) {
     const answer = await service().findGoods(query, offset);
     const page = pageOf(answer);
-    total = page.total_count;
+    totals.push(page.total_count);
     rows.push(...page.data);
     if (page.data.length < 50) break;
   }
-  return { rows, total };
+  return { rows, total: totals[totals.length - 1] };
 }
 /** The server's rows for a search (WH-299's tested copy answer), paged to the end, stable-partitioned. */
 async function expectedFor(query: string) {
   const rows: Row[] = [];
-  let total = 0;
+  const totals: number[] = [];
   for (let offset = 0; ; offset += 50) {
     const result = await grnService().getAllGRNItems({ p_filters: { search: query }, p_sort_by: 'date', p_sort_order: 'desc', p_limit: 50, p_offset: offset });
     rows.push(...(result.data.items as unknown as Row[]));
-    total = result.data.pagination.total_count;
+    totals.push(result.data.pagination.total_count);
     if (result.data.items.length < 50) break;
   }
-  return { rows: [...rows.filter(r => r.stock > 0), ...rows.filter(r => !(r.stock > 0))], total };
+  return { rows: [...rows.filter(r => r.stock > 0), ...rows.filter(r => !(r.stock > 0))], total: totals[totals.length - 1] };
 }
 
 describe('G: when Find goods is offered', () => {
