@@ -770,8 +770,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
    */
   const reportSavedAfterLeaving = (grNo: string | undefined, photos: GRNPhotoSaveReport | undefined) => {
     markItemRatesStale();
-    const withPhotos = !!photos && photos.failed.length > 0;
-    const pending = isGrnNumberPending(grNo);
+    const withPhotos = (photos?.failed.length ?? 0) > 0;
+    // The server's number is what is told, whatever the form's number mode was.
+    const pending = !grNo?.trim();
     let key: TranslationKey;
     if (withPhotos) key = pending ? 'grn.review.savedAfterLeavingPhotosPending' : 'grn.review.savedAfterLeavingPhotos';
     else key = pending ? 'grn.review.savedAfterLeavingPending' : 'grn.review.savedAfterLeaving';
