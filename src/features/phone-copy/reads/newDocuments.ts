@@ -167,6 +167,7 @@ export async function readNewGrnDetails(q: CopyReader, doc: NewDocRow): Promise<
     gr_image_url: null,
     invoiced: false,
     imported: false,
+    photos_missing: 0,
     leon: false,
     out_of_stock: false,
     pricing_mode: header.pricing_mode ?? null,

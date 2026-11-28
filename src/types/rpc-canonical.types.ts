@@ -370,6 +370,8 @@ export interface RpcGrnDetails {
   invoiced: boolean;
   /** Migration 191 (WH-180): imported from the previous system, so read-only. Absent on an older server. */
   imported?: boolean;
+  /** Migration 245 (WH-385): photos taken with this GRN that could not be sent. Absent on an older server. */
+  photos_missing?: number;
   leon: boolean;
   out_of_stock: boolean;
   pricing_mode: 'monthly' | 'one_time' | null;

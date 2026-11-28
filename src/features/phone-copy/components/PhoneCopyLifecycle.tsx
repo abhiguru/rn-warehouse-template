@@ -24,6 +24,7 @@ import { sendNow } from '@/features/unsent/sendEngine';
 import { createLogger, loggableError } from '@/utils/logger';
 import { eraseCopy } from '../copyDb';
 import { startHeldPhotos, stopHeldPhotos } from '@/features/holding/heldPhotos';
+import { startPhotoReports, stopPhotoReports } from '@/features/unsent/photoReports';
 import { startMoneyRefresh, stopMoneyRefresh } from '../money/moneyRefresh';
 import { setCopyForeground, setCopyOffline, setSyncSchedule, startPhoneCopy, stopPhoneCopy, syncNow } from '../syncEngine';
 
@@ -107,6 +108,7 @@ export function PhoneCopyLifecycle() {
     });
     startMoneyRefresh();
     startHeldPhotos();
+    startPhotoReports();
     const appState = AppState.addEventListener('change', onAppState);
     const stopCapabilities = subscribeFacilityCapabilities(() => void applyCapability());
     setCopyForeground(foreground);
@@ -126,6 +128,7 @@ export function PhoneCopyLifecycle() {
       appState.remove();
       stopMoneyRefresh();
       stopHeldPhotos();
+      stopPhotoReports();
       stopCapabilities();
       setSyncSchedule(false);
       void stopPhoneCopy();

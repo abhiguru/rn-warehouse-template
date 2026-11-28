@@ -19,7 +19,8 @@ import { createLimiter } from '@/utils/concurrency';
 import { createLogger, loggableError } from '@/utils/logger';
 import { classify } from './sendEngine';
 import { registerSendKind, type SendContext, type SendKind, type SendOutcome } from './sendKinds';
-import { markPhoto, photosOf, type PhotoRow } from './unsentRows';
+import { queuePhotoReports, sendPhotoReports } from './photoReports';
+import { itemById, markPhoto, photosOf, type PhotoRow } from './unsentRows';
 
 const logger = createLogger('[unsent-photos]');
 
@@ -141,6 +142,9 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
   if (!isBody(rawBody)) return { kind: 'refused', reason: 'photos: unreadable body' };
   const recordId = recordIdOf(rawBody, ctx.resolved);
   if (!recordId) return { kind: 'refused', reason: 'photos: the record is not known' };
+  // A photo marked missing is reported to the server before any upload starts, and the report is kept apart from this item (WH-385).
+  const item = await itemById(ctx.itemId);
+  if (item) await queuePhotoReports(ctx.itemId, item.scope, recordId, lineRef => lineItemOf(lineRef, ctx.resolved));
   const rows = (await photosOf(ctx.itemId)).filter(row => !row.done && !row.missing);
   const client = await getAuthenticatedClient({ quietWrite: true });
   if (rows.length === 0) {
@@ -195,7 +199,12 @@ async function removePhotos(body: PhotosBody, ctx: SendContext): Promise<SendOut
 
 const photosKind: SendKind = {
   lane: 'photo',
-  send: (body, ctx) => sendPhotos(body, ctx),
+  send: async (body, ctx) => {
+    const outcome = await sendPhotos(body, ctx);
+    // At once (WH-385); what cannot go now goes at the end of a sync run. Always resolves.
+    await sendPhotoReports();
+    return outcome;
+  },
 };
 
 registerSendKind('photos', photosKind);

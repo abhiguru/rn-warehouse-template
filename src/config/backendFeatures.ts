@@ -75,8 +75,10 @@ export const INTRODUCED_BY_MIGRATION = {
   holdingList: 237,
   /** The phone copy for customer accounts: feed format 7, the account's customers without deleted ones (WH-306; topic "customer account copy", number written at assembly). */
   customerCopy: 239,
-  /** `p_device_name` on `hold_items` and `device_name` on the held-item reads: the phone's own name (WH-410; topic "held item phone name"; 245 is a placeholder, the number is written at assembly). */
-  heldDeviceName: 245,
+  /** `mark_grn_photo_missing` and `photos_missing` on the GRN's details and copy row: a saved GRN says a photo taken with it could not be sent (WH-385; topic "grn missing photos", the number is corrected at assembly). */
+  grnPhotoMissing: 245,
+  /** `p_device_name` on `hold_items` and `device_name` on the held-item reads: the phone's own name (WH-410; topic "held item phone name"; 246 is a placeholder, the number is written at assembly). */
+  heldDeviceName: 246,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

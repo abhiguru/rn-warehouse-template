@@ -86,6 +86,8 @@ export async function readGrnDetails(q: CopyReader, grnId: string): Promise<GrnD
     gr_image_url: pick(g, 'gr_image_url'),
     invoiced: gOver.invoiced ?? false,
     imported: g.import_batch_id !== null && g.import_batch_id !== undefined,
+    // WH-385: photos taken with this GRN that could not be sent; the feed row carries the key only when above 0.
+    photos_missing: numberOf(g.photos_missing) ?? 0,
     leon: g.leon ?? false,
     out_of_stock: gOver.out_of_stock ?? false,
     pricing_mode: pick(g, 'pricing_mode'),

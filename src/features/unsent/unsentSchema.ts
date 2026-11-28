@@ -7,7 +7,7 @@
  */
 import { removeDispatchWork, type StepDb } from './legacyDispatchCleanup';
 
-export const UNSENT_SCHEMA_VERSION = 3;
+export const UNSENT_SCHEMA_VERSION = 4;
 
 /**
  * In-place steps after version 1, each run once on a file below its version (never an erase). Version 2 is the one step
@@ -15,7 +15,9 @@ export const UNSENT_SCHEMA_VERSION = 3;
  * during the Save wait can hand it back; never sent, never part of a body), `held_id` (WH-304: the id the server gave the item
  * when it holds it) and `handover_failed` (WH-304: 1 once a hand-over attempt did not end held). Version 3 (WH-381) removes the
  * dispatch work an earlier version queued (a dispatch is made online only now); `work` runs in the step's transaction and
- * returns the photo files to remove once it has committed.
+ * returns the photo files to remove once it has committed. Version 4 (WH-385) adds `item_photos.report_queued` and the table
+ * `photo_reports` (the reports of photos the phone could not send, kept apart from their item so the sweep of a sent item never
+ * takes them); it deletes no file and no row.
  */
 export const SCHEMA_STEPS: readonly { version: number; statements: readonly string[]; work?: (db: StepDb) => Promise<readonly string[]> }[] = [
   {
@@ -27,6 +29,22 @@ export const SCHEMA_STEPS: readonly { version: number; statements: readonly stri
     ],
   },
   { version: 3, statements: [], work: removeDispatchWork },
+  {
+    version: 4,
+    statements: [
+      'ALTER TABLE item_photos ADD COLUMN report_queued INTEGER NOT NULL DEFAULT 0',
+      `CREATE TABLE IF NOT EXISTS photo_reports (
+        scope TEXT NOT NULL,
+        grn_id TEXT NOT NULL,
+        client_photo_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        grn_item_id TEXT,
+        reason TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (scope, grn_id, client_photo_id)
+      )`,
+    ],
+  },
 ];
 
 /** The folder under the app's documents folder that holds the file and, in `photos/`, its photo files. */
