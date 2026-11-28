@@ -53,6 +53,8 @@ const engine = {
   sentAny: false,
   /** Items being sent now, or whose answer is being asked about. */
   active: new Set<string>(),
+  /** Items whose lost-answer check failed with an error: none is checked again before its wait is over (WH-420). */
+  held: new Map<string, { failures: number; wait: number; until: number }>(),
   /** Aborts the questions about a lost answer when the session ends. */
   abort: new AbortController(),
 };
@@ -220,9 +222,32 @@ async function sendOnce(row: ItemRow, kind: SendKind, byId: Map<string, ItemRow>
   return outcome;
 }
 
+/** The pass is to be looked at again after `ms`; the shortest wait counts. */
+function deferPass(pass: Pass, ms: number): void {
+  pass.deferMs = pass.deferMs === null ? ms : Math.min(pass.deferMs, ms);
+}
+
+/** What is left of an item's wait after a failed check; 0 when there is none, or the phone clock was set back. */
+function heldFor(id: string): number {
+  const held = engine.held.get(id);
+  if (!held) return 0;
+  const left = held.until - Date.now();
+  return left > 0 && left <= held.wait ? left : 0;
+}
+
+/** A check that failed with an error waits like any other retry, longer each time, then the retry timer looks again. */
+function holdDoubt(id: string, abort: AbortController): void {
+  const failures = engine.held.get(id)?.failures ?? 0;
+  const wait = ROLE_RECHECK_BACKOFF_MS[Math.min(failures, ROLE_RECHECK_BACKOFF_MS.length - 1)];
+  engine.held.set(id, { failures: failures + 1, wait, until: Date.now() + wait });
+  armRetry(abort, wait);
+}
+
 /** Asks what became of a request whose answer was lost; sends the identical request once more when the server never had it. */
 async function resolveDoubt(id: string, byId: () => Promise<Map<string, ItemRow>>): Promise<void> {
-  const { signal } = engine.abort;
+  const abort = engine.abort;
+  const { signal } = abort;
+  let failed = false;
   try {
     for (;;) {
       const row = await itemById(id);
@@ -244,11 +269,19 @@ async function resolveDoubt(id: string, byId: () => Promise<Map<string, ItemRow>
       // Lost again, or the request did not leave: ask again (each round waits at least 10 s after the send).
     }
   } catch (error) {
+    failed = true;
     if (!isAbortError(error)) logger.warn('A lost answer could not be settled', loggableError(error));
   } finally {
     engine.active.delete(id);
-    // A session that ended starts nothing (WH-413); a new one has its own triggers.
-    if (!signal.aborted) void sendNow('doubt-settled');
+    // A session that ended starts nothing (WH-413); a new one has its own triggers. After an error nothing starts at once:
+    // the phone's store may keep failing (WH-420).
+    if (!signal.aborted) {
+      if (failed) holdDoubt(id, abort);
+      else {
+        engine.held.delete(id);
+        void sendNow('doubt-settled');
+      }
+    }
   }
 }
 
@@ -259,7 +292,9 @@ async function handle(row: ItemRow, pass: Pass, byId: Map<string, ItemRow>): Pro
   const kind = getSendKind(row.kind);
   if (!kind) return false;
   if (row.state === 'sending') {
-    if (!engine.active.has(row.id)) {
+    const left = heldFor(row.id);
+    if (left > 0) deferPass(pass, left);
+    else if (!engine.active.has(row.id)) {
       engine.active.add(row.id);
       void resolveDoubt(row.id, () => rowsById(pass.scope));
     }
@@ -309,9 +344,19 @@ async function pumpPhotos(pass: Pass): Promise<void> {
       continue;
     }
     if (verdict === 'wait') continue;
+    // A held item gets no task: a task that ends at once would start the next look at once (WH-420).
+    const left = heldFor(row.id);
+    if (left > 0) {
+      deferPass(pass, left);
+      continue;
+    }
     const task = handle(row, pass, byId)
       .then(() => undefined)
-      .catch(error => logger.warn('A photo item failed', loggableError(error)))
+      .catch(error => {
+        // The item may be as it was: it waits for the retry timer, not for the look that follows this task (WH-420).
+        pass.transient = true;
+        logger.warn('A photo item failed', loggableError(error));
+      })
       .finally(() => {
         pass.tasks.delete(task);
         // A transient answer waits for the next trigger; trying again here would loop.
@@ -361,6 +406,7 @@ function clearRetry(): void {
     engine.retryTimer = null;
   }
   engine.retryStep = 0;
+  engine.held.clear();
 }
 
 /** Arms a retry for the session `abort` belongs to; the timer looks again at that session before it sends. */
