@@ -121,6 +121,7 @@ import { useStandardRate } from '@/features/item-pricing/useStandardRate';
 import { canOpenScreen } from '@/config/roles';
 import { StatusTag } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { getLanguage } from '@/i18n/language';
 import { serverText } from '@/utils/serverText';
 import { lineLock, LOCK_A11Y, LOCK_TAG, type LineLock } from '@/features/grn/utils/lineLock';
@@ -771,7 +772,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     markItemRatesStale();
     const withPhotos = !!photos && photos.failed.length > 0;
     const pending = isGrnNumberPending(grNo);
-    let key: string;
+    let key: TranslationKey;
     if (withPhotos) key = pending ? 'grn.review.savedAfterLeavingPhotosPending' : 'grn.review.savedAfterLeavingPhotos';
     else key = pending ? 'grn.review.savedAfterLeavingPending' : 'grn.review.savedAfterLeaving';
     showAlert(tr('grn.review.savedAfterLeavingTitle'), tr(key, { number: formatIdentifier(grNo ?? '') }));
