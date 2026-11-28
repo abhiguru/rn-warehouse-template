@@ -478,6 +478,12 @@ describe('WH-301 retry: a retry belongs to the session that armed it (d845cb1b)'
     await advance(100);
     await advance(120_000);
     expect(saves()).toHaveLength(1);
+    // The late pass must not have taken a back-off step: the new session's first failed pass waits the first step, 5 s.
+    server.answers[SAVE] = () => NO_NETWORK;
+    await phone.engine.sendNow('send-now');
+    expect(saves()).toHaveLength(2);
+    await advance(5500);
+    expect(saves()).toHaveLength(3);
   });
 
   it('(b) a session change clears a pending retry and starts the back-off again', async () => {
