@@ -332,6 +332,7 @@ export const grn = {
     a11yDispatchedLockedAll: 'already dispatched, quantity, item and packing locked',
     a11yInvoicedLocked: 'on an invoice, quantity, item, packing and weight locked',
     confirmCreateTitle: 'Create GRN {{number}}?',
+    confirmCreateTitlePending: 'Create this GRN?',
     confirmSaveTitle: 'Save changes to GRN {{number}}?',
     confirmCreateMessage: {
       one: '{{count}} item will be received and stock levels updated.',

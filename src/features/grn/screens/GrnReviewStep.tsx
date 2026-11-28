@@ -161,6 +161,11 @@ function formatSpokenReviewDate(value: string | undefined): string {
   return formatSpokenDate(value || new Date());
 }
 
+/** True while the GRN has no number to show: none given yet, or the store gives it when the GRN is sent (design 10.10). */
+function isGrnNumberPending(grNo: string | undefined): boolean {
+  return !grNo || getFormNumberMode('grn') === 'pending';
+}
+
 // Alert texts as functions, so they follow the app's language (docs/I18N.md rule 2).
 const stockProtectedTitle = () => tr('grn.header.dispatchedWarningTitle');
 const stockProtectedMessage = () => tr('grn.review.stockProtectedMessage');
@@ -590,7 +595,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       if (heldId === null && (!header.gr_images || header.gr_images.length === 0)) {
         showAlert(
           tr('grn.review.photoRequiredTitle'),
-          !header.gr_no || getFormNumberMode('grn') === 'pending'
+          isGrnNumberPending(header.gr_no)
             ? tr('grn.review.photoRequiredMessagePending')
             : tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
         );
@@ -1903,7 +1908,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       {/* Confirm Submit Dialog */}
       <ConfirmDialog
         visible={showConfirmDialog}
-        title={tr(isCreateMode ? 'grn.review.confirmCreateTitle' : 'grn.review.confirmSaveTitle', { number: formatIdentifier(header.gr_no) })}
+        title={tr(
+          isCreateMode ? (isGrnNumberPending(header.gr_no) ? 'grn.review.confirmCreateTitlePending' : 'grn.review.confirmCreateTitle') : 'grn.review.confirmSaveTitle',
+          { number: formatIdentifier(header.gr_no) }
+        )}
         message={withOrderEffects(
           tr(isCreateMode ? 'grn.review.confirmCreateMessage' : 'grn.review.confirmSaveMessage', { count: totalItems }),
           isCreateMode ? null : orderEffects

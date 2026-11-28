@@ -335,6 +335,7 @@ export const grn: Translation<typeof source> = {
     // Draft for the owner's wording review (2026-10-20).
     a11yInvoicedLocked: 'ઇન્વૉઇસમાં છે, નંગ, આઇટમ, પેકિંગ અને વજન લૉક છે',
     confirmCreateTitle: 'આવક પાવતી {{number}} બનાવવી છે?',
+    confirmCreateTitlePending: 'આ આવક પાવતી બનાવશો?',
     confirmSaveTitle: 'આવક પાવતી {{number}}ના ફેરફાર સાચવવા છે?',
     confirmCreateMessage: {
       one: '{{count}} આઇટમની આવક થશે અને સ્ટોક બદલાશે.',
