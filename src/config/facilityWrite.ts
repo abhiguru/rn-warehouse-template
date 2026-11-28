@@ -17,6 +17,19 @@ export function subscribeFacilityWrite(listener: () => void): () => void {
   };
 }
 
+const quietListeners = new Set<() => void>();
+
+/**
+ * Told when a data write was accepted while a quiet scope was open. No sync is asked for here (the send pass asks for one
+ * at its end); the sync engine only marks a sync as owed, so a save screen's bounded wait covers the write.
+ */
+export function subscribeQuietWrite(listener: () => void): () => void {
+  quietListeners.add(listener);
+  return () => {
+    quietListeners.delete(listener);
+  };
+}
+
 /** Called by the request layer once the server accepted a write. Never throws. */
 export function noteFacilityWrite(): void {
   for (const listener of [...listeners]) {
@@ -78,6 +91,13 @@ export function noteDataWrite(input: RequestInfo | URL): void {
   if (rpc !== undefined && NOT_COPY_RPC.test(rpc)) return;
   if (quietDepth > 0) {
     writeSeenWhileQuiet = true;
+    for (const listener of [...quietListeners]) {
+      try {
+        listener();
+      } catch {
+        // A listener's failure must not fail the write that already succeeded.
+      }
+    }
     return;
   }
   noteFacilityWrite();

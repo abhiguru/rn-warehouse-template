@@ -11,7 +11,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { getLanStatus } from '@/config/lanTransport';
 import { isOfflineState } from '@/config/netOffline';
-import { subscribeFacilityWrite } from '@/config/facilityWrite';
+import { subscribeFacilityWrite, subscribeQuietWrite } from '@/config/facilityWrite';
 import { hasCapability } from '@/config/facilityCapabilities';
 import { noteRpcSupport } from '@/config/facilityRpcSupport';
 import { captureMessage } from '@/config/sentryConfig';
@@ -868,7 +868,18 @@ export function waitForSyncAfterWrite(maxMs = 3000): Promise<void> {
   });
 }
 
+/**
+ * A write accepted while a send pass runs: the pass syncs once at its end (sendEngine, takeWriteSeenWhileQuiet), so no timer
+ * here; the sync is only marked as owed, and `waitForSyncAfterWrite` waits for that sync.
+ */
+function noteQuietWrite(): void {
+  if (!copyFollowsWrites()) return;
+  engine.writeSeq += 1;
+  engine.writePending = true;
+}
+
 subscribeFacilityWrite(noteOnlineWrite);
+subscribeQuietWrite(noteQuietWrite);
 
 setBeforeErase(async () => {
   clearWriteTimer();
