@@ -24,15 +24,24 @@ const MARK_LENGTH = 4;
  * module state (so nothing for the session registry), and the key matches no sign-out, delete-account or cache clearing, so the mark
  * survives sign-out and a facility switch. Null when the storage cannot be read or written.
  */
+async function readOrMakeMark(): Promise<string> {
+  let id = await AsyncStorage.getItem(INSTALL_MARK_KEY);
+  if (id === null || !/^[0-9a-f-]{8,}$/i.test(id)) {
+    id = Crypto.randomUUID();
+    await AsyncStorage.setItem(INSTALL_MARK_KEY, id);
+  }
+  return id.slice(0, MARK_LENGTH).toUpperCase();
+}
+
+/** The read-or-create in flight, shared by concurrent callers so they get one id. Not session state; reset nowhere. A failure clears it so the next call retries. */
+let markInFlight: Promise<string> | null = null;
+
 async function installMark(): Promise<string | null> {
   try {
-    let id = await AsyncStorage.getItem(INSTALL_MARK_KEY);
-    if (id === null || !/^[0-9a-f-]{8,}$/i.test(id)) {
-      id = Crypto.randomUUID();
-      await AsyncStorage.setItem(INSTALL_MARK_KEY, id);
-    }
-    return id.slice(0, MARK_LENGTH).toUpperCase();
+    markInFlight ??= readOrMakeMark();
+    return await markInFlight;
   } catch {
+    markInFlight = null;
     return null;
   }
 }
