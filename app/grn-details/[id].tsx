@@ -952,6 +952,11 @@ function GRNDetailScreen() {
     ),
   ];
 
+  // An unsent GRN has no number yet (null, undefined or blank): the title is "New GRN" (Design 10.10).
+  const screenTitle = grn.gr_no?.trim()
+    ? tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) })
+    : tr('offline.unsent.whatNewGrn');
+
   return (
     <>
       <Stack.Screen
@@ -962,10 +967,10 @@ function GRNDetailScreen() {
           headerTitleStyle: styles.headerTitle,
           headerShadowVisible: false,
           headerTitleAlign: 'center',
-          title: tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) }),
+          title: screenTitle,
           headerTitle: () => (
             <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
-              {tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) })}
+              {screenTitle}
             </Text>
           ),
           // Custom back button so Back always returns, even after a deep link. It does nothing while the GRN is being deleted.
