@@ -5,6 +5,8 @@
  * the screens read. The listener list lives here so the config layer does not import the phone copy.
  */
 
+import { registerSessionScoped } from './sessionScopedRegistry';
+
 const listeners = new Set<() => void>();
 
 /** Told after each successful write to the facility's data (not Storage objects or edge functions). */
@@ -27,6 +29,21 @@ export function noteFacilityWrite(): void {
 }
 
 let quietDepth = 0;
+let writeSeenWhileQuiet = false;
+registerSessionScoped('facility-write-seen-while-quiet', () => {
+  writeSeenWhileQuiet = false;
+});
+
+/**
+ * True once if a data write was accepted while a quiet scope was open, then false again. The send engine asks at the end of
+ * a pass: a person's own save made during the pass is indistinguishable from the pass's sends inside the scope, so the pass
+ * always asks for one sync afterwards when this says yes, whether or not it sent anything (WH-299).
+ */
+export function takeWriteSeenWhileQuiet(): boolean {
+  const seen = writeSeenWhileQuiet;
+  writeSeenWhileQuiet = false;
+  return seen;
+}
 
 /**
  * Runs `fn` with writes not noted. The send engine runs its pass inside it: it asks for its own sync after a pass, so its
@@ -55,10 +72,13 @@ const NOT_COPY_RPC =
  * tables and functions) counts: a Storage object or an edge function (photos, documents) changes nothing the copy holds.
  */
 export function noteDataWrite(input: RequestInfo | URL): void {
-  if (quietDepth > 0) return;
   const url = (typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).split(/[?#]/)[0];
   if (!url.includes('/rest/v1/')) return;
   const rpc = /\/rest\/v1\/rpc\/([A-Za-z0-9_]+)$/.exec(url)?.[1];
   if (rpc !== undefined && NOT_COPY_RPC.test(rpc)) return;
+  if (quietDepth > 0) {
+    writeSeenWhileQuiet = true;
+    return;
+  }
   noteFacilityWrite();
 }

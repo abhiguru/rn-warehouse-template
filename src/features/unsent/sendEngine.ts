@@ -20,7 +20,7 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { handOverRefused } from '@/features/holding/handOver';
 import { answerCodeOf } from './refusalAnswer';
 import { getSendKind, type SendContext, type SendKind, type SendOutcome } from './sendKinds';
-import { withoutWriteNote } from '@/config/facilityWrite';
+import { takeWriteSeenWhileQuiet, withoutWriteNote } from '@/config/facilityWrite';
 import { getUnsentDb } from './unsentDb';
 import { cannotSendUnsent } from './unsentRole';
 import {
@@ -420,7 +420,9 @@ export function sendNow(reason: SendTrigger): Promise<void> {
       tellSending();
     }
     // What was sent changes the numbers and stock the copy holds: ask for a sync (C298 6.6).
-    if (engine.sentAny) {
+    // A write made during the pass was not noted (the pass is quiet), so a pass that sent nothing still asks once.
+    const foreignWrite = takeWriteSeenWhileQuiet();
+    if (engine.sentAny || foreignWrite) {
       engine.sentAny = false;
       void syncNow('after-send');
     }
