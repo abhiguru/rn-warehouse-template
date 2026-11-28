@@ -89,10 +89,14 @@ jobs:
 
       # expo-doctor is a locked devDependency (exact version); --no-install makes
       # the step fail rather than fetch an unreviewed copy from the registry.
+      # The match of installed packages to the Expo SDK is the step above's job: it warns on
+      # pull requests and pushes and fails on the weekly run. expo-doctor repeats that one check,
+      # so it is skipped here on pull requests and pushes only; every other check still fails.
       - name: Expo project diagnostics
         run: npx --no-install expo-doctor
         env:
           EXPO_NO_TELEMETRY: '1'
+          EXPO_DOCTOR_SKIP_DEPENDENCY_VERSION_CHECK: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && '1' || '0' }}
 
       # The ratchet: warnings may not grow. Lower the number when warnings are
       # fixed; keep it equal to release.yml (scripts/workflows.test.mjs checks).

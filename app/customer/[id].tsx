@@ -27,6 +27,7 @@ import { useAppSelector } from '@/store/hooks';
 import type { Customer } from '@/types/customer.types';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { showAlert } from '@/utils/alert';
 import { formatTime } from '@/utils/formatters';
 import { serverText, transportText } from '@/utils/serverText';
@@ -38,6 +39,7 @@ export default function CustomerPage() {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const role = useAppSelector(state => state.auth.userProfile?.role);
+  const needsConnection = useNeedsConnectionV3();
   // The Pricing tab is for the roles that may open Item pricing; anyone else sees the Overview alone, with no tab bar.
   const canSeePricing = canOpenScreen(role, 'itemPricing');
   const requestedTab = Array.isArray(tab) ? tab[0] : tab;
@@ -176,6 +178,10 @@ export default function CustomerPage() {
               <Button
                 type="tertiary"
                 onPress={() => router.push({ pathname: '/customer-edit/[id]', params: { id: shown.id } })}
+                // Offline the reason is in the label only; the Overview's actions carry the visible line (Design 2.5).
+                disabled={needsConnection}
+                testID="customer-details-edit"
+                accessibilityLabel={needsConnection ? needsConnectionLabel(tr('common.edit')) : undefined}
               >
                 {tr('common.edit')}
               </Button>

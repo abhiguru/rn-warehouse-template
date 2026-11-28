@@ -272,6 +272,9 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.cardActive,
   },
 
+  swipeDisabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
   swipeSecondaryPressed: {
     backgroundColor: t.surface.cardPressed,
   },
@@ -297,6 +300,13 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   // =========================================================================
   // Footer loading
   // =========================================================================
+  listHold: { flex: 1 },
+  // A lasting fact about the list, at its top (§14.9).
+  listNote: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    paddingBottom: space.sm,
+  },
   footerLoader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

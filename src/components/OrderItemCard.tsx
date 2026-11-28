@@ -23,6 +23,7 @@ import {
 import StockIndicator from './StockIndicator';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { localizeDigits, t as tr } from '@/i18n';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 
 /** A count as it is stored (no grouping), in the digits of the language. */
 const digits = (n: number) => localizeDigits(String(n));
@@ -115,6 +116,9 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   const [isRemoving, setIsRemoving] = useState(false);
   // The card's buttons are off while the question or the removal is open, and while a lost answer is being checked.
   const locked = isRemoving || checking !== undefined;
+  // The phone has no connection and reads the phone copy: every change of the line needs one (WH-328, Design 2.10b).
+  const needsConnection = useNeedsConnectionV3();
+  const controlsOff = locked || needsConnection;
 
   // Animation for red flash
   const flashAnim = useRef(new Animated.Value(0)).current;
@@ -485,7 +489,9 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   // can be lowered to the stock or removed. Nothing here changes the order by itself.
   const stock = item.grn_item.current_stock;
   const overStock = localQuantity > stock;
-  const raiseOff = locked || overStock;
+  const raiseOff = controlsOff || overStock;
+  // The reason goes at the end of a disabled control's spoken label.
+  const spoken = (label: string): string => (needsConnection ? needsConnectionLabel(label) : label);
   // − and −10 on a line above its stock lower it to the stock (the removal question when there is none): the spoken labels say so.
   const lowerLabel = (amount: number): string | undefined => {
     if (!overStock) return undefined;
@@ -546,6 +552,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           </View>
         </View>
 
+
         {overStock ? (
           <View style={styles.overStockRow} testID="order-line-over-stock">
             <InlineValidation variant="warning" message={stock <= 0 ? tr('orders.item.outOfStock') : tr('orders.item.overStock', { stock: digits(stock) })} />
@@ -557,24 +564,26 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
       <View style={styles.quantitySection}>
         {/* -10 Button */}
         <Pressable
-          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed, locked && styles.controlOff]}
+          testID={`order-line-less10-${item.id}`}
+          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed, controlsOff && styles.controlOff]}
           onPress={() => handleQuantityDecrease(10)}
-          disabled={locked}
+          disabled={controlsOff}
           accessibilityRole="button"
-          accessibilityState={{ disabled: locked }}
-          accessibilityLabel={lowerLabel(10) ?? tr('orders.item.removeAmount', { amount: 10, name: itemName })}
+          accessibilityState={{ disabled: controlsOff }}
+          accessibilityLabel={spoken(lowerLabel(10) ?? tr('orders.item.removeAmount', { amount: 10, name: itemName }))}
         >
           <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>{localizeDigits('−10')}</Text>
         </Pressable>
 
         <View style={styles.quantityContainer}>
           <Pressable
-            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed, locked && styles.controlOff]}
+            testID={`order-line-less1-${item.id}`}
+            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed, controlsOff && styles.controlOff]}
             onPress={() => handleQuantityDecrease(1)}
-            disabled={locked}
+            disabled={controlsOff}
             accessibilityRole="button"
-            accessibilityState={{ disabled: locked }}
-            accessibilityLabel={lowerLabel(1) ?? (localQuantity <= 1 ? tr('orders.item.removeFromOrder', { name: itemName }) : tr('orders.item.decrease', { name: itemName, amount: 1 }))}
+            accessibilityState={{ disabled: controlsOff }}
+            accessibilityLabel={spoken(lowerLabel(1) ?? (localQuantity <= 1 ? tr('orders.item.removeFromOrder', { name: itemName }) : tr('orders.item.decrease', { name: itemName, amount: 1 })))}
           >
             <Icon name="minus" size={iconSize.md} color={t.brand.tint} />
           </Pressable>
@@ -615,12 +624,13 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           </View>
 
           <Pressable
+            testID={`order-line-more1-${item.id}`}
             style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed, raiseOff && styles.controlOff]}
             onPress={() => handleQuantityIncrease(1)}
             disabled={raiseOff}
             accessibilityRole="button"
             accessibilityState={{ disabled: raiseOff }}
-            accessibilityLabel={tr('orders.item.increase', { name: itemName, amount: 1 })}
+            accessibilityLabel={spoken(tr('orders.item.increase', { name: itemName, amount: 1 }))}
           >
             <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
           </Pressable>
@@ -628,12 +638,13 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
 
         {/* +10 Button */}
         <Pressable
+          testID={`order-line-more10-${item.id}`}
           style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed, raiseOff && styles.controlOff]}
           onPress={() => handleQuantityIncrease(10)}
           disabled={raiseOff}
           accessibilityRole="button"
           accessibilityState={{ disabled: raiseOff }}
-          accessibilityLabel={tr('orders.item.addAmount', { amount: 10, name: itemName })}
+          accessibilityLabel={spoken(tr('orders.item.addAmount', { amount: 10, name: itemName }))}
         >
           <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>{localizeDigits('+10')}</Text>
         </Pressable>
@@ -641,11 +652,12 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         {/* Remove Button: secondary negative, last in the row */}
         <Pressable
           onPress={() => void handleRemove()}
-          style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed, locked && styles.controlOff]}
-          disabled={locked}
+          testID={`order-line-remove-${item.id}`}
+          style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed, controlsOff && styles.controlOff]}
+          disabled={controlsOff}
           accessibilityRole="button"
-          accessibilityState={{ disabled: locked }}
-          accessibilityLabel={tr('orders.item.removeFromOrder', { name: itemName })}
+          accessibilityState={{ disabled: controlsOff }}
+          accessibilityLabel={spoken(tr('orders.item.removeFromOrder', { name: itemName }))}
         >
           <Icon name="trash-can-outline" size={iconSize.md} color={t.status.negative.text} />
         </Pressable>
@@ -835,7 +847,6 @@ const makeStyles = (t: ThemeTokens) => ({
   controlOff: {
     opacity: t.interaction.disabledOpacity,
   },
-  // The "only N in stock" warning under the stock indicator
   overStockRow: {
     paddingHorizontal: space.xs,
     paddingTop: space.xs,

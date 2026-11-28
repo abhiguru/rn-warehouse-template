@@ -42,6 +42,8 @@ import {
 
 import { showAlert } from '@/utils/alert';
 import { createLogger } from '@/utils/logger';
+import { refuseAtLimit } from '@/features/unsent/limitDialog';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 
 const logger = createLogger('OrderGroupCard');
 // ============================================================================
@@ -70,6 +72,8 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
   const t = useTokens();
   const router = useRouter();
   const dispatch = useAppDispatch();
+  // Creating a dispatch needs the server (Design 2.10b, DQ3): the list says so once, the button says why in its label.
+  const needsConnection = useNeedsConnectionV3();
 
   // State for fetched items (since getOrdersList doesn't include items)
   const [fetchedItems, setFetchedItems] = useState<OrderItem[] | null>(null);
@@ -164,6 +168,8 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
     (header: ConvertedDispatchData['header'], items: ConvertedDispatchData['items'], orderLots: ConvertedDispatchData['orderLots']) => {
       if (isOpening.current) return;
       if (refusedByOpenForm()) return;
+      // The 2-hour rule: no new record while old work is unsent (WH-301).
+      if (refuseAtLimit()) return;
       isOpening.current = true;
       dispatch(loadFromOrder({
         header,
@@ -406,17 +412,18 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
             </Pressable>
 
             <Pressable
+              testID={`queue-card-dispatch-${order.id}`}
               style={({ pressed }) => [
                 styles.dispatchButton,
                 pressed && styles.dispatchButtonPressed,
-                !canDispatch && styles.disabled,
+                (!canDispatch || needsConnection) && styles.disabled,
               ]}
               onPress={handleGenerateDispatch}
-              disabled={!canDispatch}
+              disabled={!canDispatch || needsConnection}
               accessibilityRole="button"
-              accessibilityLabel={translate('lists.dispatch.create')}
+              accessibilityLabel={needsConnection ? needsConnectionLabel(translate('lists.dispatch.create')) : translate('lists.dispatch.create')}
               accessibilityHint={canDispatch ? undefined : translate('lists.orderGroup.noStockHint')}
-              accessibilityState={{ disabled: !canDispatch }}
+              accessibilityState={{ disabled: !canDispatch || needsConnection }}
             >
               <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.onFill} />
               <Text style={styles.dispatchButtonText}>{translate('lists.dispatch.create')}</Text>

@@ -22,7 +22,7 @@ import { t as tr, formatIdentifier } from '@/i18n';
 // TYPES
 // ============================================================================
 interface GRNHeroHeaderProps {
-  gr_no: string;
+  gr_no: string | null | undefined;
   date: string;
   total_qty: number;
   total_stock: number;
@@ -59,6 +59,7 @@ const makeStyles = (t: ThemeTokens) => ({
   titleBlock: { flex: 1 },
   docType: { ...typography.footnote, color: t.text.secondary },
   number: { ...typography.title2, color: t.text.primary },
+  numberPending: { color: t.text.secondary },
   meta: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
   tag: { marginTop: space.xs },
   importedTag: { marginTop: space.sm },
@@ -116,6 +117,10 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  // A GRN not sent yet has no number: say so instead of leaving it blank (design 10.3).
+  const numberPending = !gr_no?.trim();
+  const pendingText = tr('offline.offlineNew.heroNumberPending');
+  const pendingSpoken = tr('offline.offlineNew.heroNumberPendingSpoken');
   const compact = useWindowDimensions().fontScale >= COMPACT_FONT_SCALE;
 
   // Ensure all numeric values are valid numbers (handle null/undefined)
@@ -149,11 +154,15 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
           style={styles.titleBlock}
           accessible
           accessibilityRole="header"
-          accessibilityLabel={[tr('grn.details.titleWithNumber', { number: formatIdentifier(gr_no) }), customer_name, formattedDate ? formatSpokenDate(date) : null].filter(Boolean).join(', ')}
+          accessibilityLabel={[numberPending ? `${tr('common.grn')}, ${pendingSpoken}` : tr('grn.details.titleWithNumber', { number: formatIdentifier(gr_no) }), customer_name, formattedDate ? formatSpokenDate(date) : null].filter(Boolean).join(', ')}
         >
           {/* From the compact scale the title bar ("GRN <number>") already shows these two. */}
           {!compact && <Text style={styles.docType} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{tr('common.grn')}</Text>}
-          {!compact && <Text style={styles.number} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{gr_no}</Text>}
+          {!compact && (
+            <Text style={[styles.number, numberPending && styles.numberPending]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>
+              {numberPending ? pendingText : gr_no}
+            </Text>
+          )}
           {meta ? (
             <Text style={[styles.meta, compact && styles.metaCompact]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{meta}</Text>
           ) : null}

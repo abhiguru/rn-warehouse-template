@@ -35,7 +35,7 @@ import {
 } from '@/features/filters/configs/reports';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
 import { reportById } from '@/features/reports/reportRegistry';
-import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
+import { changeCustomerAction, exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
@@ -145,6 +145,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const filters = useReportFilters(GRN_ACTIVITY_CUSTOMERS);
   const { period, view } = filters.request;
   const query = useReportQuery<AllGRNActivityData>({
+    serverOnly: true,
     key: [REPORT_ID, 'customers', period.from, period.to],
     fetch: () => getAllGRNActivity({ fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.grnActivity.loadError'),
@@ -176,6 +177,9 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      needsConnectionId={`${REPORT_ID}-needs-connection`}
+      serverOnly
+      reportId={REPORT_ID}
       title={tr('reports.titles.grnActivity')}
       subtitle={tr('reports.shared.allCustomers')}
       actions={actions}
@@ -261,6 +265,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const filters = useReportFilters(GRN_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period, view } = filters.request;
   const query = useReportQuery<GRNActivityData>({
+    serverOnly: true,
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerGRNActivity({ customerId, fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.grnActivity.loadError'),
@@ -313,7 +318,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...changeCustomerAction(onChangeCustomer),
       ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
@@ -331,6 +336,9 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 
   return (
     <ReportScaffold
+      needsConnectionId={`${REPORT_ID}-needs-connection`}
+      serverOnly
+      reportId={REPORT_ID}
       title={tr('reports.titles.grnActivity')}
       subtitle={customerName || undefined}
       actions={actions}

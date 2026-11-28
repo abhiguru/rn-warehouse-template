@@ -36,6 +36,20 @@ export const components = {
     changeServerLabel: 'Change warehouse server',
     backToFacilitiesLabel: 'Back to My facilities',
     footer: 'If this keeps happening, contact your facility.',
+    offlineTooLongTitle: 'Connect to continue',
+    offlineTooLongMessage: "This phone hasn't connected to your cold storage for over 30 days. Connect to the internet to sign in again.",
+    offlineTooLongKept: 'Entries not sent yet are kept on this phone.',
+    offlineTooLongRetryLabel: 'Try connecting again',
+    storeUnreadableTitle: "Couldn't start the app",
+    storeUnreadableMessage: "This phone couldn't read the app's saved sign-in. Nothing has been deleted. Try again. If it keeps happening, restart the phone.",
+    storeUnreadableRetryLabel: 'Try starting the app again',
+    storeUnreadableSignInHint: "If restarting the phone didn't help, you can sign in again.",
+    signInAgain: 'Sign in again',
+    signInAgainTitle: 'Sign in again?',
+    signInAgainMessage: 'The saved sign-in and the data on this phone will be removed. The data loads again after you sign in with your mobile number and OTP.',
+    signInAgainKeepsUnsent: 'Entries not sent yet stay on this phone and are sent after you sign in.',
+    signInAgainFailedTitle: "Couldn't start signing in again",
+    signInAgainFailedMessage: 'Restart the phone, then tap Sign in again.',
   },
   errorBoundary: {
     title: 'Something went wrong',
@@ -453,6 +467,53 @@ export const components = {
   skeleton: {
     loadingDetails: 'Loading details',
     loadingList: 'Loading list',
+  },
+  offlineStatus: {
+    // The status bar of the phone copy (WH-298; product/design/offline-capture.md Part 1, 1.4).
+    upToDate: 'Up to date',
+    updating: 'Updating… Last updated {{time}}',
+    offline: 'Offline. Last updated {{time}}',
+    updateFailed: "Couldn't update. Last updated {{time}}",
+    firstLoad: 'Loading the warehouse onto this phone…',
+    notReady: "This phone isn't ready yet. Connect to load the warehouse.",
+    unsent: {
+      one: '1 item not sent yet. Connect and send it by {{time}}.',
+      other: '{{count}} items not sent yet. Connect and send them by {{time}}.',
+    },
+    sending: { one: 'Sending 1 item…', other: 'Sending {{count}} items…' },
+    unsentFeatureOff: {
+      one: '1 item not sent yet. Tap to see it.',
+      other: '{{count}} items not sent yet. Tap to see them.',
+    },
+    unsentLimit: {
+      one: '1 item not sent for over 2 hours. Connect and send it to record more.',
+      other: '{{count}} items not sent for over 2 hours. Connect and send them to record more.',
+    },
+    unsentUnreadable: "Couldn't read this phone's unsent entries. Close the app and open it again.",
+    heldLine: {
+      one: '1 of your items is held. Tap to see it.',
+      other: '{{count}} of your items are held. Tap to see them.',
+    },
+    waitingForAdmin: {
+      one: '1 item you recorded is waiting for an administrator.',
+      other: '{{count}} items you recorded are waiting for an administrator.',
+    },
+    storageLow: 'Phone storage is almost full. Free some space so records can be kept.',
+    retryLabel: 'Try updating again',
+    opening: 'Opening the records on this phone…',
+    openFailed: "Couldn't open the records on this phone.",
+    openRetryLabel: 'Try opening again',
+  },
+  offlineRead: {
+    // Reading from the phone copy (WH-299; product/design/offline-capture.md 2.5 and 2.10).
+    needsConnection: 'Needs a connection',
+    screenNeedsConnection: 'This needs a connection. It will load when you reconnect.',
+    photoNeedsConnection: 'Photo needs a connection',
+    // An unsent change on a row, on a details page, and the deductions under a lot's stock (Design 2.2 to 2.4).
+    notSent: 'Not sent yet',
+    sending: 'Sending…',
+    changesNotSent: 'Your changes are not sent yet: {{fields}}.',
+    changesSending: 'Sending your changes…',
   },
   offline: {
     message: "You're offline. Actions that need the server will work again when you reconnect.",

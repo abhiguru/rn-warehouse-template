@@ -3,6 +3,14 @@ import type { grn as source } from '../en/grn';
 import type { Translation } from '../../types';
 
 export const grn: Translation<typeof source> = {
+  offline: {
+    invoicingFilterOff: 'ઇન્વૉઇસ ફિલ્ટર ફરી જોડાશો ત્યારે ચાલશે.',
+    invoicingFilterOffLabel: 'ઇન્વૉઇસ, ફરી જોડાશો ત્યારે ચાલશે',
+    invoicingWaitTitle: 'ઇન્વૉઇસ પ્રમાણે ફિલ્ટર કરવા કનેક્શન જોઈએ',
+    invoicingWaitMessage: 'ઑફલાઇન આવક પાવતી જોવા ફિલ્ટર સાફ કરો.',
+    clearInvoicingFilter: 'ઇન્વૉઇસ ફિલ્ટર સાફ કરો',
+  },
+
   steps: {
     details: 'આવક પાવતીની વિગતો',
     detailsShort: 'વિગતો',
@@ -250,6 +258,7 @@ export const grn: Translation<typeof source> = {
     fixHighlighted: 'પાછા જાઓ અને ભૂલ બતાવેલી વિગતો સુધારો.',
     photoRequiredTitle: 'આવક પાવતીનો ફોટો ઉમેરો',
     photoRequiredMessage: 'આવક પાવતી {{number}} માટે પાવતી બુકની નોંધનો ફોટો જોડો.',
+    photoRequiredMessagePending: 'પાવતી બુકની નોંધનો ફોટો જોડો.',
     ratesMissingTitle: 'ખૂટતા દર ઉમેરો',
     ratesMissingMessage: 'સાચવતા પહેલાં ખૂટતા દર ઉમેરો.',
     ratesNotLoadedTitle: 'દર લોડ થઈ શક્યા નહીં',
@@ -288,6 +297,9 @@ export const grn: Translation<typeof source> = {
     savedAfterLeaving: 'તમે ફોર્મ છોડ્યું તે પહેલાં આવક પાવતી {{number}} સચવાઈ ગઈ. તે આવક પાવતીની યાદીમાં છે.',
     savedAfterLeavingPhotos:
       'આવક પાવતી {{number}} સચવાઈ ગઈ, પણ તેના ફોટો અપલોડ થયા નથી. તેને આવક પાવતીની યાદીમાં ખોલો અને ફોટો ટૅબમાં ફોટો ઉમેરો.',
+    savedAfterLeavingPending: 'તમે ફોર્મ છોડ્યું તે પહેલાં આવક પાવતી સચવાઈ ગઈ. તે આવક પાવતીની યાદીમાં છે.',
+    savedAfterLeavingPhotosPending:
+      'આવક પાવતી સચવાઈ ગઈ, પણ તેના ફોટો અપલોડ થયા નથી. તેને આવક પાવતીની યાદીમાં ખોલો અને ફોટો ટૅબમાં ફોટો ઉમેરો.',
     photosNotUploadedMessage: 'આવક પાવતી {{number}} સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     photosNotUploadedMessageNoNumber: 'આવક પાવતી સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     failedGrnPhoto: 'આવક પાવતીનો ફોટો {{position}}',
@@ -326,6 +338,7 @@ export const grn: Translation<typeof source> = {
     // Draft for the owner's wording review (2026-10-20).
     a11yInvoicedLocked: 'ઇન્વૉઇસમાં છે, નંગ, આઇટમ, પેકિંગ અને વજન લૉક છે',
     confirmCreateTitle: 'આવક પાવતી {{number}} બનાવવી છે?',
+    confirmCreateTitlePending: 'આ આવક પાવતી બનાવશો?',
     confirmSaveTitle: 'આવક પાવતી {{number}}ના ફેરફાર સાચવવા છે?',
     confirmCreateMessage: {
       one: '{{count}} આઇટમની આવક થશે અને સ્ટોક બદલાશે.',

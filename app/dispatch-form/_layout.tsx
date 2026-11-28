@@ -10,6 +10,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Stack, router } from 'expo-router';
+import { OfflineFormGate } from '@/features/phone-copy/components/OfflineFormGate';
+import { t as tr } from '@/i18n';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAppStore } from '@/store/hooks';
 import {
@@ -55,12 +57,14 @@ export default function DispatchFormLayout() {
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        animation: 'none',
-        gestureEnabled: false,
-      }}
-    />
+    <OfflineFormGate title={tr('common.dispatch')} testID="dispatch-form-needs-connection">
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: 'none',
+          gestureEnabled: false,
+        }}
+      />
+    </OfflineFormGate>
   );
 }

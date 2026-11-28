@@ -59,7 +59,7 @@ export function useRateActions(item: { id: string; name: string }) {
       notifyRatesChanged(item.id);
       setCancelling(null);
       if (result.success) showToast(t('pricing.cancel.done'));
-      else showAlert(t('pricing.cancel.failedTitle'), result.errorCode === 'STALE_RATES' ? t('pricing.error.staleRatesAction') : (result.message ?? t('pricing.cancel.failed')));
+      else showAlert(t(result.outcomeUnknown ? 'pricing.cancel.notConfirmedTitle' : 'pricing.cancel.failedTitle'), result.errorCode === 'STALE_RATES' ? t('pricing.error.staleRatesAction') : (result.message ?? t('pricing.cancel.failed')));
     } finally {
       setBusy(false);
     }
@@ -79,7 +79,7 @@ export function useRateActions(item: { id: string; name: string }) {
         });
         notifyRatesChanged(item.id);
         if (result.success) showToast(t('pricing.undo.done'));
-        else showAlert(t('pricing.undo.failedTitle'), result.errorCode === 'STALE_RATES' ? t('pricing.error.staleRatesAction') : (result.message ?? t('pricing.error.generic')));
+        else showAlert(t(result.outcomeUnknown ? 'pricing.undo.notConfirmedTitle' : 'pricing.undo.failedTitle'), result.errorCode === 'STALE_RATES' ? t('pricing.error.staleRatesAction') : (result.message ?? t('pricing.error.generic')));
       } finally {
         setBusy(false);
       }

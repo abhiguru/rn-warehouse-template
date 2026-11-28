@@ -158,7 +158,8 @@ const SensorEditScreen: React.FC = () => {
         } else if (result.code === 'PGRST202') {
           showAlert(tr('sensors.edit.couldNotSaveTitle'), tr('sensors.edit.serverTooOld'));
         } else {
-          showAlert(tr('sensors.edit.couldNotSaveTitle'), result.message ?? tr('sensors.edit.couldNotSave'));
+          const title = result.outcomeUnknown ? 'sensors.edit.notConfirmedTitle' : 'sensors.edit.couldNotSaveTitle';
+          showAlert(tr(title), result.message ?? tr('sensors.edit.couldNotSave'));
         }
       }
     } finally {

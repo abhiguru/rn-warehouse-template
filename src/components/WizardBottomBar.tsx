@@ -9,6 +9,8 @@ import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 import { useTableLayout } from '@/components/common/DetailTable';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel } from '@/features/phone-copy/useNeedsConnection';
 
 export interface WizardBottomBarProps {
   currentStep: number;
@@ -48,6 +50,12 @@ export interface WizardBottomBarProps {
    * with useRevealScrollRef and spread its revealHandlers on the scroll view.
    */
   scrollRef?: RevealScrollRef;
+  /**
+   * The primary action needs the server and the phone is offline (WH-381, Design offline-capture.md 13.1 B): the bar says
+   * "Needs a connection" once, above the buttons, under this testID; the primary button is disabled and its screen-reader
+   * label carries the reason. Left out, the bar is as before.
+   */
+  needsConnectionTestID?: string;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -66,6 +74,14 @@ const makeStyles = (t: ThemeTokens) => ({
   // the reading order and the focus order agree.
   containerStacked: {
     flexDirection: 'column' as const,
+  },
+  // With a "Needs a connection" line above the buttons (WH-381).
+  containerWithNote: {
+    flexDirection: 'column' as const,
+  },
+  buttonGroup: {
+    flexDirection: 'row' as const,
+    gap: space.sm,
   },
   buttonStacked: {
     flex: 0,
@@ -145,7 +161,9 @@ export default function WizardBottomBar({
   addAccessibilityLabel,
   addTestID,
   scrollRef,
+  needsConnectionTestID,
 }: WizardBottomBarProps) {
+  const needsServer = needsConnectionTestID !== undefined;
   const insets = useSafeAreaInsets();
   // Lifted by the part of the bar the keyboard covers (WH-228), as FormSaveBar is.
   const { ref: barRef, lift, keyboardShown, revision, onLayout: measureLift } = useKeyboardCoverLift();
@@ -231,13 +249,13 @@ export default function WizardBottomBar({
         styles.nextButton,
         stacked && styles.buttonStacked,
         pressed && styles.nextButtonPressed,
-        (nextDisabled || isLoading) && styles.buttonDisabled,
+        (nextDisabled || needsServer || isLoading) && styles.buttonDisabled,
       ]}
       onPress={handleNext}
-      disabled={nextDisabled || isLoading}
+      disabled={nextDisabled || needsServer || isLoading}
       accessibilityRole="button"
-      accessibilityLabel={isLoading ? loadingLabel : nextAccessibilityLabel ?? label}
-      accessibilityState={{ disabled: nextDisabled || isLoading, busy: isLoading }}
+      accessibilityLabel={isLoading ? loadingLabel : needsServer ? needsConnectionLabel(nextAccessibilityLabel ?? label) : nextAccessibilityLabel ?? label}
+      accessibilityState={{ disabled: nextDisabled || needsServer || isLoading, busy: isLoading }}
       testID={nextTestID}
     >
       {isLoading ? (
@@ -255,21 +273,31 @@ export default function WizardBottomBar({
   );
 
   // Stacked, Next comes first: the drawing, the reading order and the focus order agree.
+  const buttons = stacked ? (
+    <>
+      {nextButton}
+      {addButton}
+      {backButton}
+    </>
+  ) : (
+    <>
+      {backButton}
+      {addButton}
+      {nextButton}
+    </>
+  );
+  const barStyle = [styles.container, stacked && styles.containerStacked, { marginBottom: lift, paddingBottom: (Platform.OS === 'ios' && !keyboardShown ? insets.bottom : 0) + space.md }];
+  if (needsConnectionTestID === undefined) {
+    return (
+      <View ref={barRef} onLayout={measureLift} style={barStyle}>
+        {buttons}
+      </View>
+    );
+  }
   return (
-    <View ref={barRef} onLayout={measureLift} style={[styles.container, stacked && styles.containerStacked, { marginBottom: lift, paddingBottom: (Platform.OS === 'ios' && !keyboardShown ? insets.bottom : 0) + space.md }]}>
-      {stacked ? (
-        <>
-          {nextButton}
-          {addButton}
-          {backButton}
-        </>
-      ) : (
-        <>
-          {backButton}
-          {addButton}
-          {nextButton}
-        </>
-      )}
+    <View ref={barRef} onLayout={measureLift} style={[...barStyle, styles.containerWithNote]}>
+      <NeedsConnectionLine testID={needsConnectionTestID} text={tr('components.offlineRead.needsConnection')} />
+      <View style={[styles.buttonGroup, stacked && styles.containerStacked]}>{buttons}</View>
     </View>
   );
 }

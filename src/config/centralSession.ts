@@ -43,6 +43,11 @@ const RENEW_AHEAD_MS = 60 * 1000;
 /** A secure store that did not answer at start is read again this much later. */
 export const RESTORE_RETRY_MS = 2000;
 /**
+ * The waits before the start of the app reads an unanswering secure store again, before it may decide anything (WH-361).
+ * The same waits as the facility session's SECURE_READ_RETRY_MS: this file does not import that one.
+ */
+const START_READ_RETRY_MS = [250, 750, 2000] as const;
+/**
  * The catalogue may be reused for this long. It carries whether each facility was reachable a
  * minute ago (central service 0.8.0, `max-age=30`), so it is not kept for long; pull to refresh
  * and "Try again" ask the service again at once.
@@ -447,6 +452,7 @@ function forgetInMemory(message: string | null): void {
     opening: null,
     outcome: null,
     pendingLink: null,
+    reopenOrigin: null,
   });
 }
 
@@ -506,10 +512,27 @@ export async function retryCentralRestoreIfNeeded(): Promise<void> {
   await restoreCentralSession();
 }
 
-export async function restoreCentralSession(): Promise<void> {
+/**
+ * `onUnreadable` is for the start of the app (WH-361): a store that does not answer is read again after
+ * START_READ_RETRY_MS, and `onUnreadable` is told when it still does not, so whether the person is signed in is not
+ * known and sign-in must not be shown on that.
+ */
+export async function restoreCentralSession(options: { onUnreadable?: () => void } = {}): Promise<void> {
+  let answered = await readStoredCentralSession();
+  if (!options.onUnreadable) return;
+  for (const wait of START_READ_RETRY_MS) {
+    if (answered) return;
+    await new Promise<void>(resolve => setTimeout(resolve, wait));
+    answered = await readStoredCentralSession();
+  }
+  if (!answered) options.onUnreadable();
+}
+
+/** One restore. False when the secure store did not answer and nobody is known to be signed in. */
+async function readStoredCentralSession(): Promise<boolean> {
   if (!getCentralLoginConfig()) {
     setCentralState({ status: 'signedOut', user: null });
-    return;
+    return true;
   }
   if (restoreRetry) {
     clearTimeout(restoreRetry);
@@ -549,7 +572,8 @@ export async function restoreCentralSession(): Promise<void> {
     }
     return [found, foundUserText];
   });
-  if (started !== epoch) return;
+  // A sign-in or a sign-out since this read began decides what is known.
+  if (started !== epoch) return true;
   if (session === UNREADABLE || userText === UNREADABLE) {
     // The store did not answer: nothing stored is touched, and a session already
     // in memory is kept. Until something is known the guard treats the person
@@ -568,13 +592,14 @@ export async function restoreCentralSession(): Promise<void> {
         (restoreRetry as { unref?: () => void }).unref?.();
       }
     }
-    return;
+    return getCentralState().status === 'signedIn';
   }
   restorePending = false;
   restoreRetried = false;
   const user = readStoredUser(userText);
   if (session && user) setCentralState({ status: 'signedIn', user });
   else setCentralState({ status: 'signedOut', user: null });
+  return true;
 }
 
 // ---------------------------------------------------------------------------

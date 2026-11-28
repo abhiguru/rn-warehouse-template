@@ -980,3 +980,154 @@ describe('rolling back a photo upload', () => {
     );
   });
 });
+
+// WH-397: every online photo upload holds the after-write sync with a token of its own (holdAfterWriteSync), released in a
+// finally, so a save with N photos makes one sync. The real facilityWrite is used; its release events are what the sync
+// engine turns into the one 400 ms timer.
+describe('the after-write sync hold of the photo uploads', () => {
+  const { hasActiveUploadHold, subscribeUploadHoldReleased } = jest.requireActual('@/config/facilityWrite') as typeof import('@/config/facilityWrite');
+  const asset = { uri: 'file:///cache/book.jpg', fileName: 'book.jpg', width: 800, height: 600 } as any;
+  const many = (count: number, prefix = 'photo') =>
+    Array.from({ length: count }, (_, index) => ({ image: picked(`${prefix}-${index}`), imageType: 'header' as const, position: index + 1 }));
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+  let released = 0;
+  let unsubscribe: () => void;
+  /** Storage uploads that wait for the test, by their storage path. */
+  const waiting = new Map<string, () => void>();
+  const blockStorage = (onlyPath?: string) => {
+    mockUploadHook = (path) =>
+      onlyPath !== undefined && path !== onlyPath
+        ? Promise.resolve({ error: null })
+        : new Promise((resolve) => waiting.set(path, () => resolve({ error: null })));
+  };
+  const letAllThrough = async () => {
+    while (waiting.size > 0) {
+      [...waiting.values()].forEach((go) => go());
+      waiting.clear();
+      await settle();
+    }
+  };
+
+  beforeEach(() => {
+    released = 0;
+    waiting.clear();
+    unsubscribe = subscribeUploadHoldReleased(() => { released += 1; });
+  });
+  afterEach(async () => {
+    await letAllThrough();
+    unsubscribe();
+  });
+
+  it('a save with 10 photos holds from the first photo to the last and releases once', async () => {
+    blockStorage();
+    const saving = uploadGRNPhotos(GRN_ID, many(10));
+    await settle();
+    expect(hasActiveUploadHold()).toBe(true);
+    await letAllThrough();
+    expect(await saving).toEqual({ uploadedCount: 10, failed: [] });
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+  });
+
+  it('two saves at the same time: the hold lasts until both have ended, and is released once', async () => {
+    blockStorage();
+    const one = uploadGRNPhotos(GRN_ID, many(2, 'one'));
+    await settle();
+    const two = uploadGRNPhotos(GRN_ID, many(6, 'two'));
+    await settle();
+    // the first save's photos go through; the second still has uploads waiting for a place
+    [...waiting.entries()].slice(0, 2).forEach(([path, go]) => { go(); waiting.delete(path); });
+    await settle();
+    expect(await one).toEqual({ uploadedCount: 2, failed: [] });
+    expect(hasActiveUploadHold()).toBe(true);
+    expect(released).toBe(0);
+    await letAllThrough();
+    expect(await two).toEqual({ uploadedCount: 6, failed: [] });
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+  });
+
+  it('a photo whose confirm is refused and rolled back by a cancel does not release the hold while another photo is uploading', async () => {
+    mockRpcHandlers.confirm_grn_image_upload = (args) =>
+      args.p_image_id === 'image-1' ? { data: { success: false, code: 'IMAGE_NOT_VERIFIED' }, error: null } : { data: { success: true }, error: null };
+    mockRpcHandlers.cancel_grn_image_upload = () => ({ data: { success: true, storage_path: 'path-1' }, error: null });
+    blockStorage('path-2');
+    const saving = uploadGRNPhotos(GRN_ID, many(2));
+    await settle();
+    expect(callsTo('cancel_grn_image_upload')).toHaveLength(1);   // photo A is rolled back; photo B is still going up
+    expect(hasActiveUploadHold()).toBe(true);
+    expect(released).toBe(0);
+    await letAllThrough();
+    const outcome = await saving;
+    expect(outcome.uploadedCount).toBe(1);
+    expect(outcome.failed).toHaveLength(1);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+  });
+
+  it('a register answered 200 with success false leaves no hold behind, and does not release it for the photo still uploading', async () => {
+    mockRpcHandlers.register_grn_image_upload = () => {
+      mockRegistered += 1;
+      return mockRegistered === 1
+        ? { data: { success: false, error: 'refused' }, error: null }
+        : { data: { success: true, image_id: `image-${mockRegistered}`, storage_path: `path-${mockRegistered}`, upload_token: 'token' }, error: null };
+    };
+    blockStorage('path-2');
+    const saving = uploadGRNPhotos(GRN_ID, many(2));
+    await settle();
+    expect(hasActiveUploadHold()).toBe(true);
+    expect(released).toBe(0);
+    await letAllThrough();
+    const outcome = await saving;
+    expect(outcome.uploadedCount).toBe(1);
+    expect(hasActiveUploadHold()).toBe(false);   // nothing leaked from the refused register
+    expect(released).toBe(1);
+  });
+
+  it('an upload that throws still releases its token', async () => {
+    mockUploadHook = () => Promise.reject(new Error('Network request failed'));
+    const outcome = await uploadGRNPhotos(GRN_ID, many(3));
+    expect(outcome.uploadedCount).toBe(0);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+  });
+
+  it('an immediate upload holds while it runs and releases when it ends, also when it fails', async () => {
+    blockStorage();
+    const ok = uploadGRNImage(asset, GRN_ID, 'header');
+    await settle();
+    expect(hasActiveUploadHold()).toBe(true);
+    await letAllThrough();
+    expect((await ok).success).toBe(true);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+
+    mockRpcHandlers.register_grn_image_upload = () => { throw new Error('Network request failed'); };
+    const failed = await uploadGRNImage(asset, GRN_ID, 'header');
+    expect(failed.success).toBe(false);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(2);
+  });
+
+  it('keeps holding after the wait ended while queued uploads still run, and releases once with the last', async () => {
+    jest.useFakeTimers();
+    blockStorage();
+    const first = uploadGRNPhotos(GRN_ID, many(10), 30000);
+    await jest.advanceTimersByTimeAsync(30000);
+    const outcome = await first;
+    expect(outcome.failed).toHaveLength(10);
+    expect(hasActiveUploadHold()).toBe(true);
+    expect(released).toBe(0);
+    while (waiting.size > 0) {
+      [...waiting.values()].forEach((go) => go());
+      waiting.clear();
+      await jest.advanceTimersByTimeAsync(0);
+    }
+    await Promise.all(outcome.failed.map((photo) => photo.inFlight!));
+    await jest.advanceTimersByTimeAsync(0);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+  });
+});

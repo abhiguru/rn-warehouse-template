@@ -3,16 +3,8 @@
  * RadioButton and RadioGroup.
  */
 import React, { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  ViewStyle,
-  TextStyle,
-  StyleProp,
-  Pressable,
-  LayoutAnimation,
-  Insets,
-} from 'react-native';
+import { View, Text, Pressable, LayoutAnimation } from 'react-native';
+import type { ViewStyle, TextStyle, StyleProp, Insets } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { triggerSelection } from '@/hooks/useHaptics';
@@ -63,6 +55,10 @@ export interface SegmentedControlProps {
   style?: StyleProp<ViewStyle>;
   /** Less padding in each segment, and a label that shrinks a little rather than end in "…" (a document number). */
   dense?: boolean;
+  /** For tests: the control's id; each segment is `${testID}-${value}`. */
+  testID?: string;
+  /** What each segment is to a screen reader: a radio (a choice in a form) or a tab (a second view of a screen). */
+  segmentRole?: 'radio' | 'tab';
 }
 
 export const SegmentedControl: React.FC<SegmentedControlProps> = ({
@@ -76,6 +72,8 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
   hapticFeedback = true,
   style,
   dense = false,
+  testID,
+  segmentRole = 'radio',
 }) => {
   const [pressedIndex, setPressedIndex] = useState<number | null>(null);
   const styles = useThemedStyles(makeStyles);
@@ -85,7 +83,7 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
       if (disabled || optionDisabled || value === optionValue) return;
 
       if (hapticFeedback) {
-        triggerSelection();
+        void triggerSelection();
       }
 
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -101,8 +99,9 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
         stacked && styles.segmentedContainerStacked,
         style,
       ]}
-      accessibilityRole="radiogroup"
+      accessibilityRole={segmentRole === 'tab' ? 'tablist' : 'radiogroup'}
       accessibilityLabel={accessibilityLabel ?? label}
+      testID={testID}
     >
       {label && (
         <Text
@@ -115,12 +114,14 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
           {label}
         </Text>
       )}
-      <View
-        style={[
-          styles.segmentedControlWrapper,
-          disabled && styles.segmentedControlWrapperDisabled,
-        ]}
-      >
+      <View style={styles.segmentedControlWrapper}>
+        <View
+          pointerEvents="none"
+          style={[
+            styles.segmentedControlBackdrop,
+            disabled && styles.segmentedControlWrapperDisabled,
+          ]}
+        />
         {options.map((option, index) => {
           const isSelected = value === option.value;
           const isPressed = pressedIndex === index;
@@ -129,36 +130,40 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
           return (
             <Pressable
               key={option.value}
-              style={[
-                styles.segment,
-                isSelected && styles.segmentSelected,
-                isPressed && !isSelected && styles.segmentPressed,
-                isPressed && isSelected && styles.segmentSelectedPressed,
-                isOptionDisabled && styles.segmentDisabled,
-                dense && styles.segmentDense,
-              ]}
-              hitSlop={CONTROL_HIT_SLOP}
+              style={styles.segment}
               onPress={() => handlePress(option.value, option.disabled)}
               onPressIn={() => setPressedIndex(index)}
               onPressOut={() => setPressedIndex(null)}
               disabled={isOptionDisabled}
-              accessibilityRole="radio"
+              accessibilityRole={segmentRole}
+              testID={testID ? `${testID}-${option.value}` : undefined}
               accessibilityState={{
                 selected: isSelected,
                 disabled: isOptionDisabled,
               }}
               accessibilityLabel={option.a11yLabel ?? option.label}
             >
-              <Text
+              <View
                 style={[
-                  styles.segmentText,
-                  isSelected && styles.segmentTextSelected,
+                  styles.segmentPill,
+                  isSelected && styles.segmentSelected,
+                  isPressed && !isSelected && styles.segmentPressed,
+                  isPressed && isSelected && styles.segmentSelectedPressed,
+                  isOptionDisabled && styles.segmentDisabled,
+                  dense && styles.segmentDense,
                 ]}
-                numberOfLines={1}
-                {...(dense ? { adjustsFontSizeToFit: true, minimumFontScale: 0.8 } : {})}
               >
-                {option.label}
-              </Text>
+                <Text
+                  style={[
+                    styles.segmentText,
+                    isSelected && styles.segmentTextSelected,
+                  ]}
+                  numberOfLines={1}
+                  {...(dense ? { adjustsFontSizeToFit: true, minimumFontScale: 0.8 } : {})}
+                >
+                  {option.label}
+                </Text>
+              </View>
             </Pressable>
           );
         })}
@@ -218,7 +223,7 @@ export const ButtonGroup: React.FC<ButtonGroupProps> = ({
       if (disabled || optionDisabled) return;
 
       if (hapticFeedback) {
-        triggerSelection();
+        void triggerSelection();
       }
 
       if (multiSelect) {
@@ -342,7 +347,7 @@ export const RadioButton: React.FC<RadioButtonProps> = ({
 
   const handlePress = useCallback(() => {
     if (disabled || selected) return;
-    triggerSelection();
+    void triggerSelection();
     onPress();
   }, [disabled, selected, onPress]);
 
@@ -388,7 +393,7 @@ export interface RadioGroupProps {
   /** Form cell label */
   label?: string;
   /** Available options */
-  options: Array<{ label: string; value: string; disabled?: boolean }>;
+  options: { label: string; value: string; disabled?: boolean }[];
   /** Currently selected value */
   selectedValue: string;
   /** Callback when selection changes */
@@ -466,21 +471,35 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'stretch' as const,
     minHeight: layout.objectCellMinHeight,
   },
+  // The wrapper is as tall as the touch target; the compact look is drawn by the backdrop.
   segmentedControlWrapper: {
     flexDirection: 'row' as const,
+    alignItems: 'stretch' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.xxs + 1,
+  },
+  segmentedControlBackdrop: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    top: (touchTarget - CONTROL_HEIGHT) / 2,
+    bottom: (touchTarget - CONTROL_HEIGHT) / 2,
     backgroundColor: t.surface.card,
     borderRadius: radius.button,
     borderWidth: 1,
     borderColor: t.border.button,
-    padding: space.xxs,
-    overflow: 'hidden' as const,
   },
   segmentedControlWrapperDisabled: {
     opacity: t.interaction.disabledOpacity,
   },
+  // Each segment's touch area is the full wrapper height (touchTarget); the pill inside is the visible part.
   segment: {
     flex: 1,
     minWidth: CONTROL_MIN_WIDTH,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+  },
+  segmentPill: {
     minHeight: CONTROL_HEIGHT - 2 * space.xxs,
     paddingHorizontal: space.md,
     alignItems: 'center' as const,

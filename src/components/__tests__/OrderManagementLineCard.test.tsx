@@ -45,7 +45,7 @@ jest.mock('@/utils/lostAnswer', () => ({
   ...jest.requireActual('@/utils/lostAnswer'),
   waitForServer: jest.fn(() => Promise.resolve()),
 }));
-jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
+jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1, onSessionChange: () => () => undefined }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true, type: 'wifi' }) }));
 jest.mock('@/services/order-service', () => ({
   OrderService: {

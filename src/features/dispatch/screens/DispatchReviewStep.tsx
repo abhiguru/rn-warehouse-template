@@ -65,6 +65,9 @@ import { DataTable } from '@/components/table/DataTable';
 import { sourceColumnWidth, sourceText } from '@/components/dispatch-details/DispatchItemsTab';
 import { getLanguage } from '@/i18n/language';
 import { invoiceFileName } from '@/utils/invoiceLabel';
+import { refuseAtLimit } from '@/features/unsent/limitDialog';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { waitForSyncAfterWrite } from '@/features/phone-copy/syncEngine';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
@@ -152,6 +155,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Success dialog state (create mode)
     const [showSuccessDialog, setShowSuccessDialog] = useState(false);
     const [successDialogData, setSuccessDialogData] = useState<DocumentData | null>(null);
+    // A dispatch is recorded only with the server (WH-381): with no connection the form stays as typed and its button waits.
+    const needsConnection = useNeedsConnection();
     const [isShareLoading, setIsShareLoading] = useState(false);
     const [shareError, setShareError] = useState<string | null>(null);
 
@@ -293,6 +298,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Handle form submission
     const handleSubmit = async () => {
         if (orderEmpty) return;
+        // The 2-hour rule: old unsent work stops a new save; the form stays as it is (WH-301, Design 4.3).
+        if (refuseAtLimit({ formOpen: true })) return;
         // Only the prepared copy of a photo is uploaded, never the camera or gallery file. A
         // photo still being prepared holds the save; one that could not be prepared has to go.
         if (isCreateMode) {
@@ -545,15 +552,18 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     };
 
     // Success dialog handlers (create mode)
-    const handleCreateAnother = () => {
+    // A dispatch changes the stock the copy holds (WH-299): the next form and the lists read it after the sync that brings it in.
+    const handleCreateAnother = async () => {
         setShowSuccessDialog(false);
+        await waitForSyncAfterWrite();
         resetFormState();
         router.replace('/dispatch-form/step1');
         flushToasts();
     };
 
-    const handleViewList = () => {
+    const handleViewList = async () => {
         setShowSuccessDialog(false);
+        await waitForSyncAfterWrite();
         resetFormState();
         router.replace('/dispatch');
         flushToasts();
@@ -878,6 +888,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     loadingLabel={submitBusyLabel}
                     nextDisabled={orderEmpty}
                     isLoading={isBusy}
+                    needsConnectionTestID={needsConnection ? 'dispatch-form-bottom-bar-needs-connection' : undefined}
                 />
             </View>
 
@@ -927,8 +938,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     isVisible={showSuccessDialog}
                     entity="dispatch"
                     documentData={successDialogData}
-                    onCreateAnother={handleCreateAnother}
-                    onViewList={handleViewList}
+                    onCreateAnother={() => void handleCreateAnother()}
+                    onViewList={() => void handleViewList()}
                     onPrint={handlePrint}
                     onSharePDF={handleSharePDF}
                     isShareLoading={isShareLoading}

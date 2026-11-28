@@ -46,6 +46,8 @@ export interface ProcessedDispatchImage {
   file_size?: number;
   mime_type?: string;
   uploaded_at?: string;
+  /** The photo is not on the phone and the server cannot be asked now: the screen shows a frame (WH-299). */
+  needs_connection?: boolean;
 }
 
 // Extended dispatch details with processed images
@@ -105,10 +107,7 @@ const processDispatchImages = async (images: RpcImageInfo[]): Promise<ProcessedD
     const pathForSigning = img.storage_path;
     if (!pathForSigning) return null;
     const signedUrl = await generateSignedUrl(pathForSigning);
-
-    if (!signedUrl) {
-      return null;
-    }
+    if (!signedUrl) return null;
 
     const dispatchImage: ProcessedDispatchImage = {
       id: img.id,

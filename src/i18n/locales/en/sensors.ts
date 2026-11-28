@@ -99,6 +99,7 @@ export const sensors = {
     savedToast: 'Sensor {{name}} saved.',
     saveLabel: 'Save sensor',
     couldNotSaveTitle: "Couldn't save the sensor",
+    notConfirmedTitle: "Couldn't confirm the sensor was saved",
     couldNotSave: "Couldn't save the sensor. Try again in a moment.",
     nameRequired: 'Enter a name.',
     tooLong: 'Use at most {{max}} characters.',

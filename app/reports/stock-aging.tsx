@@ -49,10 +49,11 @@ import {
 } from '@/features/filters/configs/reports/stockAging';
 import { reportById } from '@/features/reports/reportRegistry';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
-import { exportHeaderActions } from '@/features/reports/reportActions';
+import { changeCustomerAction, exportHeaderActions } from '@/features/reports/reportActions';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
+import { STOCK_AGING_KINDS } from '@/features/reports/reportCopyKinds';
 import { useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr, formatIdentifier } from '@/i18n';
@@ -250,6 +251,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
   const filters = useReportFilters(STOCK_AGING_CUSTOMERS);
   const { view } = filters.request;
   const query = useReportQuery<AllStockAgingData>({
+    copyKinds: STOCK_AGING_KINDS,
     key: [REPORT_ID, 'customers'],
     fetch: () => getAllStockAging(),
     fallbackError: tr('reports.stockAging.loadError'),
@@ -273,6 +275,7 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.stockAging')}
       subtitle={tr('reports.shared.allCustomers')}
       actions={actions}
@@ -391,6 +394,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   const filters = useReportFilters(STOCK_AGING_CUSTOMER, { scope: customerId });
   const { view } = filters.request;
   const query = useReportQuery<StockAgingData>({
+    copyKinds: STOCK_AGING_KINDS,
     key: [REPORT_ID, 'customer', customerId],
     fetch: () => getCustomerStockAging({ customerId }),
     fallbackError: tr('reports.stockAging.loadError'),
@@ -423,7 +427,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...changeCustomerAction(onChangeCustomer),
       ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
@@ -473,6 +477,7 @@ function CustomerReport({ customerId, customerName, onChangeCustomer }: Customer
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.stockAging')}
       subtitle={customerName || undefined}
       actions={actions}

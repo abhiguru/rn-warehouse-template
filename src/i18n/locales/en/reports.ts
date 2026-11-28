@@ -13,6 +13,8 @@ export const reports = {
     statement: 'Statement',
     temperatureReport: 'Temperature report',
     accountantPack: 'Accountant pack',
+    replacedEntries: 'Replaced entries',
+    holdingList: 'Holding list',
   },
   shared: {
     // A label under a stock figure; pass `count` to get "unit" for 1.
@@ -46,6 +48,9 @@ export const reports = {
     customerIdRequired: 'Customer ID is required',
     // The facility under a report's title and the Reports tab's (useFacilityName), as it is read out.
     facilityLabel: 'Facility: {{name}}',
+    // A report read from the phone copy with no connection (WH-299, Design offline-capture.md 2.10, DS3)
+    reportActionsNeedConnection: 'Sharing and PDFs need a connection.',
+    actionNeedsConnection: '{{label}}, needs a connection',
   },
   // The shared report layout (ReportScaffold)
   scaffold: {

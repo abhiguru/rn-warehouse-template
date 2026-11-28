@@ -71,7 +71,9 @@ import { Fab, FAB_CLEARANCE } from '@/components/ui/Fab';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { ListNeedsConnection, useListNeedsConnection } from './ListNeedsConnection';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
+import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 
 const logger = createLogger('OrderList');
 // ============================================================================
@@ -120,7 +122,7 @@ OrderSectionHeader.displayName = 'OrderSectionHeader';
 // MAIN COMPONENT
 // ============================================================================
 
-const OrderFlashList: React.FC<OrderFlashListProps> = ({
+const OrderFlashListOnline: React.FC<OrderFlashListProps> = ({
   customerId,
   onItemPress,
   subHeader,
@@ -167,6 +169,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   const [hasLoaded, setHasLoaded] = useState(false);
   // The next page failed: the list's last row offers "Try again".
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  // The rows came from the phone copy: the status bar tells their time.
+  const [fromPhoneCopy, setFromPhoneCopy] = useState(false);
 
   // ============================================================================
   // DATA FETCHING
@@ -227,6 +231,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       }
 
       if (result.success && result.data) {
+        setFromPhoneCopy(Boolean(result.source));
         // Filter for orders with items if needed (in case backend doesn't support it)
         let filteredOrders = result.data;
         if (showWithItemsOnly) {
@@ -291,6 +296,12 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       });
       if (sessionGeneration !== getSessionGeneration()) return;
       if (!isMountedRef.current || currentRequestId !== requestIdRef.current) return;
+      // The next page would come from another source than the first: ask for the first page again.
+      if (result.copyRestart) {
+        loadedCountRef.current = 0;
+        liveRefreshPendingRef.current = true;
+        return;
+      }
       if (result.success && result.data) {
         const page = result.data;
         loadedCountRef.current = offset + page.length;
@@ -466,7 +477,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   const isOffline = useIsOffline();
   // While the keyboard is up the list area ends at its top (WH-261), so the no-match state is centred above it.
   const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
-  const offlineUpdatedAt = isOffline && !error ? refreshTimestamp : undefined;
+  // Rows of the phone copy have no time line of their own: the status bar's time is the only one (Design 2.10b).
+  const offlineUpdatedAt = isOffline && !error && !fromPhoneCopy ? refreshTimestamp : undefined;
 
   const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Order>; index: number }) => {
     if (item.type === 'header') {
@@ -534,8 +546,12 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     </FilteredListHeader>
   );
 
+  const showsSkeleton = isLoading && (!hasLoaded || orders.length === 0);
+  const showsLoadError = !showsSkeleton && orders.length === 0 && Boolean(error);
+  useReloadWhenVerified(showsLoadError, handleRefresh);
+
   let content: React.ReactNode;
-  if (isLoading && (!hasLoaded || orders.length === 0)) {
+  if (showsSkeleton) {
     // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
     // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
@@ -582,7 +598,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         </View>
       </>
     );
-  } else if (error) {
+  } else if (showsLoadError) {
     content = (
       <ErrorStateView
         presentation="inline"
@@ -607,7 +623,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       {header}
       {content}
 
-      <Fab label={translate('lists.order.create')} onPress={handleAddOrder} />
+      <Fab label={translate('lists.order.create')} onPress={handleAddOrder} testID="orders-create" />
 
       {/* Customer Search Bottom Sheet */}
       <CustomerSearchBottomSheet
@@ -652,5 +668,14 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
 });
+
+/** Offline the list is only its title row, the switch and the needs-a-connection state: nothing is fetched or kept (WH-381). */
+const OrderFlashList: React.FC<OrderFlashListProps> = props => {
+  const needsConnection = useListNeedsConnection();
+  if (needsConnection) {
+    return <ListNeedsConnection title={translate('lists.order.title')} testID="orders-needs-connection" subHeader={props.subHeader} />;
+  }
+  return <OrderFlashListOnline {...props} />;
+};
 
 export default OrderFlashList;

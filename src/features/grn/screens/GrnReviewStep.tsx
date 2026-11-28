@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import * as Crypto from 'expo-crypto';
 import {
   View,
   Text,
@@ -10,7 +11,7 @@ import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens
 import type { ThemeTokens } from '@/theme/tokens';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { useBackHandler } from '@/hooks/useBackHandler';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
   GRNImageData,
@@ -42,6 +43,9 @@ import {
   setGrNoTyped,
   setTakenNumberError,
   selectGRNFormChanged,
+  selectGRNLoadedBaseline,
+  selectGRNLoadedFrom,
+  selectGRNRatesNeedServer,
 } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { ImageUploadButton } from '@/features/grn/components/ImageUploadButton';
@@ -57,7 +61,7 @@ import {
 import { useOrderEffectsPreview } from '@/hooks/useOrderEffectsPreview';
 import { orderEffectLines, orderEffectsNotice, previewUpdateGrn, withOrderEffects } from '@/services/orderEffects';
 import { importedReadOnlyText } from '@/utils/importedRefusal';
-import { REFUSAL, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
+import { REFUSAL, refusalNumber, refusalOf, refusalString, refusalStrings, type ServerRefusal } from '@/utils/serverRefusal';
 import { invoicedNoNewLotText, lotInvoicedText } from '@/features/grn/utils/lockTexts';
 import { askStaleRecord } from '@/utils/staleRecordDialog';
 import { showToast } from '@/utils/toast';
@@ -87,7 +91,7 @@ import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { askAlert, showAlert } from '@/utils/alert';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { ReviewCard, ReviewKeyValue, ReviewKeyValues, ReviewSection, useReviewSections } from '@/components/review/ReviewSections';
-import { formatCount, formatDate, formatSpokenDate, formatNumber, formatWeightEach, toCalendarDay } from '@/utils/formatters';
+import { formatCount, formatDate, formatQuantity, formatSpokenDate, formatNumber, formatWeightEach, toCalendarDay } from '@/utils/formatters';
 import { ONE_LINE, makeTableStyles, numberColumnWidth, useTableLayout } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
@@ -117,6 +121,7 @@ import { useStandardRate } from '@/features/item-pricing/useStandardRate';
 import { canOpenScreen } from '@/config/roles';
 import { StatusTag } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { getLanguage } from '@/i18n/language';
 import { serverText } from '@/utils/serverText';
 import { lineLock, LOCK_A11Y, LOCK_TAG, type LineLock } from '@/features/grn/utils/lineLock';
@@ -125,6 +130,25 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { getGrnItemRates, getItemsWithoutRate } from '@/services/item-pricing-service';
 import type { ScrollViewRef } from '@/types/nativeRefs';
 import { invoiceFileName } from '@/utils/invoiceLabel';
+import { displayPackaging } from '@/utils/packagingWord';
+import { refuseAtLimit } from '@/features/unsent/limitDialog';
+import { backendHasFeature } from '@/config/backendFeatures';
+import { hasCapability } from '@/config/facilityCapabilities';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { isCopyOffline, waitForSyncAfterWrite } from '@/features/phone-copy/syncEngine';
+import { offlineEditOf } from '@/features/grn/offline-edit/grnEditSave';
+import { saveGrnEditAndWait, saveGrnEditOffline } from '@/features/grn/offline-edit/grnEditKind';
+import { acceptWithChanges, heldIdOfRoute } from '@/features/holding/heldForm';
+import { correctedGrnBody, loadHeldGrnOf } from '@/features/holding/heldGrn';
+import { correctedGrnEditBody } from '@/features/holding/heldGrnEdit';
+import { getHeldItem, type HeldItemDetail } from '@/features/holding/holdingApi';
+import { diffGrnEdit, isGrnEditBody } from '@/features/grn/offline-edit/grnEditChanges';
+import { saveEditedUnsentGrn, useUnsentGrnEditState } from '@/features/unsent/editUnsentGrn';
+import { getFormNumberMode } from '@/features/unsent/formNumberMode';
+import { OfflineSavedDialog } from '@/features/unsent/OfflineSavedDialog';
+import { ratesNotOnPhone, runQueuedGrnSave } from '@/features/unsent/queuedGrnSave';
+import { RatesCheckedWhenSent } from '@/features/unsent/UnsentMarkers';
+import { keepFailedPhotos } from '@/features/unsent/keepFailedPhotos';
 
 const log = createLogger('grn');
 
@@ -136,6 +160,11 @@ function formatReviewDate(value: string | undefined): string {
 /** The same date in words for a screen reader: "9 Oct 2026". */
 function formatSpokenReviewDate(value: string | undefined): string {
   return formatSpokenDate(value || new Date());
+}
+
+/** True while the GRN has no number to show: none given yet, or the store gives it when the GRN is sent (design 10.10). */
+function isGrnNumberPending(grNo: string | undefined): boolean {
+  return !grNo || getFormNumberMode('grn') === 'pending';
 }
 
 // Alert texts as functions, so they follow the app's language (docs/I18N.md rule 2).
@@ -206,12 +235,32 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const grnInvoiced = useAppSelector(selectGRNInvoiced) && !isCreateMode;
   // WH-180: an imported GRN opens here only to set its rates; the details, photos and items steps stay closed.
   const grnImported = useAppSelector(selectGRNImported) && !isCreateMode;
+  // WH-161 (§8): editing a new GRN still waiting on this phone replaces the waiting item in place with no server call.
+  const editTargetId = typeof id === 'string' ? id : Array.isArray(id) ? (id[0] ?? '') : grnId ?? '';
+  const unsentEditState = useUnsentGrnEditState(editTargetId);
+  // WH-304: a held GRN being corrected; its Save is the decision on the held item.
+  const heldId = heldIdOfRoute(editTargetId);
+  const editingUnsent = !isCreateMode && (unsentEditState !== 'not-new' || heldId !== null);
   // The GRN's version token as the edit form read it (get_grn_edit_state, backend migration 121); null on an older
   // server. Save sends it back, and the server refuses the save when someone else changed the GRN since (STALE_RECORD).
   const loadedUpdatedAt = useAppSelector(selectGRNLoadedUpdatedAt);
+  // WH-303: where the form was loaded from and what it was loaded with; an edit saved as field changes is the difference.
+  const loadedFrom = useAppSelector(selectGRNLoadedFrom);
+  const loadedBaseline = useAppSelector(selectGRNLoadedBaseline);
+  // The rates are not on the phone: the section keeps its heading and says so (Design DQ8), and Save does not wait for them.
+  const ratesNeedServer = useAppSelector(selectGRNRatesNeedServer);
+  /** This edit is saved as field changes (WH-303): the form came from the phone copy, or the phone has no connection. */
+  // Never for a new GRN still on this phone: its waiting item is replaced in place (WH-161).
+  const savesAsFieldChanges = () =>
+    !editingUnsent && hasCapability('sync') && backendHasFeature('grnFieldChanges') && !grnImported && !!loadedBaseline && (loadedFrom === 'copy' || isCopyOffline());
+  // WH-304: this save sends no rates: field changes, or a corrected held GRN edit (a GrnEditBody never carries rates;
+  // the server decides, a missing rate comes back as its refusal). A held new GRN sends its rates and is checked here.
+  const savesNoRates = () => savesAsFieldChanges() || (heldId !== null && loadedFrom === 'heldEdit');
   // Set once this form has created its GRN. A further press of Create never creates again:
   // save_grn would answer the repeat with the same GRN and every photo would go up twice.
   const createdRef = useRef(false);
+  // One decision key for this visit to a held GRN's form: a double tap is one decision (Design 7.7).
+  const heldDecisionKey = useRef(Crypto.randomUUID());
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Photos of the GRN just saved that did not upload; the user is asked to try again or go on.
@@ -220,7 +269,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // A create, an edit save or a photo retry is running: the form is locked. No field, photo or rate changes, and the
   // header's X, the step pills, Previous, the Back key and every other way off this step do nothing until it ends
   // (leaving would reset the form under the save).
-  const isSubmittingState = (isCreateMode ? isSubmitting : isSaving) || isRetryingPhotos;
+  // An edit that was saved stays locked until the screen is left: its success dialog and the bounded wait for the sync
+  // (WH-299) must not leave Save live, or a second tap would send update_grn again (WH-394).
+  const [editSaved, setEditSaved] = useState(false);
+  const isSubmittingState = (isCreateMode ? isSubmitting : isSaving || editSaved) || isRetryingPhotos;
   // The save got no answer (owner rule D22): the form stays locked while the server is asked about that request.
   // The X alone leaves, with a warning that the GRN may be saved, and stops the check.
   const [lostChecking, setLostChecking] = useState(false);
@@ -232,6 +284,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const [documentNumber, setDocumentNumber] = useState('');
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successDialogData, setSuccessDialogData] = useState<DocumentData | null>(null);
+  // A new GRN kept on the phone and not sent (WH-161): the dialog that says so.
+  const [offlineSaved, setOfflineSaved] = useState<{ localId: string; customer: string; number: string | undefined; afterEarlierEntries: boolean } | null>(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [showImageOverlay, setShowImageOverlay] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -267,13 +321,16 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const rateRowList = useMemo(() => groupRows(items), [items]);
   const stored = useGrnRates(canSetRates ? rateRowList.map((r) => r.item_id) : [], ctxKey);
   const standard = useStandardRate(canSetRates);
+  // Offline with no rates on the phone: the section says they are checked at send, and Save is not stopped (WH-161, PQ1).
+  // A new GRN only (also while it waits on this phone): an offline edit is saved as field changes, which carry no rates (WH-303).
+  const ratesOffline = (isCreateMode || editingUnsent) && ratesNotOnPhone(canSetRates, stored.status);
   // Staff cannot read rates, so the server says which items have none for this customer and day (migration 133). Null:
   // not asked, or an older server; the notice after the save then tells them (noteItemsWithoutRate).
   const [noRateNames, setNoRateNames] = useState<string[] | null>(null);
   // An invoiced GRN is not asked: the save's own rate check skips it, so a strip would mislead.
   const noRateItemKey = canSetRates || grnInvoiced ? '' : JSON.stringify([rateCtx.customerId, rateCtx.day, rateCtx.priceType, rateRowList.map((r) => [r.item_id, r.weight]), mode === 'edit' ? grnId : null]);
   useEffect(() => {
-    if (canSetRates || grnInvoiced || !rateCtx.customerId || rateRowList.length === 0) {
+    if (canSetRates || grnInvoiced || editingUnsent || !rateCtx.customerId || rateRowList.length === 0) {
       setNoRateNames(null);
       return;
     }
@@ -461,7 +518,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const validateFormData = async (): Promise<boolean> => {
     // Same check as step Next (the stored number): an old GRN that passed Next must also save.
-    const validation = await checkGrnForm(3, { header, items }, { isCreateMode });
+    const validation = await checkGrnForm(3, { header, items }, { isCreateMode, numberPending: getFormNumberMode('grn') === 'pending' });
 
     if (!validation.isValid) {
       setLocalValidationErrors(validation.errors);
@@ -492,11 +549,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   };
 
   const handleSubmit = async () => {
-    if ((isCreateMode && isSubmitting) || (!isCreateMode && isSaving)) return;
+    if ((isCreateMode && isSubmitting) || (!isCreateMode && (isSaving || editSaved))) return;
     if (isCreateMode && createdRef.current) {
       if (!photosNotUploaded) setShowSuccessDialog(true);
       return;
     }
+    // The 2-hour rule: old unsent work stops a new save; the form stays as it is (WH-301, Design 4.3).
+    if (refuseAtLimit({ formOpen: true })) return;
     // Counted by the connection history when a gap is open (WH-177).
     noteSavePressed();
 
@@ -508,13 +567,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
 
     // Every line needs a rate before the GRN is saved (and the rates must be known).
-    if (canSetRates && stored.status !== 'ready') {
+    if (canSetRates && !savesNoRates() && stored.status !== 'ready' && !ratesOffline) {
       showAlert(tr('grn.review.ratesNotLoadedTitle'), tr('grn.review.ratesNotLoadedMessage'));
       scrollToRates();
       return;
     }
     // An invoiced GRN is not checked: its invoice keeps its own figures and the server skips the check too.
-    if (canSetRates && !grnInvoiced && missingCount(pricedRows) > 0) {
+    if (canSetRates && !savesNoRates() && !ratesOffline && !grnInvoiced && missingCount(pricedRows) > 0) {
       showAlert(tr('grn.review.ratesMissingTitle'), tr('grn.review.ratesMissingMessage'));
       scrollToRates();
       return;
@@ -533,10 +592,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         return;
       }
 
-      if (!header.gr_images || header.gr_images.length === 0) {
+      // A held GRN's photos are on the server with the held item, not in this form (A-6): the check cannot be made here.
+      if (heldId === null && (!header.gr_images || header.gr_images.length === 0)) {
         showAlert(
           tr('grn.review.photoRequiredTitle'),
-          tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
+          isGrnNumberPending(header.gr_no)
+            ? tr('grn.review.photoRequiredMessagePending')
+            : tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
         );
         return;
       }
@@ -545,6 +607,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     // An edit asks the server again which orders it changes, so the question names what is true now.
     if (!isCreateMode && !grnImported) await refreshOrderEffects();
 
+    // "Accept with changes" is the decision itself: no "Save GRN" question first.
+    if (heldId !== null) {
+      void handleConfirmSubmit();
+      return;
+    }
     // Show custom confirm dialog (dark mode compliant)
     setShowConfirmDialog(true);
   };
@@ -553,7 +620,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     setShowConfirmDialog(false);
     // One save at a time. A second tap on Confirm before the dialog closes would save again,
     // and every photo picked in the form would be uploaded twice.
-    if (saveInFlightRef.current || (isCreateMode && createdRef.current)) return;
+    if (saveInFlightRef.current || (isCreateMode ? createdRef.current : editSaved)) return;
     saveInFlightRef.current = true;
     // The form's session as Confirm is pressed: if it has changed when the save answers, the form was left (and
     // maybe a new one started), and the answer must not touch the form, its photo files or this screen.
@@ -594,11 +661,50 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       showToast(photos.removalRefusal ?? tr('grn.review.photosNotRemoved', { count: photos.removalFailures }));
     }
     if (savedGrnId && photos && photos.failed.length > 0) {
-      triggerWarning();
-      setPhotosNotUploaded({ grnId: savedGrnId, failed: photos.failed });
+      const failed = photos.failed;
+      // With the offline feature the photos are kept on the phone and sent later; the success dialog says so (Design 4.9).
+      void keepFailedGrnPhotos(savedGrnId, failed).then(kept => {
+        if (kept === null) {
+          // Every photo that was still uploading went through meanwhile.
+          setShowSuccessDialog(true);
+          return;
+        }
+        if (kept > 0) {
+          setSuccessDialogData(current => (current ? { ...current, messageAddition: tr('offline.photosKept', { count: kept }) } : current));
+          setShowSuccessDialog(true);
+          return;
+        }
+        triggerWarning();
+        setPhotosNotUploaded({ grnId: savedGrnId, failed });
+      });
       return;
     }
     setShowSuccessDialog(true);
+  };
+
+  /** Keeps photos that did not upload; waits briefly for one still uploading so it is not sent twice. 0 when not kept, null when none is left to keep. */
+  const keepFailedGrnPhotos = async (savedGrnId: string, failed: FailedGRNPhoto[]): Promise<number | null> => {
+    const settled = await Promise.all(
+      failed.map(async photo => {
+        if (!photo.inFlight) return photo;
+        const wait = new Promise<null>(resolve => setTimeout(() => resolve(null), 10_000));
+        const outcome = await Promise.race([photo.inFlight.catch(() => ({ success: false })), wait]);
+        return outcome?.success === true ? null : photo;
+      })
+    );
+    const left = settled.filter((photo): photo is FailedGRNPhoto => photo !== null);
+    if (left.length === 0) return null;
+    return keepFailedPhotos({
+      doc: 'grn',
+      recordId: savedGrnId,
+      number: header.gr_no || '',
+      customer: header.customer_name,
+      photos: left.map(photo => ({
+        file: photo.image.imageUrl,
+        role: photo.imageType,
+        ...(photo.itemId ? { lineRef: photo.itemId } : {}),
+      })),
+    });
   };
 
   /**
@@ -664,10 +770,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
    */
   const reportSavedAfterLeaving = (grNo: string | undefined, photos: GRNPhotoSaveReport | undefined) => {
     markItemRatesStale();
-    showAlert(
-      tr('grn.review.savedAfterLeavingTitle'),
-      tr(photos && photos.failed.length > 0 ? 'grn.review.savedAfterLeavingPhotos' : 'grn.review.savedAfterLeaving', { number: formatIdentifier(grNo ?? '') })
-    );
+    const withPhotos = !!photos && photos.failed.length > 0;
+    const pending = isGrnNumberPending(grNo);
+    let key: TranslationKey;
+    if (withPhotos) key = pending ? 'grn.review.savedAfterLeavingPhotosPending' : 'grn.review.savedAfterLeavingPhotos';
+    else key = pending ? 'grn.review.savedAfterLeavingPending' : 'grn.review.savedAfterLeaving';
+    showAlert(tr('grn.review.savedAfterLeavingTitle'), tr(key, { number: formatIdentifier(grNo ?? '') }));
   };
 
   /**
@@ -823,7 +931,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       // answer that never came, then sends the same body and gets the same idempotency key. (createGRN does not
       // ask for a number: a new one per press would save the GRN twice.)
       let grNo = carried?.grNo ?? header.gr_no;
-      if (!grNo) {
+      if (!grNo && getFormNumberMode('grn') !== 'pending') {
         try {
           grNo = await getNextGRNNumber(header.date);
         } catch (numberError) {
@@ -870,9 +978,25 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         warnDuplicate,
       };
 
+      // On the queue (offline, an older entry unsent, or no rates on the phone): the same Save, kept on the phone (WH-161).
+      const queued = await runQueuedGrnSave(request, { ratesNotOnPhone: ratesOffline, numberTyped: grNoTyped }, createGRN);
+      if (formLeft()) return;
+      if (queued.kind === 'alert') {
+        void triggerError();
+        showAlert(saveFailedTitle(), queued.message, [{ text: tr('common.ok'), onPress: leaveToNumberStep }]);
+        return;
+      }
+      if (queued.kind === 'saved') {
+        createdRef.current = true;
+        void triggerSuccess();
+        resetFormState();
+        setOfflineSaved({ localId: queued.localId, customer: header.customer_name || tr('common.unknown'), number: queued.number, afterEarlierEntries: queued.afterEarlierEntries });
+        return;
+      }
+
       const result = await sendUntilAnswered(
         (resend, storedAnswer) =>
-          createGRN({
+          queued.kind === 'result' ? Promise.resolve(queued.result) : createGRN({
             ...request,
             ...(storedAnswer === undefined ? {} : { storedAnswer }),
             ...(resend ? { resend } : {}),
@@ -969,7 +1093,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
    * details step for the number and the date, the items step for a line, Rates for a rate that would go. Nothing was saved.
    */
   const handleUpdateRefusal = async (refusal: ServerRefusal, editedGrnId: string, formLeft: () => boolean) => {
-    const lineId = refusalString(refusal, 'line_id');
+    const lineId = refusalString(refusal, 'line_id') ?? refusalString(refusal, 'lot_id');
     const lineIndex = lineId ? items.findIndex((item) => item.grn_trl_id === lineId) : -1;
     const itemName = refusalString(refusal, 'item_name') ?? (lineIndex >= 0 ? items[lineIndex].item_name : '');
     const grNo = refusalString(refusal, 'gr_no') ?? header.gr_no;
@@ -1000,6 +1124,20 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       case REFUSAL.LOT_DISPATCHED:
         showAlert(lineTitle, tr('grn.refusal.lotDispatched', { item: itemName }), [closeButton(goToItemsStep), reopenButton]);
         return;
+      case REFUSAL.QTY_BELOW_DISPATCHED: {
+        // The phone checks first (Design DQ7); this is the server's check, for a dispatch that arrived after the form loaded.
+        const requested = refusalNumber(refusal, 'requested');
+        const dispatched = refusalNumber(refusal, 'dispatched_qty');
+        const word = displayPackaging(lineIndex >= 0 ? items[lineIndex].packaging : '');
+        showAlert(
+          lineTitle,
+          requested !== undefined && dispatched !== undefined
+            ? tr('offline.belowDispatched', { quantity: formatQuantity(requested, word), dispatched: formatQuantity(dispatched, word) })
+            : serverText(refusal.text, connectionHint(), { write: true, form: true }),
+          [closeButton(goToItemsStep), reopenButton]
+        );
+        return;
+      }
       case REFUSAL.GRN_INVOICED:
         showAlert(saveFailedTitle(), invoicedNoNewLotText(formatIdentifier(grNo), invoiceNo), ok(goToItemsStep));
         return;
@@ -1106,13 +1244,79 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // tapped. An older server has no preview: null, and the question is asked as it always was.
   const effectsGrnId = Array.isArray(id) ? id[0] : id || grnId;
   const { effects: orderEffects, refresh: refreshOrderEffects } = useOrderEffectsPreview(
-    !isCreateMode && !grnImported && !!effectsGrnId && items.length > 0,
+    !isCreateMode && !grnImported && !editingUnsent && !!effectsGrnId && items.length > 0,
     JSON.stringify([header.customer_id, header.date, items.map((item) => [item.grn_trl_id, item.item_table_id, item.qty, item.stock])]),
     () => previewUpdateGrn(buildUpdateGRNRequest(effectsGrnId as string, buildUpdateRequest(), removedImages).rpcRequest)
   );
 
+  /**
+   * WH-303: an Edit GRN saved as the field changes the person made (never as a whole GRN). A form loaded from the phone copy
+   * never calls `update_grn`: its photo and line lists may be older than the server's, and `update_grn` deletes what it is
+   * not sent. With the server reachable the save waits a few seconds for the answer (Design DQ2); a refusal in that time
+   * is told here, with the form as typed and nothing kept (Product PQ9).
+   */
+  const performFieldChanges = async (formSession: number, editedGrnId: string) => {
+    const formLeft = () => currentGrnFormSession() !== formSession;
+    if (!loadedBaseline) return;
+    dispatch(setIsSaving(true));
+    try {
+      const edit = offlineEditOf({
+        grnId: editedGrnId,
+        baseline: loadedBaseline,
+        header,
+        items,
+        removedImages,
+        loadedAt: loadedUpdatedAt,
+        recordedAt: new Date().toISOString(),
+      });
+      const toDetails = () => {
+        resetFormState();
+        router.replace(`/grn-details/${editedGrnId}` as Href);
+      };
+      if (!edit) {
+        // Nothing the server would take changed: the form closes onto the GRN.
+        toDetails();
+        return;
+      }
+      const reachable = !isCopyOffline();
+      if (loadedFrom === 'copy' && reachable) {
+        const saved = await saveGrnEditAndWait(editedGrnId, edit.body, edit.photos, edit.meta);
+        if (formLeft()) return;
+        if (saved.outcome === 'refused') {
+          void triggerError();
+          const refusal = refusalOf(saved.answer);
+          if (refusal) await handleUpdateRefusal(refusal, editedGrnId, formLeft);
+          else showAlert(saveFailedTitle(), serverText(saved.reason ?? undefined, connectionHint(), { write: true, form: true }));
+          return;
+        }
+        void triggerSuccess();
+        showToast(tr(saved.outcome === 'sent' ? 'offline.quickChange.saved' : 'offline.quickChange.savedOnPhone'));
+      } else {
+        await saveGrnEditOffline(editedGrnId, edit.body, edit.photos, edit.meta);
+        if (formLeft()) return;
+        void triggerSuccess();
+        showToast(tr('offline.quickChange.savedOnPhone'));
+      }
+      toDetails();
+    } catch (error) {
+      if (formLeft()) return;
+      void triggerError();
+      log.error('Edit could not be saved on the phone', loggableError(error));
+      showAlert(saveFailedTitle(), tr('errors.general.unexpectedRetry'));
+    } finally {
+      if (!formLeft()) dispatch(setIsSaving(false));
+    }
+  };
+
   const performUpdate = async (formSession: number) => {
     const formLeft = () => currentGrnFormSession() !== formSession;
+    if (savesAsFieldChanges()) {
+      const target: unknown = Array.isArray(id) ? id[0] : id;
+      if (typeof target === 'string' && grnId && target === grnId) {
+        await performFieldChanges(formSession, target);
+        return;
+      }
+    }
     // The GRN being edited is the route's; the form's id is only what was loaded last. If they differ the form
     // holds another GRN (the edit layout loads the route's GRN before this step is shown, so this is a guard).
     const routeGrnId = Array.isArray(id) ? id[0] : id;
@@ -1124,6 +1328,103 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
     dispatch(setIsSaving(true));
     try {
+      // WH-304: a held GRN's corrected form is the supervisor's decision on it, with nothing saved or queued here.
+      if (heldId !== null) {
+        const heldItem = await getHeldItem(heldId);
+        if (formLeft()) return;
+        let target: HeldItemDetail;
+        let body: unknown;
+        if (heldItem.kind === 'grnEdit') {
+          // A held edit: the form against what the server held when it opened, as field changes. Never update_grn, never the queue.
+          if (heldItem.state !== 'held' || !isGrnEditBody(heldItem.body) || !loadedBaseline) {
+            void triggerError();
+            showAlert(saveFailedTitle(), tr('common.couldNotLoad'));
+            return;
+          }
+          target = heldItem;
+          // A form equal to the server's values sends nothing: the button is off then (Design 7.11d), this is only a guard.
+          const corrected = correctedGrnEditBody(heldItem.body, loadedBaseline, { header, items }, loadedUpdatedAt);
+          if (corrected === null) return;
+          body = corrected;
+        } else {
+          const held = await loadHeldGrnOf(heldItem);
+          if (formLeft()) return;
+          if (held.kind !== 'loaded') {
+            void triggerError();
+            showAlert(saveFailedTitle(), tr('common.couldNotLoad'));
+            return;
+          }
+          target = held.item;
+          body = correctedGrnBody(
+            held.held,
+            {
+              header,
+              items: items.map((item) => ({
+                item_table_id: item.item_table_id,
+                item_name: item.item_name,
+                packaging: item.packaging,
+                qty: item.qty,
+                weight: item.weight,
+                rack: item.rack,
+                package_mark: item.package_mark,
+                trl_images: item.trl_images ?? [],
+              })),
+              rates: ratesToSave(),
+            },
+            items.map((item) => item.grn_trl_id)
+          );
+        }
+        const decided = await acceptWithChanges(target, body, heldDecisionKey.current);
+        if (formLeft()) return;
+        if (decided.kind === 'accepted' || decided.kind === 'alreadyDecided') {
+          void triggerSuccess();
+          if (decided.kind === 'accepted' && decided.durationMs !== undefined) showToast(decided.toast, { durationMs: decided.durationMs });
+          else showToast(decided.toast);
+          resetFormState();
+          router.dismissTo('/holding-list');
+        } else {
+          void triggerError();
+          showAlert(saveFailedTitle(), decided.kind === 'refused' ? decided.message : connectionHint());
+        }
+        return;
+      }
+
+      // WH-161 (§8): an unsent new GRN is updated in place in the phone's queue, with no server call.
+      if (editingUnsent) {
+        const localId = String(editedGrnId);
+        const outcome = await saveEditedUnsentGrn(
+          localId,
+          {
+            header,
+            items: items.map((item) => ({
+              item_table_id: item.item_table_id,
+              item_name: item.item_name,
+              packaging: item.packaging,
+              qty: item.qty,
+              weight: item.weight,
+              rack: item.rack,
+              package_mark: item.package_mark,
+              trl_images: item.trl_images ?? [],
+            })),
+            rates: ratesToSave(),
+          },
+          { ratesNotOnPhone: ratesOffline, lineIds: items.map((item) => item.grn_trl_id) }
+        );
+        if (formLeft()) return;
+        if (outcome === 'replaced') {
+          void triggerSuccess();
+          showToast(header.gr_no ? tr('grn.review.savedWithNumber', { number: formatIdentifier(header.gr_no) }) : tr('grn.review.saved'));
+          resetFormState();
+          router.replace(`/grn-details/${localId}`);
+          return;
+        }
+        if (outcome === 'being-sent') {
+          void triggerError();
+          showAlert(saveFailedTitle(), tr('offline.offlineNew.beingSent'));
+          return;
+        }
+      }
+
       // Built once: a send after a lost answer is the identical request. Its request code is the edit session's key
       // for this body, kept until a save is answered (grnUpdateIdempotencyKey).
       const request = buildUpdateRequest();
@@ -1146,6 +1447,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       }
 
       if (result.success) {
+        setEditSaved(true);
         markItemRatesStale();
         // The server lists every dispatched line on every save; only a quantity that differs from the kept one was really refused.
         const skippedItems = result.data?.stats?.items_skipped_stock?.filter((entry) => {
@@ -1238,8 +1540,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
   };
 
-  const handleCreateAnother = () => {
+  const handleCreateAnother = async () => {
     setShowSuccessDialog(false);
+    // The list this leaves onto must show the GRN just saved (WH-299): wait, bounded, for the sync that brings it in.
+    await waitForSyncAfterWrite();
     if (isCreateMode) {
       resetFormState();
       router.replace('/grn-form/step1');
@@ -1249,8 +1553,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
   };
 
-  const handleViewList = () => {
+  const handleViewList = async () => {
     setShowSuccessDialog(false);
+    // The list shows the GRN just saved (WH-299): wait, bounded, for the sync that brings it in.
+    await waitForSyncAfterWrite();
     if (!isCreateMode) {
       resetFormState();
     }
@@ -1269,7 +1575,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // the device under a temporary id and go up when the GRN is saved, so "Discard changes"
   // leaves the saved GRN's photos as they were.
   const imageUploadGrnId = tempGrnId ?? undefined;
-  const ctaLabel = isCreateMode ? tr('grn.review.createGrn') : tr('grn.review.saveGrn');
+  // A held edit whose corrected form equals what the server holds now: nothing would change (Design 7.11d), so it cannot be accepted.
+  const heldSameAsServer =
+    heldId !== null && loadedFrom === 'heldEdit' && !!loadedBaseline && diffGrnEdit({ header: loadedBaseline.header, items: loadedBaseline.items }, { header, items }, { grnId: '', loadedAt: null, recordedAt: '' }) === null;
+  const ctaLabel = heldId !== null ?tr('offline.holding.acceptCorrected') : isCreateMode ? tr('grn.review.createGrn') : tr('grn.review.saveGrn');
 
   // The Qty column is as wide as its widest number, the total included.
   const qtyWidth = numberColumnWidth(screen, 40, items.map((item) => formatNumber(item.qty || 0)), [formatNumber(totalQty)]);
@@ -1509,6 +1818,28 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                 if (ratesFocusPending.current && items.length > 0) scrollRatesIntoView();
               }}
             >
+                {ratesNeedServer ? (
+                  grnRates.length === 0 ? (
+                    <NeedsConnectionLine testID="grn-edit-rates-needs-connection" text={tr('components.offlineRead.screenNeedsConnection')} icon />
+                  ) : (
+                    // The copy's rates, with every control off (Design DQ10): one "Needs a connection" line under the heading.
+                    <>
+                      <NeedsConnectionLine testID="grn-edit-rates-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+                      <GrnRatesSection
+                        rows={pricedRows.filter(row => row.rate !== null)}
+                        status="ready"
+                        offline
+                        oneTime={rateCtx.priceType === 'one_time'}
+                        day={rateCtx.day}
+                        invoiced
+                        onChange={() => undefined}
+                        onAdd={() => undefined}
+                        onUndo={() => undefined}
+                        onRetry={() => undefined}
+                      />
+                    </>
+                  )
+                ) : ratesOffline ? <RatesCheckedWhenSent /> : (
                 <GrnRatesSection
                   rows={pricedRows}
                   status={stored.status}
@@ -1523,6 +1854,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
                   onRestore={restoreRateEntry}
                   onRetry={() => { void stored.refresh(); }}
                 />
+                )}
             </ReviewSection>
           ) : null}
           </ReviewCard>
@@ -1539,6 +1871,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
         </ScrollView>
 
+        {heldSameAsServer ? (
+          <Text testID="held-same-as-server" style={styles.heldSameAsServer}>
+            {tr('offline.holding.sameAsServer')}
+          </Text>
+        ) : null}
+
         {/* Bottom action bar */}
         <WizardBottomBar
           currentStep={STEP_NUMBERS.REVIEW}
@@ -1546,6 +1884,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           onPrevious={handlePrevious}
           onNext={handleSubmit}
           nextLabel={ctaLabel}
+          nextDisabled={heldSameAsServer}
+          {...(heldSameAsServer ? { nextAccessibilityLabel: `${ctaLabel}, ${tr('offline.holding.sameAsServer')}` } : {})}
           isLoading={isSubmittingState}
           loadingLabel={
             isRetryingPhotos
@@ -1571,7 +1911,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       {/* Confirm Submit Dialog */}
       <ConfirmDialog
         visible={showConfirmDialog}
-        title={tr(isCreateMode ? 'grn.review.confirmCreateTitle' : 'grn.review.confirmSaveTitle', { number: formatIdentifier(header.gr_no) })}
+        title={tr(
+          isCreateMode ? (isGrnNumberPending(header.gr_no) ? 'grn.review.confirmCreateTitlePending' : 'grn.review.confirmCreateTitle') : 'grn.review.confirmSaveTitle',
+          { number: formatIdentifier(header.gr_no) }
+        )}
         message={withOrderEffects(
           tr(isCreateMode ? 'grn.review.confirmCreateMessage' : 'grn.review.confirmSaveMessage', { count: totalItems }),
           isCreateMode ? null : orderEffects
@@ -1598,12 +1941,29 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         dismissible={false}
       />
 
+      <OfflineSavedDialog
+        isVisible={offlineSaved !== null}
+        document="grn"
+        customer={offlineSaved?.customer ?? ''}
+        number={offlineSaved?.number}
+        afterEarlierEntries={offlineSaved?.afterEarlierEntries ?? false}
+        onView={() => {
+          const localId = offlineSaved?.localId;
+          setOfflineSaved(null);
+          void router.replace(localId ? `/grn-details/${localId}` : '/grn');
+        }}
+        onCreateAnother={() => {
+          setOfflineSaved(null);
+          void router.replace('/grn-form/step1');
+        }}
+      />
+
       <DocumentSuccessDialog
         isVisible={showSuccessDialog}
         entity="grn"
         documentData={successDialogData}
-        onCreateAnother={handleCreateAnother}
-        onViewList={handleViewList}
+        onCreateAnother={() => void handleCreateAnother()}
+        onViewList={() => void handleViewList()}
         onPrint={handlePrint}
         onSharePDF={handleSharePDF}
         isShareLoading={isShareLoading}
@@ -1615,8 +1975,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         onDismiss={() => {
           setShowPrintDialog(false);
           if (!isCreateMode) {
-            resetFormState();
-            router.replace('/grn');
+            // The form is reset only when the screen is left, so no empty form shows during the wait (WH-394).
+            void waitForSyncAfterWrite().then(() => {
+              resetFormState();
+              router.replace('/grn');
+            });
           } else {
             // Back to the choices of the created GRN, not to a form that could be sent again.
             setShowSuccessDialog(true);
@@ -1761,6 +2124,8 @@ const makeStyles = (t: ThemeTokens) => ({
   scrollContent: { padding: space.lg, paddingBottom: space.xxl },
 
   photosBody: { padding: space.sm },
+
+  heldSameAsServer: { ...typography.footnote, color: t.text.secondary, paddingHorizontal: space.lg, paddingVertical: space.sm, backgroundColor: t.surface.card },
 
   notesSection: { paddingVertical: space.sm, paddingHorizontal: space.sm },
   notesLabel: { ...typography.subhead, color: t.text.secondary, marginBottom: space.xs },

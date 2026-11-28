@@ -81,6 +81,17 @@ export interface FilterContext {
   payments?: boolean;
   /** The backend's GRN list takes the invoice-state filter (migration 202). Absent or false until known. */
   grnInvoiceFilter?: boolean;
+  /** Offline, and the phone copy has no invoice state yet (WH-299, PR12). Absent otherwise. */
+  grnInvoiceWaiting?: boolean;
+}
+
+/** Why a shown filter cannot be chosen for now. */
+export interface FieldUnavailable {
+  /** The footnote under the filter. */
+  note: string;
+  /** What a screen reader says of the filter's chip. */
+  spokenLabel: string;
+  testID: string;
 }
 
 /**
@@ -97,6 +108,8 @@ interface FieldBase {
   icon: IconName;
   /** Hide the field for some roles or accounts. Defaults to visible. */
   visibleTo?: (ctx: FilterContext) => boolean;
+  /** Shown but not choosable for now, and why; undefined when it can be chosen. A value already set stays set. */
+  unavailable?: (ctx: FilterContext) => FieldUnavailable | undefined;
 }
 /** One choice of a choice field. */
 export interface ChoiceOption {

@@ -75,6 +75,7 @@ import {
   GRNImageData,
 } from '@/store/slices/grnFormSlice';
 import { checkGrnForm } from '@/features/grn/utils/checkGrnForm';
+import { decideFormNumberMode, getFormNumberMode, setFormNumberMode, typedNumberUsed } from '@/features/unsent/formNumberMode';
 import { getNextGRNNumber, checkGrnExists } from '@/features/grn/services/grnFormService';
 import { generateTempGRNId } from '@/features/grn/services/imageUploadService';
 import { currentGrnFormSession, nextGrnFormSession } from '@/features/grn/utils/grnFormSession';
@@ -258,8 +259,12 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     const currentSessionId = currentGrnFormSession();
     console.log('[useGRNForm] initializeForm started with session:', currentSessionId);
 
+    // How the number box works for this form: today's fetch, or none when it is given at send (WH-161).
+    const numberMode = await decideFormNumberMode('grn');
+    if (currentGrnFormSession() !== currentSessionId) return;
+
     // Generate GRN number
-    if (!header.gr_no && !hasGeneratedGRN.current) {
+    if (!header.gr_no && !hasGeneratedGRN.current && numberMode === 'online') {
       hasGeneratedGRN.current = true;
       setIsGeneratingNumber(true);
       const request = ++dateNumberRequest.current;
@@ -271,8 +276,9 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
           console.log('[useGRNForm] GRN number generation cancelled - session changed from', currentSessionId, 'to', currentGrnFormSession());
           return;
         }
-        // A newer request put a number in the box meanwhile, or the date went back to the year of the number held.
-        if (request <= appliedRequest.current || request <= supersededUpTo.current) return;
+        // A newer request put a number in the box meanwhile, or the date went back to the year of the number held,
+        // or a resumed draft put the form back in pending/typed mode (WH-161, N5).
+        if (request <= appliedRequest.current || request <= supersededUpTo.current || getFormNumberMode('grn') !== 'online') return;
         setNumberOffer(answered.offer);
         if (header.date) numberYear.current = calculateFinancialYear(header.date);
         // '' is no suggestion (free text, a full series): the box stays empty for the person to type.
@@ -337,7 +343,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
    * form's number was fetched for, not the previous date: a request that failed is asked again on the next change.
    */
   const askNumberForDate = useCallback(async (newDate: unknown) => {
-    if (!isCreateMode || typeof newDate !== 'string' || !newDate || grNoTypedRef.current) return;
+    if (!isCreateMode || typeof newDate !== 'string' || !newDate || grNoTypedRef.current || getFormNumberMode('grn') !== 'online') return;
     const year = calculateFinancialYear(newDate);
     if (numberYear.current === year) {
       // The number the form holds is right for this date: an answer still on its way for another year is out of date.
@@ -430,6 +436,16 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         return;
       }
 
+      // No connection, or older entries still unsent (WH-161): the phone's copy answers, and the server decides at send.
+      if (getFormNumberMode('grn') !== 'online') {
+        if ((await typedNumberUsed('grn', newGrNo)) && !signal.aborted) {
+          const used = t('grn.form.numberTaken', { number: formatIdentifier(newGrNo) });
+          dispatch(setTakenNumberError(used));
+          setLocalValidationErrors((prev) => ({ ...prev, gr_no: used }));
+        }
+        return;
+      }
+
       // The typed number is not logged.
       log.debug('Checking whether the typed GRN number exists');
 
@@ -494,7 +510,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     // The shared check (the stored-number filter in edit mode); see checkGrnForm.
     let result: { isValid: boolean; errors: Record<string, string> } =
       step >= 1 && step <= 3
-        ? await checkGrnForm(step as 1 | 2 | 3, { header, items }, { isCreateMode })
+        ? await checkGrnForm(step as 1 | 2 | 3, { header, items }, { isCreateMode, numberPending: getFormNumberMode('grn') === 'pending' })
         : { isValid: true, errors: {} };
 
     // A number another GRN holds keeps step 1 from passing until it is changed.
@@ -600,6 +616,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     nextGrnFormSession();
     console.log('[useGRNForm] Global session incremented to:', currentGrnFormSession());
 
+    setFormNumberMode('grn', 'online');
     setLocalValidationErrors({});
     releaseFormPhotoFiles(formPhotosRef.current.header, formPhotosRef.current.items);
     dispatch(resetForm());

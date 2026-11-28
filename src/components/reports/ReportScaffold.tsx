@@ -27,6 +27,11 @@ import { ListSearchField } from '@/features/filters/components/ListSearchField';
 import type { CountableFilterList } from '@/features/filters/configs';
 import type { useListFilters } from '@/features/filters/useListFilters';
 import type { ReportQuery } from '@/features/reports/useReportQuery';
+import { useCopyOffline } from '@/features/phone-copy/useCopyOffline';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
+import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
+import { useHideListTime } from '@/features/phone-copy/useCustomerAge';
+import { useNeedsConnection, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -66,7 +71,12 @@ interface ReportScaffoldBaseProps<T> {
 
   /** The state of the report's data. `isKeptCopy` adds "Saved copy, refreshing…" to the status line while it is asked again. */
   query: Pick<ReportQuery<unknown>, 'phase' | 'isRefreshing' | 'isFetching' | 'error' | 'refresh' | 'retry' | 'updatedAt'> &
-    Partial<Pick<ReportQuery<unknown>, 'isKeptCopy'>>;
+    Partial<Pick<ReportQuery<unknown>, 'isKeptCopy' | 'fromPhoneCopy' | 'quiet'>>;
+  /**
+   * The report's id (reportRegistry): names the line under the header that says sharing needs a connection, when the
+   * report is read from the phone copy with no connection (WH-299, Design offline-capture.md 2.10, DS3).
+   */
+  reportId?: string;
 
   /** The figures over the rows. They describe the whole result, not the rows a search leaves. */
   kpis?: KPIItem[];
@@ -75,6 +85,8 @@ interface ReportScaffoldBaseProps<T> {
    * ("In 1 Sep – 30 Sep", "Right now"), in place of `kpis`. A group with no figures is left out.
    */
   kpiGroups?: ReportKpiGroup[];
+  /** A line directly under the figures (WH-161: "Includes … in GRNs not sent yet"). */
+  kpiNote?: React.ReactNode;
   /** How many figure tiles the first load shows. */
   kpiPlaceholders?: number;
   /** What the status line says. `updatedAt` and `refreshingKeptCopy` come from the query. */
@@ -100,6 +112,30 @@ interface ReportScaffoldBaseProps<T> {
   empty: { icon: IconName; title: string; description?: string; action?: ReportEmptyAction };
   /** Title of the failure with nothing to show. The reason is shown under it. */
   errorTitle?: string;
+  /**
+   * A report that only the server can give (sensors, the temperature report, the activity reports, WH-381): testID of the
+   * "needs a connection" state. While the phone is offline the header and this state are all that shows, in every phase,
+   * with no kept rows, no "Try again" and no export icons (Design offline-capture.md 13.1 A).
+   */
+  needsConnectionId?: string;
+  /** The report is only the server's (WH-381): its needs-a-connection state shows whatever format the copy is. */
+  serverOnly?: boolean;
+  /**
+   * Kept answers (WH-305): nothing was ever kept for this screen and the phone is offline. The centred "not on this phone yet"
+   * state under the header, with no "Try again" (Design offline-capture.md 8.2).
+   */
+  notHere?: { testID: string; title: string; text: string };
+  /**
+   * Kept Customer activity offline (WH-305, Design 8.7): the period chip shows the kept answer's own dates and is disabled.
+   */
+  periodChip?: { label: string; accessibilityLabel: string };
+  /** Kept answers (WH-305): how old the figures are, the first thing under the header (Design offline-capture.md 8.1). */
+  ageLine?: React.ReactNode;
+  /**
+   * Money screens (Statement, Customer activity) show their own kept-answer age (`money.asOf*`, WH-305 / Design 9.7 DQ2 &
+   * DQ4), never `CustomerAgeStrip`.
+   */
+  hideCustomerAgeStrip?: boolean;
 }
 
 /** The search, filters, sort and period, and what the rows are for "No GRNs match ...": the noun is needed only with filters. */
@@ -112,6 +148,12 @@ export type ReportScaffoldProps<T> = ReportScaffoldBaseProps<T> & ReportScaffold
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
+  needsConnection: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.sm,
+  },
   stale: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -143,11 +185,13 @@ function ReportScaffoldInner<T>({
   subtitle,
   onBack,
   actions,
+  reportId,
   filters,
   searchIsServerSide = false,
   query,
   kpis,
   kpiGroups,
+  kpiNote,
   kpiPlaceholders = 2,
   status,
   children,
@@ -161,17 +205,55 @@ function ReportScaffoldInner<T>({
   noun,
   empty,
   errorTitle,
+  needsConnectionId,
+  serverOnly = false,
+  notHere,
+  periodChip,
+  ageLine,
+  hideCustomerAgeStrip = false,
 }: ReportScaffoldProps<T>) {
   const t = useTokens();
+  const phoneNeedsConnection = useNeedsConnectionV3();
+  // A report only the server can give (WH-381, `serverOnly`) needs a connection whatever the copy holds; sensors and the
+  // temperature report keep today's rule, a copy of format 3 or newer.
+  const phoneOffline = useNeedsConnection();
+  const serverOnlyOffline = Boolean(needsConnectionId) && (serverOnly ? phoneOffline : phoneNeedsConnection);
+  const hideListTime = useHideListTime();
+  const showCustomerAge = !needsConnectionId && !hideCustomerAgeStrip;
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const { phase, error, retry, refresh, isRefreshing, isFetching, updatedAt } = query;
+  const { phase, error, retry, refresh, isRefreshing, isFetching } = query;
+  // The phone copy's time is the status bar's (warehouse) or CustomerAgeStrip (customer account): never two times on screen.
+  const fromPhoneCopy = Boolean(query.fromPhoneCopy);
+  const updatedAt = fromPhoneCopy || (showCustomerAge && hideListTime) ? undefined : query.updatedAt;
+  // Sharing and PDFs need the server: with no connection those icons stay, disabled, and one line under the header says why.
+  // Local actions such as Change customer (`worksOffline`) stay enabled so a several-customer account can switch offline.
+  const offline = useCopyOffline();
+  const hasServerAction = Boolean(actions?.some(action => !action.worksOffline));
+  const sharingNeedsConnection = (fromPhoneCopy || phoneNeedsConnection) && offline && hasServerAction;
+  const headerActions = useMemo(
+    () =>
+      sharingNeedsConnection
+        ? actions?.map(action =>
+            action.worksOffline
+              ? action
+              : { ...action, disabled: true, label: tr('reports.shared.actionNeedsConnection', { label: action.label }) }
+          )
+        : actions,
+    [actions, sharingNeedsConnection]
+  );
   // The last row clears the system navigation bar (three-button Android, iOS home indicator).
   const listContentStyle = useMemo(() => ({ paddingBottom: space.xxl + insets.bottom }), [insets.bottom]);
 
   const head = (
     <>
-      <ReportHeader title={title} subtitle={subtitle} onBack={onBack} actions={actions} />
+      <ReportHeader title={title} subtitle={subtitle} onBack={onBack} actions={headerActions} />
+      {showCustomerAge ? <CustomerAgeStrip /> : null}
+      {sharingNeedsConnection ? (
+        <Text style={styles.needsConnection} testID={reportId ? `${reportId}-header-needs-connection` : undefined}>
+          {tr('reports.shared.reportActionsNeedConnection')}
+        </Text>
+      ) : null}
       {filters?.config.search ? (
         <ListSearchField
           // Per customer for one customer's report: its recent searches are not another's (SR-06).
@@ -184,7 +266,7 @@ function ReportScaffoldInner<T>({
           loading={searchIsServerSide && isFetching}
         />
       ) : null}
-      {filters ? <FilterBar config={filters.config} filters={filters.state} /> : null}
+      {filters ? <FilterBar config={filters.config} filters={filters.state} periodChip={periodChip} /> : null}
     </>
   );
 
@@ -201,6 +283,24 @@ function ReportScaffoldInner<T>({
     ),
     [isRefreshing, refresh, t]
   );
+
+  if (notHere) {
+    return (
+      <View style={styles.container}>
+        {head}
+        <ListEmptyState activeFilterCount={0} emptyIcon="cloud-off-outline" emptyTitle={notHere.title} emptySubtitle={notHere.text} testID={notHere.testID} />
+      </View>
+    );
+  }
+
+  if (needsConnectionId && serverOnlyOffline) {
+    return (
+      <View style={styles.container}>
+        <ReportHeader title={title} subtitle={subtitle} onBack={onBack} />
+        <ScreenNeedsConnection testID={needsConnectionId} />
+      </View>
+    );
+  }
 
   if (phase === 'loading') {
     return (
@@ -245,6 +345,7 @@ function ReportScaffoldInner<T>({
 
   const listHeader = (
     <>
+      {ageLine}
       {error ? (
         // The rows below were read earlier: say so, and why, where the person is looking.
         <View style={styles.stale} accessibilityRole="alert" accessibilityLiveRegion="polite">
@@ -264,16 +365,17 @@ function ReportScaffoldInner<T>({
         </View>
       ) : null}
       {kpiGroups ? <KpiGroups groups={kpiGroups} /> : kpis && kpis.length > 0 ? <KPIGrid items={kpis} compact /> : null}
+      {kpiNote}
       <ReportStatusLine {...status} updatedAt={updatedAt} refreshingKeptCopy={Boolean(query.isKeptCopy) && isFetching} />
       {children}
     </>
   );
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} {...query.quiet?.touchHandlers}>
       {head}
       <FlashList
-        data={rows as T[]}
+        data={rows}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getRowType}
@@ -303,6 +405,7 @@ function ReportScaffoldInner<T>({
         onEndReached={onEndReached}
         onEndReachedThreshold={0.5}
         showsVerticalScrollIndicator={false}
+        {...query.quiet?.scrollHandlers}
       />
     </View>
   );

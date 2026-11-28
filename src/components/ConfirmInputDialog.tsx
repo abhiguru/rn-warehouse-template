@@ -51,6 +51,8 @@ export interface ConfirmInputDialogProps extends ConfirmDialogProps {
   field?: ConfirmInputField;
   /** Align the message to the start (for lists); centred by default. */
   messageAlign?: 'center' | 'left';
+  /** The confirm button cannot be pressed (a required field is still empty); false by default. */
+  confirmDisabled?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -96,6 +98,7 @@ export const ConfirmInputDialog: React.FC<ConfirmInputDialogProps> = ({
   testID,
   field,
   messageAlign = 'center',
+  confirmDisabled = false,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -162,7 +165,7 @@ export const ConfirmInputDialog: React.FC<ConfirmInputDialogProps> = ({
 
             <DialogActions>
               {cancelText ? <DialogButton label={cancelText} onPress={cancel} disabled={busy} /> : null}
-              <DialogButton label={confirmText} onPress={onConfirm} role={destructive ? 'negative' : 'primary'} busy={busy} />
+              <DialogButton label={confirmText} onPress={onConfirm} role={destructive ? 'negative' : 'primary'} busy={busy} disabled={confirmDisabled} />
             </DialogActions>
           </DialogCard>
         </DialogOverlay>

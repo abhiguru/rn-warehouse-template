@@ -98,6 +98,7 @@ jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(),
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0, top: 0 }) }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/utils/toast', () => ({ showToast: jest.fn() }));
+jest.mock('@/features/unsent/keepFailedPhotos', () => ({ keepFailedPhotos: jest.fn() }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
 jest.mock('@/features/dispatch/services/dispatchImageService', () => ({
   uploadDeferredDispatchImages: jest.fn(),
@@ -344,4 +345,25 @@ it('the confirm dialog stays open and busy until the save answers', async () => 
   await act(async () => { finishSave!({ success: false }); });
   expect(createOnScreen()).not.toBeOnTheScreen();
   expect(createDialog().busy).toBe(false);
+});
+
+// WH-381: a dispatch is made online only, so a photo that did not upload is never kept on the phone to be sent later (the
+// offline "kept on this phone" path is gone): the person is asked, and Try again or Continue without them is the whole choice.
+describe('WH-381: a photo that did not upload is never kept on the phone', () => {
+  const { keepFailedPhotos } = jest.requireMock('@/features/unsent/keepFailedPhotos') as { keepFailedPhotos: jest.Mock };
+
+  it('asks the retry question even when the phone could keep photos, keeps nothing, and adds no "kept on this phone" line', async () => {
+    keepFailedPhotos.mockResolvedValue(1);
+    mockSubmitForm.mockResolvedValue({ success: true, dispatchId: DISPATCH_ID, failedPhotos: [mockImages[1]] });
+    await show();
+    await create_();
+    expect(photoOnScreen()).toBeOnTheScreen();
+    expect(successDialog()).not.toBeOnTheScreen();
+
+    await act(async () => { photoDialog().onCancel(); });
+    await dismissed();
+    expect(successDialog()).toBeOnTheScreen();
+    expect(giveUpDispatchPhotos).toHaveBeenCalledWith(DISPATCH_ID, [mockImages[1]]);
+    expect(keepFailedPhotos).not.toHaveBeenCalled();
+  });
 });

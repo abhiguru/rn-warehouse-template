@@ -44,6 +44,8 @@ export interface FilterBarChipProps {
   /** The remove button's whole spoken label, when "Remove filter …" does not fit the sentence. */
   removeAccessibilityLabel?: string;
   selected?: boolean;
+  /** Shown, but it cannot be opened or removed for now (§10). */
+  disabled?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -54,6 +56,7 @@ const makeStyles = (t: ThemeTokens) => ({
     minHeight: touchTarget,
     paddingHorizontal: BORDER,
   },
+  chipDisabled: { opacity: t.interaction.disabledOpacity },
   // The pill, drawn behind the pressables and centred in them; it grows with them.
   pill: {
     position: 'absolute' as const,
@@ -129,6 +132,7 @@ export function FilterBarChip({
   removeLabel,
   removeAccessibilityLabel,
   selected,
+  disabled = false,
 }: FilterBarChipProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -136,14 +140,15 @@ export function FilterBarChip({
   const tint = active || variant === 'text' ? t.brand.tint : t.icon.primary;
 
   return (
-    <View style={styles.chip}>
+    <View style={[styles.chip, disabled && styles.chipDisabled]}>
       <View style={[styles.pill, active && styles.pillActive, variant === 'text' && styles.pillText]} pointerEvents="none" />
       <Pressable
         style={[styles.body, onRemove && styles.bodyBeforeRemove]}
         onPress={onPress}
+        disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
-        accessibilityState={selected === undefined ? undefined : { selected }}
+        accessibilityState={selected === undefined && !disabled ? undefined : { selected, ...(disabled ? { disabled } : null) }}
       >
         {({ pressed }) => (
           <>
@@ -170,7 +175,9 @@ export function FilterBarChip({
         <Pressable
           style={styles.remove}
           onPress={onRemove}
+          disabled={disabled}
           accessibilityRole="button"
+          accessibilityState={disabled ? { disabled } : undefined}
           accessibilityLabel={removeAccessibilityLabel ?? translate('filters.bar.removeFilter', { name: removeLabel ?? label })}
         >
           {({ pressed }) => (

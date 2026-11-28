@@ -32,7 +32,7 @@ if (Platform.OS !== 'android' && buildSplashBackground) {
   SystemUI.setBackgroundColorAsync(buildSplashBackground);
 }
 
-import React, { useEffect, useState, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useState, useMemo, useRef, useSyncExternalStore } from 'react';
 
 // Type declaration for React Native's global ErrorUtils
 interface ErrorUtilsType {
@@ -71,8 +71,15 @@ import ConfigService from '@/services/configService';
 import { initializeSupabase } from '@/config/supabaseConfig';
 import { clearPendingEnrollment } from '@/config/supabaseConfig';
 import ConfigErrorScreen from '@/components/ConfigErrorScreen';
+import { hasKeptWork } from '@/features/unsent/unsentStore';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { OfflineStatusBar } from '@/components/OfflineStatusBar';
+import { PhoneCopyLifecycle } from '@/features/phone-copy/components/PhoneCopyLifecycle';
+import { useCopyFeatureOn, useCopySession, useEraseCopyForRole } from '@/hooks/usePhoneCopyStatus';
+import { useCopyBarShown } from '@/features/phone-copy/useCopyBarShown';
+import { useUnsentOnlyBar } from '@/features/unsent/useUnsentOnlyBar';
+import { BelowCopyBarContext, WindowInsetsContext, useBelowCopyBar } from '@/hooks/useBelowCopyBar';
 import UpgradingBanner from '@/components/UpgradingBanner';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
 import BackendTooOldScreen from '@/components/BackendTooOldScreen';
@@ -81,6 +88,7 @@ import { clearAppTooOld, getAppTooOld, isAppTooOld, reportAppTooOld, subscribeAp
 import { AlertHost } from '@/components/AlertHost';
 import { ToastHost } from '@/components/ToastHost';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useOfflineLimitWhileOpen } from '@/hooks/useOfflineLimitWhileOpen';
 import { useUpgrading } from '@/hooks/useUpgrading';
 import { createLogger } from '@/utils/logger';
 import { useAppDispatch } from '@/store/hooks';
@@ -90,17 +98,20 @@ import { useUnfinishedSaveCheck } from '@/hooks/useUnfinishedSaveCheck';
 import { GuardedScreen, useRootRouteGuard } from '@/navigation/RouteGuard';
 import { REPORTS } from '@/features/reports/reportRegistry';
 import { t as translate } from '@/i18n';
-import { initializeAuth } from '@/store/slices/authSlice';
+import { holdWritesUntilRoleReread, initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
 import { clearSessionScopedState } from '@/store/sessionScopedState';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { sweepLocalPhotoFiles } from '@/utils/localPhotoFiles';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { isCentralLoginConfigured } from '@/config/envConfig';
+import { getFacilityRelease } from '@/config/backendFeatures';
 import { restoreCentralSession, retryCentralRestoreIfNeeded } from '@/config/centralSession';
 import { leaveFacility, retryStaleFacilityCleanup } from '@/store/operatorSwitch';
+import { endSessionKeepingFacility } from '@/store/signInAgain';
+import { recordStoreUnreadableTry, resetStoreUnreadableTries } from '@/config/storeUnreadableTries';
 import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
-import { showAlert } from '@/utils/alert';
+import { dropAllAlerts, showAlert } from '@/utils/alert';
 import { isNetworkError, isUpgradingAnswer } from '@/utils/serverText';
 import { onOperatorServerChange } from '@/config/operatorServer';
 import { applyNetReachability, installNetReachability } from '@/config/netReachability';
@@ -108,6 +119,14 @@ import { installConnectionHistory, readConnectionSession } from '@/config/connec
 import { startDailyLanCheck } from '@/config/lanCheck';
 import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
 import { operatorResumeGate } from '@/config/operatorResume';
+import {
+  isPastOfflineLimit,
+  opensOffline,
+  isStoreUnreadable,
+  markRoleUnconfirmed,
+  onRoleUnconfirmed,
+  SESSION_STORE_UNREADABLE,
+} from '@/config/offlineStart';
 import { createResumeLifecycle } from '@/config/resumeLifecycle';
 import { isNativeHandoffActive } from '@/config/nativeHandoff';
 import { hasActiveOperatorMutation, invalidateStoredTokenCache } from '@/config/supabaseConfig';
@@ -297,20 +316,36 @@ const SplashScreen = () => (
 /**
  * While offline or upgrading, the banner at the top already pads for the status bar, so the
  * screens below it get a zero top inset; otherwise their headers would add a
- * second status-bar gap under the banner.
+ * second status-bar gap under the banner. Native views do not read that inset: under the
+ * phone copy's bar they are told through BelowCopyBarContext; Modals read the window insets through WindowInsetsContext.
  */
 function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
   const isOffline = useIsOffline();
   const upgrading = useUpgrading();
-  const value = React.useMemo(() => (isOffline || upgrading ? { ...insets, top: 0 } : insets), [insets, isOffline, upgrading]);
-  return <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>;
+  // The phone copy's status bar (WH-298) is always there while the feature is on, and pads for the status bar itself.
+  const copyBar = useCopyFeatureOn();
+  // A customer account's bar is drawn only in its first-load states (WH-306): the inset follows what is drawn.
+  const copyBarShown = useCopyBarShown();
+  // With the copy off, unsent work still on the phone keeps its one-line bar (WH-301).
+  const unsentOnlyBar = useUnsentOnlyBar();
+  const padded = upgrading || (copyBar ? copyBarShown : isOffline || unsentOnlyBar);
+  const value = React.useMemo(() => (padded ? { ...insets, top: 0 } : insets), [insets, padded]);
+  // A Modal covers the strip, the banner and the bar alike, so it reads the window's insets in each case (WH-347).
+  return (
+    <WindowInsetsContext.Provider value={padded ? insets : null}>
+      <BelowCopyBarContext.Provider value={copyBarShown ? insets : null}>
+        <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>
+      </BelowCopyBarContext.Provider>
+    </WindowInsetsContext.Provider>
+  );
 }
 
 /** The root stack; exported so a test can list the routes it declares. */
 export function NavigationStack({ screenBackground }: { screenBackground: string }) {
   const insets = useSafeAreaInsets();
   const t = useTokens();
+  const belowCopyBar = useBelowCopyBar();
 
   // Only apply bottom safe area padding on Android (iOS handles it natively)
   const androidBottomPadding = Platform.OS === 'android' ? insets.bottom : 0;
@@ -327,6 +362,8 @@ export function NavigationStack({ screenBackground }: { screenBackground: string
         headerTintColor: t.brand.tint,
         headerTitleStyle: { ...typography.headline, color: t.text.primary },
         headerShadowVisible: false,
+        // The native header pads for the status bar from the window, whatever the inset above says.
+        unstable_nativeProps: belowCopyBar ? { headerConfig: { disableTopInsetApplication: true } } : undefined,
         contentStyle: {
           backgroundColor: screenBackground,
           // Apply bottom safe area padding for Android system nav bar only
@@ -408,7 +445,7 @@ export function NavigationStack({ screenBackground }: { screenBackground: string
 }
 
 // Themed content component that uses Redux state for theme
-function ThemedContent() {
+function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: (centralUnreadable: boolean) => void }) {
   const dispatch = useAppDispatch();
   const [authCheckSettled, setAuthCheckSettled] = useState(false);
   // Brand and mode from the Settings choice (falls back to the system mode).
@@ -421,28 +458,66 @@ function ThemedContent() {
   useProfileLanguage();
   // A GRN or dispatch whose save was in flight when the app last closed: the server is asked what became of it.
   useUnfinishedSaveCheck();
+  // The phone copy (WH-298): its sync runs for a signed-in administrator, supervisor or staff member, and its status
+  // bar replaces the offline banner where the facility has the feature.
+  const copySession = useCopySession();
+  const copyBar = useCopyFeatureOn();
+  const copyBarShown = useCopyBarShown();
+  const unsentOnlyBar = useUnsentOnlyBar();
+  useEraseCopyForRole();
 
   // Restore credentials before any route screen can redirect an initially
   // empty Redux auth state. Deep links can bypass the tab layout, so auth
   // restoration belongs at the root navigation boundary.
   useEffect(() => {
     let mounted = true;
+    let facilitySignedIn = false;
+    let centralUnreadable = false;
+    let facilityUnreadable = false;
+    // One start counts as one failed try (WH-363), however many of the two stores failed.
+    let reported = false;
+    const reportUnreadable = () => {
+      if (reported) return;
+      reported = true;
+      // Told whether the central sign-in could not be read with no facility session to show instead (WH-361).
+      onSessionUnreadable(centralUnreadable && !facilitySignedIn);
+    };
     void Promise.all([
       dispatch(initializeAuth())
         .unwrap()
+        .then(restored => {
+          facilitySignedIn = Boolean(restored.userProfile);
+        })
         // initializeAuth records its failure in Redux; the root only needs to
-        // release the navigation gate after the attempt settles.
-        .catch(() => undefined),
+        // release the navigation gate after the attempt settles. A secure store
+        // that stays unreadable is the exception: the screens are not opened as
+        // signed out, the load-error screen takes their place (WH-360).
+        .catch((error: unknown) => {
+          if (error === SESSION_STORE_UNREADABLE) facilityUnreadable = true;
+        }),
       // With central login the guard also needs to know whether the person is
       // signed in at the association: read that stored session too (no network).
-      isCentralLoginConfigured() ? restoreCentralSession().catch(() => undefined) : undefined,
+      isCentralLoginConfigured()
+        ? restoreCentralSession({
+            onUnreadable: () => {
+              centralUnreadable = true;
+            },
+          }).catch(() => undefined)
+        : undefined,
     ]).finally(() => {
-      if (mounted) setAuthCheckSettled(true);
+      if (!mounted) return;
+      // With no facility session the guard would show central sign-in, and an unread store does not say that
+      // nobody is signed in there: the load-error screen takes the screens' place (WH-361).
+      if (facilityUnreadable) reportUnreadable();
+      if (centralUnreadable && !facilitySignedIn) reportUnreadable();
+      else setAuthCheckSettled(true);
+      // The stores answered: the count of failed tries (WH-363) goes, and "Sign in again" with it.
+      if (!centralUnreadable && !facilityUnreadable) void resetStoreUnreadableTries();
     });
     return () => {
       mounted = false;
     };
-  }, [dispatch]);
+  }, [dispatch, onSessionUnreadable]);
 
   // I10: Handle cold start deep links only after the root auth check settles.
   useColdStartDeepLink(authCheckSettled);
@@ -503,8 +578,11 @@ function ThemedContent() {
           <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
               <ForceUpdateModal />
-              <OfflineBanner />
-              <UpgradingBanner />
+              {/* The phone copy's bar where the feature is on (WH-298), today's banner elsewhere. */}
+              {copyBar ? copyBarShown ? <OfflineStatusBar /> : null : <OfflineBanner />}
+              {unsentOnlyBar ? <OfflineStatusBar unsentOnly /> : null}
+              {copySession ? <PhoneCopyLifecycle /> : null}
+              <UpgradingBanner belowCopyBar={copyBarShown || unsentOnlyBar} />
               <BottomSheetModalProvider>
                 <BelowOfflineBanner>
                   <NavigationStack key={language} screenBackground={screenBackground} />
@@ -528,9 +606,30 @@ async function clearReplacedOperatorInstance() {
 
 // Bootstrap component (inside providers)
 function BootstrapApp() {
+  // The saved language, before anything below is drawn or worded: the splash, the server choice and the
+  // refusal screens come up without ThemedContent (WH-351). The store is rehydrated here (PersistGate).
+  useAppLanguage();
   const [isReady, setIsReady] = useState(false);
   const [needsSelection, setNeedsSelection] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  // With `configError`: the kept profile is past the offline limit, so the screen says the phone was away too long (WH-351).
+  const [pastOfflineLimit, setPastOfflineLimit] = useState(false);
+  // With `configError`: unsent work is kept on this phone, so the screen says so (WH-301, Design 11.2 and 12.3).
+  const [unsentKept, setUnsentKept] = useState(false);
+  useEffect(() => {
+    if (configError === null) return undefined;
+    let live = true;
+    void hasKeptWork().then(kept => {
+      if (live) setUnsentKept(kept);
+    });
+    return () => {
+      live = false;
+    };
+  }, [configError]);
+  // With `configError`: the phone's secure store stayed unreadable after the retries, so the screen says that (WH-362).
+  const [storeUnreadable, setStoreUnreadable] = useState(false);
+  // With `storeUnreadable`: enough tries have failed in a row, so "Sign in again" is offered (WH-363).
+  const [signInAgainOffered, setSignInAgainOffered] = useState(false);
   // The facility answered the cold start with `upgrading`: its own full-screen state, not a load error.
   const [serverUpgrading, setServerUpgrading] = useState(false);
   // The selected facility needs a newer app: its own screen, not a connection error. Set by the facility check
@@ -543,6 +642,47 @@ function BootstrapApp() {
   // change re-runs the bootstrap, which clears this flag.
   const [changingServer, setChangingServer] = useState(false);
   const bootstrapRun = useRef(0);
+  const centralUnreadableRef = useRef(false);
+  // True while the app's own screens are mounted: no splash and no full-screen state in their place.
+  const appOpen = useRef(false);
+  useEffect(() => {
+    appOpen.current =
+      isReady && !(needsSelection && !isCentralLoginConfigured()) && !appTooOld && !backendTooOld && configError === null;
+  });
+
+  // The app came back with no answer from the server and the kept profile may no longer open it (WH-350, the 30-day
+  // rule of src/config/offlineLimit.ts): the open screens, with their dialogs and sheets, give way to the screen a
+  // start shows then. Nothing is signed out or erased; "Try again" runs the start again. Only for the roles that have
+  // the phone copy: a customer account never opens offline and keeps today's behaviour.
+  const closeForOfflineLimit = (error: unknown) => {
+    if (!appOpen.current || !opensOffline(store.getState().auth.userProfile?.role, getFacilityRelease().schemaHead)) return;
+    appOpen.current = false;
+    markRoleUnconfirmed();
+    dropAllAlerts();
+    setServerUpgrading(false);
+    setChangingServer(false);
+    setPastOfflineLimit(isPastOfflineLimit(error));
+    const unreadable = isStoreUnreadable(error);
+    setStoreUnreadable(unreadable);
+    setSignInAgainOffered(false);
+    setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
+    if (unreadable) void recordStoreUnreadableTry().then(setSignInAgainOffered);
+  };
+  // The same check with no connection while the app stays in front or is away only briefly (WH-354); it asks no server.
+  useOfflineLimitWhileOpen(closeForOfflineLimit);
+
+  // The restore could not read a stored session, after retries (WH-360, WH-361): nothing is signed out or erased, and
+  // "Try again" runs the start, and with it the restore, again. Stable, so the restore is not run again by a render.
+  const closeForUnreadableSession = useCallback((centralUnreadable: boolean) => {
+    // "Sign in again" removes the central sign-in too when that is what could not be read.
+    centralUnreadableRef.current = centralUnreadable;
+    setPastOfflineLimit(false);
+    setStoreUnreadable(true);
+    setSignInAgainOffered(false);
+    setServerUpgrading(false);
+    setConfigError(translate('errors.auth.initializeFailed'));
+    void recordStoreUnreadableTry().then(setSignInAgainOffered);
+  }, []);
 
   useEffect(() => {
     // Documents handed to the share sheet in an earlier run are not session
@@ -558,13 +698,17 @@ function BootstrapApp() {
     // Once a day, on Wi-Fi with the internet up, the phone asks the warehouse network address whether it
     // answers, so a broken fallback shows in Help before an outage (src/config/lanCheck.ts).
     const stopLanCheck = startDailyLanCheck();
+    // Whenever the server gave no answer and the role is unconfirmed, the open session's writes wait for it to be
+    // read again (WH-353). Installed before the verifier below, which is what marks it on a return to the front.
+    const stopRoleHold = onRoleUnconfirmed(() => store.dispatch(holdWritesUntilRoleReread()));
     const unsubscribe = onOperatorServerChange(() => { void bootstrapApp(); });
     const removeVerifier = operatorResumeGate.installVerifier(async current => {
       const run = bootstrapRun.current;
       return verifyForegroundOperator(
         () => current() && run === bootstrapRun.current,
         clearReplacedOperatorInstance,
-        config => initializeSupabase(config.supabaseUrl, config.anonKey)
+        config => initializeSupabase(config.supabaseUrl, config.anonKey),
+        closeForOfflineLimit
       );
     });
     // Suspend credentialed work for a real background stay only: not for the
@@ -589,7 +733,7 @@ function BootstrapApp() {
     });
     return () => {
       bootstrapRun.current += 1;
-      lifecycle.remove(); removeVerifier(); unsubscribe(); stopLanCheck(); operatorResumeGate.suspend();
+      lifecycle.remove(); removeVerifier(); unsubscribe(); stopLanCheck(); stopRoleHold(); operatorResumeGate.suspend();
     };
   }, []);
 
@@ -598,6 +742,9 @@ function BootstrapApp() {
     // A retry must leave the prior error state before starting. Otherwise a
     // successful refresh completes behind the still-mounted error screen.
     setConfigError(null);
+    setPastOfflineLimit(false);
+    setStoreUnreadable(false);
+    setSignInAgainOffered(false);
     setServerUpgrading(false);
     clearAppTooOld();
     clearBackendTooOld();
@@ -624,6 +771,22 @@ function BootstrapApp() {
       if (result.kind === 'superseded') return;
       if (result.kind === 'selection') {
         if (run === bootstrapRun.current) { setNeedsSelection(true); setIsReady(true); }
+        return;
+      }
+      if (result.kind === 'offline') {
+        // No answer from the facility, and it was opened on this phone before (WH-298, src/config/offlineStart.ts):
+        // the app opens with its last settings. The facility check stays required, so the first request to the
+        // server runs it again first, and "update the app" or "being upgraded" then apply as on a normal start.
+        initializeSupabase(result.config.supabaseUrl, result.config.anonKey);
+        operatorResumeGate.suspend();
+        // Lists asked while the gate was shut failed with the identity error and the query library never asks again
+        // by itself (NetInfo is not fed to it). When the real check first passes, the failed ones ask again.
+        const stopWatching = operatorResumeGate.onVerified(() => {
+          stopWatching();
+          void queryClient.refetchQueries({ type: 'active', predicate: query => query.state.status === 'error' });
+          void queryClient.invalidateQueries({ type: 'inactive', predicate: query => query.state.status === 'error' });
+        });
+        if (run === bootstrapRun.current) { setConfigError(null); setIsReady(true); }
         return;
       }
       const discovered = result.discovery;
@@ -690,6 +853,13 @@ function BootstrapApp() {
         return;
       }
       if (run === bootstrapRun.current) {
+        const unreadable = isStoreUnreadable(error);
+        // Counted before the screen shows, so a third failure offers "Sign in again" at once (WH-363).
+        const offered = unreadable ? await recordStoreUnreadableTry() : false;
+        if (run !== bootstrapRun.current) return;
+        setPastOfflineLimit(isPastOfflineLimit(error));
+        setStoreUnreadable(unreadable);
+        setSignInAgainOffered(offered);
         setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
         setIsReady(true);
       }
@@ -746,6 +916,19 @@ function BootstrapApp() {
     );
   }
 
+  // "Sign in again" (WH-363), after the person confirmed: the saved sign-in and the phone copy go, the facility stays
+  // selected and listed, and its own sign-in (mobile number and code) comes next. A removal that fails changes nothing.
+  const signInAgain = async () => {
+    const outcome = await endSessionKeepingFacility(store.dispatch, { centralUnreadable: centralUnreadableRef.current });
+    if (outcome === 'failed') {
+      showAlert(translate('components.configError.signInAgainFailedTitle'), translate('components.configError.signInAgainFailedMessage'));
+      return;
+    }
+    if (outcome !== 'ready') return;
+    await resetStoreUnreadableTries();
+    await bootstrapApp();
+  };
+
   if (configError) {
     if (changingServer) {
       return <OperatorServerSelection initial onCancel={() => setChangingServer(false)} />;
@@ -754,6 +937,10 @@ function BootstrapApp() {
       <ConfigErrorScreen
         error={configError}
         upgrading={serverUpgrading}
+        unsentKept={unsentKept}
+        offlineTooLong={pastOfflineLimit}
+        storeUnreadable={storeUnreadable}
+        onSignInAgain={storeUnreadable && signInAgainOffered ? signInAgain : undefined}
         onRetry={bootstrapApp}
         toFacilities={centralLogin}
         onChangeServer={
@@ -772,7 +959,7 @@ function BootstrapApp() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AppStateManager>
-          <ThemedContent />
+          <ThemedContent onSessionUnreadable={closeForUnreadableSession} />
         </AppStateManager>
       </QueryClientProvider>
     </ErrorBoundary>

@@ -202,7 +202,7 @@ const UserProfileScreen: React.FC = () => {
                 <Icon name={action.icon} size={iconSize.md} color={action.destructive ? t.status.negative.text : t.brand.tint} />
                 <View style={styles.actionContent}>
                   <Text style={[styles.actionLabel, action.destructive && styles.actionLabelNegative]}>{action.label}</Text>
-                  <Text style={styles.actionSubtitle}>{action.subtitle}</Text>
+                  <Text style={styles.actionSubtitle} testID={action.subtitleTestID}>{action.subtitle}</Text>
                 </View>
               </Pressable>
             ))}

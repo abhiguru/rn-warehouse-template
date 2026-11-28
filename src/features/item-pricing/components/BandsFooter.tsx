@@ -30,6 +30,8 @@ interface Props {
   hideAdd?: boolean;
   /** The item's own rate form: say that weights above the last band have no rate (WH-66). */
   heavierNote?: boolean;
+  /** The rates are shown but cannot change (the phone is offline, WH-348): Add band is disabled. */
+  disabled?: boolean;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -37,7 +39,7 @@ const makeStyles = (t: ThemeTokens) => ({
   error: { ...typography.footnote, color: t.status.negative.text },
 });
 
-export function BandsFooter({ draft, ctx, errors, onChange, packaging, onAddPress, addPanel, hideAdd, heavierNote }: Props) {
+export function BandsFooter({ draft, ctx, errors, onChange, packaging, onAddPress, addPanel, hideAdd, heavierNote, disabled = false }: Props) {
   const styles = useThemedStyles(makeStyles);
   const topKg = heavierNote && !ctx.customerId ? topUpTo(draft) : null;
   const addBlock = appendBandBlock(draft);
@@ -51,7 +53,7 @@ export function BandsFooter({ draft, ctx, errors, onChange, packaging, onAddPres
         addPanel
       ) : (
         <>
-          <Button type="tertiary" leftIcon="plus" disabled={addBlock !== null} onPress={() => (onAddPress ? onAddPress() : onChange(appendEmptyBand(draft)))} testID="add-band">
+          <Button type="tertiary" leftIcon="plus" disabled={addBlock !== null || disabled} onPress={() => (onAddPress ? onAddPress() : onChange(appendEmptyBand(draft)))} testID="add-band">
             {t('pricing.edit.addBand')}
           </Button>
           {addBlock === 'upTo' ? <Text style={styles.note}>{t('pricing.edit.addBandNeedsUpTo')}</Text> : null}

@@ -30,13 +30,25 @@ function withoutInstallReferrerPermission(config) {
   });
 }
 
+// A lowercase reverse-domain application ID, as the Android package and the iOS bundle identifier both take.
+const REVERSE_DOMAIN_ID = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 module.exports = ({ config }) => {
   const packageName = process.env.WAREHOUSE_ANDROID_PACKAGE;
+  const iosBundleId = process.env.WAREHOUSE_IOS_BUNDLE_ID;
+  const easProjectId = process.env.WAREHOUSE_EAS_PROJECT_ID;
   const name = process.env.WAREHOUSE_APP_NAME;
   const scheme = process.env.WAREHOUSE_APP_SCHEME;
   const code = process.env.WAREHOUSE_ANDROID_VERSION_CODE;
-  if (packageName && !/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,}$/.test(packageName)) {
+  if (packageName && !REVERSE_DOMAIN_ID.test(packageName)) {
     throw new Error('WAREHOUSE_ANDROID_PACKAGE must be a lowercase reverse-domain Android application ID.');
+  }
+  if (iosBundleId && !REVERSE_DOMAIN_ID.test(iosBundleId)) {
+    throw new Error('WAREHOUSE_IOS_BUNDLE_ID must be a lowercase reverse-domain iOS bundle identifier.');
+  }
+  if (easProjectId && !UUID.test(easProjectId)) {
+    throw new Error('WAREHOUSE_EAS_PROJECT_ID must be an Expo project ID (a UUID).');
   }
   if (scheme && !/^[a-z][a-z0-9+.-]*$/.test(scheme)) {
     throw new Error('WAREHOUSE_APP_SCHEME must be a valid lowercase URI scheme.');
@@ -50,9 +62,14 @@ module.exports = ({ config }) => {
   checkLegalText(process.env.EXPO_PUBLIC_LEGAL_TEXT, brandPack);
   return {
     ...config,
-    extra: { ...config.extra, ...(brandPack ? { brandPack } : {}) },
+    extra: {
+      ...config.extra,
+      ...(brandPack ? { brandPack } : {}),
+      ...(easProjectId ? { eas: { ...(config.extra && config.extra.eas), projectId: easProjectId } } : {}),
+    },
     ...(name ? { name } : {}),
     ...(scheme ? { scheme } : {}),
+    ...(iosBundleId ? { ios: { ...config.ios, bundleIdentifier: iosBundleId } } : {}),
     android: {
       ...config.android,
       ...(packageName ? { package: packageName } : {}),

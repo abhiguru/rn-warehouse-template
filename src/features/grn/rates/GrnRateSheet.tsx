@@ -12,7 +12,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
 import { DatePickerInput } from '@/components/ui/DatePickerInput';
@@ -221,7 +221,7 @@ function ReferenceTable({ rows, oneTime }: { rows: ReferenceRow[]; oneTime: bool
 export function GrnRateSheet({ visible, onClose, row, input, customerName, priceTypeText, grnNumber, onSave }: GrnRateSheetProps) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
   const { fontScale, width: windowWidth } = useWindowDimensions();
   const oneTime = input.ctx.priceType === 'one_time';
   const adding = row !== null && row.rate === null;

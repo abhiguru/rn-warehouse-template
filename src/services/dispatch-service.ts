@@ -455,9 +455,6 @@ export const getDispatchListWithItems = async (
     // Convert offset-based pagination to page-based using standardized utility
     const p_page = offsetToPage(offset, p_limit);
 
-    // Get authenticated client with JWT tokens
-    const authenticatedClient = await getAuthenticatedClient();
-
     // Transform filter keys from camelCase (frontend) to snake_case (backend)
     const transformedFilters: Record<string, unknown> = {};
     const keyMap: Record<string, string> = {
@@ -473,6 +470,9 @@ export const getDispatchListWithItems = async (
         transformedFilters[keyMap[key] || key] = value;
       }
     }
+
+    // Get authenticated client with JWT tokens
+    const authenticatedClient = await getAuthenticatedClient();
 
     // Generate deduplication key for this request (PO9 fix)
     const dedupKey = generateRequestKey('getDispatchListWithItems', {
@@ -663,16 +663,12 @@ export const getCustomerDispatchList = async (
   }
 
   try {
-    const authenticatedClient = await getAuthenticatedClient();
-    const { data, error } = await authenticatedClient.rpc(
-      'get_customer_dispatch_list',
-      {
-        p_customer_id: params.p_customer_id,
-        p_limit: limit,
-        p_offset: offset,
-        p_include_items: params.p_include_items ?? true,
-      }
-    );
+    const { data, error } = await (await getAuthenticatedClient()).rpc('get_customer_dispatch_list', {
+      p_customer_id: params.p_customer_id,
+      p_limit: limit,
+      p_offset: offset,
+      p_include_items: params.p_include_items ?? true,
+    });
 
     if (error) {
       return {

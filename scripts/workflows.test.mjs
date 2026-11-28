@@ -191,6 +191,17 @@ test('expo-doctor is locked at one exact version, and CI and the release run it 
   }
 });
 
+// The SDK version match warns on pull requests and pushes (owner, 2026-11-13, "Warn on PRs"), so
+// expo-doctor skips its copy of that check there, and only there; the release never skips it.
+test('expo-doctor skips its SDK version check on pull requests and pushes only, never in the release', () => {
+  assert.match(
+    workflowText('ci.yml'),
+    /^\s*EXPO_DOCTOR_SKIP_DEPENDENCY_VERSION_CHECK: \$\{\{ \(github\.event_name == 'pull_request' \|\| github\.event_name == 'push'\) && '1' \|\| '0' \}\}$/m,
+    'ci.yml skips the duplicate check only for pull_request and push'
+  );
+  assert.doesNotMatch(workflowText('release.yml'), /EXPO_DOCTOR_SKIP_DEPENDENCY_VERSION_CHECK/, 'the release keeps the full check');
+});
+
 // Review 2026-10-17, M10: a bundle that is only exported, never audited, is not checked.
 test('CI and the release audit the exported bundle directory after the export', () => {
   for (const file of ['ci.yml', 'release.yml']) {

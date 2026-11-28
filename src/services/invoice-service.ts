@@ -12,6 +12,7 @@ import { formatNumber } from '@/utils/formatters';
 import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, trimCancelReason } from '@/features/invoice/utils/cancelReason';
 import { createLogger } from '@/utils/logger';
 import { invoiceLabelOf } from '@/utils/invoiceLabel';
+import type { DataSource } from '@/features/phone-copy/sourced';
 
 const invoiceServiceLogger = createLogger('InvoiceService');
 
@@ -392,11 +393,11 @@ export const getAssignedCustomerInvoices = async (
   if (targetIds.length === 0) return failure(t('errors.customer.noAssignment'));
 
   try {
-    const authenticatedClient = await getAuthenticatedClient();
-    // The summary rows carry no customer name. Use the caller's names, else read
-    // them; a failed name lookup only leaves the row's name line empty.
+    // The summary rows carry no customer name. Use the caller's names, else read them; a failed name lookup only
+    // leaves the row's name line empty.
     const names: Record<string, string> = { ...(params.customerNames || {}) };
     if (targetIds.some(id => !names[id])) {
+      const authenticatedClient = await getAuthenticatedClient();
       const { data: customers } = await authenticatedClient.from('customers').select('id, name').in('id', targetIds);
       for (const customer of customers || []) names[customer.id] = customer.name;
     }
@@ -409,7 +410,7 @@ export const getAssignedCustomerInvoices = async (
         customerHistory<CustomerInvoiceHistory>(
           `invoices:${customerId}`,
           async () => {
-            const { data, error } = await authenticatedClient.rpc('get_customer_invoice_summary', {
+            const { data, error } = await (await getAuthenticatedClient()).rpc('get_customer_invoice_summary', {
               p_customer_uuid: customerId,
               // The whole history; the date filter is applied here, to the moment.
               p_from_date: CUSTOMER_INVOICE_EARLIEST,
@@ -669,6 +670,8 @@ export interface InvoiceDetailsResponse {
     items: InvoiceItem[];
   };
   error?: string;
+  /** Set when the phone copy answered (WH-348): the screen shows no time of its own. */
+  source?: DataSource;
   /** The server answered "Invoice not found": the invoice is gone (deleted), not merely unreadable right now. */
   notFound?: boolean;
   /** The server answered "Access denied to this invoice": a customer whose access to it has ended. */
@@ -738,7 +741,7 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
     return {
       success: true,
       data: data.data,
-      message: t('errors.invoice.detailsFetched')
+      message: t('errors.invoice.detailsFetched'),
     };
   } catch (error) {
     invoiceServiceLogger.error('Exception:', error);
@@ -796,6 +799,8 @@ export interface InvoiceItemsDetailedResponse {
     summary: InvoiceItemsSummary;
   };
   error?: string;
+  /** Set when the phone copy answered (WH-348). */
+  source?: DataSource;
 }
 
 // Type for raw RPC invoice item response
@@ -989,7 +994,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
         ...data.data,
         items: Array.isArray(data.data?.items) ? data.data.items.map(mapDetailedInvoiceItem) : [],
       },
-      message: t('errors.invoice.itemsFetched')
+      message: t('errors.invoice.itemsFetched'),
     };
   } catch (error) {
     invoiceServiceLogger.error('Invoice Items Exception:', error);

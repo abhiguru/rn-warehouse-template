@@ -45,6 +45,8 @@ import { isManager } from '@/config/roles';
 import { customerPricingPath, itemRatesPath } from '@/features/item-pricing/contract';
 import { useAppSelector } from '@/store/hooks';
 import { t } from '@/i18n';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { money } from '@/features/item-pricing/rateText';
 import { cleanPackaging, packageUnit } from '@/utils/packagingWord';
 import { space, type ThemeTokens } from '@/theme/tokens';
@@ -127,6 +129,8 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
   const th = useTokens();
   const screen = useTableLayout();
   const { rates, priceType, status, retry } = useGrnItemRates(grnId);
+  // Offline, the row that opens this GRN's rate step is a plain row: GRN details' Edit needs the server (WH-348, Design DQ-R1).
+  const needsConnection = useNeedsConnectionV3();
   const role = useAppSelector(state => state.auth?.userProfile?.role);
   // Administrators and supervisors open the rate's home (see the header); staff get no link to the
   // price list; a customer's priced rows open "Your rate".
@@ -155,7 +159,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
           ? 'item'
           : rate.source === 'customer' && customerId
             ? 'customer'
-            : rate.source === 'grn' && canEdit && grnId
+            : rate.source === 'grn' && canEdit && grnId && !needsConnection
               ? 'grn'
               : null;
       const link = managerTarget !== null || opensYourRate;
@@ -172,7 +176,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
         group.item_name,
         details,
         // A customer is never told where the rate comes from (default, customer or GRN rate).
-        priced ? (isCustomer ? null : t(SOURCE_LABEL[rate.source!])) : t('grn.rates.noRateSet'),
+        rate.source ? (isCustomer ? null : t(SOURCE_LABEL[rate.source])) : t('grn.rates.noRateSet'),
         rate.varies ? t('grn.rates.tagVaries') : null,
         priced ? t('grn.rates.rentAmount', { amount: money(rate.unit_price ?? 0) }) : null,
         priced && !oneTime ? t('pricing.row.labour', { amount: money(rate.labour_rate ?? 0) }) : null,
@@ -182,7 +186,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
         .join(', ');
       return { priced, managerTarget, link, under, label };
     },
-    [isCustomer, manager, grnId, customerId, canEdit, repeated, stacked, oneTime],
+    [isCustomer, manager, grnId, customerId, canEdit, repeated, stacked, oneTime, needsConnection],
   );
 
   const columns = useMemo(
@@ -292,10 +296,10 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
                       managerTarget === 'item'
                         ? itemRatesPath(rate.item_id)
                         : managerTarget === 'customer'
-                          ? customerPricingPath(customerId as string, rate.item_id)
+                          ? customerPricingPath(customerId ?? '',rate.item_id)
                           : managerTarget === 'grn'
-                            ? grnRatesStepPath(grnId as string)
-                            : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined, packagingByLot?.[rate.grn_item_id] ? cleanPackaging(packagingByLot[rate.grn_item_id]) : undefined),
+                            ? grnRatesStepPath(grnId ?? '')
+                            : yourRatePath(grnId ?? '',rate.item_id, grnNumber ?? undefined, packagingByLot?.[rate.grn_item_id] ? cleanPackaging(packagingByLot[rate.grn_item_id]) : undefined),
                     )
                   }
                   style={({ pressed }) => [table.row, pressed && table.rowPressed]}
@@ -326,10 +330,15 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
                   type="secondary"
                   onPress={() => router.push(grnRatesStepPath(grnId))}
                   accessibilityHint={t('grn.rates.opensRatesStep')}
+                  disabled={needsConnection}
+                  accessibilityLabel={needsConnection ? needsConnectionLabel(t('grn.rates.setRates')) : undefined}
                   testID="grn-imported-set-rates"
                 >
                   {t('grn.rates.setRates')}
                 </Button>
+                {needsConnection ? (
+                  <NeedsConnectionLine align="center" testID="grn-imported-set-rates-needs-connection" text={t('components.offlineRead.needsConnection')} />
+                ) : null}
               </View>
             ) : null}
             <View style={own.note}>

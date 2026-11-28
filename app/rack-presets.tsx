@@ -14,6 +14,7 @@ import { FormSaveBar } from '@/components/ui/FormSaveBar';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useAppSelector } from '@/store/hooks';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
@@ -33,6 +34,8 @@ export default function RackPresetsScreen() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const allowed = canOpenScreen(role, 'rackPresets');
+  // Saving needs the server (WH-348, Design 2.5 and DQ1): offline the lists show and their controls are disabled.
+  const needsConnection = useNeedsConnectionV3();
   const [loaded, setLoaded] = useState<RackPresetsAnswer | null>(null);
   const [draft, setDraft] = useState<Record<ListName, string[]> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -153,30 +156,33 @@ export default function RackPresetsScreen() {
               autoCapitalize="characters"
               accessibilityLabel={tr('settings.rackPresets.inputLabel', { list: title, position: index + 1 })}
               testID={`rack-presets-${list}-${index}`}
+              editable={!needsConnection}
             />
             <Pressable
               style={styles.iconButton}
               onPress={() => move(list, index, -1)}
-              disabled={index === 0}
+              disabled={index === 0 || needsConnection}
               accessibilityRole="button"
               accessibilityLabel={tr('settings.rackPresets.moveUpLabel', { label: label || index + 1 })}
-              accessibilityState={{ disabled: index === 0 }}
+              accessibilityState={{ disabled: index === 0 || needsConnection }}
             >
               <Icon name="arrow-up" size={iconSize.md} color={index === 0 ? t.text.disabled : t.icon.primary} />
             </Pressable>
             <Pressable
               style={styles.iconButton}
               onPress={() => move(list, index, 1)}
-              disabled={index === labels.length - 1}
+              disabled={index === labels.length - 1 || needsConnection}
               accessibilityRole="button"
               accessibilityLabel={tr('settings.rackPresets.moveDownLabel', { label: label || index + 1 })}
-              accessibilityState={{ disabled: index === labels.length - 1 }}
+              accessibilityState={{ disabled: index === labels.length - 1 || needsConnection }}
             >
               <Icon name="arrow-down" size={iconSize.md} color={index === labels.length - 1 ? t.text.disabled : t.icon.primary} />
             </Pressable>
             <Pressable
               style={styles.iconButton}
               onPress={() => change(list, current => current.filter((_, at) => at !== index))}
+              disabled={needsConnection}
+              accessibilityState={{ disabled: needsConnection }}
               accessibilityRole="button"
               accessibilityLabel={tr('settings.rackPresets.removeLabel', { label: label || index + 1 })}
               testID={`rack-presets-${list}-${index}-remove`}
@@ -189,6 +195,7 @@ export default function RackPresetsScreen() {
           <Button
             type="tertiary"
             onPress={() => change(list, current => [...current, ''])}
+            disabled={needsConnection}
             accessibilityLabel={tr('settings.rackPresets.addLabel', { list: title })}
             testID={`rack-presets-${list}-add`}
           >
@@ -226,6 +233,7 @@ export default function RackPresetsScreen() {
           loading={saving}
           disabled={!dirty || saving}
           buttonTestID="rack-presets-save"
+          needsConnectionTestID={needsConnection ? 'rack-presets-bottom-bar-needs-connection' : undefined}
         />
       ) : null}
     </View>

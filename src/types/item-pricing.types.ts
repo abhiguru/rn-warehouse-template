@@ -1,5 +1,7 @@
 // Item Storage Pricing Type Definitions
 
+import type { DataSource } from '@/features/phone-copy/sourced';
+
 export type PriceType = 'one_time' | 'monthly';
 
 export interface ItemStoragePrice {
@@ -155,6 +157,8 @@ export interface ItemPriceHistoryResponse {
   success: boolean;
   data: ItemPriceHistoryEntry[];
   pagination: ItemPriceHistoryPagination;
+  /** Set when the phone copy answered (WH-348). */
+  source?: DataSource;
   /** On a failure: text the screen can show, in the app's language. */
   message?: string;
   error?: string;

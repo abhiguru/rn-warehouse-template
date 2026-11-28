@@ -19,6 +19,8 @@ import {
 import { Image } from 'expo-image';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useViaCurrentPath } from '@/hooks/useLanStatus';
 import {
@@ -45,6 +47,8 @@ export interface DispatchImageData {
   id: string;
   image_url: string;
   file_name?: string;
+  /** The photo is not on the phone and the server cannot be asked now: the tile is a frame (WH-299). */
+  needsConnection?: boolean;
 }
 
 interface DispatchImagesTabProps {
@@ -171,6 +175,13 @@ const makeStyles = (t: ThemeTokens) => ({
     width: '100%' as const,
     height: '100%' as const,
   },
+  frame: {
+    width: '100%' as const,
+    height: '100%' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.surface.cardActive,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center' as const,
@@ -208,6 +219,7 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
   },
   removeCirclePressed: { backgroundColor: t.destructive.fill },
+  frameText: { ...typography.caption2, color: t.text.secondary, textAlign: 'center' as const, marginTop: space.xs },
   uploadButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -228,6 +240,8 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.brand.onFill,
   },
+  addDisabled: { opacity: t.interaction.disabledOpacity },
+  needsConnectionRow: { paddingHorizontal: layout.marginCompact },
 });
 
 export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
@@ -242,6 +256,10 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
   const { width } = useWindowDimensions();
   const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
   const t = useTokens();
+  // Adding a photo needs the server: with no connection the button is disabled and one line says why (WH-299, 2.5).
+  const needsConnection = useNeedsConnection();
+  const addDisabled = isUploading || needsConnection;
+  const addA11yLabel = needsConnection ? needsConnectionLabel(tr('dispatch.photos.addLabel')) : tr('dispatch.photos.addLabel');
 
   if (images.length === 0) {
     return (
@@ -254,11 +272,11 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={tr('dispatch.photos.addLabel')}
-            accessibilityState={{ disabled: isUploading, busy: isUploading }}
-            style={({ pressed }) => [styles.uploadButton, pressed && styles.uploadButtonPressed]}
+            accessibilityLabel={addA11yLabel}
+            accessibilityState={{ disabled: addDisabled, busy: isUploading }}
+            style={({ pressed }) => [styles.uploadButton, pressed && styles.uploadButtonPressed, needsConnection && styles.addDisabled]}
             onPress={onUpload}
-            disabled={isUploading}
+            disabled={addDisabled}
           >
             {isUploading ? (
               <ActivityIndicator size="small" color={t.brand.onFill} />
@@ -268,11 +286,29 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
             <Text style={styles.uploadButtonText}>{isUploading ? tr('dispatch.photos.uploading') : tr('dispatch.photos.add')}</Text>
           </Pressable>
         )}
+        {onUpload && needsConnection ? (
+          <NeedsConnectionLine testID="dispatch-images-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        ) : null}
       </View>
     );
   }
 
-  const renderImage = ({ item, index }: { item: DispatchImageData; index: number }) => (
+  const renderImage = ({ item, index }: { item: DispatchImageData; index: number }) =>
+    item.needsConnection ? (
+      // Nothing opens from the frame; it says why (Design offline-capture.md 2.5).
+      <View
+        style={[styles.imageWrapper, { width: imageSize, height: imageSize }]}
+        accessible
+        accessibilityLabel={`${tr('dispatch.photos.photoOf', { index: index + 1, total: images.length })}, ${tr('components.offlineRead.photoNeedsConnection')}`}
+      >
+        <View style={styles.frame} testID={`photo-needs-connection-${item.id}`}>
+          <Icon name="image-off-outline" size={iconSize.xl} color={t.icon.secondary} importantForAccessibility="no" />
+          <Text style={styles.frameText} maxFontSizeMultiplier={1.4}>
+            {tr('components.offlineRead.photoNeedsConnection')}
+          </Text>
+        </View>
+      </View>
+    ) : (
     <View style={[styles.imageWrapper, { width: imageSize, height: imageSize }]}>
       <Pressable
         style={({ pressed }) => [styles.image, pressed && styles.imageWrapperPressed]}
@@ -286,10 +322,14 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
       {onDelete ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={tr('dispatch.photos.deleteLabel', { index: index + 1, total: images.length })}
-          accessibilityState={{ disabled: isDeleting || isUploading }}
-          disabled={isDeleting || isUploading}
-          style={styles.removeButton}
+          accessibilityLabel={
+            needsConnection
+              ? needsConnectionLabel(tr('dispatch.photos.deleteLabel', { index: index + 1, total: images.length }))
+              : tr('dispatch.photos.deleteLabel', { index: index + 1, total: images.length })
+          }
+          accessibilityState={{ disabled: isDeleting || isUploading || needsConnection }}
+          disabled={isDeleting || isUploading || needsConnection}
+          style={[styles.removeButton, needsConnection && styles.addDisabled]}
           onPress={() => onDelete(item)}
         >
           {({ pressed }) => (
@@ -300,7 +340,7 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
         </Pressable>
       ) : null}
     </View>
-  );
+    );
 
   const countLabel = formatCount(images.length, 'photo');
 
@@ -314,11 +354,11 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={tr('dispatch.photos.addLabel')}
-            accessibilityState={{ disabled: isUploading, busy: isUploading }}
-            style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed]}
+            accessibilityLabel={addA11yLabel}
+            accessibilityState={{ disabled: addDisabled, busy: isUploading }}
+            style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed, needsConnection && styles.addDisabled]}
             onPress={onUpload}
-            disabled={isUploading}
+            disabled={addDisabled}
           >
             {isUploading ? (
               <ActivityIndicator size="small" color={t.brand.tint} />
@@ -329,6 +369,11 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
           </Pressable>
         )}
       </View>
+      {onUpload && needsConnection ? (
+        <View style={styles.needsConnectionRow}>
+          <NeedsConnectionLine testID="dispatch-images-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        </View>
+      ) : null}
 
       {/* Image Grid */}
       <FlatList

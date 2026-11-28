@@ -1,6 +1,6 @@
 /** Gujarati text: components. Follows docs/GUJARATI_GLOSSARY.md. */
 import type { components as source } from '../en/components';
-import type { Translation } from '../../types';
+import type { Translation } from '@/i18n/types';
 
 export const components: Translation<typeof source> = {
   loading: 'લોડ થઈ રહ્યું છે',
@@ -39,6 +39,20 @@ export const components: Translation<typeof source> = {
     changeServerLabel: 'કોલ્ડ સ્ટોરેજનું સર્વર બદલો',
     backToFacilitiesLabel: 'મારાં કોલ્ડ સ્ટોરેજ પર પાછા જાઓ',
     footer: 'આવું વારંવાર થાય તો તમારા કોલ્ડ સ્ટોરેજનો સંપર્ક કરો.',
+    offlineTooLongTitle: 'આગળ વધવા ઇન્ટરનેટ જોડો',
+    offlineTooLongMessage: 'આ ફોન ૩૦ દિવસથી વધુ સમયથી તમારા કોલ્ડ સ્ટોરેજ સાથે જોડાયો નથી. ફરી લૉગિન કરવા ઇન્ટરનેટ જોડો.',
+    offlineTooLongKept: 'મોકલવાની બાકી એન્ટ્રી આ ફોનમાં સાચવેલી છે.',
+    offlineTooLongRetryLabel: 'ફરી જોડાવાનો પ્રયાસ કરો',
+    storeUnreadableTitle: 'ઍપ શરૂ થઈ શકી નથી',
+    storeUnreadableMessage: 'આ ફોન ઍપનું સાચવેલું લૉગિન વાંચી શક્યો નથી. કંઈ કાઢી નાખ્યું નથી. ફરી પ્રયાસ કરો. વારંવાર થાય તો ફોન બંધ કરીને ફરી ચાલુ કરો.',
+    storeUnreadableRetryLabel: 'ઍપ ફરી શરૂ કરવાનો પ્રયાસ કરો',
+    storeUnreadableSignInHint: 'ફોન ફરી ચાલુ કરવાથી ઠીક ન થયું હોય તો ફરી લૉગિન કરી શકો છો.',
+    signInAgain: 'ફરી લૉગિન કરો',
+    signInAgainTitle: 'ફરી લૉગિન કરવું છે?',
+    signInAgainMessage: 'સાચવેલું લૉગિન અને આ ફોનમાંની માહિતી કાઢી નખાશે. મોબાઇલ નંબર અને OTP થી લૉગિન કર્યા પછી માહિતી ફરી લોડ થશે.',
+    signInAgainKeepsUnsent: 'મોકલવાની બાકી એન્ટ્રી આ ફોનમાં રહેશે અને લૉગિન પછી મોકલાશે.',
+    signInAgainFailedTitle: 'ફરી લૉગિન શરૂ થઈ શક્યું નહીં',
+    signInAgainFailedMessage: 'ફોન બંધ કરીને ફરી ચાલુ કરો, પછી ફરી લૉગિન કરો પર ટૅપ કરો.',
   },
   errorBoundary: {
     title: 'કંઈક ખોટું થયું',
@@ -451,6 +465,53 @@ export const components: Translation<typeof source> = {
   skeleton: {
     loadingDetails: 'વિગતો લોડ થઈ રહી છે',
     loadingList: 'યાદી લોડ થઈ રહી છે',
+  },
+  offlineStatus: {
+    // Design's draft, may ship as written (WH-298 P8); native-speaker reading in WH-149. હજી is spelled હજુ as in
+    // the rest of the app (consistency.gu, Design's standing rule).
+    upToDate: 'અપડેટ છે',
+    updating: 'અપડેટ થઈ રહ્યું છે… છેલ્લે અપડેટ થયું: {{time}}',
+    offline: 'ઑફલાઇન. છેલ્લે અપડેટ થયું: {{time}}',
+    updateFailed: 'અપડેટ થઈ શક્યું નથી. છેલ્લે અપડેટ થયું: {{time}}',
+    firstLoad: 'વખારની માહિતી આ ફોનમાં લોડ થઈ રહી છે…',
+    notReady: 'આ ફોન હજુ તૈયાર નથી. વખારની માહિતી લોડ કરવા ઇન્ટરનેટ જોડો.',
+    unsent: {
+      one: '૧ એન્ટ્રી મોકલવાની બાકી છે. {{time}} સુધીમાં ઇન્ટરનેટ જોડીને મોકલો.',
+      other: '{{count}} એન્ટ્રી મોકલવાની બાકી છે. {{time}} સુધીમાં ઇન્ટરનેટ જોડીને મોકલો.',
+    },
+    sending: { one: '૧ એન્ટ્રી મોકલાઈ રહી છે…', other: '{{count}} એન્ટ્રી મોકલાઈ રહી છે…' },
+    unsentFeatureOff: {
+      one: '૧ એન્ટ્રી મોકલવાની બાકી છે. જોવા ટૅપ કરો.',
+      other: '{{count}} એન્ટ્રી મોકલવાની બાકી છે. જોવા ટૅપ કરો.',
+    },
+    unsentLimit: {
+      one: '૧ એન્ટ્રી ૨ કલાકથી વધુ સમયથી મોકલવાની બાકી છે. વધુ નોંધવા ઇન્ટરનેટ જોડીને મોકલો.',
+      other: '{{count}} એન્ટ્રી ૨ કલાકથી વધુ સમયથી મોકલવાની બાકી છે. વધુ નોંધવા ઇન્ટરનેટ જોડીને મોકલો.',
+    },
+    unsentUnreadable: 'આ ફોનની મોકલવાની બાકી એન્ટ્રી વાંચી શકાઈ નથી. ઍપ બંધ કરીને ફરી ખોલો.',
+    heldLine: {
+      one: 'તમારી ૧ એન્ટ્રી રોકેલી છે. જોવા ટૅપ કરો.',
+      other: 'તમારી {{count}} એન્ટ્રી રોકેલી છે. જોવા ટૅપ કરો.',
+    },
+    waitingForAdmin: {
+      one: 'તમે નોંધેલી ૧ એન્ટ્રી એડમિનના નિર્ણય માટે રાહ જુએ છે.',
+      other: 'તમે નોંધેલી {{count}} એન્ટ્રી એડમિનના નિર્ણય માટે રાહ જુએ છે.',
+    },
+    storageLow: 'ફોનમાં જગ્યા લગભગ ભરાઈ ગઈ છે. માહિતી સાચવી શકાય તે માટે થોડી જગ્યા ખાલી કરો.',
+    retryLabel: 'ફરી અપડેટ કરવાનો પ્રયાસ કરો',
+    opening: 'આ ફોનની માહિતી ખોલી રહ્યા છીએ…',
+    openFailed: 'આ ફોનની માહિતી ખોલી શકાઈ નથી.',
+    openRetryLabel: 'ફરી ખોલવાનો પ્રયાસ કરો',
+  },
+  offlineRead: {
+    // Draft, like the rest of Design's offline texts (WH-149).
+    needsConnection: 'કનેક્શન જોઈએ',
+    screenNeedsConnection: 'આ માટે કનેક્શન જોઈએ. ફરી જોડાશો ત્યારે લોડ થશે.',
+    photoNeedsConnection: 'ફોટો જોવા કનેક્શન જોઈએ',
+    notSent: 'હજુ મોકલવાનું બાકી',
+    sending: 'મોકલાઈ રહ્યું છે…',
+    changesNotSent: 'તમારા ફેરફાર હજુ મોકલવાના બાકી છે: {{fields}}.',
+    changesSending: 'તમારા ફેરફાર મોકલાઈ રહ્યા છે…',
   },
   offline: {
     message: 'તમે ઑફલાઇન છો. સર્વરની જરૂર હોય તેવાં કામ ફરી કનેક્ટ થશો ત્યારે ચાલશે.',

@@ -61,7 +61,7 @@ jest.mock('@/utils/lostAnswer', () => ({
   waitForServer: jest.fn(() => Promise.resolve()),
 }));
 const mockSession = { generation: 1 };
-jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => mockSession.generation }));
+jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => mockSession.generation, onSessionChange: () => () => undefined }));
 // What the phone reports about its network; read when the editor renders.
 const mockNetwork: { isConnected: boolean; type: string | null } = { isConnected: true, type: 'wifi' };
 jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: mockNetwork.isConnected, type: mockNetwork.type }) }));

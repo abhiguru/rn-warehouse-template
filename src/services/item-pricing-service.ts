@@ -2,6 +2,12 @@
 // Uses RPC functions for all CRUD operations
 
 import { getAuthenticatedClient } from '../config/supabaseConfig';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
+import { readGrnItemRates } from '@/features/phone-copy/reads/grnRates';
+import { readActiveItems, readItemsWithoutRate } from '@/features/phone-copy/reads/items';
+import { readItemStoragePrices, readStandardRate } from '@/features/phone-copy/reads/itemRates';
+import { readPriceHistory } from '@/features/phone-copy/reads/priceHistory';
 import type {
   ItemPricingFilters,
   ItemPricingListParams,
@@ -31,14 +37,14 @@ import { unwrapArrayResponse } from '@/utils/responseUtils';
 import { hasMoreItems } from '@/utils/paginationUtils';
 import { PAGINATION } from '@/config/cacheConfig';
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
-import { withTimeout } from '@/utils/rpcClient';
+import { cancellableBy, withTimeout } from '@/utils/rpcClient';
 import { t } from '@/i18n';
 import type { RpcGrnItemRate, RpcGrnItemRates } from '@/types/rpc-canonical.types';
 import { formatDate, toCalendarDay } from '@/utils/formatters';
 import { addDays } from '@/features/item-pricing/rateText';
 import type { TranslationKey } from '@/i18n';
 import { checkSubmission, isAbortError } from '@/utils/lostAnswer';
-import { emptyAnswerAsError, failureText, isLostAnswer, serverText, transportText } from '@/utils/serverText';
+import { emptyAnswerAsError, failureText, isLostAnswer, serverText, transportText, withHttpStatus } from '@/utils/serverText';
 
 import { rememberRateStartFloor } from './rateStartFloor';
 
@@ -107,15 +113,30 @@ export const getItemStoragePrices = async (
 
     const startTime = Date.now();
 
+    // The phone copy answers when it can (WH-348): one source for all the pages of this request; staff are refused online.
+    const pageSize = Number(rpcParams.p_limit);
+    const pageStart = Number(rpcParams.p_offset);
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readItemStoragePrices(q, {
+      filters: (rpcParams.p_filters ?? {}) as Record<string, unknown>, sortBy: params.p_sort_by ?? 'item_name',
+      sortOrder: params.p_sort_order ?? 'asc', limit: pageSize, offset: pageStart,
+    }), { key: JSON.stringify({ filters: rpcParams.p_filters, sort: [rpcParams.p_sort_by, rpcParams.p_sort_order], limit: pageSize }), page: Math.floor(pageStart / Math.max(pageSize, 1)) });
+    if (copy && 'restart' in copy) {
+      return { success: false, data: [], pagination: { total_count: 0, total: 0, limit: pageSize, offset: pageStart, has_more: false }, message: t('errors.price.fetchFailed') };
+    }
+
     // Set a timeout for RPC calls (30 seconds). It is cleared when the answer comes, so no
     // timer is left counting down (it also kept the Jest process open after the suite).
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(t('errors.network.rpcTimedOut30'))), 30000);
     });
+    // Only one of the two answers is used; a timer is started only for the server's.
+    if (copy) clearTimeout(timer);
+    timeoutPromise.catch(() => undefined);
 
-    const rpcPromise = authenticatedClient.rpc('get_item_storage_prices', rpcParams);
-    const { data, error } = await Promise.race([rpcPromise, timeoutPromise]).finally(() => clearTimeout(timer));
+    const { data, error } = copy
+      ? { data: { success: true, ...copy.value }, error: null }
+      : await Promise.race([authenticatedClient.rpc('get_item_storage_prices', rpcParams), timeoutPromise]).finally(() => clearTimeout(timer));
 
     const duration = Date.now() - startTime;
     itemPricingLogger.debug(`RPC call completed in ${duration}ms`);
@@ -233,6 +254,17 @@ export const getItemPriceHistory = async (
   });
 
   try {
+    // The phone copy answers when it can (WH-348): one source for all the pages of this request.
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readPriceHistory(q, {
+      customerId: params.customerId ?? null, itemId: params.itemId ?? null, limit, offset,
+    }), { key: JSON.stringify({ item: params.itemId ?? null, customer: params.customerId ?? null, limit }), page: Math.floor(offset / Math.max(limit, 1)) });
+    if (copy && 'restart' in copy) {
+      return failed(t('pricing.list.tryAgainInAMoment'));
+    }
+    if (copy) {
+      return { success: true, data: copy.value.data as unknown as ItemPriceHistoryEntry[], pagination: copy.value.pagination, source: copy.source };
+    }
+
     const authenticatedClient = await getAuthenticatedClient();
     const { data, error } = await authenticatedClient.rpc('get_item_price_history', {
       p_limit: limit,
@@ -306,6 +338,15 @@ const RATE_ERROR_KEYS: Partial<Record<RateErrorCode, TranslationKey>> = {
 };
 
 const RPC_TIMEOUT_MS = 30000;
+
+/**
+ * A rate change, given up after 30 s: the request is then aborted, so one still waiting in the app (behind the role
+ * re-read or the facility check) is never sent afterwards (WH-359).
+ */
+function timedChange<T>(request: PromiseLike<T>, context: string): Promise<T> {
+  const attempt = new AbortController();
+  return withTimeout(Promise.resolve(cancellableBy(request, attempt.signal)), RPC_TIMEOUT_MS, context, () => attempt.abort());
+}
 
 /** The code and the app's own text for an RPC that failed outright (missing function, no right, anything else). */
 const mapRateError = (
@@ -398,8 +439,8 @@ const replaceResultFromResponse = (raw: unknown, input: ReplaceRatesInput): Repl
 const sendReplaceItemRates = async (input: ReplaceRatesInput, withKey: boolean): Promise<ReplaceRatesResult> => {
   try {
     const client = await getAuthenticatedClient();
-    const { data, error, status } = await withTimeout(
-      Promise.resolve(client.rpc('replace_item_rates', {
+    const { data, error, status } = await timedChange(
+      client.rpc('replace_item_rates', {
         p_item_id: input.item_id,
         p_customer_id: input.customer_id,
         p_price_type: input.price_type,
@@ -412,8 +453,7 @@ const sendReplaceItemRates = async (input: ReplaceRatesInput, withKey: boolean):
         ...(input.seen_rows ? { p_seen_rows: input.seen_rows } : {}),
         // The request key of the save: the server stores a keyed save's answer, so a repeat is answered, not written again.
         ...(withKey && input.request_key ? { p_request_key: input.request_key } : {}),
-      })),
-      RPC_TIMEOUT_MS,
+      }),
       'Rate change'
     );
 
@@ -422,7 +462,7 @@ const sendReplaceItemRates = async (input: ReplaceRatesInput, withKey: boolean):
       handleGlobalAuthError(error);
       const mapped = mapRateError(error, 'replace_item_rates');
       // An error with no database code is the connection failing: the save may have gone through.
-      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return outcomeUnknown();
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code && isLostAnswer(withHttpStatus(error, status))) return outcomeUnknown();
       return rateFailure(mapped.code, mapped.message);
     }
 
@@ -465,6 +505,7 @@ async function sendKeyedSave<R extends { success: boolean; outcomeUnknown?: bool
   let keyed = Boolean(key);
   let sentAt = Date.now();
   let result = await send(keyed);
+  let lost: R | null = null;
   if (keyed && result.errorCode === 'SERVER_NEEDS_UPDATE') {
     keyed = false;
     sentAt = Date.now();
@@ -482,9 +523,13 @@ async function sendKeyedSave<R extends { success: boolean; outcomeUnknown?: bool
       itemPricingLogger.warn('The check for a lost rate save failed:', error);
     }
     if (signal?.aborted) return result;
+    lost = result;
     sentAt = Date.now();
     result = await send(true);
   }
+  // An attempt was sent and its answer lost: a later resend that got no answer of the server's (refused before it was sent)
+  // does not make the change "not saved", the first attempt may have been applied (WH-368).
+  if (lost && !result.success && !result.outcomeUnknown && result.errorCode === 'UNKNOWN') return lost;
   return result;
 }
 
@@ -515,27 +560,22 @@ export const setStandardRate = (tiers: StandardTier[], options: SetStandardRateO
     signal: options.signal,
   });
 
-/**
- * Undo the change that starts on `startsOn` for one scope (backend migration 76): the rows
- * starting that day are removed and the rows that ended the day before run on again. Used by
- * "Cancel new rate" and "Undo stop". A failure carries `errorCode` and the app's own `message`.
- */
-export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRateChangeResult> => {
+/** One send of `undoRateChange`. A failure carries `errorCode` and the app's own `message`. */
+const sendUndoRateChange = async (input: UndoRateChangeInput): Promise<UndoRateChangeResult> => {
   const failure = (errorCode: RateErrorCode, message: string): UndoRateChangeResult => ({ success: false, errorCode, message });
   // The request may have reached the server and its answer did not come back: the rates are read again by the caller.
   const unknown = (): UndoRateChangeResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.error.undoUnconfirmed'), outcomeUnknown: true });
   try {
     const client = await getAuthenticatedClient();
-    const { data, error, status } = await withTimeout(
-      Promise.resolve(client.rpc('undo_rate_change', {
+    const { data, error, status } = await timedChange(
+      client.rpc('undo_rate_change', {
         p_item_id: input.itemId,
         p_customer_id: input.customerId,
         p_price_type: input.priceType,
         p_starts_on: input.startsOn,
         // Every row of the scope the screen loaded (ended and planned too): the server answers STALE_RATES when another phone changed the scope since.
         ...(input.seenRows ? { p_seen_rows: input.seenRows } : {}),
-      })),
-      RPC_TIMEOUT_MS,
+      }),
       'Rate change'
     );
 
@@ -543,8 +583,9 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
       itemPricingLogger.error('undo_rate_change RPC error:', error);
       handleGlobalAuthError(error);
       const mapped = mapRateError(error, 'undo_rate_change');
-      // An error with no database code is the connection failing (or a gateway's page): the change may have gone through.
-      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return unknown();
+      // An error with no database code that came after the request left is the connection failing (or a gateway's page): the
+      // change may have gone through. One before it left (held and given up, no session) was never sent: not a lost answer (WH-359).
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code && isLostAnswer(withHttpStatus(error, status))) return unknown();
       return failure(mapped.code, mapped.message);
     }
 
@@ -582,6 +623,34 @@ export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRa
     if (isLostAnswer(err)) return unknown();
     return failure('UNKNOWN', t('pricing.error.generic'));
   }
+};
+
+/**
+ * True when the scope's rates now are as the undo leaves them: none starts on `startsOn` and none ends the day before.
+ * False also when they could not be read.
+ */
+async function isUndone(input: UndoRateChangeInput): Promise<boolean> {
+  try {
+    const startsOn = input.startsOn.slice(0, 10);
+    const dayBefore = addDays(startsOn, -1);
+    return (await listItemRates(input.itemId))
+      .filter(row => row.customer_id === input.customerId && row.price_type === input.priceType)
+      .every(row => row.effective_from.slice(0, 10) !== startsOn && row.effective_to?.slice(0, 10) !== dayBefore);
+  } catch (error) {
+    itemPricingLogger.warn('The check for a lost rate undo failed:', error);
+    return false;
+  }
+}
+
+/**
+ * Undo the change that starts on `startsOn` for one scope (backend migration 76): the rows
+ * starting that day are removed and the rows that ended the day before run on again. Used by
+ * "Cancel new rate" and "Undo stop". The call takes no request key, so when its answer is lost the rates are read before
+ * anything is said (WH-359): undone is a success, anything else stays "could not be confirmed".
+ */
+export const undoRateChange = async (input: UndoRateChangeInput): Promise<UndoRateChangeResult> => {
+  const result = await sendUndoRateChange(input);
+  return result.outcomeUnknown && (await isUndone(input)) ? { success: true } : result;
 };
 
 // ---------------------------------------------------------------------------
@@ -632,6 +701,14 @@ const ITEMS_PAGE_SIZE = 500;
 
 /** The active items, by name (the items table, as the item pickers read it), page after page so none is cut. */
 export const listActiveItems = async (): Promise<ActiveItem[]> => {
+  // The phone copy answers when it can (WH-348): the same rows, in the same order.
+  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readActiveItems(q));
+  if (copy) {
+    return copy.value.map(row => ({
+      id: String(row.id), name: typeof row.name === 'string' ? row.name : '', packaging: typeof row.packaging === 'string' ? row.packaging : null,
+      description: typeof row.description === 'string' ? row.description : null,
+    }));
+  }
   const client = await getAuthenticatedClient();
   const out: ActiveItem[] = [];
   for (let from = 0; ; from += ITEMS_PAGE_SIZE) {
@@ -678,6 +755,11 @@ const toTiers = (raw: unknown): StandardTier[] =>
 
 /** The standard rate. Throws when the facility cannot be reached or refuses, like the other rate reads. */
 export const getStandardRate = async (): Promise<StandardRate> => {
+  // The phone copy answers when it can (WH-348); staff are refused online, so for them the server answers as today.
+  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readStandardRate(q));
+  if (copy) {
+    return { tiers: toTiers(copy.value.tiers), updatedAt: copy.value.updated_at, updatedByName: copy.value.updated_by_name };
+  }
   const client = await getAuthenticatedClient();
   const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_standard_rate')), RPC_TIMEOUT_MS, 'Standard rate');
   if (error) {
@@ -754,16 +836,15 @@ const sendSetStandardRate = async (tiers: StandardTier[], options: SetStandardRa
   const unconfirmed = (): SetStandardRateResult => ({ success: false, errorCode: 'UNKNOWN', message: t('pricing.standard.error.unconfirmed'), outcomeUnknown: true });
   try {
     const client = await getAuthenticatedClient();
-    const { data, error, status } = await withTimeout(
-      Promise.resolve(client.rpc('set_standard_rate', {
+    const { data, error, status } = await timedChange(
+      client.rpc('set_standard_rate', {
         p_tiers: tiers,
         // The version the draft was built from, as the exact string the server sent (never through a Date: it would cut the microseconds).
         ...(options.expectedUpdatedAt !== undefined ? { p_expected_updated_at: options.expectedUpdatedAt } : {}),
         ...(options.dryRun ? { p_dry_run: true } : {}),
         // The save's request key: a repeat of the same save is answered from the stored result, not written again.
         ...(withKey && options.requestKey && !options.dryRun ? { p_request_key: options.requestKey } : {}),
-      })),
-      RPC_TIMEOUT_MS,
+      }),
       'Standard rate'
     );
 
@@ -773,7 +854,7 @@ const sendSetStandardRate = async (tiers: StandardTier[], options: SetStandardRa
       const mapped = mapRateError(error, 'set_standard_rate');
       if (mapped.code === 'SERVER_NEEDS_UPDATE') return { success: false, errorCode: mapped.code, message: t('pricing.standard.error.serverNeedsUpdateSave') };
       // An error with no database code is the connection failing: the save may have gone through (a dry run writes nothing).
-      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code) return options.dryRun ? { success: false, errorCode: 'UNKNOWN', message: transportText(error, { write: false }) ?? t('pricing.error.generic') } : unconfirmed();
+      if (mapped.code === 'UNKNOWN' && !(error as { code?: unknown }).code && isLostAnswer(withHttpStatus(error, status))) return options.dryRun ? { success: false, errorCode: 'UNKNOWN', message: transportText(error, { write: false }) ?? t('pricing.error.generic') } : unconfirmed();
       return { success: false, errorCode: mapped.code, message: mapped.message };
     }
 
@@ -802,19 +883,26 @@ const numOrNull = (v: unknown): number | null => (v === null || v === undefined 
  * when the server lacks the function (an older one). Throws when the facility cannot be reached or refuses.
  */
 export const getGrnItemRates = async (grnId: string): Promise<RpcGrnItemRates | null> => {
-  const client = await getAuthenticatedClient();
-  const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_grn_item_rates', { p_grn_id: grnId })), RPC_TIMEOUT_MS, 'GRN item rates');
-  if (error) {
-    handleGlobalAuthError(error);
-    if (isMissingFunction(error)) return null;
-    throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The rates of the GRN could not be loaded');
+  // The phone copy answers when it can (WH-348, contract 16.2): the server's own figure per lot, copied as it is.
+  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, forCustomerAccounts(q => readGrnItemRates(q, grnId)));
+  let d: Record<string, unknown>;
+  if (copy?.value) {
+    d = copy.value as unknown as Record<string, unknown>;
+  } else {
+    const client = await getAuthenticatedClient();
+    const { data, error } = await withTimeout(Promise.resolve(client.rpc('get_grn_item_rates', { p_grn_id: grnId })), RPC_TIMEOUT_MS, 'GRN item rates');
+    if (error) {
+      handleGlobalAuthError(error);
+      if (isMissingFunction(error)) return null;
+      throw new Error(typeof error.message === 'string' && error.message ? error.message : 'The rates of the GRN could not be loaded');
+    }
+    const response = unwrapArrayResponse(data) as { success?: unknown; data?: Record<string, unknown> | null } | null;
+    if (!response || response.success !== true || !response.data) {
+      handleGlobalAuthError(response);
+      throw new Error('The rates of the GRN could not be loaded');
+    }
+    d = response.data;
   }
-  const response = unwrapArrayResponse(data) as { success?: unknown; data?: Record<string, unknown> | null } | null;
-  if (!response || response.success !== true || !response.data) {
-    handleGlobalAuthError(response);
-    throw new Error('The rates of the GRN could not be loaded');
-  }
-  const d = response.data;
   const rows = Array.isArray(d.rates) ? (d.rates as Array<Record<string, unknown>>) : [];
   const sources = ['invoice', 'grn', 'customer', 'item'];
   return {
@@ -854,6 +942,10 @@ export const getItemsWithoutRate = async (
 ): Promise<string[] | null> => {
   if (!customerId || lines.length === 0) return [];
   try {
+    // The phone copy answers when it can (WH-348, contract 17): each item's cover state, compared with the weights; null
+    // (no strip) when it cannot tell, whatever the connection.
+    const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readItemsWithoutRate(q, lines, pricingMode, grnId));
+    if (copy) return copy.value;
     const client = await getAuthenticatedClient();
     const { data, error } = await withTimeout(
       Promise.resolve(client.rpc('get_items_without_rate', {

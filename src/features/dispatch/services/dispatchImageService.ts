@@ -20,6 +20,8 @@ import { serverText } from '@/utils/serverText';
 import { createLimiter } from '@/utils/concurrency';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { heldWriteCouldOutlive } from '@/config/roleRecheck';
+import { holdAfterWriteSync } from '@/config/facilityWrite';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
 import { logPhotoFailure, photoUploadFailureText } from '@/utils/photoUploadError';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -176,6 +178,7 @@ export const uploadDispatchImage = async (
   onProgress?: (progress: ImageUploadProgress) => void
 ): Promise<ImageUploadResult> => {
   let finishMutation: (() => void) | undefined;
+  let releaseSyncHold: (() => void) | undefined;
   // The prepared copy is kept only when the form holds it for a later upload.
   let preparedUri: string | undefined;
   let keepPrepared = false;
@@ -242,6 +245,7 @@ export const uploadDispatchImage = async (
       onProgress({ loaded: 25, total: 100, percentage: 25 });
     }
 
+    releaseSyncHold = holdAfterWriteSync();
     const supabase = await getAuthenticatedClient();
 
     // === THREE-STEP TRANSACTIONAL UPLOAD ===
@@ -430,6 +434,7 @@ export const uploadDispatchImage = async (
   } finally {
     // Uploaded at once, refused, or too large: the copy is not needed any more.
     if (preparedUri && !keepPrepared) void releaseLocalPhotos([preparedUri]);
+    releaseSyncHold?.();
     finishMutation?.();
   }
 };
@@ -469,6 +474,7 @@ const uploadSingleDeferredImage = async (
   realDispatchId: string,
   image: DispatchImageData
 ): Promise<{ success: boolean; error?: string }> => {
+  const releaseSyncHold = holdAfterWriteSync();
   try {
     const fileName = image.file_name || 'image.jpg';
     const mimeType = image.mime_type || 'image/jpeg';
@@ -561,6 +567,8 @@ const uploadSingleDeferredImage = async (
       success: false,
       error: photoUploadFailureText(err, t('dispatch.photos.uploadFailedRetry')),
     };
+  } finally {
+    releaseSyncHold();
   }
 };
 
@@ -653,16 +661,20 @@ export const uploadDeferredDispatchImages = async (
   }
 
   let finishMutation: (() => void) | undefined;
+  let releaseSyncHold: (() => void) | undefined;
   let started = false;
   // Once the uploads are running, the mutation ends with the last of them, not with this call.
   let handedOff = false;
   try {
     finishMutation = beginOperatorMutation();
+    releaseSyncHold = holdAfterWriteSync();
     const supabase = await getAuthenticatedClient();
     started = true;
     // The client above belongs to this session: a job still queued after it ends must not run with it.
     const sessionGeneration = getSessionGeneration();
 
+    // When this call stops waiting and reports what has not arrived as not uploaded.
+    const waitEnds = Date.now() + waitMs;
     // A few at a time; each file is held from the start, also while it waits.
     const attempts = deferredImages.map(async (image): Promise<{ success: boolean; error?: string }> => {
       // An upload from an earlier try may still be running: its result counts.
@@ -680,6 +692,8 @@ export const uploadDeferredDispatchImages = async (
         result = await dispatchPhotoUploadSlots(async () => {
           // Given up while it waited for a place, or the session ended meanwhile: not started.
           if (dispatchPhotosGivenUp.has(key) || sessionGeneration !== getSessionGeneration()) return { success: false, error: t('dispatch.photos.deferredFailed') };
+          // Writes are held and this photo's could go out after it was reported as not uploaded (WH-352): not started.
+          if (heldWriteCouldOutlive(waitEnds)) return { success: false, error: t('dispatch.photos.deferredFailed') };
           return uploadSingleDeferredImage(supabase, realDispatchId, image);
         });
         if (result.success) dispatchPhotosUploaded.add(key);
@@ -697,9 +711,12 @@ export const uploadDeferredDispatchImages = async (
         if (dispatchPhotosInFlight.get(image.image_url) === attempts[index]) dispatchPhotosInFlight.delete(image.image_url);
       });
     });
-    // The uploads are not cancelled when the wait ends (queued ones still start later), so the mutation ends with the
-    // last of them.
-    void Promise.allSettled(attempts).then(() => finishMutation?.());
+    // The uploads are not cancelled when the wait ends (queued ones still start later), so the mutation and sync hold
+    // end with the last of them.
+    void Promise.allSettled(attempts).then(() => {
+      releaseSyncHold?.();
+      finishMutation?.();
+    });
     handedOff = true;
 
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -748,7 +765,10 @@ export const uploadDeferredDispatchImages = async (
       failed: failed.length > 0 ? failed : deferredImages,
     };
   } finally {
-    if (!handedOff) finishMutation?.();
+    if (!handedOff) {
+      releaseSyncHold?.();
+      finishMutation?.();
+    }
   }
 };
 

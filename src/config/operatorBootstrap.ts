@@ -1,18 +1,80 @@
 import { discoverOperator, loadOperatorServer, saveOperatorServer, getActiveOperatorServer } from './operatorServer';
 import { setFacilityCapabilities } from './facilityCapabilities';
 import { noteBackendRelease } from './backendTooOld';
+import { getFacilityRelease, setFacilityRelease } from './backendFeatures';
 import { clearAppTooOld, isAppTooOld, reportAppTooOld } from './appTooOld';
 import { noteDiscoveryAnswered, noteDiscoveryUpgrading } from './upgradeNotice';
 import { UPGRADING_CODE } from '@/utils/serverText';
+import type { PublicConfig } from '@/services/configService';
+import type { OperatorServer } from './operatorServer';
+import { getCachedUserProfile, getStoredToken, initializeSupabase } from './supabaseConfig';
+import { getSessionGeneration } from './sessionLifecycle';
+import {
+  clearOfflineStarted,
+  hasSyncCapability,
+  isNoAnswer,
+  keepOfflineStart,
+  markOfflineStarted,
+  markPastOfflineLimit,
+  markStoreUnreadable,
+  opensOffline,
+  readOfflineStart,
+} from './offlineStart';
 
 type Discovery = Awaited<ReturnType<typeof discoverOperator>>;
-type BootstrapResult = { kind: 'selection' } | { kind: 'superseded' } | { kind: 'verified'; discovery: Discovery };
+type BootstrapResult =
+  | { kind: 'selection' }
+  | { kind: 'superseded' }
+  | { kind: 'verified'; discovery: Discovery }
+  | { kind: 'offline'; server: OperatorServer; config: PublicConfig };
+
+/**
+ * The kept config of the selected facility when the app may open into it with no answer from the server (WH-298,
+ * contract 3.2): the facility has the offline feature, and the person is signed in on this phone (a stored token, of
+ * any validity, and a cached profile for it that the server confirmed within the idle limit of
+ * src/config/offlineLimit.ts) in a role that has the phone copy. The client is set up from the kept config first, because the cached
+ * profile is filed under the facility's address. Null otherwise: the facility still needs the server.
+ * 'profile-refused' also needs the server: the person is signed in at a facility with the feature, but the kept profile
+ * gives nothing (no readable profile for this session), or the secure store stays unreadable after retries.
+ * 'past-limit' is the same, for a role with the phone copy whose kept profile is past the idle limit, has no stored
+ * time, or meets a clock set back (WH-351).
+ */
+async function offlineStartConfig(
+  selected: OperatorServer
+): Promise<PublicConfig | 'profile-refused' | 'store-unreadable' | 'past-limit' | null> {
+  const config = await readOfflineStart(selected);
+  if (!config || !hasSyncCapability(config)) return null;
+  // A read that fails is tried again; only a store that stays unreadable says "cannot tell" (WH-357).
+  const token = await getStoredToken({ retryUnreadable: true });
+  if (token.unreadable) return 'store-unreadable';
+  if (!token.authToken) return null;
+  initializeSupabase(config.supabaseUrl, config.anonKey);
+  // Customer accounts never open offline (Product's P5): their screens keep today's behaviour.
+  let pastLimitRole: unknown;
+  let profileUnreadable = false;
+  const profile = (await getCachedUserProfile({
+    allowExpired: true,
+    onLimitPassed: role => { pastLimitRole = role; },
+    onUnreadable: () => { profileUnreadable = true; },
+  })) as { role?: unknown } | null;
+  // The release the kept config tells; one that does not say is read from what this run learnt of the facility (WH-306).
+  const schemaHead = config.schemaHead ?? getFacilityRelease().schemaHead;
+  if (!profile) {
+    if (profileUnreadable) return 'store-unreadable';
+    return opensOffline(pastLimitRole, schemaHead) ? 'past-limit' : 'profile-refused';
+  }
+  return opensOffline(profile.role, schemaHead) ? config : null;
+}
 
 // Discovery is public. Complete local cleanup before adopting a replacement
 // identity or allowing callers to initialize an authenticated application.
+//
+// `onOfflineRefused` is told, with the failure that is then thrown, when the server gave no answer and the kept profile
+// may no longer open the app (WH-350): an app that is already open must close, as a start would not have opened it.
 export async function verifySelectedOperator(
   isCurrent: () => boolean,
-  clearReplacedInstance: () => Promise<void>
+  clearReplacedInstance: () => Promise<void>,
+  onOfflineRefused?: (error: unknown) => void
 ): Promise<BootstrapResult> {
   const selected = await loadOperatorServer();
   if (!isCurrent()) return { kind: 'superseded' };
@@ -28,6 +90,27 @@ export async function verifySelectedOperator(
       if (isAppTooOld(error)) reportAppTooOld(error);
       else if ((error as { code?: unknown } | null)?.code === UPGRADING_CODE) noteDiscoveryUpgrading();
     }
+    // No answer at all (never an answer with an error): a facility opened on this phone before opens from its kept
+    // config. Its capabilities are those of that last answer.
+    if (isNoAnswer(error)) {
+      if (!isCurrent()) return { kind: 'superseded' };
+      const generation = getSessionGeneration();
+      const config = await offlineStartConfig(selected);
+      if (!isCurrent()) return { kind: 'superseded' };
+      if (config === 'profile-refused' || config === 'store-unreadable' || config === 'past-limit') {
+        // A session that ended or was replaced during the read says nothing about the one now open.
+        if (generation === getSessionGeneration()) {
+          if (config === 'past-limit') markPastOfflineLimit(error);
+          if (config === 'store-unreadable') markStoreUnreadable(error);
+          onOfflineRefused?.(error);
+        }
+      } else if (config) {
+        setFacilityCapabilities(selected, config.capabilities);
+        setFacilityRelease(selected, config);
+        markOfflineStarted();
+        return { kind: 'offline', server: selected, config };
+      }
+    }
     throw error;
   }
   if (!isCurrent()) return { kind: 'superseded' };
@@ -35,6 +118,7 @@ export async function verifySelectedOperator(
   // the facility afresh, so ending the banner here needs no second check.)
   clearAppTooOld();
   noteDiscoveryAnswered();
+  clearOfflineStarted();
   if (selected.instanceId !== discovery.server.instanceId) {
     await clearReplacedInstance();
     if (!isCurrent()) return { kind: 'superseded' };
@@ -44,6 +128,8 @@ export async function verifySelectedOperator(
   // foreground), so the facility's capabilities are always those of its latest answer.
   setFacilityCapabilities(discovery.server, discovery.config.capabilities);
   noteBackendRelease(discovery.server, discovery.config);
+  // The config an offline start opens with: kept while the facility has the feature, removed when it is switched off.
+  await keepOfflineStart(discovery.server, discovery.config);
   if (!isCurrent()) return { kind: 'superseded' };
   return { kind: 'verified', discovery };
 }
@@ -52,10 +138,11 @@ export async function verifySelectedOperator(
 export async function verifyForegroundOperator(
   isCurrent: () => boolean,
   clearReplacedInstance: () => Promise<void>,
-  initializeReplacement: (config: Discovery['config']) => void
+  initializeReplacement: (config: Discovery['config']) => void,
+  onOfflineRefused?: (error: unknown) => void
 ): Promise<boolean> {
   const previous = getActiveOperatorServer();
-  const result = await verifySelectedOperator(isCurrent, clearReplacedInstance);
+  const result = await verifySelectedOperator(isCurrent, clearReplacedInstance, onOfflineRefused);
   if (result.kind !== 'verified' || !isCurrent()) return false;
   if (previous?.origin !== result.discovery.server.origin ||
       previous.instanceId !== result.discovery.server.instanceId) {

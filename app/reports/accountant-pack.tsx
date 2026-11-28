@@ -12,6 +12,8 @@ import { ReportHeader } from '@/components/reports';
 import { Button } from '@/components/ui/Button';
 import { DatePickerInput } from '@/components/ui/DatePickerInput';
 import { PACK_CODE, makeAccountantPack } from '@/features/reports/accountantPackService';
+import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
@@ -35,6 +37,7 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 export default function AccountantPackScreen() {
+  const needsConnection = useNeedsConnection();
   const styles = useThemedStyles(makeStyles);
   const today = useMemo(() => todayInIST(), []);
   const [from, setFrom] = useState<Date>(() => new Date(today.getFullYear(), today.getMonth() - 1, 1));
@@ -88,6 +91,15 @@ export default function AccountantPackScreen() {
       setMaking(false);
     }
   }, [fromDay, toDay, oneYearProblem]);
+
+  if (needsConnection) {
+    return (
+      <View style={styles.container}>
+        <ReportHeader title={tr('reports.titles.accountantPack')} />
+        <ScreenNeedsConnection testID="accountant-pack-needs-connection" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

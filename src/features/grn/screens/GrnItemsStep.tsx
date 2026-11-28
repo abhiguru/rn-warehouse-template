@@ -38,6 +38,7 @@ import { withNativeHandoff } from '@/config/nativeHandoff';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
+import { belowDispatchedMessage } from '@/features/grn/offline-edit/belowDispatched';
 import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { lineLock, type LineLock } from '@/features/grn/utils/lineLock';
 import { generateTempGRNId, uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
@@ -428,6 +429,17 @@ export function GrnItemsStep({ mode, backGuard }: GrnItemsStepProps) {
       const parsedQty = parseReceiptQuantity(item.qty);
       if (parsedQty === null) {
         showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.quantityWhole'));
+        return null;
+      }
+      // WH-303: a saved line's quantity may not go below what has left the lot, counting dispatches this phone has not sent.
+      const stored = !creating && editingId !== null ? latest.current.items.find(line => line.grn_trl_id === editingId) : undefined;
+      const below = stored ? belowDispatchedMessage(stored.grn_trl_id, parsedQty, item.packaging, stored.locks) : null;
+      if (below) {
+        const errors = { qty: below };
+        setCurrentItem((prev) => ({ ...prev, errors: { ...prev.errors, ...errors } }));
+        showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.fixHighlightedSave'), [
+          { text: tr('common.ok'), onPress: () => showFirstError(errors) },
+        ]);
         return null;
       }
       // Use the original stock value from the Map (preserved from initial load)

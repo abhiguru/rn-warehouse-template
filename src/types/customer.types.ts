@@ -5,6 +5,8 @@
  * Used across customer list, create/edit forms, and detail views.
  */
 
+import type { DataSource } from '@/features/phone-copy/sourced';
+
 // =============================================================================
 // ENTITY TYPES
 // =============================================================================
@@ -163,6 +165,8 @@ export interface CustomerServiceResponse<T = Customer> {
   success: boolean;
   message: string;
   data?: T;
+  /** Set when the phone copy answered (WH-348). */
+  source?: DataSource;
   error?: string;
   /** The server's own error code (DUPLICATE_NAME ...), before any translation. */
   code?: string;
@@ -188,6 +192,8 @@ export interface CustomerListResponse {
   success: boolean;
   message: string;
   data: CustomerListItem[];
+  /** Set when the phone copy answered (WH-348): the screen shows no time of its own. */
+  source?: DataSource;
   pagination?: CustomerPagination;
   error?: string;
   /** The failure's code (Postgres, PostgREST or the server's own), before any translation. */

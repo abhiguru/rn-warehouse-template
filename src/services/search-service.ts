@@ -1,5 +1,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { invoiceStateLabel, parseInvoiceState } from '@/features/charging/invoiceState';
+import { forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
+import { readCustomerSearch, readItemSearch } from '@/features/phone-copy/reads/pickers';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 
 import { formatDate, toLocalISODate } from '@/utils/formatters';
@@ -44,21 +46,28 @@ class SearchService {
         return [];
       }
 
-      // Get authenticated client with JWT tokens
-      const authenticatedClient = await getAuthenticatedClient();
-      const { data, error } = await authenticatedClient
-        .rpc('search_customers', {
-          p_search_query: query,
-          p_limit: 20,
-          ...(options.includeInactive ? { p_include_inactive: true } : {}),
-        });
-
-      if (error) {
-        throw error; // logged once, by the catch below
+      // The phone copy answers when it can (WH-299): the same rows as the server's function.
+      const copy = await readVia('stage1', forCustomerAccounts(q => readCustomerSearch(q, query, 20, options.includeInactive === true)));
+      let data: unknown;
+      if (copy) {
+        data = copy.value;
+      } else {
+        // Get authenticated client with JWT tokens
+        const authenticatedClient = await getAuthenticatedClient();
+        const answer = await authenticatedClient
+          .rpc('search_customers', {
+            p_search_query: query,
+            p_limit: 20,
+            ...(options.includeInactive ? { p_include_inactive: true } : {}),
+          });
+        if (answer.error) {
+          throw answer.error; // logged once, by the catch below
+        }
+        data = answer.data;
       }
 
       // Handle wrapped response format: { data: [...], message, success }
-      const customerData = Array.isArray(data) ? data : (data?.data || []);
+      const customerData = Array.isArray(data) ? data : ((data as { data?: unknown[] } | null)?.data || []);
 
       if (!customerData || customerData.length === 0) {
         return [];
@@ -106,33 +115,39 @@ class SearchService {
 
   // Search items catalog by name or packaging
   async searchGRNItems(query: string): Promise<SearchResult[]> {
+    interface RpcItemResult {
+      id: string;
+      name: string;
+      packaging?: string;
+    }
     try {
       if (!query || query.length < 1) {
         return [];
       }
 
-      // Get authenticated client with JWT tokens
-      const authenticatedClient = await getAuthenticatedClient();
-      const { data, error } = await authenticatedClient.rpc('search_items_autocomplete', {
-        p_search_query: query,
-        p_active_only: true,
-        p_limit: 20
-      });
-
-      if (error) {
-        log.error('searchGRNItems error', loggableError(error));
-        return [];
+      const copy = await readVia('stage1', forCustomerAccounts(q => readItemSearch(q, query, true)));
+      let data: { items?: RpcItemResult[] } | null;
+      if (copy) {
+        data = copy.value as unknown as { items?: RpcItemResult[] };
+      } else {
+        // Get authenticated client with JWT tokens
+        const authenticatedClient = await getAuthenticatedClient();
+        const answer = await authenticatedClient.rpc('search_items_autocomplete', {
+          p_search_query: query,
+          p_active_only: true,
+          p_limit: 20
+        });
+        if (answer.error) {
+          log.error('searchGRNItems error', loggableError(answer.error));
+          return [];
+        }
+        data = answer.data;
       }
 
       if (!data || !data.items) {
         return [];
       }
 
-      interface RpcItemResult {
-        id: string;
-        name: string;
-        packaging?: string;
-      }
       const results = data.items.map((item: RpcItemResult) => ({
         label: item.name,
         value: item.id,

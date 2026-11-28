@@ -41,6 +41,10 @@ import {
 } from '@/components/common/DetailTable';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
+import { UnsentLotLines } from '@/features/unsent/UnsentMarkers';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { QuickChangeButton } from '@/features/quick-change/QuickChangeButton';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend RPC types
@@ -73,6 +77,12 @@ interface GRNItemsTabProps {
   loading?: boolean;
   onViewItemImages?: (item: GRNItem) => void;
   onViewItemDispatches?: (item: GRNItem) => void;
+  /** Opens the quick change of this lot's rack and mark (WH-302); absent = no button. */
+  onQuickChange?: (item: GRNItem) => void;
+  /** Lots an unsent edit removes: they stay in place, greyed, with "Removed, not sent yet" (WH-303, Design 6.x DQ4). */
+  removedLotIds?: readonly string[];
+  /** The GRN's number, for the button's screen-reader label. */
+  grnNumber?: string | number | null;
 }
 
 /** Number column width at font scale 1: room for "12,500" and the heading "Received". */
@@ -104,8 +114,21 @@ const makeStyles = (t: ThemeTokens) => ({
     marginLeft: iconSize.md,
     borderRadius: radius.button,
   },
+  quickChange: {
+    alignSelf: 'flex-start' as const,
+    // The text lines up with the details above.
+    marginLeft: iconSize.md,
+  },
   actionPressed: {
     backgroundColor: t.brand.subtle,
+  },
+  // Disabled: its reason is the line under it.
+  actionOff: {
+    opacity: t.interaction.disabledOpacity,
+  },
+  // The reason lines up with the button's text.
+  needsLine: {
+    marginLeft: iconSize.md + space.sm,
   },
   actionText: {
     ...typography.subhead,
@@ -175,11 +198,16 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
   items,
   loading = false,
   onViewItemDispatches,
+  onQuickChange,
+  removedLotIds = [],
+  grnNumber,
 }) => {
   const styles = useThemedStyles(makeTableStyles);
   const own = useThemedStyles(makeStyles);
   const t = useTokens();
   const screen = useTableLayout();
+  // The dispatches of a lot need the server (WH-381): the button stays, disabled, with its reason under it.
+  const needsConnection = useNeedsConnection();
   const totals = useMemo(
     () => ({
       received: items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0),
@@ -214,12 +242,14 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
             // The In stock column already says "in stock" and "0"; only Low stock, which a number alone
             // does not show, gets a tag (a long "Fully dispatched" tag was cut at font scale 1.3).
             const tag = status && status.status === 'critical' ? status : null;
+            const removed = removedLotIds.includes(String(item.id));
             return (
               <>
-                <Text style={styles.primary}>{item.item_name}</Text>
+                <Text style={removed ? [styles.primary, { color: t.text.secondary }] : styles.primary}>{item.item_name}</Text>
                 {details !== null ? <Text style={styles.secondary}>{nb(details)}</Text> : null}
                 {stacked ? <Text style={styles.secondary}>{nb(tr('grn.stock.receivedCount', { quantity: formatNumber(item.qty) }))}</Text> : null}
                 {tag ? <StatusTag status={tag.status} label={tag.label} icon={tag.icon} style={own.tag} /> : null}
+                <UnsentLotLines lotId={String(item.id)} removed={removed} />
               </>
             );
           },
@@ -245,7 +275,7 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
           cell: (info) => <Text style={styles.number} {...ONE_LINE}>{formatNumber(info.row.original.stock)}</Text>,
         }),
       ]),
-    [stacked, width, styles, own]
+    [stacked, width, styles, own, removedLotIds, t]
   );
 
   const grid = useAppTable({ data: items, columns, getRowId: (item) => item.id, getRowCanExpand: () => true });
@@ -286,6 +316,7 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
         stock: formatNumber(item.stock),
       }),
       tag?.label,
+      removedLotIds.includes(String(item.id)) ? tr('offline.lineRemovedNotSent') : undefined,
     ]
       .filter(Boolean)
       .join(', ');
@@ -311,18 +342,32 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
             <Text style={styles.secondary}>{tr('grn.detailsTable.packaging', { packaging: item.packaging })}</Text>
           </View>
         ) : null}
+        {onQuickChange ? (
+          <View style={own.quickChange}>
+            <QuickChangeButton item={item.item_name ?? ''} grn={grnNumber} onPress={() => onQuickChange(item)} testID={`grn-lot-quick-change-${item.id}`} />
+          </View>
+        ) : null}
         {dispatched > 0 && onViewItemDispatches ? (
-          <Pressable
-            onPress={() => onViewItemDispatches(item)}
-            style={({ pressed }) => [own.action, pressed && own.actionPressed]}
-            accessibilityRole="button"
-            accessibilityLabel={tr('grn.detailsTable.viewDispatches')}
-            accessibilityHint={tr('grn.detailsTable.viewDispatchesHint')}
-            testID={`grn-item-dispatches-${item.id}`}
-          >
-            <Text style={own.actionText}>{tr('grn.detailsTable.viewDispatches')}</Text>
-            <Icon name="chevron-right" size={iconSize.md} color={t.brand.tint} />
-          </Pressable>
+          <>
+            <Pressable
+              onPress={() => onViewItemDispatches(item)}
+              disabled={needsConnection}
+              style={({ pressed }) => [own.action, pressed && !needsConnection && own.actionPressed, needsConnection && own.actionOff]}
+              accessibilityRole="button"
+              accessibilityLabel={needsConnection ? needsConnectionLabel(tr('grn.detailsTable.viewDispatches')) : tr('grn.detailsTable.viewDispatches')}
+              accessibilityHint={tr('grn.detailsTable.viewDispatchesHint')}
+              accessibilityState={{ disabled: needsConnection }}
+              testID={`grn-item-dispatches-${item.id}`}
+            >
+              <Text style={own.actionText}>{tr('grn.detailsTable.viewDispatches')}</Text>
+              <Icon name="chevron-right" size={iconSize.md} color={t.brand.tint} />
+            </Pressable>
+            {needsConnection ? (
+              <View style={own.needsLine}>
+                <NeedsConnectionLine testID={`grn-item-dispatches-needs-connection-${item.id}`} text={tr('components.offlineRead.needsConnection')} />
+              </View>
+            ) : null}
+          </>
         ) : null}
       </>
     );

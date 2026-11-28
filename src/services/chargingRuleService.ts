@@ -5,6 +5,9 @@
  */
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readChargingRule } from '@/features/phone-copy/reads/settings';
 import { t } from '@/i18n';
 import { AppError } from '@/utils/appError';
 import { handleGlobalAuthError } from '@/utils/serviceErrorHandler';
@@ -62,6 +65,10 @@ function readStored(value: unknown): StoredChargingRule | null {
 
 /** The rule the server holds. Throws in the app's own words when it cannot be read. */
 export async function getChargingRule(): Promise<StoredChargingRule> {
+  // The phone copy answers when it can (WH-348); a copy with no such row, or a role the server refuses, asks the server.
+  const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readChargingRule(q));
+  const fromCopy = copy?.value && isRecord(copy.value) ? readStored(copy.value.rule) : null;
+  if (fromCopy) return fromCopy;
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
   const { data, error } = await client.rpc('get_charging_rule');

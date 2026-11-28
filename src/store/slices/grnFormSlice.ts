@@ -1,5 +1,5 @@
 import { createLogger } from '@/utils/logger';
-import { createSlice, PayloadAction, createSelector, original } from '@reduxjs/toolkit';
+import { createSlice, createSelector, current, original, type PayloadAction } from '@reduxjs/toolkit';
 
 import { toLocalISODate } from '@/utils/formatters';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
@@ -45,6 +45,8 @@ export interface GRNHeaderData {
 export interface GRNLineLocks {
   /** Dispatch lines point at this lot: its item and packing are locked. */
   dispatched: boolean;
+  /** Bags that have left the lot, from the lock data (WH-303; absent on an older server). */
+  dispatchedQty?: number;
   /** A dispatch line or a stock movement exists for the lot: the line can't be removed. */
   hasHistory: boolean;
   /** The lot is on a live invoice: item, packing and weight are locked. */
@@ -91,6 +93,15 @@ export interface RemovedGRNImage {
   header?: { fileName?: string; fileSize?: number; mimeType?: string };
 }
 
+/** Where an edit form was loaded from. */
+export type GRNLoadSource = 'copy' | 'server' | 'heldEdit';
+
+/** The header and lines of an edit form as loaded: what an offline Save is compared with. */
+export interface GRNLoadedBaseline {
+  header: Omit<GRNHeaderData, 'gr_images'>;
+  items: Omit<GRNItemData, 'trl_images' | 'locks'>[];
+}
+
 // Snapshot for rollback support
 interface GRNFormSnapshot {
   grnId: string | null;
@@ -100,7 +111,7 @@ interface GRNFormSnapshot {
 }
 
 // Form state
-interface GRNFormState {
+export interface GRNFormState {
   // IDs
   grnId: string | null;
   tempGrnId: string | null;
@@ -134,6 +145,12 @@ interface GRNFormState {
   firstDispatchDate: string | null;
   // The GRN's date as it was loaded: a date that was already after the first dispatch is refused only when it is changed.
   loadedDate: string | null;
+
+  // WH-303: where the form was loaded from, and the header and lines as they were loaded (without photos). An offline Save is
+  // the difference between the form and this baseline. `ratesNeedServer`: the rates are not on the phone (the copy load).
+  loadedFrom?: GRNLoadSource | null;
+  loadedBaseline?: GRNLoadedBaseline | null;
+  ratesNeedServer?: boolean;
 
   // Form data
   header: GRNHeaderData;
@@ -186,6 +203,9 @@ const createInitialState = (): GRNFormState => ({
   invoice: null,
   firstDispatchDate: null,
   loadedDate: null,
+  loadedFrom: null,
+  loadedBaseline: null,
+  ratesNeedServer: false,
   header: {
     gr_no: '',
     registration: '',
@@ -222,6 +242,16 @@ const createInitialState = (): GRNFormState => ({
  * taken out, and the rates set. The edit form is "changed" when this differs from the one made when it was loaded.
  * Photo upload progress and errors are not part of it.
  */
+/** The loaded header and lines without photos and locks: what an offline Save compares the form with. */
+const baselineOf = (header: GRNHeaderData, items: GRNItemData[]): GRNLoadedBaseline => {
+  const head = Object.fromEntries(Object.entries(header).filter(([key]) => key !== 'gr_images')) as GRNLoadedBaseline['header'];
+  const lines = items.map(line => ({
+    grn_trl_id: line.grn_trl_id, item_table_id: line.item_table_id, item_name: line.item_name, packaging: line.packaging,
+    qty: line.qty, stock: line.stock, weight: line.weight, rack: line.rack, package_mark: line.package_mark,
+  }));
+  return { header: head, items: lines };
+};
+
 const formSignature = (
   state: Pick<GRNFormState, 'header' | 'items' | 'removedImages' | 'grnRates' | 'rateChanges' | 'removedGrnRates'>
 ): string => {
@@ -419,7 +449,7 @@ const grnFormSlice = createSlice({
     },
     updateItemImageProgress: (state, action: PayloadAction<{ itemId: string; imageId: string; progress: number }>) => {
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
-      if (item && item.trl_images) {
+      if (item?.trl_images) {
         const image = item.trl_images.find(img => img.id === action.payload.imageId);
         if (image && image.uploadStatus !== 'completed') {
           image.uploadProgress = action.payload.progress;
@@ -429,7 +459,7 @@ const grnFormSlice = createSlice({
     },
     completeItemImageUpload: (state, action: PayloadAction<{ itemId: string; imageId: string; persistedImageId?: string; storagePath?: string; imageUrl?: string; fileSize?: number; mimeType?: string }>) => {
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
-      if (item && item.trl_images) {
+      if (item?.trl_images) {
         const image = item.trl_images.find(img => img.id === action.payload.imageId);
         if (image) {
           if (action.payload.persistedImageId) {
@@ -454,7 +484,7 @@ const grnFormSlice = createSlice({
     },
     failItemImageUpload: (state, action: PayloadAction<{ itemId: string; imageId: string; error: string }>) => {
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
-      if (item && item.trl_images) {
+      if (item?.trl_images) {
         const image = item.trl_images.find(img => img.id === action.payload.imageId);
         if (image) {
           image.uploadStatus = 'failed';
@@ -464,7 +494,7 @@ const grnFormSlice = createSlice({
     },
     removeItemImage: (state, action: PayloadAction<{ itemId: string; imageId: string }>) => {
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
-      if (item && item.trl_images) {
+      if (item?.trl_images) {
         rememberRemovedImage(state, item.trl_images.find(img => img.id === action.payload.imageId));
         item.trl_images = item.trl_images.filter(img => img.id !== action.payload.imageId);
       }
@@ -544,6 +574,11 @@ const grnFormSlice = createSlice({
         updatedAt?: string | null;
         invoice?: GRNInvoiceRef | null;
         firstDispatchDate?: string | null;
+        // WH-303: where the form was read from; a copy load has no rates.
+        source?: GRNLoadSource;
+        ratesNeedServer?: boolean;
+        // WH-304: a held edit shows the held changes, and what its Save is compared with is what the server holds.
+        baseline?: GRNLoadedBaseline;
       }>
     ) => {
       state.header = action.payload.header;
@@ -558,12 +593,37 @@ const grnFormSlice = createSlice({
       state.removedGrnRates = [];
       state.grnInvoiced = action.payload.grnInvoiced === true;
       state.grnImported = action.payload.grnImported === true;
+      state.loadedFrom = action.payload.source ?? 'server';
+      state.ratesNeedServer = action.payload.ratesNeedServer === true;
+      state.loadedBaseline = action.payload.baseline ?? baselineOf(action.payload.header, action.payload.items);
       state.removedImages = [];
       state.takenNumberError = null;
       state.loadedSignature = formSignature(state);
     },
     resetForm: () => {
       return createInitialState();
+    },
+
+    /**
+     * An unfinished form put back as it was saved (WH-301). An upload that was running when the form was left is
+     * not running now: its photo is shown as failed, so the person can send it again.
+     */
+    hydrateDraft: (_state, action: PayloadAction<GRNFormState>) => {
+      const restart = (images: GRNImageData[]): GRNImageData[] =>
+        images.map((image) => (image.uploadStatus === 'uploading' ? { ...image, uploadStatus: 'failed' as const } : image));
+      const saved = action.payload;
+      return {
+        ...createInitialState(),
+        ...saved,
+        header: { ...saved.header, gr_images: restart(saved.header.gr_images ?? []) },
+        items: saved.items.map((item) => ({ ...item, trl_images: restart(item.trl_images ?? []) })),
+        isLoading: false,
+        isSaving: false,
+        error: null,
+        takenNumberError: null,
+        validationErrors: {},
+        snapshot: null,
+      };
     },
 
     // #18 Fix: Snapshot actions for optimistic update rollback
@@ -575,8 +635,8 @@ const grnFormSlice = createSlice({
       state.snapshot = {
         grnId: state.grnId,
         tempGrnId: state.tempGrnId,
-        header: JSON.parse(JSON.stringify(state.header)), // Deep clone
-        items: JSON.parse(JSON.stringify(state.items)),   // Deep clone
+        header: current(state.header),
+        items: current(state.items),
       };
     },
 
@@ -645,6 +705,7 @@ export const {
   setRemovedGrnRates,
   loadGRNData,
   resetForm,
+  hydrateDraft,
   // #18 Fix: Snapshot actions for optimistic update rollback
   saveSnapshot,
   rollbackToSnapshot,
@@ -668,6 +729,9 @@ export const selectGRNLoadedUpdatedAt = (state: { grnForm: GRNFormState }) => st
 export const selectGRNInvoice = (state: { grnForm: GRNFormState }) => state.grnForm.invoice ?? null;
 export const selectGRNFirstDispatchDate = (state: { grnForm: GRNFormState }) => state.grnForm.firstDispatchDate ?? null;
 export const selectGRNLoadedDate = (state: { grnForm: GRNFormState }) => state.grnForm.loadedDate ?? null;
+export const selectGRNLoadedFrom = (state: { grnForm: GRNFormState }) => state.grnForm.loadedFrom ?? null;
+export const selectGRNLoadedBaseline = (state: { grnForm: GRNFormState }) => state.grnForm.loadedBaseline ?? null;
+export const selectGRNRatesNeedServer = (state: { grnForm: GRNFormState }) => state.grnForm.ratesNeedServer === true;
 const EMPTY_RATES: GrnRate[] = [];
 const EMPTY_CHANGES: RateChange[] = [];
 export const selectGRNRemovedImages = (state: { grnForm: GRNFormState }) => state.grnForm.removedImages;

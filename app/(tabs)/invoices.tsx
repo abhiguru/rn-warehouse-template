@@ -18,6 +18,7 @@ import { t } from '@/i18n';
 import { useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { beginNewBill, releaseNewBill } from '@/features/invoice/utils/startNewBill';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import type { ThemeTokens } from '@/theme/tokens';
 
@@ -32,6 +33,8 @@ export default function InvoicesTab() {
   const styles = useThemedStyles(makeStyles);
   const dispatch = useAppDispatch();
   const { canCreate } = usePermissions();
+  // Invoices are made only with the server (WH-381): the list says so, and its "+" is not offered offline.
+  const needsConnection = useNeedsConnection();
 
   // Set by the first tap on "Create invoice" until this tab is in front again:
   // a second tap opened a second step 1 and reset the form the first one had
@@ -63,8 +66,8 @@ export default function InvoicesTab() {
       <ListErrorBoundary listName="invoices">
         <InvoiceFlashList />
       </ListErrorBoundary>
-      {canCreate && (
-        <Fab label={t('lists.invoice.create')} onPress={handleCreateInvoice} testID="create-invoice-fab" />
+      {canCreate && !needsConnection && (
+        <Fab label={t('lists.invoice.create')} onPress={() => void handleCreateInvoice()} testID="create-invoice-fab" />
       )}
     </View>
   );

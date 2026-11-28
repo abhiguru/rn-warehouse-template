@@ -3,6 +3,9 @@ import type { customers as source } from '../en/customers';
 import type { Translation } from '../../types';
 
 export const customers: Translation<typeof source> = {
+  offline: {
+    newNeedsConnection: 'નવા વેપારી માટે કનેક્શન જોઈએ.',
+  },
   list: {
     loading: 'વેપારીઓ લોડ થઈ રહ્યા છે…',
     loadingLabel: 'વેપારીઓ લોડ થઈ રહ્યા છે',

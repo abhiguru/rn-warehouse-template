@@ -9,6 +9,8 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Tex
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
@@ -31,7 +33,7 @@ const SKELETONS = [1, 2, 3, 4, 5, 6];
 
 type LoadKind = 'first' | 'refresh' | 'more';
 
-export default function RecentDispatchedScreen() {
+function RecentDispatchedOnline() {
   const role = useAppSelector((state) => state.auth.userProfile?.role);
   // The route guard lets every signed-in person in; this stops the request for a role the server refuses.
   const allowed = isWarehouseUser(role);
@@ -260,6 +262,32 @@ export default function RecentDispatchedScreen() {
       />
     </View>
   );
+}
+
+/** Offline: the header and the needs-a-connection state, and nothing read or kept (WH-381). */
+function RecentDispatchedOffline() {
+  const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+        <View style={styles.titleRow}>
+          <HeaderBackButton />
+          <View style={styles.titles}>
+            <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
+              {tr('lists.recent.title')}
+            </Text>
+          </View>
+        </View>
+      </View>
+      <ScreenNeedsConnection testID="recent-dispatched-needs-connection" />
+    </View>
+  );
+}
+
+export default function RecentDispatchedScreen() {
+  const needsConnection = useNeedsConnection();
+  return needsConnection ? <RecentDispatchedOffline /> : <RecentDispatchedOnline />;
 }
 
 const makeStyles = (t: ThemeTokens) => ({

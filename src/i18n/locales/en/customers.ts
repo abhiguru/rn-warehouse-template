@@ -1,5 +1,9 @@
 /** English text: customers. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const customers = {
+  // The list's footnote while the phone is offline (WH-348, Design offline-capture.md 2.11).
+  offline: {
+    newNeedsConnection: 'New customers need a connection.',
+  },
   list: {
     loading: 'Loading customers…',
     loadingLabel: 'Loading customers',

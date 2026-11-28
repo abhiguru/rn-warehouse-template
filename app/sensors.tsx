@@ -64,6 +64,7 @@ export default function SensorsScreen() {
       extraData={now}
       empty={{ icon: 'thermometer-off', title: tr('sensors.list.emptyTitle'), description: tr('sensors.list.emptyDescription') }}
       errorTitle={tr('sensors.somethingWentWrong')}
+      needsConnectionId="sensors-needs-connection"
     >
       <SensorAlerts alerts={alerts} />
       {devices && devices.length > 0 ? <SectionHeader title={tr('sensors.sensors')} /> : null}

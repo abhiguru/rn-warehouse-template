@@ -73,8 +73,6 @@ export async function getCustomerDispatchActivity(
   }
 
   try {
-    const client = await getAuthenticatedClient();
-
     // Calculate date range
     const toDate = params.toDate ?? getToday();
     const fromDate = params.fromDate ?? getDateDaysAgo(params.daysBack ?? 10);
@@ -86,10 +84,7 @@ export async function getCustomerDispatchActivity(
       p_to_date: toDate,
     };
 
-    const { data, error } = await client.rpc(
-      'get_customer_dispatch_activity',
-      rpcParams
-    );
+    const { data, error } = await (await getAuthenticatedClient()).rpc('get_customer_dispatch_activity', rpcParams);
 
     if (error) {
       logger.error('[DispatchActivity] RPC error:', error.message);
@@ -175,17 +170,12 @@ export async function getAllDispatchActivity(
   params: AllDispatchActivityParams
 ): Promise<AllDispatchActivityResponse> {
   try {
-    const client = await getAuthenticatedClient();
-
     const rpcParams = {
       p_from_date: params.fromDate,
       p_to_date: params.toDate,
     };
 
-    const { data, error } = await client.rpc(
-      'get_all_dispatch_activity',
-      rpcParams
-    );
+    const { data, error } = await (await getAuthenticatedClient()).rpc('get_all_dispatch_activity', rpcParams);
 
     if (error) {
       logger.error('[AllDispatchActivity] RPC error:', error.message);

@@ -8,7 +8,7 @@
  * Access: Admin and Supervisor roles only
  */
 
-import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -35,6 +35,10 @@ import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { useQuietReread } from '@/features/phone-copy/useQuietReread';
+import type { EntityName } from '@/features/phone-copy/copySchema';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import {
   fontWeight,
@@ -76,6 +80,8 @@ interface ListState {
   loadedSearch: string;
   /** When the rows on screen were loaded. */
   loadedAt: Date | null;
+  /** The rows came from the phone copy (WH-348): the status bar tells their time, the list shows none of its own. */
+  fromPhoneCopy?: boolean;
   /** A reload failed while rows were on screen: they are older than they look. */
   refreshFailed: boolean;
 }
@@ -90,6 +96,8 @@ type ListRow = { kind: 'user'; user: UserListItem } | { kind: 'connectionsHeader
 import { appendNew } from '@/utils/appendNew';
 
 const PAGE_SIZE = 100;
+/** The records of the phone copy the list's rows are made of (WH-348). */
+const USER_KINDS: ReadonlySet<EntityName> = new Set<EntityName>(['user_profiles', 'users_customers_new']);
 const MAX_ROWS = 1000;
 
 const DEFAULT_FILTERS: UserFilters = {
@@ -110,6 +118,7 @@ export default function UsersScreen() {
   // While the keyboard is up the list area ends at its top (WH-239), so the no-match state is centred above it.
   const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   const isOffline = useIsOffline();
+  const needsConnection = useNeedsConnectionV3();
 
   const [state, setState] = useState<ListState>({
     data: [],
@@ -184,6 +193,7 @@ export default function UsersScreen() {
             error: false,
             loadedSearch: offset === 0 ? search : prev.loadedSearch,
             loadedAt: offset === 0 ? new Date() : prev.loadedAt,
+            fromPhoneCopy: offset === 0 ? Boolean(response.source) : prev.fromPhoneCopy,
             refreshFailed: offset === 0 ? false : prev.refreshFailed,
           }));
           // More rows on the server: keep loading them (CR-26), for this search only.
@@ -203,6 +213,48 @@ export default function UsersScreen() {
     },
     []
   );
+
+  // The latest state, for a quiet re-read that comes to be done after a render.
+  const stateRef = useRef(state);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  });
+  // The same request again, from the top, for as many rows as are loaded, after a sync that changed people, with nothing on
+  // screen saying so (C299 §11.1).
+  const readQuietly = async () => {
+    const shown = stateRef.current;
+    const target = Math.max(PAGE_SIZE, shown.data.length);
+    const rows: UserListItem[] = [];
+    let first: Awaited<ReturnType<typeof adminUserService.getUsersList>> | null = null;
+    while (rows.length < target) {
+      const page = await adminUserService.getUsersList({ ...shown.filters, search_query: normalizeUserSearch(shown.loadedSearch) }, PAGE_SIZE, rows.length);
+      if (!page.success || !page.data || !page.source) return;
+      first ??= page;
+      rows.push(...page.data.users);
+      if (page.data.users.length === 0 || rows.length >= (page.data.pagination.total_with_deleted ?? page.data.pagination.total_count)) break;
+    }
+    if (JSON.stringify(rows) === JSON.stringify(shown.data) || !first?.data || !first.source) return;
+    // A finger came down since the read: read again when it lifts.
+    if (!quiet.atRest()) {
+      quiet.markDue();
+      return;
+    }
+    const { pagination } = first.data;
+    const asOf = first.source.asOf;
+    setState((prev) => ({
+      ...prev, data: rows, totalCount: pagination.total_count, totalWithDeleted: pagination.total_with_deleted ?? pagination.total_count,
+      offset: rows.length, loadedAt: new Date(asOf),
+    }));
+  };
+  const quiet = useQuietReread({
+    kinds: USER_KINDS,
+    active: () => stateRef.current.fromPhoneCopy === true,
+    idle: () => !stateRef.current.loading && !stateRef.current.loadingMore,
+    read: readQuietly,
+  });
+  useEffect(() => {
+    quiet.setFocused(isFocused);
+  }, [isFocused, quiet]);
 
   // ===========================================================================
   // EFFECTS
@@ -451,10 +503,15 @@ export default function UsersScreen() {
             testID="users-stale-strip"
           />
         ) : null}
-        {isOffline && !state.refreshFailed && state.loadedAt && state.data.length > 0 ? (
+        {/* New people register themselves with the server: its reason is a lasting fact about the list (Design 2.5, 2.11). */}
+        {needsConnection ? (
+          <NeedsConnectionLine inset testID="users-new-needs-connection" text={tr('users.offline.newNeedsConnection')} />
+        ) : null}
+        {isOffline && !state.refreshFailed && !state.fromPhoneCopy && state.loadedAt && state.data.length > 0 ? (
           <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="users-last-updated" />
         ) : null}
         <FlatList
+          {...quiet.scrollHandlers}
           style={styles.flatList}
           data={rows}
           renderItem={renderItem}

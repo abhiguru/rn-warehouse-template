@@ -66,6 +66,10 @@ import { deleteItemFlow } from '@/features/items/deleteItemFlow';
 import { showActivatedToast, showDeactivatedToast } from '@/features/items/activationToast';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from '@/components/lists/ListLoadErrors';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { useQuietReread } from '@/features/phone-copy/useQuietReread';
+import type { EntityName } from '@/features/phone-copy/copySchema';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { itemPagePath } from '@/features/item-pricing/contract';
 import { itemIdsWithoutRate } from '@/features/item-pricing/noRate';
@@ -94,11 +98,16 @@ interface ListState {
   loadedSearch: string;
   /** When the rows on screen were loaded. */
   loadedAt: Date | null;
+  /** The rows came from the phone copy (WH-348): the status bar tells their time, the list shows none of its own. */
+  fromPhoneCopy?: boolean;
   /** A reload failed while rows were on screen: they are older than they look. */
   refreshFailed: boolean;
   /** The next page failed to load; the rows on screen stay. */
   loadMoreFailed: boolean;
 }
+
+/** The records of the phone copy the list's rows are made of (WH-348). */
+const ITEM_KINDS: ReadonlySet<EntityName> = new Set<EntityName>(['items']);
 
 /** The cached active items that match the search text (name, packaging or description), as list rows. */
 function matchingItems(items: ActiveItem[], search: string): ItemListItem[] {
@@ -138,6 +147,7 @@ export default function ItemsScreen() {
     loadMoreFailed: false,
   });
   const offline = useIsOffline();
+  const needsConnection = useNeedsConnectionV3();
   // The row of this item is read again when the list comes back into focus; Add reads the whole list again.
   const openedItemId = useRef<string | null>(null);
   const reloadOnFocus = useRef(false);
@@ -197,6 +207,7 @@ export default function ItemsScreen() {
             error: null,
             loadedSearch: offset === 0 ? search : prev.loadedSearch,
             loadedAt: offset === 0 ? new Date() : prev.loadedAt,
+            fromPhoneCopy: offset === 0 ? Boolean(response.source) : prev.fromPhoneCopy,
             refreshFailed: offset === 0 ? false : prev.refreshFailed,
           }));
         } else {
@@ -209,6 +220,31 @@ export default function ItemsScreen() {
     },
     []
   );
+
+  // The same request again, from the top, for as many rows as are loaded, after a sync that changed items, with nothing on
+  // screen saying so (C299 §11.1).
+  const readQuietly = async () => {
+    const shown = stateRef.current;
+    const response = await itemService.getItemList(shown.filters, Math.max(20, shown.data.length), 0);
+    if (!response.success || !response.source) return;
+    if (JSON.stringify(response.data) === JSON.stringify(shown.data)) return;
+    // A finger came down since the read: read again when it lifts.
+    if (!quiet.atRest()) {
+      quiet.markDue();
+      return;
+    }
+    const asOf = response.source.asOf;
+    setState((prev) => ({ ...prev, data: response.data, totalCount: response.pagination?.total_count ?? 0, loadedAt: new Date(asOf) }));
+  };
+  const quiet = useQuietReread({
+    kinds: ITEM_KINDS,
+    active: () => stateRef.current.fromPhoneCopy === true,
+    idle: () => !stateRef.current.loading && !stateRef.current.loadingMore && !stateRef.current.refreshing,
+    read: readQuietly,
+  });
+  useEffect(() => {
+    quiet.setFocused(isFocused);
+  }, [isFocused, quiet]);
 
   // ===========================================================================
   // EFFECTS
@@ -537,12 +573,12 @@ export default function ItemsScreen() {
         emptyIcon="cube-outline"
         emptyTitle={tr('items.list.emptyTitle')}
         emptySubtitle={tr('items.list.emptyMessage')}
-        showCreateButton
+        showCreateButton={!needsConnection}
         createButtonLabel={tr('items.list.addItem')}
         onCreatePress={handleAddItem}
       />
     );
-  }, [listLoading, state.error, state.filters, noRateFilter, ratesStatus, refreshRates, setNoRateFilter, fetchItems, handleAddItem, handleSearch]);
+  }, [needsConnection, listLoading, state.error, state.filters, noRateFilter, ratesStatus, refreshRates, setNoRateFilter, fetchItems, handleAddItem, handleSearch]);
 
   const renderFooter = useCallback(() => {
     if (state.loadMoreFailed && !state.loadingMore) {
@@ -583,7 +619,7 @@ export default function ItemsScreen() {
               <Text style={styles.headerTitle}>{tr('common.items')}</Text>
             </View>
           ),
-          headerRight: () => (
+          headerRight: () => needsConnection ? null : (
             <Pressable
               onPress={handleAddItem}
               style={styles.addButton}
@@ -631,10 +667,16 @@ export default function ItemsScreen() {
             />
           </View>
         ) : null}
-        {offline && !noRateFilter && !state.refreshFailed && state.loadedAt && state.data.length > 0 ? (
+        {/* The "+" is not offered offline: its reason is a lasting fact about the list (Design 2.5, 2.11). */}
+        {needsConnection ? (
+          <NeedsConnectionLine inset testID="items-new-needs-connection" text={tr('items.offline.newNeedsConnection')} />
+        ) : null}
+        {offline && !noRateFilter && !state.refreshFailed && !state.fromPhoneCopy && state.loadedAt && state.data.length > 0 ? (
           <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="items-last-updated" />
         ) : null}
+        <View style={styles.flatList} {...quiet.touchHandlers}>
         <FlatList
+          {...quiet.scrollHandlers}
           style={styles.flatList}
           data={listData}
           extraData={noRateIds}
@@ -661,6 +703,7 @@ export default function ItemsScreen() {
           onEndReachedThreshold={0.3}
           showsVerticalScrollIndicator={false}
         />
+        </View>
       </View>
     </>
   );

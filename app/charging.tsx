@@ -32,6 +32,7 @@ import {
   type ChargingRule,
 } from '@/features/charging/chargingRule';
 import { useAppSelector } from '@/store/hooks';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { formatIdentifier, t as tr } from '@/i18n';
@@ -55,6 +56,8 @@ type SheetName = 'step' | 'minimum' | 'days' | 'round';
 
 export default function ChargingScreen() {
   const role = useAppSelector(state => state.auth.userProfile?.role);
+  // Changing the rule needs the server (WH-348, Design 2.5 and DQ1): offline the rule shows and its controls are disabled.
+  const needsConnection = useNeedsConnectionV3();
   const isFocused = useIsFocused();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -272,10 +275,10 @@ export default function ChargingScreen() {
         {draft ? (
           <>
             <SettingsSection title={tr('charging.screen.title')} testID="charging-rule" footer={describeChargingRule(draft)}>
-              <SettingsRow testID="charging-row-step" label={tr('charging.step.label')} value={tr(STEP_LABEL[draft.step_days])} onPress={() => setSheet('step')} />
-              <SettingsRow testID="charging-row-minimum" label={tr('charging.minimum.label')} value={minimumLabel(draft.minimum_days)} onPress={() => setSheet('minimum')} />
-              <SettingsRow testID="charging-row-days" label={tr('charging.days.label')} value={tr(DAYS_LABEL[draft.days_counted])} onPress={() => setSheet('days')} />
-              <SettingsRow testID="charging-row-round" label={tr('charging.round.label')} value={tr(ROUNDING_LABEL[draft.rounding])} onPress={() => setSheet('round')} last />
+              <SettingsRow testID="charging-row-step" label={tr('charging.step.label')} value={tr(STEP_LABEL[draft.step_days])} onPress={() => setSheet('step')} disabled={needsConnection} />
+              <SettingsRow testID="charging-row-minimum" label={tr('charging.minimum.label')} value={minimumLabel(draft.minimum_days)} onPress={() => setSheet('minimum')} disabled={needsConnection} />
+              <SettingsRow testID="charging-row-days" label={tr('charging.days.label')} value={tr(DAYS_LABEL[draft.days_counted])} onPress={() => setSheet('days')} disabled={needsConnection} />
+              <SettingsRow testID="charging-row-round" label={tr('charging.round.label')} value={tr(ROUNDING_LABEL[draft.rounding])} onPress={() => setSheet('round')} disabled={needsConnection} last />
             </SettingsSection>
             {showsGoodsLeave ? (
               <View style={styles.switchBox}>
@@ -283,7 +286,7 @@ export default function ChargingScreen() {
                   label={tr('charging.goodsLeave.label')}
                   helperText={tr('charging.goodsLeave.help')}
                   value={stored?.invoiceAsGoodsLeave === true}
-                  disabled={saving}
+                  disabled={saving || needsConnection}
                   onValueChange={on => (on ? setAskingLeave(true) : void changeGoodsLeave(false))}
                 />
               </View>
@@ -294,7 +297,7 @@ export default function ChargingScreen() {
                   label={tr('payments.switch.label')}
                   helperText={tr('payments.switch.help')}
                   value={recordPayments}
-                  disabled={saving}
+                  disabled={saving || needsConnection}
                   onValueChange={on => setAskingPayments(on)}
                 />
               </View>
@@ -311,8 +314,9 @@ export default function ChargingScreen() {
           label={tr('charging.screen.save')}
           onPress={() => setAsking(true)}
           loading={saving}
-          disabled={!dirty || saving}
+          disabled={!dirty || saving || needsConnection}
           buttonTestID="charging-save"
+          needsConnectionTestID={needsConnection ? 'charging-needs-connection' : undefined}
         />
       ) : null}
       {sheet ? (

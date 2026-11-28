@@ -14,6 +14,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useAppSelector } from '@/store/hooks';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
 import { LANGUAGES, getLanguage, resolveLanguage, t, type AppLanguage, type LanguagePreference, type TranslationKey } from '@/i18n';
@@ -51,6 +52,7 @@ import { settingsFeatureRows, type SettingsFeature } from '@/config/roles';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { countPendingEnrollments } from '@/services/enrollmentReviewService';
 import { useFacilityCapabilities } from '@/hooks/useCapability';
+import { useCopySpaceText } from '@/hooks/usePhoneCopyStatus';
 
 const THEME_OPTIONS: {
   value: ThemePreference;
@@ -68,7 +70,10 @@ const brandName = (brand: Brand, language: AppLanguage): string =>
 
 const SettingsScreen: React.FC = () => {
   const { userProfile } = useAppSelector(state => state.auth);
+  const needsConnection = useNeedsConnectionV3();
   const capabilities = useFacilityCapabilities();
+  // The space the phone copy takes, under Account (WH-298), for every role that has the copy.
+  const copySpace = useCopySpaceText();
   const insets = useSafeAreaInsets();
   // Sign-out, leaving the facility and deletion: the same actions as Profile (§14.8).
   const account = useAccountActions();
@@ -176,7 +181,8 @@ const SettingsScreen: React.FC = () => {
       (feature !== 'connectionHistory' || backendHasFeature('connectionHistory')) &&
       (feature !== 'rackPresets' || backendHasFeature('rackPresets'))
   );
-  const showsRequests = featureRows.includes('enrollmentReview');
+  // The count is read from the server: with no connection the row shows none (WH-348, Product PQ2).
+  const showsRequests = featureRows.includes('enrollmentReview') && !needsConnection;
   useFocusEffect(useCallback(() => {
     if (!showsRequests) { setWaitingRequests(null); return undefined; }
     let current = true;
@@ -283,7 +289,7 @@ const SettingsScreen: React.FC = () => {
         </SettingsSection>
 
         {/* Account */}
-        <SettingsSection title={t('settings.account.title')} testID="settings-section-account">
+        <SettingsSection title={t('settings.account.title')} footer={copySpace} testID="settings-section-account">
           {account.mode === 'legacy' ? (
             <SettingsRow
               icon="server"
@@ -299,6 +305,7 @@ const SettingsScreen: React.FC = () => {
               icon={action.icon}
               label={action.label}
               subtitle={action.subtitle}
+              subtitleTestID={action.subtitleTestID}
               onPress={() => account.request(action.id)}
               showChevron={false}
               destructive={action.destructive}

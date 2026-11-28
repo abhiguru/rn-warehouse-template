@@ -38,6 +38,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { LostAnswerStrip } from '@/features/dispatch/components/LostAnswerStrip';
+import { ServerOnlyScreen } from '@/features/phone-copy/components/ServerOnlyScreen';
 import {
   DispatchHeroHeader,
   DispatchTabNavigator,
@@ -64,6 +65,18 @@ import { serverText } from '@/utils/serverText';
 import { loadFailureText } from '@/utils/loadFailureText';
 import { photoAddFailure } from '@/utils/photoUploadError';
 import { invoiceFileName } from '@/utils/invoiceLabel';
+import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
+import type { EntityName } from '@/features/phone-copy/copySchema';
+
+/** The records this page reads from the phone copy: a sync that changed one of them reads the page again. */
+const DISPATCH_PAGE_KINDS: readonly EntityName[] = [
+  'goodsreceived', 'goodsreceived_trl', 'customers', 'items',
+];
+
+/** A photo of the Images tab: it may be a frame, not a picture. */
+interface PhotoRef {
+  needsConnection?: boolean;
+}
 // ============================================================================
 // STYLES (docs/STYLE_GUIDE.md §14.2 object page)
 // ============================================================================
@@ -88,7 +101,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-function DispatchDetailScreen() {
+function DispatchDetailScreenOnline() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
   const { canUpdate, canDelete } = usePermissions();
@@ -107,6 +120,9 @@ function DispatchDetailScreen() {
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageUploadRef = useRef(false);
+  // WH-299: the page was read from the phone copy, which has no invoice amounts; offline, every action needs the server.
+  const [amountsNeedServer, setAmountsNeedServer] = useState(false);
+  const fromCopyRef = useRef(false);
   const [isDeletingImage, setIsDeletingImage] = useState(false);
   // A delete is running (the ref is read by the Back key and by a second tap, the state draws the button)
   const [isDeleting, setIsDeleting] = useState(false);
@@ -219,6 +235,17 @@ function DispatchDetailScreen() {
         focusedRef.current = false;
       };
     }, [fetchDispatchDetails])
+  );
+
+  // A sync that changed what this page shows: read it again at once (WH-299, Product's PR9).
+  const fetchDetailsRef = useRef(fetchDispatchDetails);
+  fetchDetailsRef.current = fetchDispatchDetails;
+  useEffect(
+    () =>
+      subscribeCopyChanges(({ kinds }) => {
+        if (fromCopyRef.current && DISPATCH_PAGE_KINDS.some(kind => kinds.has(kind))) void fetchDetailsRef.current();
+      }),
+    []
   );
 
   // Handle GRN navigation
@@ -390,8 +417,12 @@ function DispatchDetailScreen() {
   };
 
   // Handle image press - open overlay
-  const handleImagePress = (images: DispatchImageData[], initialIndex: number) => {
-    const convertedImages: ImageData[] = images.map((img) => ({
+  const handleImagePress = (images: (DispatchImageData & PhotoRef)[], initialIndex: number) => {
+    // A photo that is not on the phone has nothing to open (WH-299).
+    const shown = images.filter(img => !img.needsConnection);
+    const tapped = images[initialIndex];
+    const startAt = Math.max(0, shown.indexOf(tapped));
+    const convertedImages: ImageData[] = shown.map((img) => ({
       id: img.id,
       imageUrl: img.image_url,
       fileName: img.file_name || 'image.jpg',
@@ -401,7 +432,7 @@ function DispatchDetailScreen() {
       uploadStatus: 'completed' as const,
     }));
     setOverlayImages(convertedImages);
-    setOverlayInitialIndex(initialIndex);
+    setOverlayInitialIndex(startAt);
     setOverlayVisible(true);
   };
 
@@ -421,30 +452,32 @@ function DispatchDetailScreen() {
           }}
         />
         <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
-        <View style={styles.centerContainer}>
-          {loading ? (
-            <DetailSkeleton tabCount={5} cardCount={3} />
-          ) : error ? (
-            <ErrorStateView
-              title={tr('dispatch.details.loadFailedTitle')}
-              message={error}
-              onRetry={() => {
-                setLoading(true);
-                fetchDispatchDetails();
-              }}
-              retryAccessibilityLabel={tr('dispatch.details.retryLoad')}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          ) : (
-            <ErrorStateView
-              icon="truck-delivery-outline"
-              title={tr('dispatch.details.notFoundTitle')}
-              message={tr('dispatch.details.notFoundMessage')}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          )}
+        <View style={styles.container}>
+          <View style={styles.centerContainer}>
+            {loading ? (
+              <DetailSkeleton tabCount={5} cardCount={3} />
+            ) : error ? (
+              <ErrorStateView
+                title={tr('dispatch.details.loadFailedTitle')}
+                message={error}
+                onRetry={() => {
+                  setLoading(true);
+                  fetchDispatchDetails();
+                }}
+                retryAccessibilityLabel={tr('dispatch.details.retryLoad')}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            ) : (
+              <ErrorStateView
+                icon="truck-delivery-outline"
+                title={tr('dispatch.details.notFoundTitle')}
+                message={tr('dispatch.details.notFoundMessage')}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            )}
+          </View>
         </View>
       </>
     );
@@ -551,10 +584,11 @@ function DispatchDetailScreen() {
   };
 
   // Prepare images for DispatchImagesTab (use processed_images with signed URLs)
-  const dispatchImages: DispatchImageData[] = (dispatch.processed_images || []).map((img: any) => ({
+  const dispatchImages: DispatchImageData[] = (dispatch.processed_images || []).map((img: { id: string; image_url: string; file_name?: string; needs_connection?: boolean }) => ({
     id: img.id,
     image_url: img.image_url,
     file_name: img.file_name,
+    needsConnection: img.needs_connection === true,
   }));
 
   return (
@@ -576,7 +610,11 @@ function DispatchDetailScreen() {
           // Edit is at the end of the header, so it can be reached from any tab.
           headerRight: () =>
             canUpdate && !isDeleted && dispatch.imported !== true ? (
-              <Button type="tertiary" onPress={handleEditDispatch} disabled={isDeleting || isCheckingDelete}>
+              <Button
+                type="tertiary"
+                onPress={handleEditDispatch}
+                disabled={isDeleting || isCheckingDelete}
+              >
                 {tr('common.edit')}
               </Button>
             ) : null,
@@ -666,7 +704,7 @@ function DispatchDetailScreen() {
           )}
 
           {activeTab === 'invoices' && (
-            <DispatchInvoicesTab invoices={invoiceTable} onViewInvoice={handleViewInvoice} />
+            <DispatchInvoicesTab invoices={invoiceTable} onViewInvoice={handleViewInvoice} amountsNeedConnection={amountsNeedServer} />
           )}
         </View>
       </View>
@@ -709,6 +747,15 @@ function DispatchDetailScreen() {
       />
 
     </>
+  );
+}
+
+/** Offline the page is only its header and the needs-a-connection state: nothing is read or kept (WH-381). */
+function DispatchDetailScreen() {
+  return (
+    <ServerOnlyScreen title={tr('common.dispatch')} testID="dispatch-details-needs-connection">
+      <DispatchDetailScreenOnline />
+    </ServerOnlyScreen>
   );
 }
 

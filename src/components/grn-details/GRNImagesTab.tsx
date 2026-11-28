@@ -11,6 +11,8 @@ import { View, Text, Pressable, FlatList, useWindowDimensions, ActivityIndicator
 import { Image } from 'expo-image';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useViaCurrentPath } from '@/hooks/useLanStatus';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -34,6 +36,8 @@ export interface GRNImageData {
   file_name?: string;
   category: 'header' | 'item';
   item_name?: string;
+  /** The photo is not on the phone and the server cannot be asked now: the tile is a frame (WH-299). */
+  needsConnection?: boolean;
 }
 
 interface GRNImagesTabProps {
@@ -171,6 +175,8 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   uploadButtonPressed: { backgroundColor: t.brand.fillPressed },
   uploadButtonDisabled: { opacity: t.interaction.disabledOpacity },
+  addIconButtonDisabled: { opacity: t.interaction.disabledOpacity },
+  needsConnectionRow: { paddingHorizontal: space.lg, paddingTop: space.xs },
   uploadButtonText: { ...typography.callout, color: t.brand.onFill },
 });
 
@@ -188,14 +194,54 @@ function deleteImageLabel(item: GRNImageData): string {
     : tr('grn.images.deletePhotoOfUnnamedItem');
 }
 
+/**
+ * A photo that is not on the phone while the server cannot be asked (WH-299; Design offline-capture.md 2.5): a frame that
+ * says so. Nothing opens from it.
+ */
+const NeedsConnectionTile: React.FC<{ item: GRNImageData; styles: Styles; t: ThemeTokens }> = ({ item, styles, t }) => {
+  const { width } = useWindowDimensions();
+  const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
+  const label = imageLabel(item);
+  return (
+    <View
+      style={[styles.imageWrapper, { width: imageSize, height: imageSize }]}
+      accessible
+      accessibilityLabel={`${label}, ${tr('components.offlineRead.photoNeedsConnection')}`}
+    >
+      <View style={styles.placeholder} testID={`photo-needs-connection-${item.id}`}>
+        <Icon name="image-off-outline" size={iconSize.xl} color={t.icon.secondary} importantForAccessibility="no" />
+        <Text style={styles.missingText} maxFontSizeMultiplier={1.4}>
+          {tr('components.offlineRead.photoNeedsConnection')}
+        </Text>
+      </View>
+    </View>
+  );
+};
+
 // Individual image tile with loading and error placeholders
-const ImageTile: React.FC<{
+interface ImageTileProps {
   item: GRNImageData;
   onPress: () => void;
   onDelete?: () => void;
+  needsConnection: boolean;
   styles: Styles;
   t: ThemeTokens;
-}> = ({ item, onPress, onDelete, styles, t }) => {
+}
+
+/** A photo kept on the phone is a file here; any other link may need the warehouse network's path. */
+const ImageTile: React.FC<ImageTileProps> = props =>
+  props.item.image_url.startsWith('file:') ? (
+    <ImageTileView {...props} uri={props.item.image_url} />
+  ) : (
+    <RemoteImageTile {...props} />
+  );
+
+const RemoteImageTile: React.FC<ImageTileProps> = props => {
+  const uri = useViaCurrentPath(props.item.image_url);
+  return <ImageTileView {...props} uri={uri} />;
+};
+
+const ImageTileView: React.FC<ImageTileProps & { uri: string | undefined }> = ({ item, onPress, onDelete, needsConnection, styles, t, uri: imageUri }) => {
   const { width } = useWindowDimensions();
   const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
   const [isLoading, setIsLoading] = useState(true);
@@ -209,8 +255,6 @@ const ImageTile: React.FC<{
     onlineRef.current = online;
   }, [online]);
   const label = imageLabel(item);
-  const imageUri = useViaCurrentPath(item.image_url);
-
   return (
     <View style={[styles.imageWrapper, { width: imageSize, height: imageSize }]}>
       <Pressable
@@ -287,8 +331,10 @@ const ImageTile: React.FC<{
       {onDelete && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={deleteImageLabel(item)}
-          style={styles.removeButton}
+          accessibilityLabel={needsConnection ? needsConnectionLabel(deleteImageLabel(item)) : deleteImageLabel(item)}
+          accessibilityState={{ disabled: needsConnection }}
+          disabled={needsConnection}
+          style={[styles.removeButton, needsConnection && styles.addIconButtonDisabled]}
           onPress={onDelete}
         >
           {({ pressed }) => (
@@ -342,6 +388,11 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  // Adding a photo needs the server: with no connection the button is disabled and one line says why (WH-299, 2.5).
+  const needsConnection = useNeedsConnection();
+  const addDisabled = isUploading || needsConnection;
+  const addLabel = isUploading ? tr('grn.images.uploadingLabel') : tr('grn.images.addImage');
+  const addA11yLabel = needsConnection ? needsConnectionLabel(addLabel) : addLabel;
   const [filter, setFilter] = useState<FilterType>('all');
 
   const headerCount = useMemo(() => images.filter(img => img.category === 'header').length, [images]);
@@ -367,15 +418,15 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isUploading ? tr('grn.images.uploadingLabel') : tr('grn.images.addImage')}
-            accessibilityState={{ disabled: isUploading, busy: isUploading }}
+            accessibilityLabel={addA11yLabel}
+            accessibilityState={{ disabled: addDisabled, busy: isUploading }}
             style={({ pressed }) => [
               styles.uploadButton,
               pressed && styles.uploadButtonPressed,
-              isUploading && styles.uploadButtonDisabled,
+              addDisabled && styles.uploadButtonDisabled,
             ]}
             onPress={onUpload}
-            disabled={isUploading}
+            disabled={addDisabled}
           >
             {isUploading ? (
               <ActivityIndicator size="small" color={t.brand.onFill} />
@@ -385,15 +436,22 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
             <Text style={styles.uploadButtonText}>{isUploading ? tr('grn.images.uploading') : tr('grn.images.addImage')}</Text>
           </Pressable>
         )}
+        {onUpload && needsConnection ? (
+          <NeedsConnectionLine testID="grn-images-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        ) : null}
       </View>
     );
   }
 
-  const renderImage = ({ item, index }: { item: GRNImageData; index: number }) => (
+  const renderImage = ({ item, index }: { item: GRNImageData; index: number }) =>
+    item.needsConnection ? (
+      <NeedsConnectionTile item={item} styles={styles} t={t} />
+    ) : (
     <ImageTile
       item={item}
       onPress={() => onImagePress?.(filteredImages, index)}
       onDelete={onDeleteImage ? () => onDeleteImage(item) : undefined}
+      needsConnection={needsConnection}
       styles={styles}
       t={t}
     />
@@ -409,11 +467,11 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isUploading ? tr('grn.images.uploadingLabel') : tr('grn.images.addImage')}
-            accessibilityState={{ disabled: isUploading, busy: isUploading }}
-            style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed]}
+            accessibilityLabel={addA11yLabel}
+            accessibilityState={{ disabled: addDisabled, busy: isUploading }}
+            style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed, needsConnection && styles.addIconButtonDisabled]}
             onPress={onUpload}
-            disabled={isUploading}
+            disabled={addDisabled}
           >
             {isUploading ? (
               <ActivityIndicator size="small" color={t.brand.tint} />
@@ -423,6 +481,11 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
           </Pressable>
         )}
       </View>
+      {onUpload && needsConnection ? (
+        <View style={styles.needsConnectionRow}>
+          <NeedsConnectionLine testID="grn-images-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        </View>
+      ) : null}
 
       {/* Image Grid */}
       <FlatList

@@ -3,7 +3,8 @@
  *
  * Full-width banner shown while the facility's server is being updated (docs/STYLE_GUIDE.md §13.9, §14.9): a status,
  * not an error, so status.informative with the wrench icon. It sits in the layout above the app and pushes content
- * down, like the offline banner, and adds the top safe-area inset unless the offline banner (above it) already has.
+ * down, like the offline banner, and adds the top safe-area inset unless the offline banner or the phone copy's status
+ * bar (above it) already has.
  * It goes away when the server answers again.
  */
 
@@ -36,7 +37,12 @@ const makeStyles = (t: ThemeTokens) => ({
   text: { ...typography.footnote, color: t.text.primary, flexShrink: 1 },
 });
 
-export const UpgradingBanner: React.FC = () => {
+interface UpgradingBannerProps {
+  /** The phone copy's status bar is above this banner. */
+  belowCopyBar?: boolean;
+}
+
+export const UpgradingBanner: React.FC<UpgradingBannerProps> = ({ belowCopyBar = false }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const insets = useSafeAreaInsets();
@@ -45,7 +51,7 @@ export const UpgradingBanner: React.FC = () => {
   if (!upgrading) return null;
   return (
     <View
-      style={[styles.container, { paddingTop: offline ? 0 : insets.top }]}
+      style={[styles.container, { paddingTop: offline || belowCopyBar ? 0 : insets.top }]}
       accessibilityRole="alert"
       accessibilityLiveRegion="polite"
     >

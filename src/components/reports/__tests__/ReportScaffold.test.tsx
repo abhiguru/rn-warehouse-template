@@ -16,7 +16,7 @@ import { BRANDS, getTokens, layout, space, type Mode } from '@/theme/tokens';
 import { setLanguage } from '@/i18n';
 import { ReportScaffold, type ReportEmptyAction } from '../ReportScaffold';
 
-let mockState = { theme: { preference: 'light', brand: 'orange' } };
+let mockState = { auth: { userProfile: { role: 'staff' } }, theme: { preference: 'light', brand: 'orange' } };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
@@ -140,7 +140,7 @@ const flashList = () => hostNodes().find(node => node.type === 'FlashList')!;
 const MODES: Mode[] = ['light', 'dark'];
 describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('report layout, %s %s', (brand, mode) => {
   beforeEach(() => {
-    mockState = { theme: { preference: mode, brand } };
+    mockState = { auth: { userProfile: { role: 'staff' } }, theme: { preference: mode, brand } };
   });
 
   it('keeps the title, search and filter bar on screen in every state', async () => {
@@ -311,7 +311,7 @@ describe('report layout, accessibility and fit', () => {
 // SR-10: figures kept on the phone say so while the facility is asked again.
 describe('report status line, the saved copy', () => {
   beforeEach(() => {
-    mockState = { theme: { preference: 'light', brand: 'orange' } };
+    mockState = { auth: { userProfile: { role: 'staff' } }, theme: { preference: 'light', brand: 'orange' } };
   });
   const LINE = '15/06/24 – 12/10/24 · Showing 2 of 5 · Saved copy, refreshing… · Last updated 10:42 am';
   const FRESH_LINE = '15/06/24 – 12/10/24 · Showing 2 of 5 · Last updated 10:42 am';

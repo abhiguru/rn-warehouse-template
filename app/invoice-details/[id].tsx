@@ -37,6 +37,8 @@ import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { invoiceFileName, invoiceLabelOf } from '@/utils/invoiceLabel';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { useAppSelector } from '@/store/hooks';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { ServerOnlyScreen } from '@/features/phone-copy/components/ServerOnlyScreen';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import {
@@ -95,9 +97,10 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-function InvoiceDetailScreen() {
+function InvoiceDetailScreenOnline() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
+  const needsConnection = useNeedsConnectionV3();
   const { canUpdate, canDelete, isCustomer, isAdmin, isSupervisor, isStaffRole } = usePermissions();
   // The Payments tab (WH-143): administrators, supervisors and the invoice's customer, while payments are on. Staff see nothing new.
   const paymentsOn = usePaymentsVisible();
@@ -528,30 +531,32 @@ function InvoiceDetailScreen() {
             headerTintColor: t.brand.tint,
           }}
         />
-        <View style={styles.centerContainer}>
-          {loading ? (
-            <DetailSkeleton tabCount={3} cardCount={3} />
-          ) : loadFailed ? (
-            <ErrorStateView
-              title={tr('invoice.details.loadFailedTitle')}
-              message={loadFailedText || tr('common.checkConnection')}
-              onRetry={() => {
-                setLoadFailed(false);
-                setLoading(true);
-                void fetchInvoiceDetails();
-              }}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          ) : (
-            <ErrorStateView
-              icon="file-document-outline"
-              title={tr(gone ? 'invoice.details.deletedGoneTitle' : 'invoice.details.notFoundTitle')}
-              message={tr(gone ? 'invoice.details.deletedGoneMessage' : 'invoice.details.notFoundMessage')}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          )}
+        <View style={styles.container}>
+          <View style={styles.centerContainer}>
+            {loading ? (
+              <DetailSkeleton tabCount={3} cardCount={3} />
+            ) : loadFailed ? (
+              <ErrorStateView
+                title={tr('invoice.details.loadFailedTitle')}
+                message={loadFailedText || tr('common.checkConnection')}
+                onRetry={() => {
+                  setLoadFailed(false);
+                  setLoading(true);
+                  void fetchInvoiceDetails();
+                }}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            ) : (
+              <ErrorStateView
+                icon="file-document-outline"
+                title={tr(gone ? 'invoice.details.deletedGoneTitle' : 'invoice.details.notFoundTitle')}
+                message={tr(gone ? 'invoice.details.deletedGoneMessage' : 'invoice.details.notFoundMessage')}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            )}
+          </View>
         </View>
       </>
     );
@@ -614,7 +619,14 @@ function InvoiceDetailScreen() {
           // Edit is at the end of the header, so it can be reached from any tab.
           headerRight: () =>
             canUpdate && !isCancelled && !isImported ? (
-              <Button type="tertiary" onPress={handleEditInvoice} disabled={isDeleting || isCancelling || lostDelete}>
+              <Button
+                type="tertiary"
+                onPress={handleEditInvoice}
+                disabled={isDeleting || isCancelling || lostDelete || needsConnection}
+                testID="invoice-details-edit"
+                // Offline the reason is in the label only; the Overview's actions carry the visible line (Design 2.5).
+                accessibilityLabel={needsConnection ? needsConnectionLabel(tr('common.edit')) : undefined}
+              >
                 {tr('common.edit')}
               </Button>
             ) : null,
@@ -781,6 +793,15 @@ function InvoiceDetailScreen() {
       />
 
     </>
+  );
+}
+
+/** Offline the page is only its header and the needs-a-connection state: nothing is read or kept (WH-381). */
+function InvoiceDetailScreen() {
+  return (
+    <ServerOnlyScreen title={tr('common.invoice')} testID="invoice-details-needs-connection">
+      <InvoiceDetailScreenOnline />
+    </ServerOnlyScreen>
   );
 }
 

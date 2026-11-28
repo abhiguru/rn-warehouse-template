@@ -32,7 +32,10 @@ import { isUpgrading, noteServerAnswered, noteUpgradeAnswer, waitForRetry } from
 import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 import { noteRequestNetworkFailure } from './netReachability';
 import { noteExpiredTokenRenewal } from './sessionRenewal';
+import { noteDataWrite } from './facilityWrite';
 import { parseSessionEnd, SESSION_ENDS_AT_KEY, storeSessionEnd } from './sessionEnd';
+import { awaitRoleRecheck, isRoleRecheckPending, WRITE_HOLD_LIMIT_MS } from './roleRecheck';
+import { isOfflineLimitPassed, isStoredTime, type ConfirmationTimes } from './offlineLimit';
 import { forgetLanKey, LAN_KEY_STORE_KEY, parseLanKey, storeLanKey } from './lanKey';
 
 const authLogger = createLogger('Auth');
@@ -111,6 +114,47 @@ export async function awaitIdentityGate(generation: number): Promise<void> {
   if (!operatorResumeGate.isVerified() && !(await operatorResumeGate.ensureVerified()))
     throw new Error('Warehouse identity verification required');
   if (generation !== getSessionGeneration()) throw new Error('Session changed');
+}
+
+const isWriteHeld = (generation: number): boolean =>
+  isRoleRecheckPending(generation) || !operatorResumeGate.isVerified();
+
+/**
+ * What a write waits for before it may leave the phone: the role re-read (./roleRecheck.ts) and the foreground
+ * facility check. The wait ends, and the write is never sent, when the caller aborts the request or after
+ * `WRITE_HOLD_LIMIT_MS`, so a write a screen has given up on is not sent later (WH-352). The checks themselves run on.
+ */
+async function awaitWriteClearance(generation: number, signal: AbortSignal | null | undefined): Promise<void> {
+  if (signal?.aborted) throw abortedRead();
+  const since = Date.now();
+  const refusal = () => new Error('Warehouse identity verification required');
+  let over = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const givenUp = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(refusal()), WRITE_HOLD_LIMIT_MS);
+    // Under Node (tests) a waiting write must not keep the process alive.
+    (timer as { unref?: () => void }).unref?.();
+    onAbort = () => reject(abortedRead());
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+  // Both are asked again after each wait: a check made meanwhile may have marked the role unconfirmed again.
+  const cleared = async () => {
+    while (!over && isWriteHeld(generation)) {
+      if (isRoleRecheckPending(generation)) await awaitRoleRecheck(generation);
+      else await awaitIdentityGate(generation);
+    }
+  };
+  try {
+    await Promise.race([cleared(), givenUp]);
+  } finally {
+    over = true;
+    clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
+  }
+  if (signal?.aborted) throw abortedRead();
+  // By the clock as well: timers stand still while the app is in the background.
+  if (Date.now() - since >= WRITE_HOLD_LIMIT_MS) throw refusal();
 }
 
 // The gateway answers a request whose apikey it does not know with a 401 whose body is one of the
@@ -213,6 +257,11 @@ async function gatedFetch(
   init: RequestInit | undefined,
   { generation, mutation, honorSwitch, afterUpgradeWait, afterRateLimitWait }: GatedFetchOptions
 ): Promise<Response> {
+  // While the person's role is unconfirmed no write leaves the phone until it has been read again (WH-346,
+  // ./roleRecheck.ts). Every write to the facility passes here, and none is sent after its wait was given up
+  // (WH-352). Reads, the token refresh and sign-out (`honorSwitch` false) are not held: that read depends on them.
+  if (mutation && honorSwitch && isWriteHeld(generation) && !isReadRequest(input, init))
+    await awaitWriteClearance(generation, init?.signal);
   // A verified identity is the common case; keep it synchronous so a server
   // switch sees this request registered before the first await.
   if (!operatorResumeGate.isVerified()) await awaitIdentityGate(generation);
@@ -433,6 +482,7 @@ async function sessionFetch(
   mutation: boolean
 ): Promise<Response> {
   const response = await gatedFetch(input, init, { generation, mutation, honorSwitch: true });
+  if (mutation && response.ok) noteDataWrite(input);
   const refused = bearerOf(init);
   if (!refused || !(await isExpiredTokenResponse(response))) return response;
   const renewed = await accessTokenAfterExpiry(refused, generation);
@@ -464,8 +514,10 @@ const bodyInOwnWords = (response: Response): Response =>
 
 export function createAuthenticatedFetch() {
   const generation = getSessionGeneration();
+  // Classed per request with the same rule as the client's fetch: a read RPC (get_print_jobs) is a read, so it is not
+  // noted as a write (no after-write sync) and a server switch aborts it. Edge functions stay writes.
   return (input: RequestInfo | URL, init?: RequestInit) =>
-    sessionFetch(input, init, generation, true).then(bodyInOwnWords, inOwnWords);
+    sessionFetch(input, init, generation, !isReadRequest(input, init)).then(bodyInOwnWords, inOwnWords);
 }
 
 export function createSessionReadFetch() {
@@ -1718,6 +1770,8 @@ const refreshSession = async (
       // Clear cached authenticated client so it picks up new token
       clearAuthenticatedClientCache();
 
+      await confirmCachedProfile(newAccessToken, generation);
+
       return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
@@ -1840,6 +1894,17 @@ export function invalidateStoredTokenCache(): void {
 // after it read SecureStore again.
 onSessionChange(invalidateStoredTokenCache);
 
+/** A read of the stored session that the secure store itself failed (not a write, and not a missing value). */
+class StoreUnreadableError extends Error {}
+
+async function readSessionValue(key: string): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch {
+    throw new StoreUnreadableError();
+  }
+}
+
 // Session Management (supports both JWT tokens and session markers)
 // S2/S3 Fix: Now uses SecureStore for encrypted token storage
 const readStoredToken = async (): Promise<{
@@ -1848,6 +1913,8 @@ const readStoredToken = async (): Promise<{
   expiresAt?: number;
   isValid: boolean;
   type?: 'jwt' | 'session';
+  /** The secure store could not be read this time: whether a session is stored is not known. */
+  unreadable?: boolean;
 }> => {
   try {
     const cached = storedSessionCache;
@@ -1867,16 +1934,16 @@ const readStoredToken = async (): Promise<{
     const operatorAtStart = operatorKey();
     let migrated = false;
     // S2/S3 Fix: First check SecureStore for tokens
-    let authToken = await SecureStore.getItemAsync(SECURE_KEYS.AUTH_TOKEN);
-    let refreshToken = await SecureStore.getItemAsync(
+    let authToken = await readSessionValue(SECURE_KEYS.AUTH_TOKEN);
+    let refreshToken = await readSessionValue(
       SECURE_KEYS.REFRESH_TOKEN
     );
-    let expiresAtStr = await SecureStore.getItemAsync(
+    let expiresAtStr = await readSessionValue(
       SECURE_KEYS.TOKEN_EXPIRES
     );
     // A session that an earlier sign-out could not remove is removed now and stays signed out.
     // A marker for another session, or with no session, is old and is removed.
-    const marker = await SecureStore.getItemAsync(SECURE_KEYS.SIGNED_OUT);
+    const marker = await readSessionValue(SECURE_KEYS.SIGNED_OUT);
     if (marker != null) {
       if (refreshToken && (marker === '*' || marker === digestOf(refreshToken))) {
         if (await clearStoredTokensRaw()) await SecureStore.deleteItemAsync(SECURE_KEYS.SIGNED_OUT).catch(() => {});
@@ -1886,7 +1953,7 @@ const readStoredToken = async (): Promise<{
     }
     const operator = getActiveOperatorServer();
     if (operator && authToken) {
-      const identity = await SecureStore.getItemAsync(SECURE_KEYS.OPERATOR_IDENTITY);
+      const identity = await readSessionValue(SECURE_KEYS.OPERATOR_IDENTITY);
       if (identity !== `${operator.origin}|${operator.instanceId}`) {
         await clearStoredTokensRaw();
         return { isValid: false };
@@ -1935,13 +2002,33 @@ const readStoredToken = async (): Promise<{
     }
 
     return { isValid: false };
-  } catch {
+  } catch (error) {
     authLogger.error('Unable to read a securely persisted session.');
-    return { isValid: false };
+    return error instanceof StoreUnreadableError ? { isValid: false, unreadable: true } : { isValid: false };
   }
 };
 
 type StoredToken = Awaited<ReturnType<typeof readStoredToken>>;
+
+/**
+ * The waits before a failed secure-store read is tried again, where "could not be read" would otherwise decide that
+ * the app closes (WH-357). Only a store that still cannot be read after them counts as "cannot tell".
+ */
+export const SECURE_READ_RETRY_MS = [250, 750, 2000] as const;
+
+const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/** `read`, tried again after each wait while it rejects; the last failure is the caller's. */
+async function readRetried<T>(read: () => Promise<T>): Promise<T> {
+  for (const wait of SECURE_READ_RETRY_MS) {
+    try {
+      return await read();
+    } catch {
+      await pause(wait);
+    }
+  }
+  return read();
+}
 
 // Reads that start together share one queued read. A caller joins the read in
 // flight only when nothing has been queued after it (credentialQueueStamp), the
@@ -1961,7 +2048,7 @@ const operatorKey = (): string => {
   return operator ? `${operator.origin}|${operator.instanceId}` : '';
 };
 
-export const getStoredToken = async (): Promise<StoredToken> => {
+const readTokenOnce = async (): Promise<StoredToken> => {
   const generation = getSessionGeneration();
   const operator = operatorKey();
   let slot = sharedRead;
@@ -1984,6 +2071,21 @@ export const getStoredToken = async (): Promise<StoredToken> => {
   return generation === getSessionGeneration()
     ? { ...stored }
     : ({ isValid: false } as StoredToken);
+};
+
+/** The stored session. `retryUnreadable` reads again, after SECURE_READ_RETRY_MS, while the store cannot be read. */
+export const getStoredToken = async (options?: { retryUnreadable?: boolean }): Promise<StoredToken> => {
+  const generation = getSessionGeneration();
+  let stored = await readTokenOnce();
+  if (!options?.retryUnreadable) return stored;
+  for (const wait of SECURE_READ_RETRY_MS) {
+    if (!stored.unreadable) break;
+    await pause(wait);
+    // A session that ended or was replaced meanwhile is not the one asked about.
+    if (generation !== getSessionGeneration()) return { isValid: false };
+    stored = await readTokenOnce();
+  }
+  return stored;
 };
 
 // Read-only compatibility for migrating old sessions; never encode new tokens.
@@ -2145,21 +2247,91 @@ const clearStoredTokensRaw = async (): Promise<boolean> => {
 /// S8 Fix: Cache TTL for user profile - using centralized config
 const PROFILE_CACHE_TTL_MS = CACHE_DURATION_LONG_MS;
 
-interface CachedProfile {
+interface CachedProfile extends ConfirmationTimes {
   profile: unknown;
+  /** The age the 24 hour refresh goes by. */
   cachedAt: number;
   scope: string;
 }
 
+/**
+ * Rewrites the cached copy of `scope`, in the credential queue, while its session is still the current one.
+ * `change` returns null to leave it as it is. Never throws: a copy that cannot be rewritten stays as it was.
+ */
+async function updateCachedProfile(
+  generation: number,
+  scope: string,
+  change: (entry: CachedProfile) => CachedProfile | null
+): Promise<void> {
+  await serializeCredentials(async () => {
+    if (generation !== getSessionGeneration()) return;
+    try {
+      const cached = await SecureStore.getItemAsync('cached_user_profile');
+      if (!cached) return;
+      const entry = JSON.parse(cached) as CachedProfile;
+      const next = entry.scope === scope ? change(entry) : null;
+      if (next) await SecureStore.setItemAsync('cached_user_profile', JSON.stringify(next));
+    } catch {
+      authLogger.warn('The cached profile could not be updated.');
+    }
+  });
+}
+
+/**
+ * A renewed session is a server answer for this person (WH-349): the idle limit of the copy counts from now
+ * (src/config/offlineLimit.ts). `cachedAt` stays: the profile itself was not read again.
+ */
+async function confirmCachedProfile(accessToken: string, generation: number): Promise<void> {
+  const scope = profileScopeOf(accessToken);
+  if (!scope) return;
+  const now = Date.now();
+  await updateCachedProfile(generation, scope, entry => ({ ...entry, confirmedAt: now, seenAt: now }));
+}
+
 // Get cached user profile
 // S8 Fix: Now uses SecureStore with TTL validation
-export const getCachedUserProfile = async () => {
+//
+// `allowExpired` is for the offline start only (WH-298, src/config/offlineStart.ts): the server has not answered
+// since the app started, so the access token may be past its expiry without having been refused. The copy cached
+// for this token's person and session is then read whatever its 24 hour age, and nothing is asked of the server,
+// for up to 30 days since the server last confirmed that person (WH-349, src/config/offlineLimit.ts). Past that
+// the read gives nothing and the copy is kept. The token itself is never sent: every request first renews it
+// (acquireValidSession), and a refusal signs out. `onLimitPassed` is told the kept role when that limit, and no
+// other cause, is why the read gives nothing (WH-351). `onUnreadable` is for the session restore (WH-360): failed
+// secure-store reads are tried again, and it is told when the store stays unreadable, so nothing is known.
+export const getCachedUserProfile = async (
+  options: { allowExpired?: boolean; onLimitPassed?: (role: unknown) => void; onUnreadable?: () => void } = {}
+) => {
+  const allowExpired = options.allowExpired === true;
+  const { onUnreadable } = options;
+  const retry = allowExpired || onUnreadable !== undefined;
   const generation = getSessionGeneration();
   try {
-    const scope = await profileScope();
+    const scope = await profileScope(allowExpired, { retry, onUnreadable });
     if (!scope || generation !== getSessionGeneration()) return null;
-    // Try SecureStore first
-    const cached = await SecureStore.getItemAsync('cached_user_profile');
+    // Try SecureStore first. For the offline start and the session restore a failed read is tried again: it must not
+    // close the app (WH-357) or look like a sign-out (WH-360).
+    const read = () => SecureStore.getItemAsync('cached_user_profile');
+    const cached = await (retry ? readRetried(read) : read()).catch((error: unknown) => {
+      onUnreadable?.();
+      throw error;
+    });
+    if (allowExpired) {
+      if (!cached) return null;
+      const kept = JSON.parse(cached) as CachedProfile;
+      if (kept.scope !== scope) return null;
+      const now = Date.now();
+      const passed = isOfflineLimitPassed(kept, now);
+      // The time this read saw is kept, refused or not, so setting the clock back afterwards does not reopen the copy.
+      await updateCachedProfile(generation, scope, entry => {
+        const seen = entry.seenAt ?? 0;
+        return (seen === 0 || isStoredTime(seen)) && now > seen ? { ...entry, seenAt: now } : null;
+      });
+      if (generation !== getSessionGeneration()) return null;
+      if (!passed) return kept.profile as UserProfile;
+      options.onLimitPassed?.((kept.profile as { role?: unknown } | null | undefined)?.role);
+      return null;
+    }
     if (cached) {
       const parsed: CachedProfile = JSON.parse(cached);
       // Validate TTL
@@ -2191,14 +2363,12 @@ export const getCachedUserProfile = async () => {
         }
 
         return generation === getSessionGeneration() ? profile : null;
-      } else {
-        // Cache expired, clean up
-        await SecureStore.deleteItemAsync('cached_user_profile');
       }
     }
 
     // A profile cache timeout is not a session timeout. Reload the active profile
-    // through RLS instead of discarding a still-refreshable login.
+    // through RLS instead of discarding a still-refreshable login. The old copy stays
+    // until the server answers: an offline start still opens from it (WH-349).
     return await loadUserProfile(generation, false);
   } catch (error) {
     authLogger.error('Error getting cached profile:');
@@ -2222,12 +2392,27 @@ async function loadUserProfile(generation: number, strict: boolean) {
     .eq('auth_user_id', subject)
     .eq('active', true)
     .single();
-  if (error || !profile) return null;
+  if (error || !profile) {
+    // PGRST116: the server answered that this person has no active profile. The copy must not open offline.
+    if (error?.code === 'PGRST116') await forgetCachedProfile(generation);
+    return null;
+  }
   const { data: customerIds, error: customersError } = await client.rpc('user_accessible_customers');
   if (customersError && strict) return null;
   const result = { ...profile, assignedCustomerIds: customerIds || [] };
   await cacheUserProfile(result, generation);
   return generation === getSessionGeneration() ? result : null;
+}
+
+async function forgetCachedProfile(generation: number): Promise<void> {
+  await serializeCredentials(async () => {
+    if (generation !== getSessionGeneration()) return;
+    try {
+      await SecureStore.deleteItemAsync('cached_user_profile');
+    } catch {
+      authLogger.warn('The cached profile could not be removed.');
+    }
+  });
 }
 
 /**
@@ -2271,10 +2456,19 @@ export const getSessionIdentity = async (): Promise<SessionIdentity | null> => {
 
 // Store user profile in cache
 // S8 Fix: Now uses SecureStore with TTL tracking
-async function profileScope(): Promise<string | null> {
-  const stored = await getStoredToken();
-  if (!stored.authToken || !stored.isValid) return null;
-  const claims = decodeClaims(stored.authToken);
+async function profileScope(
+  allowExpired = false,
+  { retry = false, onUnreadable }: { retry?: boolean; onUnreadable?: () => void } = {}
+): Promise<string | null> {
+  const stored = await getStoredToken({ retryUnreadable: retry });
+  if (stored.unreadable) onUnreadable?.();
+  if (!stored.authToken || (!stored.isValid && !allowExpired)) return null;
+  return profileScopeOf(stored.authToken);
+}
+
+/** The key a cached profile is filed under: this facility, and the token's person and session. */
+function profileScopeOf(accessToken: string): string | null {
+  const claims = decodeClaims(accessToken);
   if (!claims?.sub || !claims.session_id) return null;
   try {
     return JSON.stringify([
@@ -2304,7 +2498,9 @@ export const cacheUserProfile = async (
   await serializeCredentials(async () => {
     if (generation !== getSessionGeneration()) return;
     try {
-      const entry: CachedProfile = { profile, cachedAt: Date.now(), scope };
+      // Only server answers are cached here: each one confirms the person.
+      const now = Date.now();
+      const entry: CachedProfile = { profile, cachedAt: now, confirmedAt: now, seenAt: now, scope };
       await SecureStore.setItemAsync(
         'cached_user_profile',
         JSON.stringify(entry)

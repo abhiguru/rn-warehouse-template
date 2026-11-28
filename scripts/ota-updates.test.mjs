@@ -24,3 +24,13 @@ test('expo-updates is not installed either: the lockfile has no entry for it or 
   assert.deepEqual(left, []);
   assert.ok(Object.keys(lock.packages ?? {}).length > 500, 'the lockfile was read');
 });
+
+// WH-380: a build profile that names a channel without expo-updates is a setting that does nothing, and EAS warns about it.
+test('no eas.json build profile names a channel while expo-updates is not a dependency', () => {
+  const pkg = read('package.json');
+  const hasUpdates = ['dependencies', 'devDependencies', 'optionalDependencies'].some(section => pkg[section]?.['expo-updates'] !== undefined);
+  const profiles = read('eas.json').build ?? {};
+  assert.ok(Object.keys(profiles).length > 0, 'eas.json was read');
+  const withChannel = Object.entries(profiles).filter(([, profile]) => profile.channel !== undefined).map(([name]) => name);
+  if (!hasUpdates) assert.deepEqual(withChannel, [], 'build profiles with a channel but no expo-updates');
+});

@@ -42,7 +42,7 @@ jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: () => undefined }));
 jest.mock('@/hooks/useNetworkStatus', () => ({ useNetworkStatus: () => ({ isConnected: true, type: 'wifi' }) }));
-jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
+jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1, onSessionChange: () => () => undefined }));
 jest.mock('@/config/supabaseConfig', () => ({
   getAuthenticatedClient: jest.fn(async () => ({
     from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: { name: 'Fictional Farms', active: true, deleted_at: null }, error: null }) }) }) }),

@@ -20,6 +20,7 @@ import { noteBackendRelease } from './backendTooOld';
 import { loadAllMyFacilities, type MyFacility } from './centralFacilities';
 import { getCentralState } from './centralState';
 import { setFacilityCapabilities } from './facilityCapabilities';
+import { keepOfflineStart } from './offlineStart';
 import { recallFacilityLan } from './facilityLanMemory';
 import { getLanContext, setLanContext } from './lanTransport';
 import { discoverOperator, getActiveOperatorServer, recordServerLanAddress } from './operatorServer';
@@ -79,6 +80,8 @@ export async function prepareFacilityForCode(facility: MyFacility): Promise<Prep
     initializeSupabase(discovery.config.supabaseUrl, discovery.config.anonKey);
     setFacilityCapabilities(discovery.server, discovery.config.capabilities);
     noteBackendRelease(discovery.server, discovery.config);
+    // Kept for an offline start of this facility (WH-298): the sign-in path must keep it too, not only a verified start.
+    await keepOfflineStart(discovery.server, discovery.config);
     // A switch saves the server as discovery described it, without the address on the warehouse network.
     if (remembered && !getActiveOperatorServer()?.lan) await recordServerLanAddress(discovery.server.origin, remembered.lan);
     return { ok: true };

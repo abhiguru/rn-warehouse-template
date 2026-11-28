@@ -62,6 +62,8 @@ export interface StatementInvoice {
 
 export interface CustomerStatement {
   as_of: string;
+  /** The business day the answer was worked out for (WH-305: kept answers carry it). */
+  today: string;
   customer: { id: string; name: string; active: boolean };
   record_payments: boolean;
   invoices_basis: InvoicesBasis;
@@ -85,6 +87,7 @@ export interface CustomerDuesRow extends DuesFigures {
 
 export interface CustomerDues {
   as_of: string;
+  today: string;
   record_payments: boolean;
   invoices_basis: InvoicesBasis;
   totals: DuesFigures;
@@ -97,6 +100,10 @@ export interface StatementResult<T> {
   data?: T | null;
   message?: string;
   error?: unknown;
+  /** The server's answer as it came, on success: what a kept answer stores (WH-305). */
+  body?: Record<string, unknown>;
+  /** The server's own sentence when it refused or failed in its body (for "Customer not found"). */
+  serverReason?: string;
 }
 
 const num = (value: unknown): number => {
@@ -104,7 +111,7 @@ const num = (value: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 const numOrNull = (value: unknown): number | null => (value === null || value === undefined ? null : num(value));
-const text = (value: unknown): string => (typeof value === 'string' ? value : value === null || value === undefined ? '' : String(value));
+const text = (value: unknown): string => (typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? String(value) : '');
 const list = (value: unknown): Record<string, unknown>[] => (Array.isArray(value) ? (value as Record<string, unknown>[]) : []);
 const basis = (value: unknown): InvoicesBasis => (value === 'due' ? 'due' : 'invoiced');
 const figures = (value: unknown): DuesFigures => {
@@ -118,6 +125,7 @@ function mapStatement(body: Record<string, unknown>): CustomerStatement {
   const customer = (body.customer ?? {}) as Record<string, unknown>;
   return {
     as_of: text(body.as_of),
+    today: text(body.today),
     customer: { id: text(customer.id), name: text(customer.name), active: customer.active !== false },
     record_payments: body.record_payments === true,
     invoices_basis: basis(body.invoices_basis),
@@ -157,6 +165,7 @@ function mapStatement(body: Record<string, unknown>): CustomerStatement {
 function mapDues(body: Record<string, unknown>): CustomerDues {
   return {
     as_of: text(body.as_of),
+    today: text(body.today),
     record_payments: body.record_payments === true,
     invoices_basis: basis(body.invoices_basis),
     totals: figures(body.totals),
@@ -175,21 +184,25 @@ function mapDues(body: Record<string, unknown>): CustomerDues {
 async function read<T>(rpc: string, args: Record<string, unknown>, map: (body: Record<string, unknown>) => T, failed: string): Promise<StatementResult<T>> {
   try {
     const client = await getAuthenticatedClient();
-    const { data, error } = await client.rpc(rpc, args);
+    const { data, error } = (await client.rpc(rpc, args)) as { data: unknown; error: { message: string; code?: string } | null };
     if (error) {
       logger.error(`[Statement] ${rpc} failed`, error.message);
-      return { success: false, data: null, message: transportText(error) ?? serverText(error.message, failed), error: error.code || error.message };
+      return { success: false, data: null, message: transportText(error) ?? serverText(error.message, failed), error: error.code ?? error.message };
     }
     const refusal = reportRefusal(data);
-    if (refusal) return refusedReport(refusal, null, failed);
+    if (refusal) return { ...refusedReport(refusal, null, failed), serverReason: refusal.text };
     const body = reportBody(data) as Record<string, unknown> | null;
     if (!body || typeof body !== 'object' || body.success !== true) return { success: false, data: null, message: failed };
-    return { success: true, data: map(body) };
+    return { success: true, data: map(body), body };
   } catch (error) {
     logger.error(`[Statement] ${rpc} threw`);
     return { success: false, data: null, message: transportText(error) ?? failed, error };
   }
 }
+
+/** A kept answer drawn with the same mappers as a live one (WH-305). */
+export const mapKeptStatement = (body: unknown): CustomerStatement => mapStatement((body ?? {}) as Record<string, unknown>);
+export const mapKeptDues = (body: unknown): CustomerDues => mapDues((body ?? {}) as Record<string, unknown>);
 
 /** One customer's statement: administrators, supervisors and the customer's own account (the server refuses staff). */
 export const getCustomerStatement = (customerId: string): Promise<StatementResult<CustomerStatement>> =>

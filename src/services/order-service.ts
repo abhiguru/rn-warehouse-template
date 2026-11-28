@@ -10,6 +10,7 @@ import {
   type RPCResult,
 } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
+import { createLogger, loggableError } from '@/utils/logger';
 import { invalidateReportQueries } from '@/lib/queryClient';
 import {
   Order,
@@ -38,6 +39,8 @@ import { serverText } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { refusalOf } from '@/utils/serverRefusal';
 import { backendHasFeature } from '@/config/backendFeatures';
+
+const orderLog = createLogger('[OrderService]');
 
 /**
  * The new version of the order line in a server answer (`data.updated_at`, owner decision D1; the answer is the body,
@@ -373,15 +376,10 @@ export class OrderService {
   ): Promise<OrderServiceResponse<Order>> {
     try {
       const authenticatedClient = await getAuthenticatedClient();
-      const { data, error } = await authenticatedClient.rpc(
-        'get_order_with_items',
-        {
-          p_order_id: orderId,
-        }
-      );
+      const { data, error } = await authenticatedClient.rpc('get_order_with_items', { p_order_id: orderId });
 
       if (error) {
-        console.error('[OrderService] RPC Error:', error);
+        orderLog.debug('The order details were refused or failed', loggableError(error));
         return {
           success: false,
           message: t('errors.order.fetchDetailsFailed'),
@@ -549,6 +547,7 @@ export class OrderService {
         PAGINATION.MAX_LIMIT
       );
       const offset = Math.max(filters?.offset ?? 0, 0);
+
       const rpcCall = authenticatedClient.rpc('get_orders_list', {
         p_customer_id: filters?.customer_id || null,
         p_customer_name: filters?.customer_name || null,
@@ -563,12 +562,8 @@ export class OrderService {
       const rpcDuration = Date.now() - rpcStartTime;
 
       if (error) {
-        console.error('[OrderService] RPC Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        });
+        // The code only, and below the level that raises a red box on a phone: the screen shows the translated message.
+        orderLog.debug('The orders list was refused or failed', loggableError(error));
 
         // Definitive token/session failures clear local auth immediately.
         handleGlobalAuthError(error);
@@ -1031,7 +1026,7 @@ export class OrderService {
       const data = Array.isArray(response) ? response : response?.data;
 
       if (error) {
-        console.error('[OrderService] RPC Error:', error);
+        orderLog.debug('The available items were refused or failed', loggableError(error));
         return {
           success: false,
           message: t('errors.item.fetchListFailed'),
@@ -1163,6 +1158,25 @@ export const getOrderWithItems =
 
 /** Get orders list with filters using RPC */
 export const getOrdersList = OrderService.getOrdersList.bind(OrderService);
+
+/** The customer the order screen names: its name, and whether it is deactivated (WH-328). */
+export interface OrderScreenCustomer {
+  name: string | null;
+  active: boolean | null;
+  deleted_at: string | null;
+}
+
+/**
+ * The order screen's customer record (name, active, deleted_at), from the server's `customers` table (orders are never
+ * on the phone, WH-381). Throws when the record cannot be read; the screen then shows its plain sentence.
+ */
+export async function getOrderScreenCustomer(customerId: string): Promise<OrderScreenCustomer> {
+  const client = await getAuthenticatedClient();
+  const { data, error } = await client.from('customers').select('name, active, deleted_at').eq('id', customerId).single();
+  if (error) throw new Error(error.message);
+  const row = data as Partial<OrderScreenCustomer> | null;
+  return { name: row?.name ?? null, active: row?.active ?? null, deleted_at: row?.deleted_at ?? null };
+}
 
 
 /** Get customer dispatches using the new RPC */

@@ -50,10 +50,12 @@ import { describeDateRange } from '@/features/filters/filterModel';
 import { trustCustomerName } from '@/features/reports/customerNames';
 import { reportById } from '@/features/reports/reportRegistry';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
-import { exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
+import { changeCustomerAction, exportHeaderActions, longestPeriodAction } from '@/features/reports/reportActions';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportPrefs } from '@/features/reports/useReportPrefs';
+import { useActivityMoney } from '@/features/phone-copy/money/useActivityMoney';
+import { useActivityServerOnly } from '@/features/reports/useActivityServerOnly';
 import { useReportQuery } from '@/features/reports/useReportQuery';
 import { clearDestinationFilters, useReportScope, type ReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -176,14 +178,18 @@ export default function CustomerActivityScreen() {
 const customerKey = (customer: CustomerActivityRow) => customer.customer_id;
 
 function CustomersReport({ scope }: { scope: ReportScope }) {
+  const serverOnly = useActivityServerOnly();
   const filters = useReportFilters(CUSTOMER_ACTIVITY_CUSTOMERS);
   const { period, view } = filters.request;
   const query = useReportQuery<AllCustomerActivityData>({
+    serverOnly: serverOnly,
     key: [REPORT_ID, 'customers', period.from, period.to],
     fetch: () => getAllCustomerActivity({ fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.customerActivity.listError'),
+    keptWhenCopy: true,
   });
   const { data } = query;
+  const money = useActivityMoney(query);
   const rows = useMemo(() => customerActivityCustomersView(data?.customers ?? [], view), [data, view]);
   const kpis = useMemo<KPIItem[] | undefined>(
     () =>
@@ -213,6 +219,9 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
 
   return (
     <ReportScaffold
+      needsConnectionId={serverOnly ? `${REPORT_ID}-needs-connection` : undefined}
+      serverOnly
+      reportId={REPORT_ID}
       title={tr('reports.titles.customerActivity')}
       subtitle={tr('reports.shared.allCustomers')}
       actions={actions}
@@ -227,6 +236,11 @@ function CustomersReport({ scope }: { scope: ReportScope }) {
       noun="customers"
       empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.customerActivity.loadFailedTitle')}
+      notHere={money.notHere}
+      periodChip={money.periodChip}
+      ageLine={money.ageLine}
+      // Customer activity is a money screen: its own kept-answer age (WH-305, Design 9.7 DQ4), never CustomerAgeStrip.
+      hideCustomerAgeStrip
     >
       {lastCustomer && !filters.search ? (
         <ReportLastCustomer customer={lastCustomer} onPress={openCustomer} accessibilityHint={tr('reports.customerActivity.customerHint')} />
@@ -328,17 +342,21 @@ interface CustomerDashboardProps {
 
 function CustomerDashboard({ customerId, customerName, onChangeCustomer }: CustomerDashboardProps) {
   const styles = useThemedStyles(makeStyles);
+  const serverOnly = useActivityServerOnly();
   const filters = useReportFilters(CUSTOMER_ACTIVITY_CUSTOMER, { scope: customerId });
   const { period } = filters.request;
   const payments = filters.ctx.payments === true;
   const query = useReportQuery<CustomerActivityDetailData>({
+    serverOnly: serverOnly,
     key: [REPORT_ID, 'customer', customerId, period.from, period.to],
     fetch: () => getCustomerActivityDetail({ customerId, fromDate: period.from, toDate: period.to }),
     fallbackError: tr('reports.customerActivity.detailError'),
+    keptWhenCopy: true,
   });
   const { data } = query;
+  const money = useActivityMoney(query);
   // The facility's name for the customer: this answer's own when it has one, else the one the app holds.
-  const name = data?.customer_name || customerName;
+  const name = data !== undefined && data.customer_name !== '' ? data.customer_name : customerName;
   const kpis = useMemo<KPIItem[] | undefined>(
     () =>
       data && [
@@ -357,7 +375,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...changeCustomerAction(onChangeCustomer),
       ...exportHeaderActions({ exportPdf, busy, available }),
     ],
     [onChangeCustomer, exportPdf, busy, available]
@@ -375,7 +393,7 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
       setCustomer(report, { id: customerId, name });
       // "View all" means all: the destination's search and choices for this customer are cleared (SR-06).
       clearDestinationFilters(dispatch, report, customerId, { choices: true });
-      navigation.push({ pathname: `/reports/${report}`, params: { customerId, customerName: name } } as never);
+      navigation.push({ pathname: `/reports/${report}`, params: { customerId, customerName: name } });
     },
     [navigation, setCustomer, customerId, name, dispatch]
   );
@@ -410,6 +428,9 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
 
   return (
     <ReportScaffold
+      needsConnectionId={serverOnly ? `${REPORT_ID}-needs-connection` : undefined}
+      serverOnly
+      reportId={REPORT_ID}
       title={tr('reports.titles.customerActivity')}
       subtitle={name || undefined}
       actions={actions}
@@ -426,6 +447,11 @@ function CustomerDashboard({ customerId, customerName, onChangeCustomer }: Custo
       noun="customers"
       empty={{ ...emptyState(period), action: longestPeriodAction(period, filters.setField) }}
       errorTitle={tr('reports.customerActivity.loadFailedTitle')}
+      notHere={money.notHere}
+      periodChip={money.periodChip}
+      ageLine={money.ageLine}
+      // Customer activity is a money screen: its own kept-answer age (WH-305, Design 9.7 DQ4), never CustomerAgeStrip.
+      hideCustomerAgeStrip
     />
   );
 }
@@ -495,7 +521,7 @@ function Preview({ label, sublabel, spokenSublabel, value, status, onPress, acce
 }
 
 const PREVIEWS = 3;
-const openDocument = (path: string) => router.push(path as never);
+const openDocument = (path: string) => router.push(path);
 
 /**
  * A card's icon, head, action and the heading of its preview rows. The head is the period's total
@@ -563,7 +589,7 @@ const stockPackaging = (item: { packaging?: string | null }): string | undefined
  */
 function currentStockPackaging(data: CustomerActivityDetailData): string | undefined {
   const named = data.summary.current_stock_packaging;
-  if (named !== undefined) return named === null ? MIXED_PACKAGING : named;
+  if (named !== undefined) return named ?? MIXED_PACKAGING;
   const rows = data.top_stock_items;
   if (rows.every(row => row.packaging === undefined)) return undefined;
   const covered = rows.reduce((sum, row) => sum + row.total_stock, 0) === data.summary.current_stock;

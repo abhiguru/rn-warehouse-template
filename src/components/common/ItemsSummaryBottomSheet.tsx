@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import type { IconName } from '@/types/icon.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -135,7 +135,7 @@ function ItemsSummaryBottomSheetInner<T>(
       };
   const { protectedTitle, deleteTitle, deleteLabel, editHint } = labels;
   const closeLabel = tr('common.close');
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
 
   const t = useTokens();
   const dynamicStyles = useThemedStyles(makeStyles);

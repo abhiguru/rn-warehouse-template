@@ -16,6 +16,8 @@ import { StatusTag } from '@/components/ui/StatusTag';
 import { invoiceStateKind, invoiceStateLabel, type InvoiceState } from '@/features/charging/invoiceState';
 import { space } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
+import { SectionNeedsConnection } from '@/features/phone-copy/components/SectionNeedsConnection';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 
 interface GRNInvoicesTabProps {
   invoices: InvoiceTable;
@@ -29,7 +31,7 @@ interface GRNInvoicesTabProps {
   creatingInvoice?: boolean;
 }
 
-export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({ invoices, loading = false, onViewInvoice, state, onCreateInvoice, creatingInvoice = false }) => (
+const GRNInvoicesTabOnline: React.FC<GRNInvoicesTabProps> = ({ invoices, loading = false, onViewInvoice, state, onCreateInvoice, creatingInvoice = false }) => (
   <>
     {state || onCreateInvoice ? (
       <View
@@ -62,3 +64,10 @@ export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({ invoices, loadin
     />
   </>
 );
+
+/** Offline the tab is one line: the invoices need the server and none is kept (WH-381). */
+export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = props => {
+  const needsConnection = useNeedsConnection();
+  if (needsConnection) return <SectionNeedsConnection testID="grn-details-section-needs-connection-invoices" />;
+  return <GRNInvoicesTabOnline {...props} />;
+};

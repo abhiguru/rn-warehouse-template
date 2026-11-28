@@ -137,7 +137,7 @@ describe('who sees Print', () => {
     await renderList();
     expect(printAction(1).length).toBeGreaterThan(0);
     const pressable = screen.getAllByHintText('Opens the dispatch. Print is in the actions menu.')[0];
-    expect(pressable.props.accessibilityActions).toEqual([{ name: 'print', label: 'Print' }]);
+    expect(pressable.props.accessibilityActions).toEqual([{ name: 'print', label: 'Print Dispatch DD0001' }]);
     expect(pressable).toHaveProp('accessibilityHint', 'Opens the dispatch. Print is in the actions menu.');
   });
 

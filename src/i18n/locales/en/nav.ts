@@ -14,6 +14,11 @@ export const nav = {
     orders: 'Orders',
     queue: 'Queue',
   },
+  // The GRN | Find goods switch on the GRN tab
+  grnView: {
+    grn: 'GRN',
+    findGoods: 'Find goods',
+  },
   // Stack screen titles
   screens: {
     signIn: 'Sign in',
@@ -57,6 +62,8 @@ export const nav = {
       statement: 'Your goods in store and what you owe',
       temperatureReport: "A sensor's readings for a period, as a PDF",
       accountantPack: "Month's invoices, receipts and stock for your accountant",
+      replacedEntries: "Changes that overwrote someone's newer entry",
+      holdingList: 'Refused items waiting for a decision',
     },
   },
 };

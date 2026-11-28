@@ -198,8 +198,8 @@ describe('actions by role', () => {
     expect(swipeableOf(1)).not.toBeNull();
     expect(swipeableCount()).toBe(1);
     expect(card(1)?.props.accessibilityActions).toEqual([
-      { name: 'print', label: 'Print' },
-      { name: 'edit', label: 'Edit' },
+      { name: 'print', label: 'Print GRN RV14999' },
+      { name: 'edit', label: 'Edit GRN RV14999' },
     ]);
     expect(card(1)).toHaveProp('accessibilityHint', 'Opens the GRN. Print and Edit are in the actions menu.');
 

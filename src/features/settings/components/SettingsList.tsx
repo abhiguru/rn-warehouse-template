@@ -125,20 +125,26 @@ export function SettingsRow({
   leading,
   label,
   subtitle,
+  subtitleTestID,
   value,
   onPress,
   showChevron = true,
   destructive = false,
   last = false,
   busy = false,
+  disabled = false,
   testID,
 }: {
   testID?: string;
+  /** The row's action needs the server and the phone is offline: the row is read as disabled and a tap does nothing (WH-348). */
+  disabled?: boolean;
   icon?: IconName;
   /** Drawn in place of the icon, e.g. brand swatches. */
   leading?: React.ReactNode;
   label: string;
   subtitle?: string;
+  /** testID of the subtitle's text (a refused action's reason, WH-301). */
+  subtitleTestID?: string;
   /** The current choice, shown before the chevron. */
   value?: string;
   onPress: () => void;
@@ -157,10 +163,11 @@ export function SettingsRow({
   return (
     <Pressable
       testID={testID}
-      style={({ pressed }) => [styles.row, pressed && !busy && styles.rowPressed]}
-      onPress={busy ? undefined : onPress}
+      style={({ pressed }) => [styles.row, pressed && !busy && !disabled && styles.rowPressed]}
+      onPress={busy || disabled ? undefined : onPress}
+      disabled={disabled}
       accessibilityRole="button"
-      accessibilityState={busy ? { busy: true } : undefined}
+      accessibilityState={busy || disabled ? { ...(busy ? { busy: true } : {}), ...(disabled ? { disabled: true } : {}) } : undefined}
       accessibilityLabel={[label, value, subtitle].filter(Boolean).join(', ')}
     >
       {leading ? (
@@ -183,7 +190,11 @@ export function SettingsRow({
               {value}
             </Text>
           ) : null}
-          {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
+          {subtitle ? (
+            <Text style={styles.rowSubtitle} testID={subtitleTestID}>
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
         {value && !stacked ? (
           <Text style={styles.rowValue} numberOfLines={1}>

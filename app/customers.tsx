@@ -10,7 +10,7 @@
  * the screen is opened (it is this screen's own state); Back from a customer keeps it.
  */
 
-import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+import React, { useCallback, useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import {
   View,
@@ -63,11 +63,17 @@ import { normalizeDigits, t as tr } from '@/i18n';
 import { serverText, transportText } from '@/utils/serverText';
 import { showToast } from '@/utils/toast';
 import { createLogger, loggableError } from '@/utils/logger';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
+import { useQuietReread } from '@/features/phone-copy/useQuietReread';
+import type { EntityName } from '@/features/phone-copy/copySchema';
 
 const log = createLogger('Customers');
 
 /** The list loads this many customers at once (so every row can be reached from the A–Z rail). */
 const LIST_LIMIT = 10000;
+/** The records of the phone copy the list's rows are made of (WH-348). */
+const CUSTOMER_KINDS: ReadonlySet<EntityName> = new Set<EntityName>(['customers']);
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -83,6 +89,8 @@ interface ListState {
   refreshFailed: boolean;
   /** When the rows on the screen were loaded. */
   loadedAt: Date | null;
+  /** The rows came from the phone copy (WH-348): the status bar tells their time, the list shows none of its own. */
+  fromPhoneCopy?: boolean;
   /** Active and deactivated customers on the server (head counts); null until they were read. */
   counts: { active: number; inactive: number } | null;
   /** How many customers the server has in all; more than `data.length` when the list was capped. */
@@ -115,6 +123,7 @@ export default function CustomersScreen() {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const isOffline = useIsOffline();
+  const needsConnection = useNeedsConnectionV3();
   // While the keyboard is up the list area ends at its top (WH-239), so the no-match state is centred above it.
   const { ref: listAreaRef, lift: keyboardLift, onLayout: measureKeyboardLift } = useKeyboardCoverLift();
   const flatListRef = useRef<FlatList<CustomerListItem>>(null);
@@ -171,6 +180,7 @@ export default function CustomersScreen() {
             error: false,
             refreshFailed: false,
             loadedAt: new Date(),
+            fromPhoneCopy: Boolean(response.source),
             counts: counts
               ? { active: counts.active - inactiveShift, inactive: counts.inactive + inactiveShift }
               : null,
@@ -186,6 +196,36 @@ export default function CustomersScreen() {
     },
     []
   );
+
+  // The latest state, for a quiet re-read that comes to be done after a render.
+  const stateRef = useRef(state);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  });
+  // The same request again after a sync that changed customers, with nothing on screen saying so (C299 §11.1).
+  const readQuietly = async () => {
+    const shown = stateRef.current;
+    const [response, counts] = await Promise.all([customerService.getCustomerList(shown.filters, LIST_LIMIT, 0), customerService.getCustomerCounts()]);
+    if (!response.success || !response.source) return;
+    const rows = sortForRail(response.data);
+    if (JSON.stringify([rows, counts]) === JSON.stringify([shown.data, shown.counts])) return;
+    // A finger came down since the read: read again when it lifts.
+    if (!quiet.atRest()) {
+      quiet.markDue();
+      return;
+    }
+    const asOf = response.source.asOf;
+    setState((prev) => ({ ...prev, data: rows, counts, total: response.pagination?.total_count ?? rows.length, loadedAt: new Date(asOf) }));
+  };
+  const quiet = useQuietReread({
+    kinds: CUSTOMER_KINDS,
+    active: () => stateRef.current.fromPhoneCopy === true,
+    idle: () => !stateRef.current.loading && !stateRef.current.refreshing,
+    read: readQuietly,
+  });
+  useEffect(() => {
+    quiet.setFocused(isFocused);
+  }, [isFocused, quiet]);
 
   // ===========================================================================
   // EFFECTS
@@ -497,12 +537,12 @@ export default function CustomersScreen() {
         emptyIcon="account-group-outline"
         emptyTitle={tr('customers.list.emptyTitle')}
         emptySubtitle={tr('customers.list.emptyMessage')}
-        showCreateButton
+        showCreateButton={!needsConnection}
         createButtonLabel={tr('customers.list.addCustomer')}
         onCreatePress={handleAddCustomer}
       />
     );
-  }, [state.loading, state.error, state.data.length, state.filters, search, searching, showOnlyDeactivated, applyDeactivatedFilter, fetchCustomers, handleAddCustomer]);
+  }, [needsConnection, state.loading, state.error, state.data.length, state.filters, search, searching, showOnlyDeactivated, applyDeactivatedFilter, fetchCustomers, handleAddCustomer]);
 
   return (
     <>
@@ -524,7 +564,7 @@ export default function CustomersScreen() {
               {tr('common.customers')}
             </Text>
           ),
-          headerRight: () => (
+          headerRight: () => needsConnection ? null : (
             <Pressable
               onPress={handleAddCustomer}
               style={styles.addButton}
@@ -570,12 +610,17 @@ export default function CustomersScreen() {
             />
           </View>
         ) : null}
-        {isOffline && !state.refreshFailed && state.loadedAt && state.data.length > 0 ? (
+        {/* The "+" is not offered offline: its reason is a lasting fact about the list (Design 2.5, 2.11). */}
+        {needsConnection ? (
+          <NeedsConnectionLine inset testID="customers-new-needs-connection" text={tr('customers.offline.newNeedsConnection')} />
+        ) : null}
+        {isOffline && !state.refreshFailed && !state.fromPhoneCopy && state.loadedAt && state.data.length > 0 ? (
           <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="customers-last-updated" />
         ) : null}
-        <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.listWithRail, { marginBottom: keyboardLift }]}>
+        <View ref={listAreaRef} onLayout={measureKeyboardLift} style={[styles.listWithRail, { marginBottom: keyboardLift }]} {...quiet.touchHandlers}>
           <FlatList
             ref={flatListRef}
+            {...quiet.scrollHandlers}
             data={visible}
             renderItem={renderItem}
             keyExtractor={keyExtractor}

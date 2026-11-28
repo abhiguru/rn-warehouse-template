@@ -10,7 +10,7 @@
  * with the last 30 days. The server is the authority on the period (12 months at most, 2 years back, today or earlier); the
  * screen checks the same rule first so a wrong period is told at once. The phone works out nothing of the report.
  */
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Pressable, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -19,9 +19,12 @@ import { Button } from '@/components/ui/Button';
 import { DatePickerInput } from '@/components/ui/DatePickerInput';
 import { StatusTag } from '@/components/ui/StatusTag';
 import { useLiveReport } from '@/features/reports/useLiveReport';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import {
   PERIOD_TEXT,
   getReportSensors,
+  type ReportSensorsResult,
   periodProblem,
   periodTextForCode,
   type ReportSensor,
@@ -31,11 +34,14 @@ import { t as tr, type TranslationKey } from '@/i18n';
 import { generateTemperatureReportPDF, pdfRefusalText } from '@/services/pdf-service';
 import { iconSize, layout, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
-import { indiaDay, parseLocalISODate, todayInIST, toLocalISODate } from '@/utils/formatters';
+import { indiaDay, todayInIST, toLocalISODate } from '@/utils/formatters';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { nameFileNamePart } from '@/utils/invoiceLabel';
 
 const DEFAULT_DAYS = 30;
+
+/** The server's reason, or null when it sent none or an empty text (then the default message is shown). */
+const reasonOf = (text: string | undefined): string | null => (text === undefined || text === '' ? null : text);
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -65,8 +71,36 @@ const makeStyles = (t: ThemeTokens) => ({
 
 export default function TemperatureReportScreen() {
   const { deviceId } = useLocalSearchParams<{ deviceId?: string }>();
-  const fetch = useCallback(() => getReportSensors(), []);
-  const query = useLiveReport('temperature-report-sensors', fetch, tr('reports.temperatureReport.loadError'));
+  // The scaffold's own signal: while it shows "needs a connection" no request goes out and a sensor already open keeps its
+  // screen; the read runs once when the connection is back.
+  const needsConnection = useNeedsConnectionV3();
+  const fetch = useCallback(
+    (): Promise<ReportSensorsResult> => (needsConnection ? Promise.resolve({ success: false, data: null, message: '' }) : getReportSensors()),
+    [needsConnection]
+  );
+  // The key never changes with the connection, so going offline leaves the open sensor's screen as it is.
+  const query = useLiveReport(
+    'temperature-report-sensors',
+    fetch,
+    tr('reports.temperatureReport.loadError')
+  );
+  const { refresh, retry } = query;
+  // Offline no load runs at all (a failed load would clear the open sensor): pull-to-refresh and Retry return at once.
+  const scaffoldQuery = useMemo(
+    () => ({
+      ...query,
+      refresh: (): Promise<boolean> => (needsConnection ? Promise.resolve(false) : refresh()),
+      retry: () => {
+        if (!needsConnection) retry();
+      },
+    }),
+    [query, needsConnection, refresh, retry]
+  );
+  const wasOffline = useRef(needsConnection);
+  useEffect(() => {
+    if (wasOffline.current && !needsConnection) void refresh();
+    wasOffline.current = needsConnection;
+  }, [needsConnection, refresh]);
   const sensors = useMemo(() => query.data ?? [], [query.data]);
   const styles = useThemedStyles(makeStyles);
 
@@ -82,13 +116,14 @@ export default function TemperatureReportScreen() {
       <ReportScaffold
         title={tr('reports.titles.temperatureReport')}
         subtitle={deviceId ? undefined : tr('reports.temperatureReport.chooseSensor')}
-        query={query}
+        query={scaffoldQuery}
         kpiPlaceholders={0}
         rows={deviceId ? [] : sensors}
         renderRow={renderRow}
         keyExtractor={(sensor: ReportSensor) => sensor.id}
         empty={{ icon: 'thermometer', title: tr('reports.temperatureReport.noSensors') }}
         errorTitle={tr('reports.temperatureReport.errorTitle')}
+        needsConnectionId="temperature-report-needs-connection"
       />
     </View>
   );
@@ -124,6 +159,7 @@ const SensorRow = memo(function SensorRow({ sensor }: { sensor: ReportSensor }) 
 
 function ReportForm({ deviceId, sensor }: { deviceId: string; sensor: ReportSensor | undefined }) {
   const styles = useThemedStyles(makeStyles);
+  const needsConnection = useNeedsConnectionV3();
   const today = useMemo(() => todayInIST(), []);
   const [to, setTo] = useState<Date>(today);
   const [from, setFrom] = useState<Date>(() => new Date(today.getFullYear(), today.getMonth(), today.getDate() - (DEFAULT_DAYS - 1)));
@@ -157,13 +193,13 @@ function ReportForm({ deviceId, sensor }: { deviceId: string; sensor: ReportSens
           const { title, message } = pdfRefusalText(made.refusal);
           showAlert(title, message);
         } else {
-          showAlert(tr('reports.export.failedTitle'), made.error || tr('errors.pdf.generateFailed'));
+          showAlert(tr('reports.export.failedTitle'), reasonOf(made.error) ?? tr('errors.pdf.generateFailed'));
         }
         return;
       }
       const filename = `Temperature report ${nameFileNamePart(sensor?.name)} ${fromDay} to ${toDay}`.replace(/\s+/g, ' ').trim() + '.pdf';
       const shared = await downloadAndSharePDF(made.pdfUrl, filename);
-      if (!shared.success) showAlert(tr('reports.export.shareFailedTitle'), shared.error || tr('errors.pdf.shareFailed'));
+      if (!shared.success) showAlert(tr('reports.export.shareFailedTitle'), reasonOf(shared.error) ?? tr('errors.pdf.shareFailed'));
     } finally {
       sharingRef.current = false;
       setSharing(false);
@@ -183,12 +219,17 @@ function ReportForm({ deviceId, sensor }: { deviceId: string; sensor: ReportSens
             {tr(problem)}
           </Text>
         ) : null}
+        {needsConnection ? (
+          <NeedsConnectionLine testID="temperature-report-share-pdf-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        ) : null}
         <Button
           type="primary"
           size="fullWidth"
           leftIcon="share-variant"
           loading={sharing}
-          disabled={sharing || problem !== null}
+          disabled={sharing || problem !== null || needsConnection}
+          testID="temperature-report-share-pdf"
+          accessibilityLabel={needsConnection ? needsConnectionLabel(tr('components.sharePdf')) : undefined}
           onPress={() => { void sharePdf(); }}
         >
           {tr('components.sharePdf')}

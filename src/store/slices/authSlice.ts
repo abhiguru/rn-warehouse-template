@@ -27,6 +27,18 @@ import { getSessionGeneration, renewAheadMs } from '@/config/sessionLifecycle';
 import { isCentralLoginConfigured } from '@/config/envConfig';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { isStaleFacility } from '@/config/staleFacilitySession';
+import { getFacilityRelease } from '@/config/backendFeatures';
+import {
+  isOfflineStarted,
+  isRoleUnconfirmed,
+  noteRoleConfirmed,
+  opensOffline,
+  roleMarkCount,
+  onFirstServerAnswer,
+  readOfflineStart,
+  SESSION_STORE_UNREADABLE,
+} from '@/config/offlineStart';
+import { holdWritesForRoleRecheck, isRoleRecheckPending, retryRoleRecheckNow } from '@/config/roleRecheck';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 // Privacy cleanup services - clear user-specific data on logout
@@ -154,6 +166,14 @@ const fetchConfigOnce = (
     });
 };
 
+/** The restore could not read the secure store, after retries: not an answer that nobody is signed in (WH-360). */
+class SessionStoreUnreadableError extends Error {}
+
+const requireReadStore = <T extends { unreadable?: boolean }>(stored: T): T => {
+  if (stored.unreadable) throw new SessionStoreUnreadableError();
+  return stored;
+};
+
 // Async thunks
 export const initializeAuth = createAsyncThunk.withTypes<{
   pendingMeta: { generation: number };
@@ -184,10 +204,13 @@ export const initializeAuth = createAsyncThunk.withTypes<{
         const supabaseClient = getSupabaseClient();
 
         // Restore from the stored JWT tokens first
-        let tokenData = await safeAsyncOp(
-          () => getStoredToken(),
-          { isValid: false as const },
-          'Failed to get stored token'
+        let offlineRestore = false;
+        let tokenData = requireReadStore(
+          await safeAsyncOp(
+            () => getStoredToken({ retryUnreadable: true }),
+            { isValid: false as const },
+            'Failed to get stored token'
+          )
         );
 
         // Check if we have JWT tokens (valid or expired)
@@ -213,33 +236,59 @@ export const initializeAuth = createAsyncThunk.withTypes<{
             if (refreshResult) {
               authSliceLogger.info('Token refresh successful!');
               // Re-fetch token data after refresh
-              tokenData = await safeAsyncOp(
-                () => getStoredToken(),
-                { isValid: false as const },
-                'Failed to get refreshed token'
+              tokenData = requireReadStore(
+                await safeAsyncOp(
+                  () => getStoredToken({ retryUnreadable: true }),
+                  { isValid: false as const },
+                  'Failed to get refreshed token'
+                )
               );
             } else {
               authSliceLogger.info(
                 'Token refresh failed, will require re-authentication'
               );
               // The session manager clears only definitive rejections, never transient network errors.
-              tokenData = await getStoredToken();
-              if (!tokenData.isValid)
-                return { session: null, user: null, userProfile: null };
+              tokenData = requireReadStore(await getStoredToken({ retryUnreadable: true }));
             }
           }
+
+          // Offline start (WH-298, src/config/offlineStart.ts): the facility check of this run had no answer and
+          // the server has not answered since, so a token still stored has not been refused, expired or not. The
+          // session is restored from the profile cached for this token's person and session, on this facility (the
+          // token store is bound to it), within the offline idle limit and whatever the token's expiry (WH-349).
+          // An expired token is never sent: every request renews it first, and a refusal then signs out and erases
+          // what the session left.
+          offlineRestore =
+            tokenData.type === 'jwt' &&
+            Boolean(tokenData.authToken) &&
+            isOfflineStarted() &&
+            selected !== null &&
+            (await readOfflineStart(selected)) !== null;
         }
 
         // Check if we have valid JWT tokens
-        if (tokenData.isValid && tokenData.type === 'jwt') {
+        if ((tokenData.isValid || offlineRestore) && tokenData.type === 'jwt') {
           authSliceLogger.info(
-            'Found valid JWT tokens, checking cached profile'
+            offlineRestore ? 'Offline start: checking cached profile' : 'Found valid JWT tokens, checking cached profile'
           );
+          let profileUnreadable = false;
           const cachedProfile = await safeAsyncOp(
-            () => getCachedUserProfile(),
+            () =>
+              getCachedUserProfile({
+                allowExpired: offlineRestore,
+                onUnreadable: () => {
+                  profileUnreadable = true;
+                },
+              }),
             null,
             'Failed to get cached profile for JWT auth'
           );
+          // Before the role check below: an unread profile has no role, which says nothing about the person.
+          if (profileUnreadable) throw new SessionStoreUnreadableError();
+
+          // An offline restore is only for the roles that have the phone copy (Product's P5).
+          if (offlineRestore && !opensOffline((cachedProfile as { role?: unknown } | null)?.role, getFacilityRelease().schemaHead))
+            return { session: null, user: null, userProfile: null };
 
           if (cachedProfile) {
             authSliceLogger.info(
@@ -262,7 +311,11 @@ export const initializeAuth = createAsyncThunk.withTypes<{
 
             // The cached copy may be up to a day old: ask the server in the
             // background and show what it says now.
-            void reconcileCachedProfile(dispatch, cachedProfile);
+            if (isRoleUnconfirmed()) {
+              holdUntilRoleReread(dispatch, generation, cachedProfile as UserProfile);
+            } else {
+              void reconcileCachedProfile(dispatch, cachedProfile);
+            }
 
             return { session: null, user: null, userProfile: cachedProfile };
           } else {
@@ -288,6 +341,10 @@ export const initializeAuth = createAsyncThunk.withTypes<{
 
         return { session: null, user: null, userProfile: null };
       } catch (error: unknown) {
+        if (error instanceof SessionStoreUnreadableError) {
+          authSliceLogger.warn('The stored session could not be read.');
+          return rejectWithValue(SESSION_STORE_UNREADABLE);
+        }
         const errorMessage =
           error instanceof Error ? error.message : t('errors.auth.initializeFailed');
         authSliceLogger.error('Initialize auth error:', error);
@@ -570,17 +627,68 @@ const sameProfile = (a: UserProfile, b: UserProfile): boolean => {
 };
 
 // After a start from the cached profile: replace it when the server's differs
-// (a changed role or customer assignment). Nothing happens offline.
+// (a changed role or customer assignment). Nothing happens offline. 'read' when the
+// server's profile and assignments were read for this session, changed or not;
+// 'outdated' when such an answer is `outdated` by then, and is not applied.
 async function reconcileCachedProfile(
   dispatch: (action: ReturnType<typeof authSlice.actions.setUserProfile>) => unknown,
-  cached: UserProfile
-): Promise<void> {
+  cached: UserProfile,
+  outdated: () => boolean = () => false
+): Promise<'read' | 'outdated' | 'failed'> {
   const generation = getSessionGeneration();
   const fresh = (await reloadUserProfile()) as UserProfile | null;
-  if (!fresh || generation !== getSessionGeneration() || sameProfile(cached, fresh)) return;
-  dispatch(authSlice.actions.setUserProfile(fresh));
-  setSentryUser(fresh.role);
+  if (!fresh || generation !== getSessionGeneration()) return 'failed';
+  if (outdated()) return 'outdated';
+  if (!sameProfile(cached, fresh)) {
+    dispatch(authSlice.actions.setUserProfile(fresh));
+    setSentryUser(fresh.role);
+  }
+  return 'read';
 }
+
+/**
+ * While the role is unconfirmed (WH-346) nothing is written until the server has answered with it: it is asked again,
+ * with growing waits and when the server first answers, until it does (src/config/roleRecheck.ts). A changed role or
+ * assignment then applies: screens and the phone copy follow it.
+ */
+function holdUntilRoleReread(
+  dispatch: Parameters<typeof reconcileCachedProfile>[0],
+  generation: number,
+  profile: UserProfile
+): void {
+  holdWritesForRoleRecheck(generation, async () => {
+    // Only a read begun after the latest mark releases the writes (WH-358): an answer to one that a newer mark
+    // overtook releases nothing, and the role is read again at once. A read with no answer waits as any failed one
+    // does (the read itself can mark the role, through the facility check, so it must not repeat at once).
+    for (;;) {
+      const mark = roleMarkCount();
+      const result = await reconcileCachedProfile(dispatch, profile, () => mark !== roleMarkCount());
+      if (result === 'outdated') continue;
+      if (result === 'read') noteRoleConfirmed();
+      return result === 'read';
+    }
+  });
+  onFirstServerAnswer(() => {
+    if (generation === getSessionGeneration()) retryRoleRecheckNow();
+  });
+}
+
+/**
+ * The same hold for a session that is already open when its role is marked unconfirmed, as on a return to the front
+ * with no connection (WH-353); the root dispatches it on every such mark. Nothing to do before a session is restored
+ * (initializeAuth holds it then) or while its writes are already held.
+ */
+export const holdWritesUntilRoleReread =
+  () =>
+  (
+    dispatch: Parameters<typeof reconcileCachedProfile>[0],
+    getState: () => { auth: Pick<AuthState, 'userProfile'> }
+  ): void => {
+    const generation = getSessionGeneration();
+    const profile = getState().auth.userProfile;
+    if (!profile || !isRoleUnconfirmed() || isRoleRecheckPending(generation)) return;
+    holdUntilRoleReread(dispatch, generation, profile);
+  };
 
 /**
  * Renews the access token ahead of its expiry (every minute while signed in
@@ -673,6 +781,8 @@ const authSlice = createSlice({
         state.initializeRequest = undefined;
         state.initializeStatus = 'settled';
         state.isLoading = false;
+        // An unreadable secure store ends nothing: who is signed in is not known (WH-360).
+        if (action.payload === SESSION_STORE_UNREADABLE) return;
         state.session = null;
         state.user = null;
         state.userProfile = null;

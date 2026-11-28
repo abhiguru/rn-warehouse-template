@@ -1,5 +1,5 @@
 import type { en } from '../en';
-import type { FullTranslation, Translation } from '../../types';
+import type { FullTranslation, Translation } from '@/i18n/types';
 import { common } from './common';
 import { auth } from './auth';
 import { central } from './central';
@@ -25,6 +25,9 @@ import { sensors } from './sensors';
 import { errors } from './errors';
 import { validation } from './validation';
 import { components } from './components';
+import { findGoods } from './findGoods';
+import { offline } from './offline';
+import { money } from './money';
 
 /** Every Gujarati text of the app. An extra key is a compile error; a missing key falls back to English (see types.ts). */
 const guTexts: Translation<typeof en> = {
@@ -53,6 +56,9 @@ const guTexts: Translation<typeof en> = {
   errors,
   validation,
   components,
+  findGoods,
+  offline,
+  money,
 };
 
 /** Exposed as complete, so code and tests read it as before; `t` falls back to English for a missing key. */

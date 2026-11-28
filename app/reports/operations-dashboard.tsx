@@ -144,6 +144,7 @@ function OperationsDashboardReport() {
   const filters = useReportFilters(OPERATIONS_DASHBOARD);
   const { period } = filters.request;
   const query = useReportQuery<OperationsDashboardData>({
+    serverOnly: true,
     key: [REPORT_ID, period.from, period.to],
     fetch: async () => {
       const result = await getOperationsDashboard({ fromDate: period.from, toDate: period.to });
@@ -183,6 +184,8 @@ function OperationsDashboardReport() {
 
   return (
     <ReportScaffold
+      needsConnectionId={`${REPORT_ID}-needs-connection`}
+      serverOnly
       title={tr('reports.titles.operationsDashboard')}
       filters={{ config: OPERATIONS_DASHBOARD, state: filters }}
       query={query}

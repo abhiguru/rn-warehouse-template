@@ -46,6 +46,11 @@ export interface ListEmptyStateProps {
   onClearFilters?: () => void;
   /** Label of the clear-filters button */
   clearFiltersLabel?: string;
+  /** A lasting fact about the list, in a footnote line under the message. */
+  footnote?: { text: string; testID?: string };
+  testID?: string;
+  /** testID of the clear-filters button */
+  clearTestID?: string;
 }
 
 function Glyph({ name, size, color }: { name: IconName; size: number; color: string }) {
@@ -67,6 +72,13 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     textAlign: 'center' as const,
     marginBottom: space.sm,
+  },
+  footnote: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
+    maxWidth: layout.maxFormWidth,
   },
   description: {
     ...typography.subhead,
@@ -91,6 +103,9 @@ export const ListEmptyState = memo<ListEmptyStateProps>(({
   onCreatePress,
   onClearFilters,
   clearFiltersLabel = translate('filters.empty.clearFilters'),
+  footnote,
+  testID,
+  clearTestID,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -100,7 +115,7 @@ export const ListEmptyState = memo<ListEmptyStateProps>(({
   const subtitle = hasFilters ? filteredSubtitle : emptySubtitle;
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID={testID}>
       {/* Illustration - decorative, hidden from screen readers */}
       <View style={styles.icon} accessible={false} importantForAccessibility="no-hide-descendants">
         <Glyph name={hasFilters ? filteredIcon : emptyIcon} size={iconSize.hero} color={t.icon.secondary} />
@@ -112,6 +127,8 @@ export const ListEmptyState = memo<ListEmptyStateProps>(({
 
       <Text style={styles.description}>{subtitle}</Text>
 
+      {footnote ? <Text style={styles.footnote} testID={footnote.testID}>{footnote.text}</Text> : null}
+
       {/* No data yet: optional create action */}
       {showCreateButton && !hasFilters && onCreatePress && (
         <Button type="tertiary" leftIcon={createButtonIcon} onPress={onCreatePress} accessibilityLabel={createButtonLabel}>
@@ -121,7 +138,7 @@ export const ListEmptyState = memo<ListEmptyStateProps>(({
 
       {/* Filtered to nothing: clear the filters */}
       {hasFilters && onClearFilters && (
-        <Button type="tertiary" onPress={onClearFilters} accessibilityLabel={clearFiltersLabel}>
+        <Button type="tertiary" onPress={onClearFilters} accessibilityLabel={clearFiltersLabel} testID={clearTestID}>
           {clearFiltersLabel}
         </Button>
       )}

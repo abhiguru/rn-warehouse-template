@@ -17,6 +17,7 @@ import { loadAuthSlice } from '@/store/loadAuthSlice';
 import FioriTabBar from '@/components/FioriTabBar';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useTheme } from '@/hooks/useTheme';
+import { useBelowCopyBar } from '@/hooks/useBelowCopyBar';
 import { useSessionGenerationGuard } from '@/hooks/useSessionGenerationGuard';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { t as translate } from '@/i18n';
@@ -26,6 +27,7 @@ export default function TabsLayout() {
   const dispatch = useAppDispatch();
   const { userProfile, session, user } = useAppSelector((state) => state.auth);
   const { tokens: t } = useTheme();
+  const belowCopyBar = useBelowCopyBar();
   // The root restores the session before any route mounts (app/_layout.tsx), so
   // a start of the app reaches the tabs with the restore settled. It runs here
   // only when nothing has restored the current session: after a sign-in or a
@@ -107,10 +109,10 @@ export default function TabsLayout() {
       {/* StatusBar explicitly set for tab screens */}
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <View style={{ flex: 1 }}>
-        {/* SafeAreaView with theme background covers status bar area */}
+        {/* SafeAreaView with theme background covers status bar area; under the phone copy's bar the bar covers it */}
         <SafeAreaView
           style={{ flex: 1, backgroundColor: screenBg }}
-          edges={['top']}
+          edges={belowCopyBar ? [] : ['top']}
         >
           <Tabs
             tabBar={(props) => <FioriTabBar {...props} />}

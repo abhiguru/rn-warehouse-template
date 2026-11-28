@@ -47,6 +47,8 @@ interface KPICardProps {
    * coloured positive or negative; when omitted the trend is neutral.
    */
   upIsGood?: boolean;
+  /** Said at the end of the tile's spoken label. */
+  spokenNote?: string;
   /** Whether the card is in loading state */
   isLoading?: boolean;
   /** Compact mode for smaller cards */
@@ -190,6 +192,7 @@ export const KPICard: React.FC<KPICardProps> = ({
   trend,
   trendValue,
   upIsGood,
+  spokenNote,
   isLoading = false,
   compact = false,
 }) => {
@@ -234,6 +237,7 @@ export const KPICard: React.FC<KPICardProps> = ({
       ? tr('reports.components.kpiValueUnit', { label, value: shown, unit })
       : tr('reports.components.kpiValue', { label, value: shown }),
     hasTrend ? tr(trendKey, { value: trendValue }) : null,
+    spokenNote ?? null,
   ]
     .filter(Boolean)
     .join(', ');

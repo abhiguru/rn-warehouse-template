@@ -30,6 +30,7 @@ import { useBlurOnKeyboardHide } from '@/hooks/useBlurOnKeyboardHide';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { useAfterClosed } from '@/hooks/useAfterClosed';
 import WizardBottomBar from '@/components/WizardBottomBar';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { ReviewCard, ReviewKeyValue, ReviewKeyValues, ReviewSection, useReviewSections } from '@/components/review/ReviewSections';
 import { InvoiceReviewItemsTable } from '@/features/invoice/components/review/InvoiceReviewItemsTable';
 import { InvoiceCalculationSummary } from '@/features/invoice/components/InvoiceCalculationSummary';
@@ -82,6 +83,8 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
   // Closing the keyboard lets go of the field it was for (its text is formatted and checked).
   useBlurOnKeyboardHide();
   const isEdit = mode === 'edit';
+  // An invoice is recorded only with the server (WH-381): with no connection the form stays as typed and its button waits.
+  const needsConnection = useNeedsConnection();
   const styles = useThemedStyles(makeInvoiceWizardStyles);
 
   const {
@@ -621,6 +624,7 @@ export function InvoiceReviewStep({ mode }: InvoiceStepProps) {
         nextDisabled={lostAnswer || reloading}
         isLoading={isSaving}
         loadingLabel={tr(isEdit ? 'invoice.review.saving' : 'invoice.review.creating')}
+        needsConnectionTestID={needsConnection ? 'invoice-form-bottom-bar-needs-connection' : undefined}
       />
 
       {/* Success Dialog */}

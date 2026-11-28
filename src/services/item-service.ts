@@ -11,6 +11,9 @@
  */
 
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
+import { readVia } from '@/features/phone-copy/readRoute';
+import { readItem, readItemList } from '@/features/phone-copy/reads/items';
 import {
   Item,
   ItemListItem,
@@ -56,53 +59,6 @@ class ItemService {
   // ===========================================================================
 
   /**
-   * Search items by name or packaging
-   * Uses get_items RPC which respects RLS
-   */
-  async searchItems(
-    query: string,
-    limit: number = 20
-  ): Promise<ItemListItem[]> {
-    try {
-      console.log('[ItemService] searchItems:', { query, limit });
-
-      if (!query || query.length < 1) {
-        return [];
-      }
-
-      const client = await getAuthenticatedClient();
-      const { data, error } = await client.rpc('get_items', {
-        p_search_query: query,
-        p_active_only: true,
-        p_limit: limit,
-        p_offset: 0,
-      });
-
-      if (error) {
-        handleGlobalAuthError(error);
-        console.error('[ItemService] Search error:', error);
-        return [];
-      }
-
-      if (!data || !Array.isArray(data)) {
-        return [];
-      }
-
-      // Map RPC response to ItemListItem
-      return data.map((item: RpcItemRow) => ({
-        id: item.id,
-        name: item.name,
-        packaging: item.packaging,
-        description: item.description,
-        active: item.active ?? true,
-      }));
-    } catch (error) {
-      console.error('[ItemService] Exception in searchItems:', error);
-      return [];
-    }
-  }
-
-  /**
    * Get paginated item list with filters
    * Uses get_items RPC
    */
@@ -113,6 +69,23 @@ class ItemService {
   ): Promise<ItemListResponse> {
     try {
       console.log('[ItemService] getItemList:', { filters, limit, offset });
+
+      // The phone copy answers when it can (WH-348): the same rows `get_items` lists.
+      const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readItemList(q, {
+        search: filters.search ?? null, activeOnly: filters.active === true, limit, offset,
+      }));
+      if (copy) {
+        const { items: rows, total_count: count } = copy.value;
+        return {
+          success: true,
+          message: t('errors.item.listFetched'),
+          source: copy.source,
+          data: (rows as unknown as RpcItemRow[]).map(item => ({
+            id: item.id, name: item.name, packaging: item.packaging, description: item.description, active: item.active ?? true,
+          })),
+          pagination: { total_count: count, limit, offset, has_more: count > offset + limit },
+        };
+      }
 
       const client = await getAuthenticatedClient();
 
@@ -238,6 +211,21 @@ class ItemService {
           success: false,
           message: t('errors.item.idRequired'),
           error: t('errors.general.missingParameter'),
+        };
+      }
+
+      const copy = await readVia({ stage: 'all', format: COPY_FORMAT_V3 }, q => readItem(q, itemId));
+      if (copy) {
+        const row = copy.value as unknown as RpcItemRow | null;
+        if (!row) {
+          return { success: false, message: t('errors.item.notFound'), error: 'NOT_FOUND', code: 'NOT_FOUND', source: copy.source };
+        }
+        return {
+          success: true,
+          message: t('errors.item.fetched'),
+          source: copy.source,
+          data: { id: row.id, name: row.name, packaging: row.packaging, description: row.description, active: row.active ?? true,
+            created_at: row.created_at, updated_at: row.updated_at },
         };
       }
 
@@ -645,7 +633,6 @@ export const itemService = new ItemService();
 
 // Also export individual functions for convenience
 export const {
-  searchItems,
   getItemList,
   getItemById,
   createItem,

@@ -7,6 +7,12 @@ import { useAppDispatch } from '@/store/hooks';
 import { loadGRNData, resetForm } from '@/store/slices/grnFormSlice';
 import { loadGRNData as loadGRNDataService } from '@/features/grn/services/grnFormService';
 import { nextGrnFormSession } from '@/features/grn/utils/grnFormSession';
+import { heldIdOfRoute } from '@/features/holding/heldForm';
+import { loadHeldGrnOf } from '@/features/holding/heldGrn';
+import { loadHeldGrnEditOf } from '@/features/holding/heldGrnEdit';
+import { getHeldItem } from '@/features/holding/holdingApi';
+import { loadUnsentGrnForEdit } from '@/features/unsent/editUnsentGrn';
+import { setFormNumberMode } from '@/features/unsent/formNumberMode';
 import { LOCAL_PHOTO_OWNERS, releaseLocalPhotosOwnedBy } from '@/utils/localPhotoFiles';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 
@@ -33,8 +39,8 @@ let openLayouts = 0;
 export default function GRNEditLayout() {
   const dispatch = useAppDispatch();
   const navigation = useNavigation();
-  const { id: routeId } = useLocalSearchParams<{ id: string }>();
-  const id = Array.isArray(routeId) ? routeId[0] : routeId;
+  const { id: routeId } = useLocalSearchParams<{ id?: string | string[] }>();
+  const id = typeof routeId === 'string' ? routeId : Array.isArray(routeId) ? routeId[0] : undefined;
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
@@ -65,6 +71,52 @@ export default function GRNEditLayout() {
     dispatch(resetForm());
 
     try {
+      // WH-304: a held new GRN is corrected here, filled from the held item's body (read from the server).
+      const heldId = heldIdOfRoute(id);
+      if (heldId !== null) {
+        const item = await getHeldItem(heldId);
+        if (request !== loadRequest.current) return;
+        // A held edit of a GRN: the GRN is read from the server and the held changes go on top (what the server holds stays the baseline).
+        if (item.kind === 'grnEdit') {
+          const edit = await loadHeldGrnEditOf(item);
+          if (request !== loadRequest.current) return;
+          if (edit.kind === 'loaded') {
+            dispatch(loadGRNData({ ...edit.server, header: edit.header, items: edit.items, baseline: edit.baseline, source: 'heldEdit', grnId: id }));
+            setPhase('ready');
+          } else {
+            setErrorMessage(edit.kind === 'failed' ? serverText(edit.message, tr('common.checkConnection')) : tr('common.couldNotLoad'));
+            setPhase('error');
+          }
+          return;
+        }
+        const held = await loadHeldGrnOf(item);
+        if (request !== loadRequest.current) return;
+        if (held.kind === 'loaded') {
+          setFormNumberMode('grn', held.data.numberMode);
+          dispatch(loadGRNData({ header: held.data.header, items: held.data.items, grnId: id }));
+          setPhase('ready');
+        } else {
+          setErrorMessage(tr('common.couldNotLoad'));
+          setPhase('error');
+        }
+        return;
+      }
+
+      // WH-161 (§8): an unsent new GRN on this phone is edited from the queue with no server call.
+      const unsent = await loadUnsentGrnForEdit(id);
+      if (request !== loadRequest.current) return;
+      if (unsent.kind === 'being-sent') {
+        setErrorMessage(tr('offline.offlineNew.beingSent'));
+        setPhase('error');
+        return;
+      }
+      if (unsent.kind === 'loaded') {
+        setFormNumberMode('grn', unsent.data.numberMode);
+        dispatch(loadGRNData({ header: unsent.data.header, items: unsent.data.items, grnId: id }));
+        setPhase('ready');
+        return;
+      }
+
       const result = await loadGRNDataService(id);
       if (request !== loadRequest.current) return;
 

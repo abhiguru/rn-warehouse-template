@@ -30,6 +30,10 @@ export interface ReportHeaderAction {
   onPress: () => void;
   /** Shows a spinner instead of the icon and ignores presses */
   busy?: boolean;
+  /** Cannot be used now (it needs a connection); the label then says why. */
+  disabled?: boolean;
+  /** True for a local action (such as Change customer) that stays enabled while the phone is offline (WH-306). */
+  worksOffline?: boolean;
 }
 
 interface ReportHeaderProps {
@@ -84,6 +88,9 @@ const makeStyles = (t: ThemeTokens) =>
       justifyContent: 'center',
       alignItems: 'center',
       borderRadius: radius.pill,
+    },
+    navButtonDisabled: {
+      opacity: t.interaction.disabledOpacity,
     },
     navButtonPressed: {
       backgroundColor: t.brand.subtle,
@@ -167,12 +174,12 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
           {allActions.map(action => (
             <Pressable
               key={action.label}
-              style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+              style={({ pressed }) => [styles.navButton, pressed && !action.disabled && styles.navButtonPressed, action.disabled === true && styles.navButtonDisabled]}
               onPress={action.onPress}
-              disabled={action.busy}
+              disabled={action.busy === true || action.disabled === true}
               accessibilityLabel={action.label}
               accessibilityRole="button"
-              accessibilityState={{ busy: !!action.busy, disabled: !!action.busy }}
+              accessibilityState={{ busy: !!action.busy, disabled: !!action.busy || !!action.disabled }}
             >
               {action.busy ? (
                 <ActivityIndicator size="small" color={t.brand.tint} />

@@ -61,8 +61,10 @@ Check `@gorhom/bottom-sheet` on gesture-handler 3 (the two sheets bring their ow
    `sdkPackages`, the `sdkmanager` line in `.github/workflows/ci.yml`, `README.md` and `docs/DEVICE_ACCEPTANCE.md` when
    React Native moves `compileSdk`, `buildTools` or `ndkVersion`.
 10. **iOS, only if an iOS build is made**: SDK 58 generates a `SceneDelegate` and iOS 27 requires the scene life cycle.
-    Re-check the three config plugins `plugins/with-ios-linking-manager.js` (it throws if the template no longer has the
-    `application(_:open:)` line it patches), `plugins/with-ios-transport-policy.js` and `plugins/with-ios-usb.js`.
+    Re-check the three config plugins `plugins/with-ios-linking-manager.js` (on SDK 58+ it verifies `AppDelegate` inherits
+    from `ExpoAppDelegate` without overriding `application(_:open:)` and `SceneDelegate` inherits from `ExpoAppSceneDelegate`
+    without overriding `scene(_:openURLContexts:)`, throwing on template drift), `plugins/with-ios-transport-policy.js` and
+    `plugins/with-ios-usb.js`.
 11. **Android release build**: R8 is on by default for release builds. Build the release, run
     `npm run audit:artifact -- dist` and the debug-artifact audit, and install the release build; look for
     reflection-based libraries that need keep rules.

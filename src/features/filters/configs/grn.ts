@@ -83,6 +83,11 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
       icon: 'receipt-text-outline',
       defaultValue: 'all',
       visibleTo: ctx => ctx.isWarehouseRole && ctx.grnInvoiceFilter === true,
+      // Offline the phone cannot tell what is invoiced (WH-381, Design 13.3).
+      unavailable: ctx =>
+        ctx.grnInvoiceWaiting
+          ? { note: t('grn.offline.invoicingFilterOff'), spokenLabel: t('grn.offline.invoicingFilterOffLabel'), testID: 'grn-invoicing-filter-off' }
+          : undefined,
       options: [
         { value: 'all', get label() { return t('common.all'); } },
         { value: 'invoiced', get label() { return t('charging.invoiceState.invoiced'); } },

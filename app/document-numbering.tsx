@@ -16,6 +16,8 @@ import { SettingsRow, SettingsSection } from '@/features/settings/components/Set
 import { NumberingEditSheet } from '@/features/numbering/NumberingEditSheet';
 import { describeRuleLines } from '@/features/numbering/numberingModel';
 import { useAppSelector } from '@/store/hooks';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { formatIdentifier, t as tr, type TranslationKey } from '@/i18n';
 import { canOpenScreen } from '@/config/roles';
@@ -43,6 +45,8 @@ const TYPE_ICON: Record<DocumentType, IconName> = {
 
 export default function DocumentNumberingScreen() {
   const role = useAppSelector(state => state.auth.userProfile?.role);
+  // Changing a rule needs the server (WH-348, Design 2.5 and DQ1): offline the rules show and their rows are disabled.
+  const needsConnection = useNeedsConnectionV3();
   const isFocused = useIsFocused();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -154,6 +158,10 @@ export default function DocumentNumberingScreen() {
           />
         }
       >
+        {/* No bottom bar here: the one line sits at the top of the content, under the header (Design DQ4). */}
+        {needsConnection ? (
+          <NeedsConnectionLine inset testID="numbering-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+        ) : null}
         <Text style={styles.intro}>{tr('numbering.screen.intro')}</Text>
         {rules === null && busy ? (
           <ActivityIndicator style={styles.loading} color={t.brand.tint} accessibilityLabel={tr('common.loading')} />
@@ -174,6 +182,7 @@ export default function DocumentNumberingScreen() {
                 label={tr(TYPE_LABEL[rule.document_type])}
                 subtitle={describeRuleLines(rule).join('\n')}
                 onPress={() => setEditing(rule.document_type)}
+                disabled={needsConnection}
                 last={index === rules.length - 1}
               />
             ))}

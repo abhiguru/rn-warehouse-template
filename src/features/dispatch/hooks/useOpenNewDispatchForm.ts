@@ -20,6 +20,7 @@ import { resetForm } from '@/store/slices/dispatchFormSlice';
 import { endDispatchFormSession } from '@/features/dispatch/utils/dispatchFormSession';
 import { openDispatchFormBlocking } from '@/features/dispatch/utils/openDispatchForms';
 import { showOpenDispatchFormRefusal } from '@/features/dispatch/utils/refuseOpenForm';
+import { refuseAtLimit } from '@/features/unsent/limitDialog';
 
 export function useOpenNewDispatchForm(): () => void {
   const dispatch = useAppDispatch();
@@ -34,6 +35,8 @@ export function useOpenNewDispatchForm(): () => void {
 
   return useCallback(() => {
     if (isOpening.current) return;
+    // The 2-hour rule: no new record while old work is unsent (WH-301).
+    if (refuseAtLimit()) return;
     const blocker = openDispatchFormBlocking();
     if (blocker) {
       showOpenDispatchFormRefusal(blocker);

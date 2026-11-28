@@ -50,11 +50,13 @@ import { MemoizedDispatchItem } from '@/components/list-items';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { LastUpdatedLine, LoadMoreErrorFooter, StaleListStrip } from './ListLoadErrors';
+import { ListNeedsConnection, useListNeedsConnection } from './ListNeedsConnection';
 import { formatCount, formatNumber, formatLoadedAt } from '@/utils/formatters';
 import { localizeDigits, t as translate } from '@/i18n';
 
 // State
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
@@ -137,7 +139,7 @@ SectionHeader.displayName = 'SectionHeader';
 // MAIN COMPONENT
 // ============================================================================
 
-const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => {
+const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId }) => {
   const listRef = useRef<FlashListRef<FlattenedItem<Dispatch>>>(null);
 
   // Theme
@@ -259,7 +261,6 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         setFromSavedCopy(Boolean(response.fromCache));
         setHistoryLimited(Boolean(pagination.history_limit_reached));
         shownRequest.current = requestKey;
-        // A new search, filter or sort starts from its first row.
         listRef.current?.scrollToOffset({ offset: 0, animated: false });
       }
       setHasMore(pagination.has_more);
@@ -520,8 +521,12 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     />
   );
 
+  const showsSkeleton = isLoading && dispatches.length === 0;
+  const showsLoadError = !showsSkeleton && dispatches.length === 0 && loadError;
+  useReloadWhenVerified(showsLoadError, handleRefresh);
+
   let content: React.ReactNode;
-  if (isLoading && dispatches.length === 0) {
+  if (showsSkeleton) {
     // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
     // Later loads keep the rows on screen while the new ones arrive.
     content = <ListSkeleton count={5} metricsCount={3} />;
@@ -540,6 +545,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
             testID="dispatch-stale-strip"
           />
         ) : null}
+      <View style={styles.listHold}>
       <FlashList
         ref={listRef}
         data={flattenedData}
@@ -565,9 +571,10 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         ListFooterComponent={ListFooter}
         showsVerticalScrollIndicator={false}
       />
+      </View>
       </>
     );
-  } else if (loadError) {
+  } else if (showsLoadError) {
     content = (
       <ErrorStateView
         presentation="inline"
@@ -672,6 +679,7 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
   // A lasting fact about the list (§14.9): footnote, text.secondary, inside the list's padding
+  listHold: { flex: 1 },
   historyNote: {
     ...typography.footnote,
     color: t.text.secondary,
@@ -680,5 +688,12 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingBottom: space.xs,
   },
 });
+
+/** Offline the list is only its title row and the needs-a-connection state: nothing is fetched or kept (WH-381). */
+const DispatchFlashList: React.FC<DispatchFlashListProps> = props => {
+  const needsConnection = useListNeedsConnection();
+  if (needsConnection) return <ListNeedsConnection title={translate('lists.dispatch.title')} testID="dispatch-needs-connection" />;
+  return <DispatchFlashListOnline {...props} />;
+};
 
 export default DispatchFlashList;

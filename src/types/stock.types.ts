@@ -1,3 +1,4 @@
+import type { DataSource } from '@/features/phone-copy/sourced';
 // Stock Management Type Definitions
 
 // Re-export shared pagination types from service.types.ts
@@ -136,6 +137,10 @@ export interface StockServiceResponse<T = any> {
   message: string;
   data?: T;
   error?: string;
+  /** Present when the phone copy answered (WH-299); absent means the server did. */
+  source?: DataSource;
+  /** A later page whose source is no longer the first page's: ask the first page again (WH-299). */
+  copyRestart?: boolean;
 }
 
 export type StockSortBy = 'date' | 'item_name' | 'qty' | 'stock' | 'weight';

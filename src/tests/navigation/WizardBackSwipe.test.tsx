@@ -33,7 +33,10 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   // The new-dispatch layout reads the form's number for its refusal when another form is open.
   useAppStore: () => ({ getState: () => ({ dispatchForm: { header: { disp_no: '' } } }) }),
+  // The layout draws OfflineFormGate, which reads the theme.
+  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 
 beforeEach(() => {
   jest.clearAllMocks();

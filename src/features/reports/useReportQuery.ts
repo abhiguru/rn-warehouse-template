@@ -47,13 +47,22 @@
  * service's message for a failure ("Failed to fetch ...") and a thrown error's
  * text ("Network request failed") are not for people (docs/STYLE_GUIDE.md §12.1).
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { hashKey, useQuery, type Query } from '@tanstack/react-query';
 import { useAppForeground, useRouteFocus } from '@/hooks/useRouteFocus';
 import { queryClient } from '@/lib/queryClient';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
+import type { EntityName } from '@/features/phone-copy/copySchema';
+import { copyRoute } from '@/features/phone-copy/readRoute';
+import type { DataSource } from '@/features/phone-copy/sourced';
+import { activityMoneyOn } from '@/features/phone-copy/money/moneyGate';
+import { eraseMoney } from '@/features/phone-copy/money/moneyStore';
+import { isCopyOffline, syncNow } from '@/features/phone-copy/syncEngine';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { useQuietReread, type QuietReread } from '@/features/phone-copy/useQuietReread';
 import { isAccessRefusal } from '@/utils/rpcRefusal';
+import { activityNotHere, keepActivity, keptActivityOf, readExactActivity, readOfflineActivity, type KeptActivity } from './keptActivity';
 import { readReportCache, removeReportCache, removeReportCachePrefix, writeReportCache } from './reportCache';
 
 /** What the report services answer with. */
@@ -62,6 +71,8 @@ export interface ReportServiceResult<T> {
   data?: T | null;
   message?: string;
   error?: unknown;
+  /** Present when the phone copy answered (WH-299). */
+  source?: DataSource;
 }
 
 /** A report the server answered but did not give: refused, or failed. Asking again unchanged gives the same. */
@@ -111,9 +122,17 @@ export interface ReportQuery<T> {
    * again; false once the facility has answered in this run of the app.
    */
   isKeptCopy: boolean;
+  /** The kept answer on screen (WH-305, `keptWhenCopy`): its time and the period it covers. */
+  moneyKept: KeptActivity | undefined;
+  /** Offline and nothing was ever kept for this report (WH-305, `keptWhenCopy`). */
+  moneyNotHere: boolean;
   /** Ask again because the person pulled; resolves true when the facility gave a new answer. */
   refresh: () => Promise<boolean>;
   retry: () => void;
+  /** `data` is the phone copy's answer: its time is the status bar's, and the report shows none of its own (WH-299). */
+  fromPhoneCopy: boolean;
+  /** For the report's list and its view: a read after a sync waits for rest (WH-299, PR9). */
+  quiet: Pick<QuietReread, 'scrollHandlers' | 'touchHandlers'>;
 }
 
 export interface ReportQueryOptions<T> {
@@ -136,6 +155,21 @@ export interface ReportQueryOptions<T> {
    * of a paged list, whose first page decides when it is asked again.
    */
   revalidateOnReturn?: boolean;
+  /**
+   * The kinds of records a sync must change for an answer of the phone copy to be read again, quietly
+   * (WH-299, PR9). None: it is read again only when the person asks.
+   */
+  copyKinds?: readonly EntityName[];
+  /**
+   * Customer activity (WH-305): with the kept answers on (`activityMoneyOn`), the answer is kept in the phone copy as the server
+   * last gave it and shown offline whatever its period, in place of the saved answer of `persist`. Default false.
+   */
+  keptWhenCopy?: boolean;
+  /**
+   * Only the server can give this report (WH-381): with the phone offline nothing is asked and nothing kept is shown (the
+   * screen draws its needs-a-connection state), and it is asked again by itself on reconnecting. Default false.
+   */
+  serverOnly?: boolean;
 }
 
 /** An answer younger than this is not asked for again on a return: a quick look elsewhere and back. */
@@ -298,6 +332,13 @@ export function peekReportAnswer<T>(key: readonly unknown[]): T | undefined {
   return queryClient.getQueryData<T>(['report', ...key]);
 }
 
+/** The phone copy's time (ms) of each report key's answer that the copy gave; the keys the server answered are absent. */
+const copyAnswers = new Map<string, number>();
+registerSessionScoped('report-copy-answers', () => copyAnswers.clear());
+const NO_KINDS: ReadonlySet<EntityName> = new Set();
+/** The time now in ms; read inside the request, never during render. */
+const nowMs = (): number => Date.now();
+
 /** The newest request's turn per report key: older ones still running answer into nothing. */
 let requestTurn = 0;
 const latestTurn = new Map<string, number>();
@@ -309,7 +350,12 @@ export function useReportQuery<T>({
   enabled = true,
   persist = true,
   revalidateOnReturn = true,
+  copyKinds,
+  keptWhenCopy = false,
+  serverOnly = false,
 }: ReportQueryOptions<T>): ReportQuery<T> {
+  const offlineNow = useNeedsConnection();
+  const askServer = enabled && !(serverOnly && offlineNow);
   const [isRefreshing, setRefreshing] = useState(false);
   const queryKey = ['report', ...key];
   const query = useQuery<T, Error>(
@@ -326,12 +372,28 @@ export function useReportQuery<T>({
         latestTurn.set(hash, turn);
         const newest = () => latestTurn.get(hash) === turn;
         const current = queryClient.getQueryCache().find<T, Error>({ queryKey, exact: true });
-        if (current && persist) showKeptAnswer<T>(current, key, sentAt);
+        // The phone copy answers this report: no saved server answer is shown ahead of it (WH-299).
+        const money = keptWhenCopy && activityMoneyOn();
+        if (money && isCopyOffline()) {
+          // Kept Customer activity, offline: no request; the newest kept answer of this scope, whatever its period (WH-305).
+          const kept = await readOfflineActivity<T>(key);
+          if (kept === null) throw new ReportLoadError(fallbackError);
+          return kept;
+        }
+        if (current && money) {
+          void readExactActivity<T>(key).then(kept => {
+            if (kept && current.state.data === undefined && queryClient.getQueryCache().get(current.queryHash) === current) {
+              queryClient.setQueryData<T>(queryKey, kept.data);
+            }
+          });
+        }
+        if (current && persist && !money && copyRoute('all') !== 'copy') showKeptAnswer<T>(current, key, sentAt);
         const result = await fetch();
         if (!result.success || result.data === undefined || result.data === null) {
           const refused = !result.success && isRefusal(result);
           const failure = new ReportLoadError(result.message || fallbackError, refused);
           if (refused) forgetAnswer<T>(current, key, generation, failure);
+          if (refused && money) void eraseMoney();
           throw failure;
         }
         // The customer's report was refused while this request was out (under this key or another
@@ -341,12 +403,16 @@ export function useReportQuery<T>({
         // The kept copy on screen is now confirmed or replaced (the library keeps the old object when equal).
         if (!newest()) return result.data;
         latestTurn.delete(hash);
+        const fromCopy = result.source?.kind === 'copy' ? Date.parse(result.source.asOf) : undefined;
+        if (fromCopy === undefined) copyAnswers.delete(hash);
+        else copyAnswers.set(hash, fromCopy);
         if (current && isObject(current.state.data)) keptAnswers.delete(current.state.data);
         // Not awaited. A failed request (thrown above) keeps the last good copy; a refused one removed it.
-        if (persist) void writeReportCache(key, { data: result.data, updatedAt: Date.now() }, generation);
+        if (money) void keepActivity(key, result.data);
+        else if (persist && fromCopy === undefined) void writeReportCache(key, { data: result.data, updatedAt: nowMs() }, generation);
         return result.data;
       },
-      enabled,
+      enabled: askServer,
       // Reports are read for today's figures: show the last answer, and always ask again.
       staleTime: 0,
       refetchOnMount: 'always',
@@ -359,7 +425,10 @@ export function useReportQuery<T>({
   const { refetch } = query;
   const refresh = useCallback(() => {
     setRefreshing(true);
-    return refetch()
+    // Rows of the phone copy: bring the copy up to date, then read it (a sync that cannot run changes nothing).
+    const synced = copyRoute('all') === 'copy' ? syncNow('pull-to-refresh').catch(() => undefined) : Promise.resolve();
+    return synced
+      .then(() => refetch())
       .then(result => result.status === 'success' && !result.isError)
       .catch(() => false)
       .finally(() => setRefreshing(false));
@@ -374,8 +443,8 @@ export function useReportQuery<T>({
   const inFront = focused && foreground;
   const wasInFront = useRef(inFront);
   // Read when the return happens, so the effect runs on a change of `inFront` alone.
-  const latest = useRef({ enabled, revalidateOnReturn, hasData: false, dataUpdatedAt: 0, refetch });
-  latest.current = { enabled, revalidateOnReturn, hasData: query.data !== undefined, dataUpdatedAt: query.dataUpdatedAt, refetch };
+  const latest = useRef({ enabled: askServer, revalidateOnReturn, hasData: false, dataUpdatedAt: 0, refetch });
+  latest.current = { enabled: askServer, revalidateOnReturn, hasData: query.data !== undefined, dataUpdatedAt: query.dataUpdatedAt, refetch };
   useEffect(() => {
     const returned = inFront && !wasInFront.current;
     wasInFront.current = inFront;
@@ -387,6 +456,29 @@ export function useReportQuery<T>({
   }, [inFront]);
 
   const hasData = query.data !== undefined;
+  const copyAsOf = hasData ? copyAnswers.get(JSON.stringify(queryKey)) : undefined;
+  const fromPhoneCopy = copyAsOf !== undefined;
+  const moneyKept = hasData && keptWhenCopy ? keptActivityOf(key) : undefined;
+
+  // A sync that changed what this report shows reads it again, quietly, once the list is at rest (WH-299, PR9).
+  const reread = useRef({ refetch, fromPhoneCopy, isFetching: query.isFetching, refreshing: isRefreshing });
+  const isFetching = query.isFetching;
+  useLayoutEffect(() => {
+    reread.current = { refetch, fromPhoneCopy, isFetching, refreshing: isRefreshing };
+  });
+  const kinds = useMemo(() => (copyKinds ? new Set(copyKinds) : NO_KINDS), [copyKinds]);
+  const quiet = useQuietReread({
+    kinds,
+    active: () => reread.current.fromPhoneCopy,
+    idle: () => !reread.current.isFetching && !reread.current.refreshing,
+    read: async () => {
+      await reread.current.refetch({ cancelRefetch: false });
+    },
+  });
+  const { setFocused } = quiet;
+  useEffect(() => {
+    setFocused(inFront);
+  }, [inFront, setFocused]);
   // An error with no data and a request out is a retry in progress: show loading, not the old error.
   const phase: ReportPhase = hasData ? 'ready' : query.isError && !query.isFetching ? 'error' : 'loading';
   return {
@@ -394,10 +486,14 @@ export function useReportQuery<T>({
     phase,
     isRefreshing,
     isFetching: query.isFetching,
-    updatedAt: hasData ? query.dataUpdatedAt : undefined,
+    updatedAt: hasData ? (copyAsOf ?? query.dataUpdatedAt) : undefined,
     error: query.isError && !query.isFetching ? (isRefusedError(query.error) && query.error.message) || fallbackError : null,
     isKeptCopy: hasData && isObject(query.data) && keptAnswers.has(query.data),
     refresh,
     retry,
+    fromPhoneCopy: fromPhoneCopy || moneyKept !== undefined,
+    moneyKept,
+    moneyNotHere: keptWhenCopy && !hasData && query.isError && activityNotHere(key),
+    quiet: { scrollHandlers: quiet.scrollHandlers, touchHandlers: quiet.touchHandlers },
   };
 }

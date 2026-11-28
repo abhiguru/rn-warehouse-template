@@ -47,6 +47,8 @@ import { showToast } from '@/utils/toast';
 import { publishUserListChange } from '@/utils/userListSync';
 import { t as tr, type TranslationKey } from '@/i18n';
 import type { ScrollViewRef, TextRef } from '@/types/nativeRefs';
+import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 
 type ChosenCustomer = { id: string; name: string };
 type Suggestion = { forUser: string; customer: ChosenCustomer };
@@ -64,6 +66,7 @@ const APPROVE_TITLE: Record<EnrollmentRole, TranslationKey> = {
 };
 
 export default function EnrollmentReviewScreen() {
+  const needsConnection = useNeedsConnectionV3();
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const isFocused = useIsFocused();
   const t = useTokens();
@@ -301,6 +304,18 @@ export default function EnrollmentReviewScreen() {
         <Text style={styles.stateTitle} accessibilityRole="header">{tr('auth.review.adminsOnlyTitle')}</Text>
         <Text style={styles.stateMessage}>{tr('auth.review.adminsOnlyMessage')}</Text>
         <Button onPress={() => router.replace('/settings')}>{tr('auth.review.backToSettings')}</Button>
+      </View>
+    );
+  }
+
+  if (needsConnection) {
+    return (
+      <View style={styles.screen}>
+        <Stack.Screen
+          options={{ title: tr('auth.review.screenTitle'), headerShown: true, headerTitleAlign: 'center', headerLeft: () => <HeaderBackButton /> }}
+        />
+        <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+        <ScreenNeedsConnection testID="enrollment-review-needs-connection" />
       </View>
     );
   }

@@ -19,9 +19,12 @@ import { getActiveOperatorServer } from './operatorServer';
 export type { FacilityCapabilities } from './demoCapabilities';
 export type CapabilityName = keyof FacilityCapabilities;
 
-type ServerIdentity = { origin: string; instanceId: string };
+interface ServerIdentity {
+  origin: string;
+  instanceId: string;
+}
 
-const NAMES: readonly CapabilityName[] = ['printing', 'sensors', 'realtime', 'customerDocuments', 'payments'];
+const NAMES: readonly CapabilityName[] = ['printing', 'sensors', 'realtime', 'customerDocuments', 'payments', 'sync'];
 
 const byServer = new Map<string, FacilityCapabilities>();
 const listeners = new Set<() => void>();
@@ -61,7 +64,15 @@ export function setFacilityCapabilities(server: ServerIdentity, raw: unknown): v
 /** The active server's capabilities; DEMO_CAPABILITIES when none are known for it. */
 export function getFacilityCapabilities(): FacilityCapabilities {
   const active = getActiveOperatorServer();
-  return (active && byServer.get(keyOf(active))) || DEMO_CAPABILITIES;
+  return (active ? byServer.get(keyOf(active)) : undefined) ?? DEMO_CAPABILITIES;
+}
+
+/**
+ * The capabilities a given server's config named (the one a session belongs to); undefined while its config has not
+ * been read in this run, which is not the same as a feature being off.
+ */
+export function getKnownCapabilitiesOf(server: ServerIdentity): FacilityCapabilities | undefined {
+  return byServer.get(keyOf(server));
 }
 
 export function hasCapability(name: CapabilityName): boolean {

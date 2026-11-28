@@ -22,7 +22,9 @@ export type ReportId =
   | 'customer-dues'
   | 'statement'
   | 'temperature-report'
-  | 'accountant-pack';
+  | 'accountant-pack'
+  | 'replaced-entries'
+  | 'holding-list';
 
 export type ReportCategory = 'stock' | 'movement' | 'financial' | 'operations';
 
@@ -34,7 +36,7 @@ export interface ReportDefinition {
   readonly description: string;
   /** MaterialCommunityIcons name */
   icon: IconName;
-  route: `/reports/${ReportId}`;
+  route: string;
   category: ReportCategory;
   /** Whether the report covers a chosen period. False: it shows the stock as it is now. */
   hasPeriod: boolean;
@@ -63,6 +65,8 @@ interface ReportEntry {
   gate?: RoleGatedScreen;
   hubGate?: RoleGatedScreen;
   feature?: BackendFeature;
+  /** Where the row opens, when it is not the report screen `/reports/<id>`. */
+  route?: string;
 }
 
 // Title and description are getters, so they follow the app's language (docs/I18N.md
@@ -73,7 +77,7 @@ const define = (entry: ReportEntry): ReportDefinition => ({
   get title() { return t(entry.title); },
   get description() { return t(entry.description); },
   icon: entry.icon,
-  route: `/reports/${entry.id}`,
+  route: entry.route ?? `/reports/${entry.id}`,
   category: entry.category,
   hasPeriod: entry.hasPeriod,
   gate: entry.gate,
@@ -193,6 +197,28 @@ export const REPORTS: readonly ReportDefinition[] = [
     hasPeriod: true,
     gate: 'accountantPack',
     feature: 'accountantPack',
+  }),
+  // Changes that replaced someone's newer entry, for the administrators (WH-303, Design 6.3).
+  define({
+    id: 'replaced-entries',
+    title: 'reports.titles.replacedEntries',
+    description: 'nav.reports.descriptions.replacedEntries',
+    icon: 'history',
+    category: 'operations',
+    hasPeriod: true,
+    gate: 'replacedEntries',
+    feature: 'grnFieldChanges',
+  }),
+  /** The Holding list (WH-304, Design 7.1): its screen is `app/reports/holding-list.tsx`; offered to managers of a facility with sync and the holding list. */
+  define({
+    id: 'holding-list',
+    title: 'reports.titles.holdingList',
+    description: 'nav.reports.descriptions.holdingList',
+    icon: 'inbox-arrow-down',
+    category: 'operations',
+    hasPeriod: false,
+    gate: 'holdingList',
+    feature: 'holdingList',
   }),
 ];
 

@@ -9,7 +9,7 @@
  */
 import { getActiveOperatorServer } from './operatorServer';
 
-export type SupportedRpc = 'sensorHourly' | 'userSessions';
+export type SupportedRpc = 'sensorHourly' | 'userSessions' | 'sync';
 
 const byServer = new Map<string, Map<SupportedRpc, boolean>>();
 const listeners = new Set<() => void>();

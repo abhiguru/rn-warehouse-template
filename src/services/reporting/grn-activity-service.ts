@@ -78,8 +78,6 @@ export async function getCustomerGRNActivity(
   }
 
   try {
-    const client = await getAuthenticatedClient();
-
     // Calculate date range
     const toDate = params.toDate ?? getToday();
     const fromDate = params.fromDate ?? getDateDaysAgo(params.daysBack ?? 10);
@@ -91,10 +89,7 @@ export async function getCustomerGRNActivity(
       p_to_date: toDate,
     };
 
-    const { data, error } = await client.rpc(
-      'get_customer_grn_activity',
-      rpcParams
-    );
+    const { data, error } = await (await getAuthenticatedClient()).rpc('get_customer_grn_activity', rpcParams);
 
     if (error) {
       logger.error('[GRNActivity] RPC error:', error.message);
@@ -206,14 +201,12 @@ export async function getAllGRNActivity(
   params: AllGRNActivityParams
 ): Promise<AllGRNActivityResponse> {
   try {
-    const client = await getAuthenticatedClient();
-
     const rpcParams = {
       p_from_date: params.fromDate,
       p_to_date: params.toDate,
     };
 
-    const { data, error } = await client.rpc('get_all_grn_activity', rpcParams);
+    const { data, error } = await (await getAuthenticatedClient()).rpc('get_all_grn_activity', rpcParams);
 
     if (error) {
       logger.error('[AllGRNActivity] RPC error:', error.message);

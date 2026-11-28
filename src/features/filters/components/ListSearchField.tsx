@@ -31,6 +31,10 @@ export interface ListSearchFieldProps {
   loading?: boolean;
   /** The list's refresh: offered to screen readers as a "Refresh" action on the field itself (WH-220). */
   onRefresh?: () => void;
+  /** For tests: the id of the text input. */
+  testID?: string;
+  /** Fewest characters that are searched for. A list that answers from the first letter passes 1. */
+  minLength?: number;
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -82,7 +86,7 @@ const makeStyles = (t: ThemeTokens) => ({
   recentText: { ...typography.footnote, fontWeight: fontWeight.medium, color: t.text.primary },
 });
 
-export function ListSearchField({ listKey, value, onSearch, placeholder, loading = false, onRefresh }: ListSearchFieldProps) {
+export function ListSearchField({ listKey, value, onSearch, placeholder, loading = false, onRefresh, testID, minLength = SEARCH_MIN_LENGTH }: ListSearchFieldProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const [text, setText] = useState(value);
@@ -99,7 +103,7 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
 
   const commit = (next: string) => {
     const trimmed = next.trim();
-    const effective = trimmed.length >= SEARCH_MIN_LENGTH ? trimmed : '';
+    const effective = trimmed.length >= minLength ? trimmed : '';
     if (effective === committed.current) return;
     committed.current = effective;
     onSearch(effective);
@@ -114,7 +118,7 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
 
   const recent = focused && text.trim() === '' ? recentSearches(listKey) : [];
   // One letter is shown in the field but not searched for; say so, or the field and the list disagree.
-  const tooShort = text.trim().length > 0 && text.trim().length < SEARCH_MIN_LENGTH;
+  const tooShort = text.trim().length > 0 && text.trim().length < minLength;
 
   // The server searches for the first eight words only; say so, or the ninth looks searched for.
   const tooManyWords = hasTooManyWords(text);
@@ -125,6 +129,7 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
         <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
         <TextInput
           style={styles.input}
+          testID={testID}
           value={text}
           onChangeText={setText}
           placeholder={placeholder}
@@ -146,7 +151,7 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
             rememberSearch(listKey, text);
           }}
         />
-        {loading && text.trim().length >= SEARCH_MIN_LENGTH ? (
+        {loading && text.trim().length >= minLength ? (
           <View style={styles.trailing} accessibilityLabel={translate('filters.search.searching')} accessibilityLiveRegion="polite">
             <ActivityIndicator size="small" color={t.brand.tint} />
           </View>

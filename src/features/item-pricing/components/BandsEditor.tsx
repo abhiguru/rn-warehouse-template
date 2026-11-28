@@ -56,6 +56,8 @@ interface Props {
   /** The item's packaging, for "per Katta" in the labels; unknown (the standard rate) keeps "per bag". */
   packaging?: string | null;
   folding?: FoldingBands;
+  /** The rates are shown but cannot change (the phone is offline, WH-348): every field and button is disabled. */
+  disabled?: boolean;
 }
 
 /** At this text size From and Up to stack (P-42). */
@@ -85,7 +87,7 @@ const makeStyles = (t: ThemeTokens) => ({
   removeRow: { alignItems: 'flex-end' as const },
 });
 
-export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, folding }: Props) {
+export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, folding, disabled = false }: Props) {
   const styles = useThemedStyles(makeStyles);
   const { fontScale } = useWindowDimensions();
   const stacked = fontScale >= STACK_FROM_SCALE;
@@ -166,6 +168,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, f
             variant="negative"
             iconOnly
             leftIcon="delete-outline"
+            disabled={disabled}
             onPress={() => {
               onChange(removeBand(draft, i));
               folding?.onRemove(i, draft.bands.length - 1);
@@ -233,6 +236,8 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, f
                   returnKeyType="next"
                   error={errors[`band.${i}.upTo`]}
                   rightIcon={<Text style={styles.unit}>{t('pricing.kg')}</Text>}
+                  editable={!disabled}
+                  testID={folding ? `band-${i}-upTo` : undefined}
                   {...fieldLink(fields, `band.${i}.upTo`)}
                 />
               </View>
@@ -249,6 +254,8 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, f
               helperText={now ? t('pricing.edit.now', { amount: now }) : undefined}
               error={errors[`band.${i}.rent`]}
               leftIcon={<Text style={styles.prefix}>₹</Text>}
+              editable={!disabled}
+              testID={folding ? `band-${i}-rent` : undefined}
               {...fieldLink(fields, `band.${i}.rent`)}
             />
             {perBand && !oneTime && band.labour !== undefined && (
@@ -263,6 +270,8 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, f
                 returnKeyType="next"
                 error={errors[`band.${i}.labour`]}
                 leftIcon={<Text style={styles.prefix}>₹</Text>}
+                editable={!disabled}
+                testID={folding ? `band-${i}-labour` : undefined}
                 {...fieldLink(fields, `band.${i}.labour`)}
               />
             )}
@@ -278,6 +287,8 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, f
                 returnKeyType="next"
                 error={errors[`band.${i}.tax`]}
                 rightIcon={<Text style={styles.unit}>%</Text>}
+                editable={!disabled}
+                testID={folding ? `band-${i}-tax` : undefined}
                 {...fieldLink(fields, `band.${i}.tax`)}
               />
             )}
@@ -329,7 +340,7 @@ export function BandsEditor({ draft, ctx, errors, onChange, fields, packaging, f
           {bandCards}
         </ReviewCard>
       ) : bandCards}
-      <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} packaging={packaging} onAddPress={folding ? openAdd : undefined} addPanel={addPanel} />
+      <BandsFooter draft={draft} ctx={ctx} errors={errors} onChange={onChange} packaging={packaging} onAddPress={folding ? openAdd : undefined} addPanel={addPanel} disabled={disabled} />
     </View>
   );
 }

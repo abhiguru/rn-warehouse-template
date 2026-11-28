@@ -166,6 +166,9 @@ jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(
 // What unpreparedGRNPhotos answers for real forms is tested with the service (grnPhotoSaving.test.ts).
 jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNPhotos: jest.fn(), unpreparedGRNPhotos: jest.fn(() => null) }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
+// WH-299 / WH-394: the bounded wait for the sync after a saved edit is held by the test, so the screen can be looked at while it waits.
+let mockWait: () => Promise<void> = () => Promise.resolve();
+jest.mock('@/features/phone-copy/syncEngine', () => ({ ...jest.requireActual('@/features/phone-copy/syncEngine'), waitForSyncAfterWrite: () => mockWait() }));
 jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn(async () => ({ isValid: true, errors: {} })), withoutStoredNumberError: (result: unknown) => result }));
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateGRNPDF: jest.fn() }));
@@ -239,6 +242,7 @@ describe('GRN review step photos', () => {
     mockNonce = null;
     mockNumberTyped = false;
     mockOffline = false;
+    mockWait = () => Promise.resolve();
     (checkSubmission as jest.Mock).mockReset();
     (unpreparedGRNPhotos as jest.Mock).mockReturnValue(null);
     jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -467,6 +471,69 @@ describe('GRN review step photos', () => {
     });
   });
 
+  // WH-394 (WH-299 review): an edit that was saved locks the review until the screen is left.
+  describe('after a GRN edit was saved', () => {
+    const saved = { success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } };
+
+    it('locks the form, and a second Save does not ask or send update_grn again', async () => {
+      (updateGRN as jest.Mock).mockResolvedValue(saved);
+      await show('edit');
+      await save();
+      expect(updateGRN).toHaveBeenCalledTimes(1);
+      expect(stepHeaderLocked(true)).toBeOnTheScreen();
+
+      await pressNext();
+      expect(saveDialog()).toBeNull();
+      expect(updateGRN).toHaveBeenCalledTimes(1);
+    });
+
+    it('a second tap on Confirm made while the wait for the sync is open sends nothing', async () => {
+      let release!: () => void;
+      mockWait = () => new Promise<void>(resolve => { release = resolve; });
+      (updateGRN as jest.Mock).mockResolvedValue(saved);
+      await show('edit');
+      await pressNext();
+      const click = confirmOf(saveDialog()!).props.onClick as (event: unknown) => void;
+      await act(async () => { click({}); await mockConfirmEnded; });
+      expect(updateGRN).toHaveBeenCalledTimes(1);
+      // the old Confirm answers again (the dialog was still drawn): no second update
+      await act(async () => { click({}); });
+      expect(updateGRN).toHaveBeenCalledTimes(1);
+      await act(async () => { release?.(); });
+    });
+
+    it('closing the print dialog waits for the sync first and resets the form only then, so no empty review shows meanwhile', async () => {
+      let release!: () => void;
+      mockWait = () => new Promise<void>(resolve => { release = resolve; });
+      (updateGRN as jest.Mock).mockResolvedValue(saved);
+      await show('edit');
+      await save();
+      await user().press(screen.getByRole('button', { name: 'Print' }));
+      expect(screen.getByLabelText('Print dialog')).toBeOnTheScreen();
+
+      await user().press(screen.getByRole('button', { name: 'Close print dialog' }));
+      expect(mockForm.resetFormState).not.toHaveBeenCalled();         // still waiting: the form shows what was saved
+      expect(router.replace).not.toHaveBeenCalled();
+      await act(async () => { release(); });
+      expect(mockForm.resetFormState).toHaveBeenCalledTimes(1);
+      expect(router.replace).toHaveBeenCalledWith('/grn');
+    });
+
+    it('a GRN create is unchanged: closing the print dialog returns to the choices with no wait and no reset', async () => {
+      let waited = false;
+      mockWait = () => { waited = true; return Promise.resolve(); };
+      (createGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, gr_no: 'A0010', photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
+      await show('create');
+      await save();
+      await user().press(screen.getByRole('button', { name: 'Print' }));
+      const resetsBefore = (mockForm.resetFormState as jest.Mock).mock.calls.length;
+      await user().press(screen.getByRole('button', { name: 'Close print dialog' }));
+      expect(successDialog()).toBeOnTheScreen();
+      expect(waited).toBe(false);
+      expect((mockForm.resetFormState as jest.Mock).mock.calls.length).toBe(resetsBefore);
+    });
+  });
+
   // RF-4: the form that created a GRN is not a form that can create it again.
   describe('after the GRN was created', () => {
     it('Print, then closing the print dialog, returns to the choices; Create does not create again', async () => {
@@ -565,7 +632,8 @@ describe('GRN review step photos', () => {
       expect((updateGRN as jest.Mock).mock.calls[1][1]).toBe((updateGRN as jest.Mock).mock.calls[0][1]);
       expect(successDialog()).toBeOnTheScreen();
       expect(showAlert).not.toHaveBeenCalled();
-      expect(stepHeaderLocked(false)).toBeOnTheScreen();
+      // WH-394: a saved edit stays locked (Save and the header's X) until the screen is left, by design.
+      expect(stepHeaderLocked(true)).toBeOnTheScreen();
     });
 
     it('not found: the identical request is sent once more, and its answer is handled normally', async () => {

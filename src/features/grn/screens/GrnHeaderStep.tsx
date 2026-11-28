@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { heldIdOfRoute } from '@/features/holding/heldForm';
 import { normalizeVehicle } from '@/utils/vehicleNumber';
 import {
   View,
@@ -48,6 +49,9 @@ type GrnHeaderStepProps = {
   mode: 'create' | 'edit';
 };
 
+import { useUnsentGrnEditState } from '@/features/unsent/editUnsentGrn';
+import { useFormNumberMode, useNumberModeHelp } from '@/features/unsent/formNumberMode';
+
 export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -70,6 +74,15 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
     resetFormState,
   } = useGRNForm({ mode, grnIdParam: id });
 
+  // The server gives the number at send (WH-161): the box is read-only and says so, with its helper line.
+  const numberMode = useFormNumberMode('grn');
+  const unsentEditState = useUnsentGrnEditState(typeof id === 'string' ? id : '');
+  // A held GRN being corrected (WH-304) is edited like an unsent one: no GRN of this id is on the server.
+  const editingUnsent = !isCreateMode && (unsentEditState !== 'not-new' || heldIdOfRoute(typeof id === 'string' ? id : null) !== null);
+  const canEditNumber = isCreateMode || (editingUnsent && numberMode === 'typed');
+  const numberPending = (isCreateMode || editingUnsent) && numberMode === 'pending';
+  const modeHelp = useNumberModeHelp('grn');
+
   // Items still needed for dispatched check
   const items = useAppSelector(selectGRNFormItems);
   const { userProfile } = useAppSelector((state) => state.auth);
@@ -83,7 +96,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   const loadedDate = useAppSelector(selectGRNLoadedDate);
   const dateLocked = !isCreateMode && editInvoice !== null;
   // Why the box is empty, when the facility's numbering offered no number (typed by hand, or the series is used up).
-  const numberNote = isCreateMode && !isGeneratingNumber && !header.gr_no && !validationErrors.gr_no ? numberBoxNote('grn', numberReason) : null;
+  const numberNote = (isCreateMode || editingUnsent ? modeHelp : null) ?? (isCreateMode && !isGeneratingNumber && !header.gr_no && !validationErrors.gr_no ? numberBoxNote('grn', numberReason) : null);
 
   // Local UI state (not form data)
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -303,7 +316,17 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
               {renderLabel(tr('common.grnNumber'), true)}
               {/* The box and the lines under it, the block the wizard bar keeps above itself: in a row beside the date this field can be stretched, so not the field's own View. */}
               <View nativeID={FIELD_BLOCK_ID}>
-                {isCreateMode && isGeneratingNumber ? (
+                {numberPending ? (
+                  <View
+                    style={[styles.input, styles.rowInput, styles.inputReadOnly]}
+                    testID="grn-header-number-pending"
+                    accessible
+                    accessibilityLabel={`${tr('common.grnNumber')}, ${tr('offline.offlineNew.numberPending')}`}
+                  >
+                    <Icon name="lock-outline" size={iconSize.md} color={t.icon.secondary} />
+                    <Text style={[styles.grNoTextInput, { color: t.text.secondary }]}>{tr('offline.offlineNew.numberPending')}</Text>
+                  </View>
+                ) : isCreateMode && isGeneratingNumber ? (
                   <View
                     style={[styles.input, styles.loadingInputContainer]}
                     accessibilityLabel={tr('grn.header.gettingNumber')}
@@ -316,21 +339,21 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                     style={[
                       styles.input,
                       styles.rowInput,
-                      !isCreateMode && styles.inputReadOnly,
-                      isCreateMode && focusedField === 'gr_no' && styles.inputFocused,
+                      !canEditNumber && styles.inputReadOnly,
+                      canEditNumber && focusedField === 'gr_no' && styles.inputFocused,
                       validationErrors.gr_no ? styles.inputError : null,
                     ]}
                   >
-                    <Icon name={isCreateMode ? 'package-down' : 'lock-outline'} size={iconSize.md} color={t.icon.secondary} />
+                    <Icon name={canEditNumber ? 'package-down' : 'lock-outline'} size={iconSize.md} color={t.icon.secondary} />
                     <TextInput
                       style={styles.grNoTextInput}
                       accessibilityLabel={tr('common.grnNumber')}
-                      accessibilityHint={isCreateMode ? undefined : tr('grn.refusal.numberLocked')}
+                      accessibilityHint={canEditNumber ? undefined : tr('grn.refusal.numberLocked')}
                       value={header.gr_no}
                       // The number of a saved GRN is read-only (owner decision D6): a wrong one is corrected by deleting the GRN and entering it again.
-                      editable={isCreateMode}
+                      editable={canEditNumber}
                       onChangeText={(text) => {
-                        if (!isCreateMode) return;
+                        if (!canEditNumber) return;
                         handleGrNoChange(normalizeDigits(text).toUpperCase());
                       }}
                       placeholder={numberBoxPlaceholder(numberHint, numberReason, tr('grn.header.numberPlaceholder'))}
@@ -351,7 +374,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                     {numberNote}
                   </Text>
                 ) : null}
-                {!isCreateMode ? <Text style={styles.lockHint}>{tr('grn.refusal.numberLocked')}</Text> : null}
+                {!isCreateMode && !editingUnsent ? <Text style={styles.lockHint}>{tr('grn.refusal.numberLocked')}</Text> : null}
               </View>
             </View>
 

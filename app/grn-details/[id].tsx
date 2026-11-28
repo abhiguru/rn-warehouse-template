@@ -39,10 +39,12 @@ import { openFormBlocking } from '@/features/invoice/utils/openInvoiceForms';
 import { startInvoiceFromGrn } from '@/features/invoice/utils/invoiceFormOrigin';
 import { prepareInvoiceFromGrn } from '@/features/invoice/utils/prepareInvoiceFromGrn';
 import { backendHasFeature } from '@/config/backendFeatures';
+import { hasCapability } from '@/config/facilityCapabilities';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { LostAnswerNotice } from '@/features/grn/components/LostAnswerNotice';
+import { CustomerAgeStrip } from '@/features/phone-copy/components/CustomerAgeStrip';
 import type { RpcGrnRate } from '@/types/rpc-canonical.types';
 import { useGRNDetailTab } from '@/hooks/useGRNDetailTab';
 import { ImageOverlay, ImageData } from '@/components/ImageOverlay';
@@ -64,6 +66,10 @@ import { parseOrderEffects, previewDeleteGrn, withOrderEffects } from '@/service
 import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
+import { subscribeCopyChanges } from '@/features/phone-copy/copyChanges';
+import type { EntityName } from '@/features/phone-copy/copySchema';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
 import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUploadService';
 
 import { showAlert } from '@/utils/alert';
@@ -81,6 +87,12 @@ import { invoiceTableFrom } from '@/components/common/invoiceTable';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { beginNewBill, newBillIsCurrent, newBillToken, releaseNewBill } from '@/features/invoice/utils/startNewBill';
 import { invoiceFileName } from '@/utils/invoiceLabel';
+import { refuseAtLimit } from '@/features/unsent/limitDialog';
+import { ReplacedStrip } from '@/components/grn-details/ReplacedStrip';
+import { markGrnReplacementsChecked } from '@/services/replacedEntriesService';
+import { beingSentLabel, useUnsentGrnEditState } from '@/features/unsent/editUnsentGrn';
+import { onceSentLabel, UnsentDetailsStrip, useFollowSentRoute, useNewDocumentActions, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
+import { useQuickChange } from '@/features/quick-change/useQuickChange';
 
 const log = createLogger('grn');
 const makeStyles = (t: ThemeTokens) => ({
@@ -107,11 +119,39 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: typography.headline.fontWeight,
     color: t.text.primary,
   },
+  editNote: {
+    paddingHorizontal: space.lg,
+  },
 });
+
+/** A photo of either list (the Images tab's or an item's): it may be a frame, not a picture. */
+interface PhotoRef {
+  needsConnection?: boolean;
+  needs_connection?: boolean;
+}
+
+/** The records this page reads from the phone copy: a sync that changed one of them reads the page again. */
+const GRN_PAGE_KINDS: readonly EntityName[] = [
+  'goodsreceived', 'goodsreceived_trl', 'grn_images', 'grn_lock', 'grn_replacements', 'customers', 'items',
+];
+
+/** The names of the items that are on more than one lot of this GRN (a lot's mark or rack then tells them apart, Design DQ11). */
+function repeatedItemNames(items: readonly { item_name?: string | null }[]): ReadonlySet<string> {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const item of items) {
+    const name = item.item_name ?? '';
+    if (name === '') continue;
+    if (seen.has(name)) repeated.add(name);
+    seen.add(name);
+  }
+  return repeated;
+}
 
 function GRNDetailScreen() {
   const { id, tab } = useLocalSearchParams<{ id: string; tab?: string | string[] }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
+  const quickChange = useQuickChange();
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -173,6 +213,35 @@ function GRNDetailScreen() {
   // The GRN's preview and the suggested number are being read for "Create invoice": the button shows its spinner.
   const [preparingInvoice, setPreparingInvoice] = useState(false);
   const canPrint = useCanPrint();
+  // WH-299: the page was read from the phone copy, which has no rates; offline, every action needs the server.
+  const [ratesNeedServer, setRatesNeedServer] = useState(false);
+  const fromCopyRef = useRef(false);
+  // A GRN that exists only on this phone: its actions wait for the server, whatever the connection (WH-161, Design 10.3).
+  useFollowSentRoute('grn', String(id));
+  const newDocument = useNewDocumentActions('grn', String(id));
+  const unsentEditState = useUnsentGrnEditState(String(id));
+  const phoneNeedsConnection = useNeedsConnection();
+  const needsConnection = phoneNeedsConnection || newDocument.isNew;
+  const unsentOverlay = useUnsentOverlay();
+  // WH-303: marking the replaced entries as checked (administrators), and whether that is being sent.
+  const [markingChecked, setMarkingChecked] = useState(false);
+  // WH-303: with a server that takes the edit as field changes, Edit works with no connection (the form reads the phone copy).
+  const editNeedsConnection = newDocument.isNew || (phoneNeedsConnection && !(hasCapability('sync') && backendHasFeature('grnFieldChanges')));
+  // Edit of an unsent GRN works offline while waiting, and is disabled while being sent (Design 10.3, 10.6 DQ4).
+  const editDisabled =
+    isDeleting ||
+    deleteChecking ||
+    (unsentEditState === 'editable' ? false : unsentEditState === 'being-sent' ? true : editNeedsConnection);
+  const editA11yLabel =
+    unsentEditState === 'being-sent'
+      ? beingSentLabel(tr('common.edit'))
+      : unsentEditState === 'editable'
+        ? undefined
+        : editNeedsConnection
+          ? newDocument.note
+            ? onceSentLabel(tr('common.edit'), newDocument.note)
+            : needsConnectionLabel(tr('common.edit'))
+          : undefined;
 
   // Check edit permissions
   useEffect(() => {
@@ -193,10 +262,13 @@ function GRNDetailScreen() {
   };
 
   // Handle image press
-  const handleImagePress = (images: any[], initialIndex: number = 0) => {
-    const convertedImages = convertToImageData(images);
+  const handleImagePress = (images: PhotoRef[], initialIndex: number = 0) => {
+    // A photo that is not on the phone has nothing to open (WH-299).
+    const shown = images.filter(img => !img.needsConnection && !img.needs_connection);
+    const tapped = images[initialIndex];
+    const convertedImages = convertToImageData(shown as ProcessedImage[]);
     setOverlayImages(convertedImages);
-    setOverlayInitialIndex(initialIndex);
+    setOverlayInitialIndex(Math.max(0, shown.indexOf(tapped)));
     setOverlayVisible(true);
   };
 
@@ -301,6 +373,8 @@ function GRNDetailScreen() {
         return;
       }
 
+      fromCopyRef.current = result.source?.kind === 'copy';
+      setRatesNeedServer(result.needsServer?.includes('rates') === true);
       if (result.success && result.data) {
         setData(result.data);
         setError(null);
@@ -331,7 +405,8 @@ function GRNDetailScreen() {
 
   // Fetch all dispatches for all items
   const fetchAllDispatches = async () => {
-    if (!data?.grn?.items) return;
+    // WH-381: a lot's dispatches are not asked of the server while a connection is needed (the tab says so, DS1).
+    if (!data?.grn?.items || phoneNeedsConnection) return;
 
     setLoadingDispatches(true);
     setDispatchError(null);
@@ -419,6 +494,14 @@ function GRNDetailScreen() {
   const focusedRef = useRef(true);
   const fetchGRNDetailsRef = useRef(fetchGRNDetails);
   fetchGRNDetailsRef.current = fetchGRNDetails;
+  // A sync that changed what this page shows: read it again at once (WH-299, Product's PR9).
+  useEffect(
+    () =>
+      subscribeCopyChanges(({ kinds }) => {
+        if (fromCopyRef.current && GRN_PAGE_KINDS.some(kind => kinds.has(kind))) void fetchGRNDetailsRef.current();
+      }),
+    []
+  );
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
@@ -464,11 +547,12 @@ function GRNDetailScreen() {
     if (
       (activeTab === 'dispatches' || activeTab === 'items') &&
       data &&
+      !phoneNeedsConnection &&
       allDispatches.length === 0
     ) {
       fetchAllDispatches();
     }
-  }, [activeTab, data]);
+  }, [activeTab, data, phoneNeedsConnection]);
 
   // The summary the Invoices tab's rows must match; a refetch that changes it reads them again.
   const invoiceKey = data?.grn
@@ -476,13 +560,14 @@ function GRNDetailScreen() {
     : null;
   useEffect(() => {
     const grn = data?.grn;
-    if (activeTab !== 'invoices' || !grn || !invoiceKey) return;
+    // WH-381: the invoice rows are read from the server only with a connection (the tab says so, DS1).
+    if (activeTab !== 'invoices' || !grn || !invoiceKey || phoneNeedsConnection) return;
     if ((grn.invoices_summary?.total_invoices ?? 0) === 0) return;
     if (grnInvoices?.key === invoiceKey || invoiceRequestKey.current === invoiceKey) return;
     invoiceRequestKey.current = invoiceKey;
     getGrnInvoiceRows({
       grnId: grn.id,
-      grnNo: grn.gr_no,
+      grnNo: grn.gr_no ?? '',
       customerId: grn.customer_details?.id,
       warehouseRole: isWarehouseRole,
       assignedCustomerIds,
@@ -492,7 +577,7 @@ function GRNDetailScreen() {
       invoiceRequestKey.current = null;
       setGrnInvoices({ key: invoiceKey, invoices: result.success ? result.invoices : null });
     });
-  }, [activeTab, data, invoiceKey, grnInvoices, isWarehouseRole, assignedCustomerIds]);
+  }, [activeTab, data, invoiceKey, grnInvoices, isWarehouseRole, assignedCustomerIds, phoneNeedsConnection]);
 
   // WH-162: "Create invoice" opens the invoice form for this GRN straight at Review. The GRN's preview and the suggested
   // number are read first, here: when the preview fails or does not answer nothing opens and this page says why. A step
@@ -548,7 +633,7 @@ function GRNDetailScreen() {
     startInvoiceFromGrn(
       {
         grnId: current.id,
-        grNo: current.gr_no,
+        grNo: current.gr_no ?? '',
         exitRoute: `/grn-details/${current.id}${entryTab ? `?tab=${encodeURIComponent(entryTab)}` : ''}`,
       },
       prepared.step === 'review' ? null : prepared.step
@@ -564,9 +649,24 @@ function GRNDetailScreen() {
     router.push(`/invoice-details/${invoiceId}`);
   };
 
+  // "Mark as checked" on the replaced-entries strip: the strip goes at once on this phone and, with the next sync, on the others.
+  const handleMarkChecked = async (ids: string[]) => {
+    if (!id || markingChecked) return;
+    setMarkingChecked(true);
+    try {
+      const done = await markGrnReplacementsChecked(String(id), ids);
+      if (done) await fetchGRNDetails();
+      else showAlert(tr('offline.replaced.title'), tr('errors.general.unexpectedRetry'));
+    } finally {
+      setMarkingChecked(false);
+    }
+  };
+
   // Handle edit action
   const handleEditGRN = () => {
     if (deleteRunningRef.current) return;
+    // The 2-hour rule: no new change while old work is unsent (WH-301).
+    if (refuseAtLimit()) return;
     router.push(`/grn-edit/${id}/step1`);
   };
 
@@ -755,29 +855,32 @@ function GRNDetailScreen() {
             headerShadowVisible: false,
           }}
         />
-        <View style={styles.centerContainer}>
-          {loading ? (
-            <DetailSkeleton tabCount={4} cardCount={4} />
-          ) : displayError ? (
-            <ErrorStateView
-              title={tr('grn.details.loadFailedTitle')}
-              message={displayError}
-              onRetry={() => {
-                setLoading(true);
-                fetchGRNDetails();
-              }}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          ) : (
-            <ErrorStateView
-              icon="package-down"
-              title={tr('grn.details.notFoundTitle')}
-              message={tr('grn.details.notFoundMessage')}
-              secondaryActionLabel={tr('common.goBack')}
-              onSecondaryAction={() => router.back()}
-            />
-          )}
+        <View style={styles.container}>
+          <CustomerAgeStrip />
+          <View style={styles.centerContainer}>
+            {loading ? (
+              <DetailSkeleton tabCount={4} cardCount={4} />
+            ) : displayError ? (
+              <ErrorStateView
+                title={tr('grn.details.loadFailedTitle')}
+                message={displayError}
+                onRetry={() => {
+                  setLoading(true);
+                  fetchGRNDetails();
+                }}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            ) : (
+              <ErrorStateView
+                icon="package-down"
+                title={tr('grn.details.notFoundTitle')}
+                message={tr('grn.details.notFoundMessage')}
+                secondaryActionLabel={tr('common.goBack')}
+                onSecondaryAction={() => router.back()}
+              />
+            )}
+          </View>
         </View>
       </>
     );
@@ -835,6 +938,7 @@ function GRNDetailScreen() {
       image_url: img.image_url,
       file_name: img.file_name,
       category: 'header' as const,
+      needsConnection: img.needs_connection === true,
     })),
     ...items.flatMap((item) =>
       ((item as any).processed_images || []).map((img: ProcessedImage) => ({
@@ -843,9 +947,15 @@ function GRNDetailScreen() {
         file_name: img.file_name,
         category: 'item' as const,
         item_name: item.item_name,
+        needsConnection: img.needs_connection === true,
       }))
     ),
   ];
+
+  // An unsent GRN has no number yet (null, undefined or blank): the title is "New GRN" (Design 10.10).
+  const screenTitle = grn.gr_no?.trim()
+    ? tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) })
+    : tr('offline.unsent.whatNewGrn');
 
   return (
     <>
@@ -857,10 +967,10 @@ function GRNDetailScreen() {
           headerTitleStyle: styles.headerTitle,
           headerShadowVisible: false,
           headerTitleAlign: 'center',
-          title: tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) }),
+          title: screenTitle,
           headerTitle: () => (
             <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header" maxFontSizeMultiplier={1.5}>
-              {tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) })}
+              {screenTitle}
             </Text>
           ),
           // Custom back button so Back always returns, even after a deep link. It does nothing while the GRN is being deleted.
@@ -875,7 +985,13 @@ function GRNDetailScreen() {
           // Edit is at the end of the header, so it can be reached from any tab.
           headerRight: () =>
             canEdit && grn.imported !== true ? (
-              <Button type="tertiary" onPress={handleEditGRN} disabled={isDeleting || deleteChecking}>
+              <Button
+                type="tertiary"
+                testID="grn-details-edit"
+                onPress={handleEditGRN}
+                disabled={editDisabled}
+                accessibilityLabel={editA11yLabel}
+              >
                 {tr('common.edit')}
               </Button>
             ) : null,
@@ -888,6 +1004,7 @@ function GRNDetailScreen() {
         style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0 }]}
         pointerEvents={deleteChecking ? 'none' : 'auto'}
       >
+        <CustomerAgeStrip />
         {deleteChecking ? <LostAnswerNotice message={tr('errors.lostAnswer.checkingDelete')} /> : null}
 
         {/* Hero Header - Quick Stats */}
@@ -900,6 +1017,21 @@ function GRNDetailScreen() {
           customer_name={grn.customer_details?.name}
           imported={grn.imported === true}
         />
+        {/* The strip of replaced entries sits above the unsent strip (Design 6.2); a customer account never gets entries. */}
+        <ReplacedStrip
+          entries={grn.replacements ?? []}
+          canMarkChecked={userProfile?.role === 'admin'}
+          needsConnection={needsConnection}
+          onMarkChecked={ids => void handleMarkChecked(ids)}
+          busy={markingChecked}
+          repeatedItemNames={repeatedItemNames(items)}
+        />
+        <UnsentDetailsStrip kind="grn" id={String(id)} lotIds={items.map(item => String(item.id))} testID="grn-details-unsent-strip" />
+        {unsentEditState === 'being-sent' ? (
+          <View style={styles.editNote}>
+            <NeedsConnectionLine testID="grn-details-edit-needs-connection" text={tr('offline.offlineNew.beingSent')} />
+          </View>
+        ) : null}
 
         {/* Tab Navigator */}
         <GRNTabNavigator
@@ -920,6 +1052,9 @@ function GRNDetailScreen() {
               registration={grn.registration}
               note={grn.note}
               rates={(grn as { rates?: RpcGrnRate[] }).rates}
+              ratesNeedConnection={ratesNeedServer}
+              needsConnection={needsConnection}
+              needsConnectionNote={newDocument.note}
               packaging={sharedPackaging(items.map((item) => item.packaging))}
               packagingByLot={Object.fromEntries(items.map((item) => [item.id, item.packaging]))}
               pricing_mode={grn.pricing_mode}
@@ -944,6 +1079,21 @@ function GRNDetailScreen() {
               loading={loading}
               onViewItemImages={handleViewItemImages}
               onViewItemDispatches={handleViewItemDispatches}
+              grnNumber={grn.gr_no}
+              removedLotIds={unsentOverlay.lotsRemoved?.(String(grn.id)) ?? []}
+              onQuickChange={
+                quickChange.available
+                  ? (item) =>
+                      quickChange.open({
+                        lotId: String(item.id),
+                        grnId: String(grn.id),
+                        grnNumber: formatIdentifier(grn.gr_no),
+                        customer: grn.customer_details?.name ?? null,
+                        itemName: item.item_name ?? '',
+                        shown: { rack: item.rack ?? null, package_mark: item.package_mark ?? null },
+                      })
+                  : undefined
+              }
             />
           )}
 
@@ -1021,6 +1171,7 @@ function GRNDetailScreen() {
         placeholder={tr('grn.details.printPlaceholder', { example: 'Z0797' })}
       />
 
+      {quickChange.sheet}
     </>
   );
 }

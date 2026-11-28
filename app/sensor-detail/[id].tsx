@@ -53,6 +53,8 @@ import { t as tr } from '@/i18n';
 import { backendHasFeature } from '@/config/backendFeatures';
 import { StatusTag } from '@/components/ui';
 import { batteryFact, chartThresholds, connectionStatus, isQuiet, lastKnownText, readingTime, rowStatus } from '@/features/sensors/sensorStatus';
+import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useSensorNow } from '@/features/sensors/useMinuteTick';
 import { canOpenScreen } from '@/config/roles';
 import { useFacilityCapabilities } from '@/hooks/useCapability';
@@ -388,6 +390,7 @@ const SensorDetailScreen: React.FC = () => {
   // A sensor that cannot be read has nothing for a change to refresh; "Try again" asks.
   useSensorLiveUpdates(deviceQuery.phase !== 'error');
   const { now, phoneOffline } = useSensorNow(deviceQuery.updatedAt, deviceQuery.error);
+  const needsConnection = useNeedsConnectionV3();
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const capabilities = useFacilityCapabilities();
   const canEdit = canOpenScreen(role, 'sensorWrite', capabilities);
@@ -582,6 +585,16 @@ const SensorDetailScreen: React.FC = () => {
       }}
     />
   );
+
+  // A sensor that was never read, with no connection: the screen needs the server (WH-348, Design 2.5).
+  if (needsConnection && !device && (deviceQuery.phase === 'loading' || !notFound)) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <ScreenNeedsConnection testID="sensor-detail-needs-connection" />
+      </View>
+    );
+  }
 
   // Loading state: the sensor itself; the history shows its own loading under the hero.
   if (deviceQuery.phase === 'loading') {

@@ -6,9 +6,9 @@ export type OrderLiveUpdatesOptions = LiveUpdatesOptions;
 export const ORDER_REFRESH_INTERVAL_MS = 15_000;
 
 /**
- * Re-reads orders every 15 s while the signed-in user's order screen is shown, the
- * app is in the foreground and the device is online; the gating and catch-up rules
- * are those of `useLiveUpdates`.
+ * Keeps an order screen current while it is shown, the app is in the foreground and the device is online; the gating
+ * and catch-up rules are those of `useLiveUpdates`. Orders are never in the phone copy (WH-381): every role re-reads
+ * the server, and with no connection nothing is read.
  */
 export function useOrderLiveUpdates(
   refresh: () => void | Promise<void>,

@@ -18,6 +18,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useSingleFlight } from '@/hooks/useSingleFlight';
 import { currentFacilityLabel, showFacilityCleanupFailed } from '@/features/account/useAccountActions';
+import { refuseIfUnsent } from '@/features/unsent/refuseAccountAction';
 import { updateCentralName } from '@/config/centralSession';
 import { showAlert } from '@/utils/alert';
 import { showToast } from '@/utils/toast';
@@ -89,6 +90,8 @@ export default function CentralAccountScreen() {
   };
 
   const confirmDelete = () => {
+    // Unsent work of this person on the phone refuses it, with the reason (WH-301, Design 4.3).
+    if (refuseIfUnsent('deleteAccount')) return;
     showAlert(tr('central.account.deleteTitle'), tr('central.account.deleteMessage'), [
       { text: tr('common.cancel'), style: 'cancel' },
       { text: tr('central.account.deleteAccount'), style: 'destructive', onPress: () => { void deleteAccount(); } },

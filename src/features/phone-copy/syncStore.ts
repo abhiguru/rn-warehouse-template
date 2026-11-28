@@ -1,0 +1,81 @@
+/**
+ * What the sync engine tells the app about the phone copy (WH-298, contract 7.1): read with useSyncExternalStore
+ * (src/hooks/usePhoneCopyStatus.ts). The same snapshot object until something in it changes.
+ */
+import type { CopyKind } from './copyKind';
+
+export type CopyPhase = 'empty' | 'stage1' | 'ready';
+
+export interface SyncSnapshot {
+  /** 'unknown' until the capability and the format are known for this session. */
+  feature: 'unknown' | 'on' | 'off';
+  phase: CopyPhase;
+  /** The payload format of what the copy holds; absent until a load has begun (WH-299: the screens read format 2 on). */
+  format?: number;
+  /** The kind of role the copy was loaded for (WH-306): a copy is read only by that kind and erased when the role changes kind. */
+  kind?: CopyKind;
+  running: null | 'first-load' | 'changes' | 'reload' | 'checksums';
+  /** A full sync within the last minute and the server reachable. */
+  current: boolean;
+  /** The server's time of what the copy holds (ISO), shown as "Last updated". */
+  asOf: string | null;
+  /** The last finished run failed and no run has succeeded since. */
+  lastRunFailed: boolean;
+  storageLow: boolean;
+  /** Size of the file and its -wal. */
+  copyBytes: number | null;
+  /** Free space on the phone when the size was read (Settings' note); absent until then. */
+  freeBytes?: number | null;
+  /**
+   * The first real state is not known yet: the copy is not open, or it holds nothing usable and the run that says
+   * what happens next has not begun. The bar is then empty (Design 1.5); `phase` says nothing about the phone.
+   */
+  pending?: boolean;
+  /** The open copy has been read at least once. While `pending` and not this, the bar may say it is still opening. */
+  copyOpen?: boolean;
+  /** While `pending`: an attempt to open the copy failed and none has succeeded since. */
+  openFailed?: boolean;
+  /** A run is trying again after such a failure: "Try again" is disabled. */
+  openRetrying?: boolean;
+}
+
+const INITIAL: SyncSnapshot = {
+  feature: 'unknown',
+  phase: 'empty',
+  running: null,
+  current: false,
+  asOf: null,
+  lastRunFailed: false,
+  storageLow: false,
+  copyBytes: null,
+  pending: true,
+};
+
+const store = { snapshot: INITIAL, listeners: new Set<() => void>() };
+
+export function subscribeSync(listener: () => void): () => void {
+  store.listeners.add(listener);
+  return () => {
+    store.listeners.delete(listener);
+  };
+}
+
+export function getSyncSnapshot(): SyncSnapshot {
+  return store.snapshot;
+}
+
+/** Changes the snapshot; listeners hear only of a real change. */
+export function updateSyncSnapshot(patch: Partial<SyncSnapshot>): void {
+  const current = store.snapshot;
+  const keys = Object.keys(patch) as (keyof SyncSnapshot)[];
+  if (keys.every(key => current[key] === patch[key])) return;
+  store.snapshot = { ...current, ...patch };
+  for (const listener of [...store.listeners]) listener();
+}
+
+/** Back to the state of a phone with no copy (after an erase). */
+export function resetSyncSnapshot(patch: Partial<SyncSnapshot> = {}): void {
+  store.snapshot = INITIAL;
+  updateSyncSnapshot(patch);
+  for (const listener of [...store.listeners]) listener();
+}

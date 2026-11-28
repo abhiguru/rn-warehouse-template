@@ -20,6 +20,13 @@ import type {
 import { t } from '@/i18n';
 import { importedReadOnlyText } from '@/utils/importedRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
+import { copyCarriesFormat3, forCustomerAccounts, readVia } from '@/features/phone-copy/readRoute';
+import { rememberServerLotValues } from '@/features/quick-change/confirmedLotValues';
+import { getUnsentOverlay } from '@/features/phone-copy/unsentOverlay';
+import { readGrnDetails } from '@/features/phone-copy/reads/grnDetails';
+import { keepPhoto, photoFile } from '@/features/phone-copy/photoStore';
+import { isCopyOffline } from '@/features/phone-copy/syncEngine';
+import type { DataSource } from '@/features/phone-copy/sourced';
 
 // Re-export canonical types for consumers
 export type {
@@ -51,6 +58,8 @@ export interface ProcessedImage {
   uploaded_at: string;
   is_header_image: boolean;
   item_id?: string;
+  /** The photo is not on the phone and the server cannot be asked now (WH-299): the screen shows a frame, not a picture. */
+  needs_connection?: boolean;
 }
 
 // Dispatch record from get_grn_item_dispatches
@@ -82,6 +91,7 @@ export interface GRNItemDispatchesResponse {
   };
   message: string;
   error?: string;
+  source?: DataSource;
 }
 
 export interface GRNDetailsResponse {
@@ -93,6 +103,10 @@ export interface GRNDetailsResponse {
   error?: string;
   /** The server answered but there is no such GRN (deleted, or not visible to the caller): not a failed load. */
   notFound?: boolean;
+  /** Answered by the phone copy (WH-299); absent when the server answered. */
+  source?: DataSource;
+  /** Parts the copy cannot give: the screen says they need a connection (WH-299, Product's PR1). */
+  needsServer?: ('rates')[];
 }
 
 // Helper function to generate signed URL from storage path
@@ -129,7 +143,7 @@ const generateSignedUrl = async (storagePath: string): Promise<string | null> =>
 };
 
 // Helper function to process images and generate signed URLs
-const processImages = async (images: RpcImageInfo[], isHeader: boolean = false): Promise<ProcessedImage[]> => {
+const processImages = async (images: RpcImageInfo[], isHeader: boolean = false, fromCopy = false): Promise<ProcessedImage[]> => {
   if (!images || images.length === 0) return [];
 
   if (__DEV__) {
@@ -142,16 +156,20 @@ const processImages = async (images: RpcImageInfo[], isHeader: boolean = false):
   const processedImagesPromises = images.map(async (img) => {
     const pathForSigning = img.storage_path;
     if (!pathForSigning) return null;
-    const signedUrl = await generateSignedUrl(pathForSigning);
+    // A copy-sourced page shows a photo kept on the phone first, and keeps each one it shows from a link.
+    const kept = fromCopy ? await photoFile(pathForSigning) : null;
+    const signedUrl = kept ?? (fromCopy && isCopyOffline() ? null : await generateSignedUrl(pathForSigning));
+    if (fromCopy && signedUrl && !kept) void keepPhoto(pathForSigning, signedUrl);
 
-    // Skip images where signed URL generation failed (file doesn't exist)
-    if (!signedUrl) {
+    // Skip images where signed URL generation failed (file doesn't exist); a copy-sourced page shows a frame instead.
+    if (!signedUrl && !fromCopy) {
       return null;
     }
 
     const processedImage: ProcessedImage = {
       id: img.id,
-      image_url: signedUrl,
+      image_url: signedUrl ?? '',
+      ...(signedUrl ? {} : { needs_connection: true }),
       file_name: img.original_filename || 'image.jpg',
       file_size: img.file_size || 0,
       mime_type: img.mime_type || 'image/jpeg',
@@ -178,7 +196,8 @@ interface GrnDetailsWithProcessedImages extends RpcGrnDetails {
 // fetched the GRN. Protected detail data and signed URLs are not persisted.
 const processImagesForDisplay = async (
   grnData: GrnDetailsWithProcessedImages,
-  headerImages: RpcImageInfo[]
+  headerImages: RpcImageInfo[],
+  fromCopy = false
 ): Promise<void> => {
   const startTime = Date.now();
   if (__DEV__) console.log('[GRNDetailService] Starting image processing...');
@@ -190,7 +209,7 @@ const processImagesForDisplay = async (
     // Header images promise
     if (headerImages.length > 0) {
       allPromises.push(
-        processImages(headerImages, true).then(processed => {
+        processImages(headerImages, true, fromCopy).then(processed => {
           grnData.processed_header_images = processed;
         })
       );
@@ -202,7 +221,7 @@ const processImagesForDisplay = async (
         const itemImages = item.item_images || [];
         if (itemImages.length > 0) {
           allPromises.push(
-            processImages(itemImages, false).then(processed => {
+            processImages(itemImages, false, fromCopy).then(processed => {
               item.processed_images = processed;
             })
           );
@@ -238,6 +257,21 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
         message: t('errors.grn.idRequired'),
         error: t('errors.general.missingParameter')
       };
+    }
+
+    const fromCopy = await readVia('all', forCustomerAccounts(q => readGrnDetails(q, grnId)));
+    // Online, a record the copy does not hold may be one saved a moment ago: the whole read comes from the server (WH-299).
+    const copy = fromCopy && 'value' in fromCopy && fromCopy.value.kind === 'not-found' && !isCopyOffline() ? null : fromCopy;
+    if (copy && 'value' in copy) {
+      const { value, source } = copy;
+      if (value.kind === 'not-found') {
+        return { success: false, message: t('errors.grn.noneFound'), error: t('errors.grn.notFoundOrDenied'), notFound: true, source };
+      }
+      const grn = value.grn as unknown as GrnDetailsWithProcessedImages;
+      const header: RpcImageInfo[] = grn.header_images ?? [];
+      for (const item of grn.items ?? []) item.processed_images = [];
+      await processImagesForDisplay(grn, header, true);
+      return { success: true, data: { grn: grn as unknown as RpcGrnDetails }, message: t('errors.grn.detailsFetched'), source, needsServer: copyCarriesFormat3() ? undefined : value.needsServer };
     }
 
     // Get authenticated client with JWT tokens
@@ -307,8 +341,13 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
 
     // Initialize empty images arrays immediately for UI
     if (responseData.grn.items) {
+      const unsent = getUnsentOverlay();
       responseData.grn.items.forEach((item: RpcGrnItemFull & { processed_images?: ProcessedImage[] }) => {
         item.processed_images = [];
+        // A rack or mark this phone changed and has not sent shows, never the old value (WH-302, Product PQ3).
+        const changed = unsent.lot(item.id);
+        rememberServerLotValues(item.id, item);
+        if (changed) Object.assign(item, changed);
       });
     }
 

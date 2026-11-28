@@ -9,6 +9,9 @@ import { Platform, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { useThemedStyles } from '@/hooks/useTheme';
+import { t as tr } from '@/i18n';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel } from '@/features/phone-copy/useNeedsConnection';
 import { layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { Button } from './Button';
@@ -29,6 +32,11 @@ export interface FormSaveBarProps {
   testID?: string;
   /** On the button (where a screen's own tests press Save). */
   buttonTestID?: string;
+  /**
+   * Saving needs the server and the phone is offline (WH-348, Design 2.5): the bar says "Needs a connection" once, above the
+   * button, under this testID; Save is disabled and its screen-reader label carries the reason.
+   */
+  needsConnectionTestID?: string;
 }
 
 const makeStyles = (t: ThemeTokens) =>
@@ -44,7 +52,8 @@ const makeStyles = (t: ThemeTokens) =>
     helper: { ...typography.footnote, color: t.text.secondary, textAlign: 'center', marginBottom: space.sm },
   });
 
-export function FormSaveBar({ label, onPress, loading = false, disabled = false, helper, loadingText, onLayout, testID, buttonTestID }: FormSaveBarProps) {
+export function FormSaveBar({ label, onPress, loading = false, disabled = false, helper, loadingText, onLayout, testID, buttonTestID, needsConnectionTestID }: FormSaveBarProps) {
+  const needsServer = needsConnectionTestID !== undefined;
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   // With the keyboard up the bar sits on it: no home-indicator space under it, and it is lifted by the part the
@@ -52,8 +61,18 @@ export function FormSaveBar({ label, onPress, loading = false, disabled = false,
   const { ref: barRef, lift, keyboardShown, onLayout: measureLift } = useKeyboardCoverLift();
   return (
     <View ref={barRef} testID={testID} onLayout={event => { measureLift(event); onLayout?.(event); }} style={[styles.container, { marginBottom: lift, paddingBottom: (Platform.OS === 'ios' && !keyboardShown ? insets.bottom : 0) + space.md }]}>
+      {needsServer ? <NeedsConnectionLine testID={needsConnectionTestID} text={tr('components.offlineRead.needsConnection')} /> : null}
       {helper ? (typeof helper === 'string' ? <Text style={styles.helper}>{helper}</Text> : helper) : null}
-      <Button type="primary" size="fullWidth" onPress={onPress} loading={loading} loadingText={loadingText} disabled={disabled} testID={buttonTestID}>
+      <Button
+        type="primary"
+        size="fullWidth"
+        onPress={onPress}
+        loading={loading}
+        loadingText={loadingText}
+        disabled={disabled || needsServer}
+        testID={buttonTestID}
+        accessibilityLabel={needsServer ? needsConnectionLabel(label) : undefined}
+      >
         {label}
       </Button>
     </View>

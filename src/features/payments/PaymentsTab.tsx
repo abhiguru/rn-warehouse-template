@@ -25,6 +25,8 @@ import {
   type PaymentRefusal,
   type PaymentWriteDone,
 } from '@/services/paymentsService';
+import { SectionNeedsConnection } from '@/features/phone-copy/components/SectionNeedsConnection';
+import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { PaymentStatusTag } from './PaymentStatusTag';
 import { PaymentFormModal } from './PaymentFormModal';
 
@@ -75,6 +77,8 @@ const makeStyles = (th: ThemeTokens) => ({
 export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canManage }: PaymentsTabProps) {
   const styles = useThemedStyles(makeStyles);
   const th = useTokens();
+  // Payments need the server (WH-381): offline the tab is one line and shows nothing it kept.
+  const needsConnection = useNeedsConnection();
   const [data, setData] = useState<InvoicePayments | null>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -101,11 +105,12 @@ export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canMan
   }, [invoiceId]);
 
   useEffect(() => {
+    if (needsConnection) return undefined;
     void load();
     return () => {
       request.current += 1;
     };
-  }, [load]);
+  }, [load, needsConnection]);
 
   const openRecord = () => {
     setEditing(null);
@@ -155,6 +160,8 @@ export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canMan
     }
   };
 
+  if (needsConnection) return <SectionNeedsConnection testID="invoice-details-section-needs-connection-payments" />;
+
   const figures = data;
   const dueText = figures?.dueAmount !== null && figures?.dueAmount !== undefined ? formatMoney(figures.dueAmount) : undefined;
 
@@ -196,11 +203,21 @@ export function PaymentsTab({ invoiceId, invoiceNumber, total, cancelled, canMan
                 {payment.enteredByName ? <Text style={styles.rowMeta}>{t('payments.section.enteredBy', { name: payment.enteredByName })}</Text> : null}
                 {canManage && payment.recordedInApp && !payment.imported ? (
                   <View style={styles.actions}>
-                    <Pressable style={styles.action} onPress={() => openEdit(payment)} accessibilityRole="button" testID={`payment-edit-${payment.id}`}>
+                    <Pressable
+                      style={styles.action}
+                      onPress={() => openEdit(payment)}
+                      accessibilityRole="button"
+                      testID={`payment-edit-${payment.id}`}
+                    >
                       <Icon name="pencil-outline" size={iconSize.md} color={th.brand.tint} />
                       <Text style={styles.actionText}>{t('common.edit')}</Text>
                     </Pressable>
-                    <Pressable style={styles.action} onPress={() => setDeleting(payment)} accessibilityRole="button" testID={`payment-delete-${payment.id}`}>
+                    <Pressable
+                      style={styles.action}
+                      onPress={() => setDeleting(payment)}
+                      accessibilityRole="button"
+                      testID={`payment-delete-${payment.id}`}
+                    >
                       <Icon name="delete-outline" size={iconSize.md} color={th.status.negative.text} />
                       <Text style={styles.actionDanger}>{t('common.delete')}</Text>
                     </Pressable>

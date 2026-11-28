@@ -251,7 +251,12 @@ describe('GRN review step: save of an edit with lines the server did not change'
   });
 
   it('shows "Photos not uploaded" after the warning dialog, not the success dialog, when photos also failed', async () => {
-    const failedPhoto = { kind: 'header', localUri: 'file:///x.jpg', error: 'Network request failed' };
+    const failedPhoto = {
+      image: { id: 'img-1', fileName: 'x.jpg', imageUrl: 'file:///x.jpg', uploadStatus: 'failed' },
+      imageType: 'header',
+      position: 1,
+      error: 'Network request failed',
+    };
     (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: 'grn-1', message: 'ok', stats: { items_skipped_stock: [skipped] }, photos: { uploadedCount: 0, failed: [failedPhoto], removalFailures: 0 } } });
     await render('edit');
     await answerSaveQuestion();

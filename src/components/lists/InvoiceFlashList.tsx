@@ -44,6 +44,8 @@ import { MemoizedInvoiceItem } from '@/components/list-items';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
+import { ListNeedsConnection, useListNeedsConnection } from './ListNeedsConnection';
+import { useReloadWhenVerified } from '@/hooks/useReloadWhenVerified';
 import { useKeyboardCoverLift } from '@/hooks/useKeyboardCoverLift';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCanPrint } from '@/hooks/useCanPrint';
@@ -126,7 +128,7 @@ SectionHeader.displayName = 'SectionHeader';
 // MAIN COMPONENT
 // ============================================================================
 
-const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
+const InvoiceFlashListOnline: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const listRef = useRef<FlashListRef<FlattenedItem<Invoice>>>(null);
 
   // Theme
@@ -236,7 +238,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         setLoadMoreFailed(false);
         setLoadedAt(Date.now());
         shownRequest.current = requestKey;
-        // A new search, filter or sort starts from its first row.
         listRef.current?.scrollToOffset({ offset: 0, animated: false });
       }
       setHasMore(result.data.pagination.has_more);
@@ -293,7 +294,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         const fresh = !changedWhileHiddenRef.current;
         blurredRef.current = false;
         changedWhileHiddenRef.current = false;
-        fetchInvoicesRef.current(0, false, fresh);
+        void fetchInvoicesRef.current(0, false, fresh);
       }
       return () => {
         screenFocusedRef.current = false;
@@ -309,7 +310,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
     // The offset stays until the answer sets it: a failed refresh keeps the rows, and the offset after them.
-    fetchInvoices(0, false, true);
+    void fetchInvoices(0, false, true);
   }, [fetchInvoices]);
 
   const handleLoadMore = useCallback(() => {
@@ -409,7 +410,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
 
   // Offline with no failed refresh: the first heading (or, with no headings, the top of the list) says when the
   // cards were loaded (§14.9). A failed refresh says it in its strip instead.
-  const offlineUpdatedAt = isOffline && !refreshError ? loadedAt : undefined;
+  const offlineUpdatedAt = isOffline && !refreshError ?loadedAt : undefined;
 
   const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Invoice>; index: number }) => {
     if (item.type === 'header') {
@@ -458,8 +459,12 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   // RENDER
   // ============================================================================
 
+  const showsSkeleton = isLoading && invoices.length === 0;
+  const showsLoadError = !showsSkeleton && invoices.length === 0 && loadError;
+  useReloadWhenVerified(showsLoadError, handleRefresh);
+
   let content: React.ReactNode;
-  if (isLoading && invoices.length === 0) {
+  if (showsSkeleton) {
     // First load, or a new first page with no rows on screen: skeleton, never an empty or no-match state while the answer is pending.
     // Later loads keep the rows on screen while the new ones arrive.
     // One wide block under the header stands for the amounts table (ListSkeleton has no table option).
@@ -478,6 +483,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
             testID="invoice-stale-strip"
           />
         ) : null}
+      <View style={styles.listHold}>
       <FlashList
         ref={listRef}
         data={flattenedData}
@@ -503,9 +509,10 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
         ListFooterComponent={ListFooter}
         showsVerticalScrollIndicator={false}
       />
+      </View>
       </>
     );
-  } else if (loadError) {
+  } else if (showsLoadError) {
     content = (
       <ErrorStateView
         presentation="inline"
@@ -562,6 +569,7 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     backgroundColor: t.background.base,
   },
+  listHold: { flex: 1 },
   listContent: {
     paddingTop: space.sm,
     // Room for the floating create button on the tab screen
@@ -608,5 +616,12 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
 });
+
+/** Offline the list is only its title row and the needs-a-connection state: nothing is fetched or kept (WH-381). */
+const InvoiceFlashList: React.FC<InvoiceFlashListProps> = props => {
+  const needsConnection = useListNeedsConnection();
+  if (needsConnection) return <ListNeedsConnection title={translate('lists.invoice.title')} testID="invoices-needs-connection" />;
+  return <InvoiceFlashListOnline {...props} />;
+};
 
 export default InvoiceFlashList;

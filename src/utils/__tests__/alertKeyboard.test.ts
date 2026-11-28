@@ -200,3 +200,29 @@ describe('a keyboard call that throws never keeps the alert from opening', () =>
     expect(kb.queued).toEqual(['Delete invoice 7?']);
   });
 });
+
+describe('no host mounted while an alert waits for the keyboard (WH-293)', () => {
+  it('a second alert is not shown natively; both reach the host in the order raised once it is back', () => {
+    const kb = fakeKeyboard(true);
+    const native = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    showAlert('Alert A', 'Fictional message', BUTTONS);
+    kb.unregister(); // the host unmounts while A waits for the keyboard
+    showAlert('Alert B', 'Fictional message', BUTTONS);
+    expect(native).not.toHaveBeenCalled();
+    const reached: string[] = [];
+    registerAlertHost(request => { reached.push(request.title); });
+    kb.hide();
+    expect(native).not.toHaveBeenCalled();
+    expect(reached).toEqual(['Alert A', 'Alert B']);
+    expect(getAlertQueue().map(request => request.title)).toEqual(['Alert A', 'Alert B']);
+  });
+
+  it('control: no host, an empty queue and nothing pending still uses the native Alert', () => {
+    const kb = fakeKeyboard(false);
+    kb.unregister();
+    const native = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    showAlert('Alert C', 'Fictional message');
+    expect(native).toHaveBeenCalledTimes(1);
+    expect(native).toHaveBeenCalledWith('Alert C', 'Fictional message');
+  });
+});

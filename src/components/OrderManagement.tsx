@@ -18,9 +18,11 @@ import {
   ActivityIndicator,
 } from 'react-native-paper';
 import { router } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { Button } from '@/components/ui/Button';
+import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { StatusTag } from '@/components/ui/StatusTag';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -144,7 +146,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
 
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -700,6 +702,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   noNetworkRef.current = noNetwork;
   // The "Waiting for the connection…" text follows the same test the wait for the server uses (`useIsDisconnected`).
   const disconnected = useIsDisconnected();
+  // Reading the phone copy with no connection: the order is read-only, one line says so above its actions (Design 2.10b).
+  const needsConnection = useNeedsConnectionV3();
 
   // Saves what the Add items picker changed, one lot after another, and answers
   // for each lot. A lot the user did not touch is not in `changes`, so a line
@@ -1089,6 +1093,10 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         </View>
       )}
 
+      {needsConnection ? (
+        <NeedsConnectionLine testID="order-actions-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+      ) : null}
+
       {/* Order Items */}
       <ScrollView
         style={styles.scrollView}
@@ -1136,7 +1144,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
               size="standalone"
               leftIcon="plus"
               onPress={() => setShowItemCatalog(true)}
-              accessibilityLabel={tr('orders.screen.addItemsToOrder')}
+              disabled={needsConnection}
+              testID="order-empty-add"
+              accessibilityLabel={needsConnection ? needsConnectionLabel(tr('orders.screen.addItemsToOrder')) : tr('orders.screen.addItemsToOrder')}
             >
               {tr('orders.catalog.addItems')}
             </Button>

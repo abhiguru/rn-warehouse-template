@@ -76,6 +76,7 @@ export type RoleGatedScreen =
   | 'charging'
   | 'gstDetails'
   | 'accountantPack'
+  | 'replacedEntries'
   | 'accountantExport'
   | 'connectionHistory'
   | 'rackPresets'
@@ -83,7 +84,8 @@ export type RoleGatedScreen =
   | 'customerDues'
   | 'customerStatement'
   | 'customerStatementCard'
-  | 'temperatureReport';
+  | 'temperatureReport'
+  | 'holdingList';
 
 /**
  * Whether the app offers `screen` to `role`. With `capabilities` (the facility's, from
@@ -113,6 +115,9 @@ export function canOpenScreen(
       // refuses staff from migration 90. The price history and the standard rate were
       // manager-only before (get_item_price_history, migration 48; set_standard_rate, 85).
       return isManager(role);
+    case 'holdingList':
+      // The Holding list of refused items (WH-304): administrators and supervisors, where the facility keeps a phone copy (`sync`).
+      return isManager(role) && (capabilities === undefined || capabilities.sync);
     case 'enrollmentReview':
       return normalizeRole(role) === 'admin';
     case 'rackPresets':
@@ -124,6 +129,9 @@ export function canOpenScreen(
       return normalizeRole(role) === 'admin';
     case 'gstDetails':
       // The facility's GST details: administrators only (get_gst_details, set_gst_details, migration 173).
+      return normalizeRole(role) === 'admin';
+    case 'replacedEntries':
+      // The list of changes that replaced someone's newer entry: administrators only (get_grn_replacements, WH-303).
       return normalizeRole(role) === 'admin';
     case 'accountantPack':
       // The accountant pack of a period: administrators and supervisors (generate-accountant-pack, get_accountant_pack, migration 204).

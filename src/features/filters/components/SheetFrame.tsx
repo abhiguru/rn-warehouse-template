@@ -61,7 +61,8 @@ const makeStyles = (t: ThemeTokens) => ({
   sideText: { ...typography.callout, color: t.brand.tint },
   sideTextDisabled: { color: t.text.disabled },
   title: { ...typography.headline, flex: 1, color: t.text.primary },
-  content: { paddingHorizontal: layout.marginCompact, paddingTop: space.sm, paddingBottom: space.lg },
+  // flexShrink lets a sheet taller than the room above the keyboard squeeze its content (a ScrollView inside scrolls) so the footer stays on screen.
+  content: { flexShrink: 1, paddingHorizontal: layout.marginCompact, paddingTop: space.sm, paddingBottom: space.lg },
   contentTall: { flex: 1 },
   footer: {
     paddingHorizontal: layout.marginCompact,

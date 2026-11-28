@@ -54,6 +54,7 @@ const makeStyles = (t: ThemeTokens) => ({
   // A row pressed shows the pressed surface, not a fade (§10).
   sectionPressed: { backgroundColor: t.surface.cardPressed },
   sectionTitle: { ...typography.footnote, fontWeight: fontWeight.semibold, color: t.text.secondary },
+  sectionNote: { ...typography.footnote, color: t.text.secondary },
   pickerRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -258,6 +259,12 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
                     ? translate('filters.page.sectionWithUnit', { label: field.label.toUpperCase(), unit: field.unit.toUpperCase() })
                     : field.label.toUpperCase()}
                 </Text>
+                {/* Why a filter cannot be chosen for now: once, under its heading, above its choices (Design 2.10a). */}
+                {field.unavailable?.(filters.ctx) ? (
+                  <Text style={styles.sectionNote} testID={field.unavailable(filters.ctx)?.testID}>
+                    {field.unavailable(filters.ctx)?.note}
+                  </Text>
+                ) : null}
                 <FieldEditor
                   // Remount after Reset so fields that keep typed text start empty. Never while
                   // typing: a remount there would drop the keyboard focus after one character.

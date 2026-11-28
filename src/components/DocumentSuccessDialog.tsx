@@ -34,6 +34,8 @@ export interface DocumentData {
   orderNotes?: string[];
   /** Plain notices drawn under the message as one warning strip (a GRN saved by staff: items without a rate yet). */
   notices?: string[];
+  /** One sentence added at the end of the dialog's message (photos kept on the phone, WH-301, Design 4.9). */
+  messageAddition?: string;
 }
 
 interface DocumentSuccessDialogProps {
@@ -158,7 +160,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
           accessibilityLabel={tr('components.documentSuccess.dialogLabel', { title: config.title, noun: config.noun, number: formatIdentifier(documentData.documentNo) })}
         >
           <DialogBody>
-            <DialogHeading tone="success" title={config.title} message={config.message} />
+            <DialogHeading tone="success" title={config.title} message={documentData.messageAddition ? `${config.message} ${documentData.messageAddition}` : config.message} />
             <View style={styles.rest}>
             {documentData.orderNotes && documentData.orderNotes.length > 0 ? (
               <View style={styles.orderNotes} testID="document-success-order-notes">

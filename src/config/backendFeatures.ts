@@ -16,11 +16,17 @@
  */
 import { getActiveOperatorServer } from './operatorServer';
 
-type ServerIdentity = { origin: string; instanceId: string };
-export type BackendRelease = { backendRelease: string | null; schemaHead: string | null };
+interface ServerIdentity {
+  origin: string;
+  instanceId: string;
+}
+export interface BackendRelease {
+  backendRelease: string | null;
+  schemaHead: string | null;
+}
 
 /** Features the app can do without, and the number of the migration that introduced each. */
-const INTRODUCED_BY_MIGRATION = {
+export const INTRODUCED_BY_MIGRATION = {
   /** `p_expected_updated_at` on update_order_item_quantity and remove_item_from_order (owner decision D1). */
   orderLineVersion: 121,
   /** `suggest_document_number`, `get_document_numbering` and `set_document_numbering`, and the `NUMBER_FORMAT` refusal (WS-8). */
@@ -59,6 +65,16 @@ const INTRODUCED_BY_MIGRATION = {
   accountantPack: 204,
   /** `can_make_bills`, the GST_DETAILS_REQUIRED refusal of a new bill and `bills_allowed` in get_gst_details (WH-205; 206 is the number the migration takes at assembly). */
   billsNeedGst: 206,
+  /** `set_lot_rack_and_mark`: the quick change of a lot's rack and mark (WH-302; migration 226, topic "lot rack and mark change"). */
+  lotQuickChange: 226,
+  /** `apply_grn_changes`, the replaced entries and the feed entity `grn_replacements` (WH-303, migrations 232-233 on the assembly batch; 233 is the one that has the function and the feed entity). */
+  grnFieldChanges: 233,
+  /** A new GRN or dispatch saved with no connection and numbered when sent: `p_issue_number`, `p_recorded_at`, the permanent request ID, the refusal codes (WH-161; topics "number issued at save", "recorded time on offline records", "permanent request ID on offline records", "refusal codes for offline sends"; provisional number: the last of the four, written at assembly, BATCH.md). */
+  offlineNewRecords: 230,
+  /** The holding list for refused items: `hold_items`, `get_held_items`, `get_held_item`, `decide_held_item`, `mark_held_item_seen`, the `held_items` feed entity at format 5 (WH-304; topics "held items store", "hold held items", "holding list reads and decisions", "sync held items"; migrations 234 to 237, the last gives the number). */
+  holdingList: 237,
+  /** The phone copy for customer accounts: feed format 7, the account's customers without deleted ones (WH-306; topic "customer account copy", number written at assembly). */
+  customerCopy: 239,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 
@@ -96,7 +112,7 @@ export function setFacilityRelease(server: ServerIdentity, config: { backendRele
 /** The active server's release as last told; both null when nothing is known for it. */
 export function getFacilityRelease(): BackendRelease {
   const active = getActiveOperatorServer();
-  return (active && byServer.get(keyOf(active))) || { backendRelease: null, schemaHead: null };
+  return (active ? byServer.get(keyOf(active)) : undefined) ?? { backendRelease: null, schemaHead: null };
 }
 
 /**

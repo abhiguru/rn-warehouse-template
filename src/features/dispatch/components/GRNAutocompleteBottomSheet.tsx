@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowInsets } from '@/hooks/useBelowCopyBar';
 import { useRouter, Href } from 'expo-router';
 import { SheetSearchField } from '@/components/common/SheetSearchField';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -571,6 +571,7 @@ const GRNListItem = memo<GRNListItemProps>(({
 
   const grnDate = useMemo(() => formatDate(item.date), [item.date]);
 
+  const numberText = formatIdentifier(item.gr_no);
   const handlePress = useCallback(() => onSelect(item), [item, onSelect]);
   const handleViewDetails = useCallback(() => onViewDetails(item), [item, onViewDetails]);
 
@@ -602,7 +603,7 @@ const GRNListItem = memo<GRNListItemProps>(({
           isSelected && styles.grnCardSelected,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={tr('dispatch.grnSheet.rowLabel', { number: formatIdentifier(item.gr_no), date: formatSpokenDate(item.date), customer: item.customer_name })}
+        accessibilityLabel={`${tr('dispatch.grnSheet.rowLabel', { number: String(numberText), date: formatSpokenDate(item.date), customer: item.customer_name })}`}
         accessibilityState={{ selected: isSelected }}
         accessibilityActions={[{ name: 'viewGRN', label: tr('dispatch.grnSheet.viewGrn') }]}
         onAccessibilityAction={(e) => {
@@ -612,7 +613,7 @@ const GRNListItem = memo<GRNListItemProps>(({
         <View style={styles.grnHeader}>
           <View style={styles.grnTitleRow}>
             <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.grnNumber}>{tr('dispatch.grnSheet.grnNumbered', { number: formatIdentifier(item.gr_no) })}</Text>
+            <Text style={styles.grnNumber}>{tr('dispatch.grnSheet.grnNumbered', { number: String(numberText) })}</Text>
           </View>
           {isSelected && (
             <Icon name="check-circle" size={iconSize.lg} color={t.brand.tint} />
@@ -656,7 +657,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   currentValue,
   customerId,
 }) => {
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
   const router = useRouter();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();

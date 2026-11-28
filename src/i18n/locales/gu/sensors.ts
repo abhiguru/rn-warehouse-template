@@ -88,6 +88,7 @@ export const sensors: Translation<typeof source> = {
     savedToast: 'સેન્સર {{name}} સચવાયું.',
     saveLabel: 'સેન્સર સાચવો',
     couldNotSaveTitle: 'સેન્સર સાચવી શકાયું નથી',
+    notConfirmedTitle: 'સેન્સર સચવાયું કે નહીં તેની ખાતરી થઈ શકી નથી',
     couldNotSave: 'સેન્સર સાચવી શકાયું નથી. થોડી વાર પછી ફરી પ્રયાસ કરો.',
     nameRequired: 'નામ લખો.',
     tooLong: 'વધુમાં વધુ {{max}} અક્ષર વાપરો.',

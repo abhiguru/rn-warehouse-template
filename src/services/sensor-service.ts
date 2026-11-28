@@ -15,7 +15,8 @@ import type {
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
 import { rpcBody, rpcRefusal, isAccessRefusal, ACCESS_REFUSED_CODE, type RpcRefusal } from '@/utils/rpcRefusal';
-import { serverText } from '@/utils/serverText';
+import { isLostAnswer, serverText } from '@/utils/serverText';
+import { cancellableBy } from '@/utils/rpcClient';
 
 const sensorLogger = createLogger('SensorService');
 
@@ -34,18 +35,23 @@ function failed(refusal: RpcRefusal, fallback: string): ReportServiceResult<neve
 }
 
 /**
- * One RPC, given up after 30 s. The timer is cleared when the answer comes, so nothing is
- * left counting down behind a screen that only listens for changes.
+ * One RPC, given up after 30 s: the request is then aborted, so a change not yet sent never is (WH-359). The timer is
+ * cleared when the answer comes, so nothing is left counting down behind a screen that only listens for changes.
  */
 async function callRpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message?: string; code?: string } | null }> {
   const client = await getAuthenticatedClient();
+  const attempt = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(t('errors.network.rpcTimedOut30'))), RPC_TIMEOUT_MS);
+    timer = setTimeout(() => {
+      // Rejected first, so the caller hears "timed out" and not the abort it causes.
+      reject(new Error(t('errors.network.rpcTimedOut30')));
+      attempt.abort();
+    }, RPC_TIMEOUT_MS);
   });
   try {
     const startTime = Date.now();
-    const { data, error } = await Promise.race([client.rpc(name, args), timeout]);
+    const { data, error } = await Promise.race([cancellableBy(client.rpc(name, args), attempt.signal), timeout]);
     sensorLogger.debug(`${name} completed in ${Date.now() - startTime}ms`);
     return { data, error };
   } finally {
@@ -131,9 +137,30 @@ export interface SensorUpdateResult {
   success: boolean;
   message?: string;
   code?: string;
+  /** The answer was lost and reading the sensor did not show the change: it may or may not have been saved. */
+  outcomeUnknown?: boolean;
 }
 
 const SAVE_TEXT = { write: true, form: true } as const;
+
+/**
+ * True when the facility now holds everything this save sent. update_sensor_device takes no request key, so the sensor
+ * itself is read to settle a save whose answer was lost. False also when it could not be read.
+ */
+async function holdsUpdate(update: SensorUpdate): Promise<boolean> {
+  const read = await getDevice(update.deviceId);
+  const device = read.success ? read.data?.device : null;
+  if (!device) return false;
+  const limit = (value: number | null | undefined) => value ?? null;
+  return (
+    device.device_name === update.name &&
+    (device.location ?? '') === update.location &&
+    device.staleness_threshold_minutes === update.stalenessMinutes &&
+    (!update.limits ||
+      (limit(device.alert_config?.temperature_min) === update.limits.min &&
+        limit(device.alert_config?.temperature_max) === update.limits.max))
+  );
+}
 
 /** Administrators only (update_sensor_device): the name, place, "no recent data" threshold and limits of one sensor. */
 export async function updateDevice(update: SensorUpdate): Promise<SensorUpdateResult> {
@@ -153,8 +180,11 @@ export async function updateDevice(update: SensorUpdate): Promise<SensorUpdateRe
     const { data, error } = await callRpc('update_sensor_device', args);
     if (error) {
       sensorLogger.error('RPC error:', error);
+      // No answer, or a lost one: asked about before anything is said (WH-359).
+      const lost = isLostAnswer(error);
+      if (lost && (await holdsUpdate(update))) return { success: true };
       const refusal: RpcRefusal = { text: error.message, code: error.code };
-      return { success: false, message: serverText(error, fallback, SAVE_TEXT), code: failureCode(refusal) };
+      return { success: false, message: serverText(error, fallback, SAVE_TEXT), code: failureCode(refusal), ...(lost ? { outcomeUnknown: true } : {}) };
     }
     const refusal = rpcRefusal(data);
     if (refusal) {
@@ -164,6 +194,8 @@ export async function updateDevice(update: SensorUpdate): Promise<SensorUpdateRe
     return { success: true };
   } catch (error) {
     sensorLogger.error('Exception:', error);
-    return { success: false, message: serverText(error, fallback, SAVE_TEXT) };
+    const lost = isLostAnswer(error);
+    if (lost && (await holdsUpdate(update))) return { success: true };
+    return { success: false, message: serverText(error, fallback, SAVE_TEXT), ...(lost ? { outcomeUnknown: true } : {}) };
   }
 }

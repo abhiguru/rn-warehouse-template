@@ -17,6 +17,7 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useAppSelector } from '@/store/hooks';
+import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
@@ -69,6 +70,8 @@ function check(draft: GstDetailsInput): Errors {
 
 export default function GstDetailsScreen() {
   const role = useAppSelector(state => state.auth.userProfile?.role);
+  // Saving needs the server (WH-348, Design 2.5 and DQ1): offline the details show and their fields are disabled.
+  const needsConnection = useNeedsConnectionV3();
   const isFocused = useIsFocused();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -218,7 +221,7 @@ export default function GstDetailsScreen() {
                     autoCorrect={false}
                     helperText={tr('gst.settings.gstinHelp', { example: GSTIN_EXAMPLE })}
                     error={errors.gstin}
-                    editable={!saving}
+                    editable={!saving && !needsConnection}
                     testID="gst-details-gstin"
                   />
                   {gstinState ? (
@@ -242,7 +245,7 @@ export default function GstDetailsScreen() {
                 numberOfLines={3}
                 helperText={tr('gst.settings.addressHelp')}
                 error={errors.address}
-                editable={!saving}
+                editable={!saving && !needsConnection}
                 testID="gst-details-address"
               />
               <Input
@@ -250,7 +253,7 @@ export default function GstDetailsScreen() {
                 value={draft.legalName}
                 onChangeText={text => change({ legalName: text })}
                 maxLength={120}
-                editable={!saving}
+                editable={!saving && !needsConnection}
                 testID="gst-details-legal-name"
               />
                 <>
@@ -263,7 +266,7 @@ export default function GstDetailsScreen() {
                     maxLength={8}
                     helperText={tr('gst.settings.sacHelp')}
                     error={errors.sacStorage}
-                    editable={!saving}
+                    editable={!saving && !needsConnection}
                     testID="gst-details-sac-storage"
                   />
                   <Input
@@ -275,7 +278,7 @@ export default function GstDetailsScreen() {
                     keyboardType="number-pad"
                     maxLength={8}
                     error={errors.sacLabour}
-                    editable={!saving}
+                    editable={!saving && !needsConnection}
                     testID="gst-details-sac-labour"
                   />
                 </>
@@ -292,6 +295,7 @@ export default function GstDetailsScreen() {
           loading={saving}
           disabled={!dirty || saving}
           buttonTestID="gst-details-save"
+          needsConnectionTestID={needsConnection ? 'gst-details-bottom-bar-needs-connection' : undefined}
         />
       ) : null}
       <ConfirmDialog

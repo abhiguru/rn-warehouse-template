@@ -68,10 +68,11 @@ import type { StockGRNMore } from '@/components/reports/StockItemCard';
 import { ITEM_STOCK, itemStockFallbackView } from '@/features/filters/configs/reports/itemStock';
 import { reportById } from '@/features/reports/reportRegistry';
 import { reportPdfSort } from '@/features/reports/reportPdfSort';
-import { exportHeaderActions } from '@/features/reports/reportActions';
+import { changeCustomerAction, exportHeaderActions } from '@/features/reports/reportActions';
 import { useReportExport } from '@/features/reports/useReportExport';
 import { useReportFilters } from '@/features/reports/useReportFilters';
 import { useReportQuery } from '@/features/reports/useReportQuery';
+import { STOCK_REPORT_KINDS } from '@/features/reports/reportCopyKinds';
 import { useReportScope } from '@/features/reports/useReportScope';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
@@ -241,6 +242,7 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
     fallbackError: tr('reports.itemStockSummary.loadError'),
     // A searched list is never shown from the phone, and would push other reports' answers out.
     persist: !searchQuery,
+    copyKinds: STOCK_REPORT_KINDS,
   });
 
   // With a search typed, the figures are those of every item (§14.10): the newest first page without
@@ -289,7 +291,12 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
 
   const more = useReportQuery<ItemPage>({
     key: [...listKey, nextOffset ?? 'none'],
-    fetch: () => askPage(nextOffset ?? 0),
+    fetch: async () => {
+      const answer = await askPage(nextOffset ?? 0);
+      // The pages after the first were answered from somewhere else than the first (phone copy or server): start over.
+      if (answer.copyRestart) void reload(0);
+      return answer;
+    },
     // The footer already says "Couldn't load more items."; this is what to do.
     fallbackError: tr('common.checkConnection'),
     enabled: nextOffset !== null,
@@ -447,7 +454,7 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
   });
   const actions = useMemo<ReportHeaderAction[]>(
     () => [
-      ...(onChangeCustomer ? [{ icon: 'account-switch-outline' as const, label: tr('reports.shared.changeCustomer'), onPress: onChangeCustomer }] : []),
+      ...changeCustomerAction(onChangeCustomer),
       // Left out once the facility's server has said it cannot make report PDFs, and for a server
       // that cannot sort the list (older than migration 52, so without generate-report-pdf too).
       ...(serverSorted ? exportHeaderActions({ exportPdf, busy, available }) : []),
@@ -457,6 +464,7 @@ function ItemStockReport({ customerId, customerName, subtitle, onChangeCustomer 
 
   return (
     <ReportScaffold
+      reportId={REPORT_ID}
       title={tr('reports.titles.itemStockSummary')}
       subtitle={subtitle}
       actions={actions}
@@ -584,9 +592,12 @@ function useItemGRNs(customerId: string | undefined, key: string) {
     [key]
   );
 
-  /** GRN_LIMIT lines of the item from `offset`, or undefined when they could not be read. */
+  /**
+   * GRN_LIMIT lines of the item from `offset`, or undefined when they could not be read. 'restart': the lines are now
+   * answered from somewhere else than the first ones were (phone copy or server), so they are read from the first again.
+   */
   const fetchPage = useCallback(
-    async (itemId: string, offset: number): Promise<GRNPage | undefined> => {
+    async (itemId: string, offset: number): Promise<GRNPage | 'restart' | undefined> => {
       const drillDown = {
         p_filters: { item_ids: [itemId], stock_status: 'in_stock' as const },
         p_limit: GRN_LIMIT,
@@ -594,6 +605,7 @@ function useItemGRNs(customerId: string | undefined, key: string) {
       };
       try {
         const response = customerId ? await getCustomerGRNItems(customerId, drillDown) : await getAllGRNItems(drillDown);
+        if (response.copyRestart) return 'restart';
         const items = response.data?.items;
         if (!response.success || !items) return undefined;
         const pagination = response.data?.pagination;
@@ -620,7 +632,8 @@ function useItemGRNs(customerId: string | undefined, key: string) {
     async (itemId: string) => {
       update(state => ({ ...state, grns: { ...state.grns, [itemId]: { status: 'loading' } } }));
       const page = await fetchPage(itemId, 0);
-      const answer: GRNLoad = page
+      // A first page has no earlier lines to disagree with, so it never answers 'restart'.
+      const answer: GRNLoad = page && page !== 'restart'
         ? {
             status: 'loaded',
             rows: grnRows(page.items, 0),
@@ -652,6 +665,10 @@ function useItemGRNs(customerId: string | undefined, key: string) {
       extend(load => ({ ...load, more: 'loading' }));
       const page = await fetchPage(itemId, offset);
       if (!live.current) return;
+      if (page === 'restart') {
+        void read(itemId);
+        return;
+      }
       if (!page) {
         extend(load => ({ ...load, more: 'failed' }));
         return;
@@ -676,7 +693,7 @@ function useItemGRNs(customerId: string | undefined, key: string) {
         };
       });
     },
-    [drill, fetchPage, update]
+    [drill, fetchPage, read, update]
   );
 
   return useMemo(

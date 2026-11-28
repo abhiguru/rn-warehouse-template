@@ -8,10 +8,10 @@
  * height never changes, so the list below does not jump.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
-import { layout, space, type ThemeTokens } from '@/theme/tokens';
+import { layout, space, typography, type ThemeTokens } from '@/theme/tokens';
 import type { CountableFilterList } from '../configs';
 import { describeDateRange, describeSort, describeValue, financialYearLabel, isFieldActive, isRequiredField, readSearch } from '../filterModel';
 import type { FilterFieldDef } from '../types';
@@ -25,6 +25,8 @@ export interface FilterBarProps {
   filters: ReturnType<typeof useListFilters>;
   /** Open the full "Sort and filter" page. Omit for lists that have none. */
   onOpenAll?: () => void;
+  /** Kept Customer activity offline (WH-305): the period chip shows these dates and is disabled. */
+  periodChip?: { label: string; accessibilityLabel: string };
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -32,6 +34,12 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.header,
     borderBottomWidth: 1,
     borderBottomColor: t.border.separator,
+  },
+  note: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    paddingHorizontal: layout.marginCompact,
+    paddingBottom: space.sm,
   },
   // Each chip is a touch target tall with its pill centred, so the row pads only what
   // the target leaves: the pills still sit `space.sm` from the edges and the bar keeps
@@ -48,7 +56,7 @@ const makeStyles = (t: ThemeTokens) => ({
 
 const opensSheet = (field: FilterFieldDef) => field.kind !== 'toggle';
 
-export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
+export function FilterBar({ config, filters, onOpenAll, periodChip }: FilterBarProps) {
   const styles = useThemedStyles(makeStyles);
   const [open, setOpen] = useState<OpenFilter>(null);
   const { fields, values, sort, activeCount } = filters;
@@ -58,8 +66,11 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
   const active = fields.filter(field => !isRequiredField(field) && isFieldActive(field, values[field.key]));
   const idleFast = config.fastFilters
     .map(key => fields.find(field => field.key === key))
-    .filter((field): field is FilterFieldDef => Boolean(field) && !isRequiredField(field as FilterFieldDef) && !isFieldActive(field as FilterFieldDef, values[(field as FilterFieldDef).key]));
+    .filter((field): field is FilterFieldDef => field !== undefined && !isRequiredField(field) && !isFieldActive(field, values[field.key]));
   const recognised = readSearch(config, values);
+  const unavailable = (field: FilterFieldDef) => field.unavailable?.(filters.ctx);
+  // Said once under the row for a filter that is off; a filter already set is explained by the list in its place.
+  const notes = fields.filter(field => !isFieldActive(field, values[field.key])).flatMap(field => unavailable(field) ?? []);
   const sortText = describeSort(config, sort);
 
   // When filters come or go the chips reorder: show the row from its start, where Filters and Sort are.
@@ -106,28 +117,32 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
                 key={field.key}
                 variant="action"
                 icon={field.icon}
-                label={value}
-                chevron
+                label={periodChip ? periodChip.label : value}
+                chevron={!periodChip}
+                disabled={Boolean(periodChip)}
                 onPress={() => press(field)}
-                accessibilityLabel={translate('filters.bar.activeChip', { label: field.label, value: spokenValue })}
+                accessibilityLabel={periodChip ? periodChip.accessibilityLabel : translate('filters.bar.activeChip', { label: field.label, value: spokenValue })}
               />
             );
           })}
           {active.map(field => {
             const value = describeValue(field, values[field.key]);
             const spokenValue = describeValue(field, values[field.key], true);
+            const off = unavailable(field);
             return (
               <FilterBarChip
                 key={field.key}
                 variant="active"
                 label={value}
+                disabled={Boolean(off)}
                 onPress={() => press(field)}
                 onRemove={() => filters.setField(field.key, undefined)}
                 // A switch has no value to name: "With items, on", not "With items: With items".
                 accessibilityLabel={
-                  opensSheet(field)
+                  off?.spokenLabel ??
+                  (opensSheet(field)
                     ? translate('filters.bar.activeChip', { label: field.label, value: spokenValue })
-                    : translate('filters.bar.toggleOn', { label: field.label })
+                    : translate('filters.bar.toggleOn', { label: field.label }))
                 }
                 removeAccessibilityLabel={
                   opensSheet(field)
@@ -170,21 +185,33 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               removeAccessibilityLabel={translate('filters.bar.removeSearchYear', { year: financialYearLabel(recognised.financialYear) })}
             />
           ) : null}
-          {idleFast.map(field => (
-            <FilterBarChip
-              key={field.key}
-              label={field.label}
-              chevron={opensSheet(field)}
-              onPress={() => press(field)}
-              accessibilityLabel={opensSheet(field) ? translate('filters.bar.filterBy', { label: field.label.toLowerCase() }) : field.label}
-              selected={opensSheet(field) ? undefined : false}
-            />
-          ))}
+          {idleFast.map(field => {
+            const off = unavailable(field);
+            return (
+              <FilterBarChip
+                key={field.key}
+                label={field.label}
+                chevron={opensSheet(field)}
+                onPress={() => press(field)}
+                disabled={Boolean(off)}
+                accessibilityLabel={
+                  off?.spokenLabel ??
+                  (opensSheet(field) ? translate('filters.bar.filterBy', { label: field.label.toLowerCase() }) : field.label)
+                }
+                selected={opensSheet(field) ? undefined : false}
+              />
+            );
+          })}
           {filters.hasAny ? (
             <FilterBarChip variant="text" label={translate('common.clearAll')} onPress={filters.clear} accessibilityLabel={translate('filters.bar.clearAllLabel')} />
           ) : null}
         </View>
       </ScrollView>
+      {notes.map(off => (
+        <Text key={off.testID} style={styles.note} testID={off.testID}>
+          {off.note}
+        </Text>
+      ))}
       <SingleFilterSheet config={config} filters={filters} open={open} onClose={() => setOpen(null)} />
     </View>
   );

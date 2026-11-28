@@ -1,5 +1,14 @@
 /** English text: grn. English is the source; gu may lack a key (the app then shows the English text) but may not add extra keys; CONTRIBUTING.md, "Texts and languages". */
 export const grn = {
+  // The GRN list read from the phone copy (WH-299, Design offline-capture.md 2.6 and 2.10a)
+  offline: {
+    invoicingFilterOff: 'The Invoicing filter works when you reconnect.',
+    invoicingFilterOffLabel: 'Invoicing, works when you reconnect',
+    invoicingWaitTitle: 'Filtering by invoicing needs a connection',
+    invoicingWaitMessage: 'Clear the filter to see GRNs offline.',
+    clearInvoicingFilter: 'Clear Invoicing filter',
+  },
+
   // Wizard step names, by position (src/components/GRNStepIndicator.tsx)
   steps: {
     details: 'GRN details',
@@ -249,6 +258,7 @@ export const grn = {
     fixHighlighted: 'Go back and fix the highlighted fields.',
     photoRequiredTitle: 'Add a photo of the GRN',
     photoRequiredMessage: 'Attach a photo of the GRN book entry for GRN {{number}}.',
+    photoRequiredMessagePending: 'Attach a photo of the GRN book entry.',
     ratesMissingTitle: 'Add the missing rates',
     ratesMissingMessage: 'Add the missing rates before saving.',
     ratesNotLoadedTitle: "The rates couldn't be loaded",
@@ -286,6 +296,9 @@ export const grn = {
     savedAfterLeaving: 'GRN {{number}} was saved before you left the form. Find it in the GRN list.',
     savedAfterLeavingPhotos:
       'GRN {{number}} was saved, but its photos were not uploaded. Open it in the GRN list and add them under Images.',
+    savedAfterLeavingPending: 'The GRN was saved before you left the form. Find it in the GRN list.',
+    savedAfterLeavingPhotosPending:
+      'The GRN was saved, but its photos were not uploaded. Open it in the GRN list and add them under Images.',
     photosNotUploadedMessage: 'GRN {{number}} is saved, but these photos were not uploaded:\n{{photos}}',
     photosNotUploadedMessageNoNumber: 'The GRN is saved, but these photos were not uploaded:\n{{photos}}',
     failedGrnPhoto: 'GRN photo {{position}}',
@@ -322,6 +335,7 @@ export const grn = {
     a11yDispatchedLockedAll: 'already dispatched, quantity, item and packing locked',
     a11yInvoicedLocked: 'on an invoice, quantity, item, packing and weight locked',
     confirmCreateTitle: 'Create GRN {{number}}?',
+    confirmCreateTitlePending: 'Create this GRN?',
     confirmSaveTitle: 'Save changes to GRN {{number}}?',
     confirmCreateMessage: {
       one: '{{count}} item will be received and stock levels updated.',

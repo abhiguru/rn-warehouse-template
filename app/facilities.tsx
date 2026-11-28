@@ -20,9 +20,10 @@ import { Button } from '@/components/ui/Button';
 import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
 import { useAppDispatch } from '@/store/hooks';
 import { signOutPhoneWithMessages } from '@/features/account/useAccountActions';
+import { refuseIfUnsent } from '@/features/unsent/refuseAccountAction';
 import { useCentralState } from '@/hooks/useCentralState';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { setCentralState, type FacilityStatus, type OpenFailureReason } from '@/config/centralState';
+import { getCentralState, setCentralState, type FacilityStatus, type OpenFailureReason } from '@/config/centralState';
 import { fetchCentralProfile, fetchFacilityCatalogue } from '@/config/centralSession';
 import {
   loadMyFacilities,
@@ -126,9 +127,14 @@ export default function FacilitiesScreen() {
     }
     // Not while a sign-out is still finishing: the open would be refused with a dialog nobody asked for.
     if (leaving) return;
-    setCentralState({ autoOpenSpent: true });
-    const sole = soleApprovedFacility(list);
-    if (sole && !opening && !hasOutcome) void openFacility(sole.origin, sole.name);
+    // "Sign in again" (WH-366): the facility it left selected opens this once, whatever else is listed. If that
+    // open fails, the chance is already spent: the list stays, with no second try.
+    const reopen = getCentralState().reopenOrigin;
+    setCentralState({ autoOpenSpent: true, reopenOrigin: null });
+    const target = reopen !== null
+      ? list.find(item => item.origin === reopen && item.status === 'approved' && !item.gone)
+      : soleApprovedFacility(list);
+    if (target && !opening && !hasOutcome) void openFacility(target.origin, target.name);
   }, [list, catalogueChecked, autoOpenSpent, leaving, focused, opening, hasOutcome]);
 
   // The answer of an open. It is held outside this screen, because opening a facility
@@ -177,6 +183,8 @@ export default function FacilitiesScreen() {
   };
 
   const confirmSignOut = () => {
+    // Unsent work of this person on the phone refuses it, with the reason (WH-301, Design 4.3).
+    if (refuseIfUnsent('signOut')) return;
     showAlert(tr('auth.signOut.confirmTitle'), tr('central.signOut.confirmMessage'), [
       { text: tr('common.cancel'), style: 'cancel' },
       {
@@ -226,6 +234,8 @@ export default function FacilitiesScreen() {
           }
           // A tap during the wait is the person's own choice: the automatic open is not for them any more.
           setCentralState({ autoOpenSpent: true });
+          // Opening another facility leaves this one: refused while this person's work is unsent (WH-301, Design 4.3).
+          if (refuseIfUnsent('switchFacility')) return;
           void openFacility(item.origin, item.name);
         }}
         accessibilityRole="button"

@@ -24,6 +24,7 @@ import { getDispatchStatus } from '@/utils/dispatchStatus';
 import type { Dispatch } from '@/services/dispatch-service';
 import { PrintSwipe } from './PrintSwipe';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
+import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -39,6 +40,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { animateExpand } from '@/utils/layoutMotion';
 import { createAppColumnHelper, useAppTable } from '@/components/table/appTable';
 import { DataTable } from '@/components/table/DataTable';
+import { markerText, UnsentFootnote, useUnsentOverlay } from '@/features/unsent/UnsentMarkers';
 import {
   CUT_LINE,
   crowded,
@@ -471,6 +473,9 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     onToggle?.(dispatchId);
   }, [reduceMotion, onToggle, dispatchId]);
 
+  // A change of this dispatch that this phone has not sent (WH-301, Design 2.2).
+  const unsentMarker = useUnsentOverlay().marker('dispatch', String(dispatchId));
+
   // One combined label for the row (guide §11.3)
   const accessibilityDescription = [
     translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) }),
@@ -481,9 +486,12 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     formatSpokenDate(dispatch.disp_date),
     statusConfig.label,
     matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
+    unsentMarker === null ? null : markerText(unsentMarker),
   ].filter(Boolean).join(', ');
 
   const printable = canPrint && !!onPrint;
+  // Print goes to the server's printer: with no connection it is disabled and says why (WH-299, Design 2.5).
+  const needsConnection = useNeedsConnection();
   const printTitle = translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) });
   const printLabel = translate('lists.dispatch.printLabel', { title: printTitle });
 
@@ -495,8 +503,10 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
         accessibilityRole="button"
         accessibilityLabel={accessibilityDescription}
         accessibilityHint={translate(printable ? 'lists.dispatch.openHintActions' : 'lists.dispatch.openHint')}
-        accessibilityActions={printable ? [{ name: 'print', label: translate('common.print') }] : undefined}
-        onAccessibilityAction={printable ? () => onPrint?.(dispatch) : undefined}
+        accessibilityActions={
+          printable ? [{ name: 'print', label: needsConnection ? needsConnectionLabel(printLabel) : printLabel }] : undefined
+        }
+        onAccessibilityAction={printable ? () => { if (!needsConnection) onPrint?.(dispatch); } : undefined}
       >
         <View style={styles.objectCellRow}>
           {/* Object icon (left) */}
@@ -548,6 +558,8 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
         </View>
       )}
 
+      <UnsentFootnote marker={unsentMarker} testID={`dispatch-row-unsent-${dispatchId}`} />
+
       {/* Expand/Collapse Button */}
       {hasItems && (
         <Pressable
@@ -574,7 +586,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   if (!printable) return card;
   return (
     // One swipe state per dispatch: FlashList reuses this cell for another dispatch, which must not appear already swiped open.
-    <PrintSwipe key={String(dispatchId)} onPrint={() => onPrint?.(dispatch)} label={printLabel} cardMargin={space.sm}>
+    <PrintSwipe key={String(dispatchId)} onPrint={() => onPrint?.(dispatch)} label={printLabel} cardMargin={space.sm} needsConnection={needsConnection}>
       {card}
     </PrintSwipe>
   );
