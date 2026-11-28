@@ -91,7 +91,10 @@ interface CatchupMark {
 }
 /** A reload kept as a step of the staged catch-up; its rows are in stage_rows until the last page arrives. */
 interface ReloadStep {
+  /** What this step still reapplies (a later reload of an entity takes it out of here). */
   entities: EntityName[];
+  /** Everything the reload covered; a whole reload's entity list in meta comes from here. */
+  all?: EntityName[];
   whole: boolean;
   copy?: string;
   format?: number;
@@ -359,7 +362,10 @@ async function firstLoad(run: Run): Promise<void> {
 
 async function runReload(run: Run, pending: PendingReload): Promise<void> {
   publish({ running: 'reload' });
-  const copy = pending.whole ? pending.copy : await meta(run.db, 'copy');
+  // A staged whole reload may have brought a new copy id that the copy's own meta does not hold until the catch-up ends.
+  const copy = pending.whole
+    ? pending.copy
+    : parseJson<CatchupMark>(await meta(run.db, 'catchup'))?.copy ?? (await meta(run.db, 'copy'));
   let cursor = pending.cursor;
   while (cursor) {
     const page = await getSyncPage(cursor.entity, cursor.after, run.stop);
@@ -377,7 +383,9 @@ async function runReload(run: Run, pending: PendingReload): Promise<void> {
   }
   // The reload is not applied here: it is a step of the catch-up that follows, applied with the rest in one transaction (WH-409).
   await write(run, async tx => {
-    const step: ReloadStep = { entities: pending.entities, whole: pending.whole, copy: pending.copy, format: pending.format };
+    const step: ReloadStep = {
+      entities: pending.entities, all: pending.entities, whole: pending.whole, copy: pending.copy, format: pending.format,
+    };
     await tx.run('INSERT INTO stage_changes (kind, body) VALUES (?, ?)', ['reload', JSON.stringify(step)]);
     const before = parseJson<CatchupMark>(await meta(tx, 'catchup'));
     const mark: CatchupMark = {
@@ -477,7 +485,7 @@ async function finishCatchUp(run: Run, page: SyncChanges, staged: boolean, loadD
           await setMeta(tx, 'format', String(reload.format));
           whole.format = reload.format;
         }
-        await setMeta(tx, 'entities', JSON.stringify(reload.entities));
+        await setMeta(tx, 'entities', JSON.stringify(reload.all ?? reload.entities));
       }
     }
     for (const entity of await applyChanges(tx, page.changes, true)) touched.add(entity);
