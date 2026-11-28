@@ -833,6 +833,13 @@ export async function stopPhoneCopy(): Promise<void> {
   setCurrent(false);
 }
 
+/** Restarts the copy after an erase while PhoneCopyLifecycle stayed mounted (e.g. a change of copy role kind; WH-388). */
+export async function resumePhoneCopyIfScheduled(): Promise<void> {
+  if (!engine.schedule || !engine.foreground || engine.halted || engine.started) return;
+  await startPhoneCopy();
+  if (engine.schedule && engine.foreground && !engine.halted && engine.started) await syncNow('open');
+}
+
 /** Runs a sync now, or after the one in progress (single flight). */
 export async function syncNow(trigger: SyncTrigger): Promise<SyncOutcome> {
   if (!engine.started || engine.halted) return 'stopped';
