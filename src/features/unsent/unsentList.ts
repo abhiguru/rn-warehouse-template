@@ -45,6 +45,9 @@ export interface UnsentListRow {
   notPassedOnReason?: string;
   /** The record a tap opens, when it exists. */
   target: { grnId?: string };
+  /** The item's kind and the item it depends on, for the count of entries (a rows of the copy or a form has neither). */
+  kind?: string;
+  dependsOn?: string | null;
 }
 
 export interface UnsentListState {
@@ -157,6 +160,8 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
       reason: passing ? passing.reason : view.section === 'held' ? heldReason(view.reason, view.result, view) : null,
       ...(passing?.tag === 'notPassedOn' ? { notPassedOnReason: reasonTagOf(view.result) } : {}),
       target: view.section === 'sent' ? sentTargetOf(view.target, view.result) : view.target,
+      kind: view.kind,
+      dependsOn: view.dependsOn,
     });
   }
   // "Not sent yet" oldest first (the order they are sent); "Held": each refused item with what follows it directly under

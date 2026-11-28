@@ -67,7 +67,7 @@ export const ownUnsentRows = (): ItemRow[] =>
  * How many entries the person sees: a photos item waiting for its record counts with the record, once (WH-161). The one count the
  * bar, the 2-hour gate and the sign-out refusal all show and compare.
  */
-export const countEntries = (rows: readonly ItemRow[]): number =>
+export const countEntries = (rows: readonly Pick<ItemRow, 'id' | 'kind' | 'depends_on'>[]): number =>
   rows.filter(row => !(row.kind === 'photos' && row.depends_on !== null && rows.some(other => other.id === row.depends_on))).length;
 
 /**
