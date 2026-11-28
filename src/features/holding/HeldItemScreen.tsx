@@ -40,7 +40,7 @@ import { decideHeldItem, getHeldItem, type HeldCurrent, type HeldItemDetail, typ
 import { describeReason } from './heldReason';
 import { heldCopyRows, markHeldSeen } from './heldRows';
 import { heldFieldLabel, heldWhatText } from './heldWhat';
-import { lineGroups, removedLinesNow, type ServerLine } from './heldEditLines';
+import { lineGroups, newGrnLines, removedLinesNow, type ServerLine } from './heldEditLines';
 import { isGrnEditBody } from '@/features/grn/offline-edit/grnEditChanges';
 import { HeldPhotos } from './HeldPhotos';
 
@@ -139,6 +139,7 @@ function recordLines(row: Pick<HeldListRow, 'kind' | 'reasonData'>, body: unknow
       return name ? [`${name} ${formatNumber(line.disp_qty)}`] : [];
     });
   }
+  if (row.kind === 'newGrn') return newGrnLines(body);
   if (row.kind === 'grnEdit') return editLines(body);
   if (row.kind === 'lotChange' && isFields(body.changes)) {
     return Object.entries(body.changes).flatMap(([field, change]) => {

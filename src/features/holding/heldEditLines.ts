@@ -6,6 +6,7 @@
 import { t as tr } from '@/i18n';
 import { formatQuantity } from '@/utils/formatters';
 import { displayPackaging } from '@/utils/packagingWord';
+import { heldFieldLabel } from './heldWhat';
 
 type Fields = Record<string, unknown>;
 const isFields = (value: unknown): value is Fields => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -35,6 +36,26 @@ function rowText(item: string, mark: string | null, quantity: string): string {
 }
 
 const listOf = (value: unknown): Fields[] => (Array.isArray(value) ? (value as unknown[]).filter(isFields) : []);
+
+/**
+ * The lines of a held new GRN (Design 7.3 item 3): one row per line, "{{item}}, {{mark}}, {{quantity}}" with the mark only when it
+ * has one, and the rack after it when it has one ("Rack D-4", the label the form uses).
+ */
+export function newGrnLines(body: unknown): string[] {
+  if (!isFields(body) || !isFields(body.args) || !Array.isArray(body.args.p_items)) return [];
+  const shown = isFields(body.show) && Array.isArray(body.show.lines) ? (body.show.lines as unknown[]) : [];
+  return (body.args.p_items as unknown[]).flatMap((raw, index) => {
+    if (!isFields(raw)) return [];
+    const show = shown[index];
+    const showLine = isFields(show) ? show : {};
+    const item = textOf(showLine.itemName) ?? textOf(raw.item_name);
+    if (item === null) return [];
+    const packaging = textOf(showLine.packaging) ?? textOf(raw.packaging);
+    const rack = textOf(raw.rack);
+    const row = rowText(item, textOf(raw.package_mark), quantityText(raw.qty, packaging));
+    return [rack === null ? row : `${row}, ${heldFieldLabel('rack')} ${rack}`];
+  });
+}
 
 /** The groups of a held edit's body: lines added, then lines removed, each only when it has lines. `server` finds a removed line's packaging and mark. */
 export function lineGroups(body: unknown, server: readonly ServerLine[] | null): LineGroup[] {
