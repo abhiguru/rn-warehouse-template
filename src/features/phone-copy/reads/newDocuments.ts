@@ -24,18 +24,17 @@ export type HeldBySync = ReadonlySet<string>;
 const NONE_HELD: HeldBySync = new Set();
 
 /**
- * The sent new GRNs whose record the copy already has: matched by the server's id first, by the number as a fallback.
- * Until a sync run ends after the send the overlay still lists such a GRN, so the list would show it twice (WH-404).
+ * The sent new GRNs whose record the copy already has, matched by the server's id only: a GRN number can repeat across
+ * financial years, so a number never matches. A sent save always answers its id (a success without grn_id is "lost", not
+ * "sent"); a sent row with no id is not held and shows once until the sync clears it (WH-404).
  */
 export async function sentHeldByCopy(q: CopyReader): Promise<HeldBySync> {
   const sent = documentsOf().filter(doc => doc.state === 'sent');
   if (sent.length === 0) return NONE_HELD;
   const held = new Set<string>();
   for (const doc of sent) {
-    const id = typeof doc.serverId === 'string' && doc.serverId !== '' ? doc.serverId : null;
-    const number = typeof doc.number === 'string' && doc.number !== '' ? doc.number : null;
-    const byId = id === null ? null : await q.get<{ id: string }>('SELECT id FROM goodsreceived WHERE id = ?', [id]);
-    const found = byId ?? (number === null ? null : await q.get<{ id: string }>('SELECT id FROM goodsreceived WHERE gr_no = ?', [number]));
+    if (typeof doc.serverId !== 'string' || doc.serverId === '') continue;
+    const found = await q.get<{ id: string }>('SELECT id FROM goodsreceived WHERE id = ?', [doc.serverId]);
     if (found) held.add(String(doc.localId));
   }
   return held;
