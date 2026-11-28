@@ -52,7 +52,14 @@ const states = async () => (await rawRows<{ state: string; request_key: string }
 const gate = <T>() => { let release!: (v: T) => void; const promise = new Promise<T>(resolve => { release = resolve; }); return { promise, release }; };
 
 beforeEach(() => { jest.useFakeTimers({ now: new Date('2026-11-26T09:00:00+05:30') }); resetEnv(); files.reset(); server.reset(); });
-afterEach(async () => { jest.useRealTimers(); await eraseEverything(); });
+afterEach(async () => {
+  // A retry still armed when the test ends must not fire after the file is torn down: end the pass, reset the session, drop the timers.
+  await jest.advanceTimersByTimeAsync(50);
+  await eraseEverything();
+  await jest.advanceTimersByTimeAsync(50);
+  jest.clearAllTimers();
+  jest.useRealTimers();
+});
 
 describe('Q1, Q2: the order', () => {
   it('sends records in the order they were saved, even when the phone clock was set back between the saves', async () => {
@@ -443,5 +450,93 @@ describe('a photo that could not be sent now', () => {
     expect(calls).toBe(1);
     await advance(5000);
     expect(calls).toBe(2);
+  });
+});
+
+describe('WH-301 retry: a retry belongs to the session that armed it (d845cb1b)', () => {
+  const sessionChange = () => (require('@/config/sessionLifecycle') as typeof import('@/config/sessionLifecycle')).advanceSessionGeneration();
+  /** Records the callbacks of the engine's own retry timers, so a timer that was already due can be run by hand. */
+  const watchTimers = () => {
+    const armed: { wait: number; run: () => void }[] = [];
+    const real = global.setTimeout;
+    jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void, wait?: number, ...rest: unknown[]) => {
+      if (wait !== undefined && [5000, 15000, 30000, 60000].includes(wait)) armed.push({ wait, run: fn });
+      return real(fn, wait, ...rest);
+    }) as typeof setTimeout);
+    return armed;
+  };
+
+  it('(a) a transient pass that ends after a session change arms no retry', async () => {
+    const phone = await start();
+    const hold = gate<RpcAnswer>();
+    server.answers[SAVE] = () => hold.promise;
+    await phone.queue.enqueue(input(1));
+    await advance(100);
+    expect(saves()).toHaveLength(1);
+    sessionChange();
+    hold.release(NO_NETWORK);
+    await advance(100);
+    await advance(120_000);
+    expect(saves()).toHaveLength(1);
+  });
+
+  it('(b) a session change clears a pending retry and starts the back-off again', async () => {
+    const phone = await start();
+    server.answers[SAVE] = () => NO_NETWORK;
+    await phone.queue.enqueue(input(1));
+    await advance(100);
+    expect(saves()).toHaveLength(1);
+    await advance(5000); // first retry (5 s); the next wait is now 15 s
+    expect(saves()).toHaveLength(2);
+    sessionChange();
+    await advance(60_000); // the pending 15 s retry of the old session never sends
+    expect(saves()).toHaveLength(2);
+    await phone.engine.sendNow('send-now'); // a new pass in the new session fails again: its wait is the first step, 5 s
+    expect(saves()).toHaveLength(3);
+    await advance(4900);
+    expect(saves()).toHaveLength(3);
+    await advance(100);
+    expect(saves()).toHaveLength(4);
+  });
+
+  it('(c) a retry timer that is already due does not send once the session has changed', async () => {
+    const armed = watchTimers();
+    const phone = await start();
+    server.answers[SAVE] = () => NO_NETWORK;
+    await phone.queue.enqueue(input(1));
+    await advance(100);
+    expect(saves()).toHaveLength(1);
+    const due = armed.find(timer => timer.wait === 5000)!;
+    expect(due).toBeDefined();
+    sessionChange();
+    due.run();
+    await advance(100);
+    expect(saves()).toHaveLength(1);
+  });
+
+  it('(d) in one session the waits grow 5, 15, 30, 60 s and start again after a clean pass', async () => {
+    const phone = await start();
+    server.answers[SAVE] = () => NO_NETWORK;
+    await phone.queue.enqueue(input(1));
+    await advance(500);
+    let expected = 1;
+    // The clock stays 500 ms past each retry, so every step is checked 500 ms before and 500 ms after it is due.
+    for (const wait of [5000, 15000, 30000, 60000, 60000]) {
+      await advance(wait - 1000);
+      expect(saves()).toHaveLength(expected);
+      await advance(1000);
+      expected += 1;
+      expect(saves()).toHaveLength(expected);
+    }
+    server.answers[SAVE] = () => ok('GRN 1');
+    await advance(60_000);
+    expect(await states()).toEqual(['sent']);
+    expected = saves().length;
+    server.answers[SAVE] = () => NO_NETWORK;
+    await phone.queue.enqueue(input(2));
+    await advance(100);
+    expect(saves()).toHaveLength(expected + 1);
+    await advance(5000); // back to the first step
+    expect(saves()).toHaveLength(expected + 2);
   });
 });
