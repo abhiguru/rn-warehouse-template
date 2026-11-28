@@ -182,7 +182,13 @@ async function apply(row: ItemRow, outcome: SendOutcome, before: ItemRow): Promi
     case 'transient':
     case 'stop':
       // The request never ran: back to what it was, and mergeable again if it had not been tried.
-      await updateItem(row.id, { state: before.state, attempts: before.attempts, first_sent_at: before.first_sent_at, last_sent_at: before.last_sent_at });
+      // A resend of a lost answer (`before` is already `sending`) keeps its new time: the next question waits from it (WH-413).
+      await updateItem(row.id, {
+        state: before.state,
+        attempts: before.attempts,
+        first_sent_at: before.first_sent_at,
+        ...(before.state === 'sending' ? {} : { last_sent_at: before.last_sent_at }),
+      });
       return;
     case 'lost':
       return;
