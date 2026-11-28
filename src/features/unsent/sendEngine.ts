@@ -335,12 +335,35 @@ async function recordLane(pass: Pass): Promise<void> {
   }
 }
 
+/** Drops a waiting retry and its back-off: a retry belongs to the session that armed it. */
+function clearRetry(): void {
+  if (engine.retryTimer) {
+    clearTimeout(engine.retryTimer);
+    engine.retryTimer = null;
+  }
+  engine.retryStep = 0;
+}
+
+/** Arms a retry for the session `abort` belongs to; the timer looks again at that session before it sends. */
+function armRetry(abort: AbortController, wait: number): void {
+  const timer = setTimeout(() => {
+    if (engine.retryTimer === timer) engine.retryTimer = null;
+    if (engine.abort !== abort || abort.signal.aborted) return;
+    void sendNow('retry-timer');
+  }, wait);
+  // Under Node (tests) a waiting retry must not keep the process alive.
+  (timer as { unref?: () => void }).unref?.();
+  engine.retryTimer = timer;
+}
+
 /** True when the pass ended clean: a trigger that arrived meanwhile may be answered with one more look. */
 async function onePass(): Promise<boolean> {
   if (engine.retryTimer) {
     clearTimeout(engine.retryTimer);
     engine.retryTimer = null;
   }
+  // The session this pass starts in: a session change replaces `engine.abort`, so a pass that ended in another one arms nothing.
+  const sessionAbort = engine.abort;
   if (isCopyOffline() || cannotSendUnsent()) return false;
   const scope = await getSessionCacheScope();
   if (!scope) return false;
@@ -358,19 +381,16 @@ async function onePass(): Promise<boolean> {
   await pumpPhotos(pass);
   while (pass.tasks.size > 0) await Promise.all([...pass.tasks]);
   if (!pass.transient && !pass.stop) await handOver(pass);
+  const sameSession = engine.abort === sessionAbort && !sessionAbort.signal.aborted;
+  if (!sameSession) return false;
   if (pass.deferMs !== null && !pass.transient && !pass.stop) {
     // A form is still waiting for its record's answer: look again when that wait is over.
-    const timer = setTimeout(() => void sendNow('retry-timer'), pass.deferMs + 50);
-    (timer as { unref?: () => void }).unref?.();
-    engine.retryTimer = timer;
+    armRetry(sessionAbort, pass.deferMs + 50);
   }
   if (pass.transient && !pass.stop) {
     const wait = ROLE_RECHECK_BACKOFF_MS[Math.min(engine.retryStep, ROLE_RECHECK_BACKOFF_MS.length - 1)];
     engine.retryStep += 1;
-    const timer = setTimeout(() => void sendNow('retry-timer'), wait);
-    // Under Node (tests) a waiting retry must not keep the process alive.
-    (timer as { unref?: () => void }).unref?.();
-    engine.retryTimer = timer;
+    armRetry(sessionAbort, wait);
   } else {
     engine.retryStep = 0;
   }
@@ -392,6 +412,7 @@ const tellSending = (): void => {
   for (const listener of [...sendingListeners]) listener();
 };
 registerSessionScoped('unsent-sending-flag', () => {
+  clearRetry();
   sendingShown = false;
   tellSending();
 });
@@ -442,6 +463,7 @@ export function startSendEngine(): void {
   });
   subscribeSyncRunEnd(() => void sendNow('sync'));
   onSessionChange(() => {
+    clearRetry();
     engine.abort.abort();
     engine.abort = new AbortController();
   });
