@@ -363,8 +363,8 @@ const GRNCardFiori = memo<GRNCardProps>(({
     ? translate('lists.grn.matchingItems', { count: group.items.length })
     : formatCount(group.items.length, 'item');
   const filteredNote = linesHidden ? translate('lists.grn.filteredNote') : null;
-  // A GRN made on this phone that has no number yet says so (WH-161, Design 10.3).
-  const title = group.grNo.trim() === '' && overlay.newDocuments('grn').some(doc => doc.localId === group.grnId) ? translate('offline.offlineNew.heroNumberPending') : grnTitle(group.grNo);
+  // A GRN made on this phone that has no number yet is a "New GRN", as in the title bar (WH-161, Design).
+  const title = group.grNo.trim() === '' && overlay.newDocuments('grn').some(doc => doc.localId === group.grnId) ? translate('offline.unsent.whatNewGrn') : grnTitle(group.grNo);
 
   // The same actions for the swipe and for a screen reader (style guide 13.6).
   const actions = [
