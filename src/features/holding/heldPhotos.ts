@@ -116,7 +116,10 @@ async function reportMissing(heldId: string, photo: PhotoRow, reason: MissingRea
     p_line_ref: photo.line_ref,
     p_reason: reason,
   }, options);
-  if (reply.kind === 'ok') return 'missing';
+  if (reply.kind === 'ok') {
+    options?.onWrite?.();
+    return 'missing';
+  }
   if (reply.kind === 'code') return reply.code === 'HELD_ALREADY_DECIDED' ? 'decided' : 'transient';
   return reply.kind;
 }
@@ -188,15 +191,34 @@ export async function sendHeldPhotos(
       let settled = true;
       let decided = false;
       for (const photo of await photosOf(row.id)) {
-        if (photo.done === 1 || photo.missing === 1) continue;
+        if (photo.done === 1) continue;
+        if (photo.missing === 1) {
+          // Marked missing by the send engine before the hand-over (WH-385): the server is told once, so the accepted GRN counts it.
+          if (photo.report_queued === 1) continue;
+          const told = await reportMissing(row.held_id, photo, 'file_missing', options);
+          if (told === 'missing') await markPhoto(row.id, photo.client_photo_id, { report_queued: 1 });
+          else if (told === 'decided') {
+            decided = true;
+            break;
+          } else {
+            settled = false;
+            if (told === 'transient') result.transient = true;
+            if (told === 'stop') {
+              result.stop = true;
+              break;
+            }
+          }
+          continue;
+        }
         let end = await sendOne(row.held_id, photo, options);
         if (end === 'blocked' && blockedForGood(row.held_id, photo)) end = 'not_yours';
         if (end === 'invalid' || end === 'file_missing' || end === 'not_yours' || end === 'line_gone' || end === 'document_gone') {
           end = await reportMissing(row.held_id, photo, end, options);
         }
-        if (end === 'done' || end === 'missing') options?.onWrite?.();
+        // A report the server took is told in `reportMissing`.
+        if (end === 'done') options?.onWrite?.();
         if (end === 'done') await markPhoto(row.id, photo.client_photo_id, { done: 1 });
-        else if (end === 'missing') await markPhoto(row.id, photo.client_photo_id, { missing: 1 });
+        else if (end === 'missing') await markPhoto(row.id, photo.client_photo_id, { missing: 1, report_queued: 1 });
         else if (end === 'decided') {
           decided = true;
           break;
