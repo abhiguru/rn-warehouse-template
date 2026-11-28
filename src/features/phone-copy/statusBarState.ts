@@ -12,6 +12,8 @@ export interface UnsentSummary {
   limitReached: boolean;
   /** The unsent file could not be read (Design 4.6): no count, critical. */
   unreadable?: boolean;
+  /** Whether waiting own unsent items were last known for this scope (WH-396). */
+  knownWaiting?: boolean;
   /** Own items kept but not sendable (role lowered, account deactivated): information only (Design 4.9). */
   waitingForAdmin?: number;
   /** Own items the server holds or rejected and the person has not opened (WH-304, Design 7.9 DQ6); line 2 says so when nothing is unsent. */
@@ -90,7 +92,10 @@ export function deriveUnsentLine(
   featureOff: { sending: boolean } | null
 ): StatusBarView['line2'] {
   if (unsent === null) return null;
-  if (unsent.unreadable === true) return { key: 'unsentUnreadable', count: 0 };
+  if (unsent.unreadable === true) {
+    if (featureOff && unsent.knownWaiting !== true) return null;
+    return { key: 'unsentUnreadable', count: 0 };
+  }
   if ((unsent.waitingForAdmin ?? 0) > 0) return { key: 'waitingForAdmin', count: unsent.waitingForAdmin ?? 0 };
   if (unsent.count > 0) {
     if (featureOff) {

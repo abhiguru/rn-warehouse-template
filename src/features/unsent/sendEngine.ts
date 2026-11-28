@@ -21,7 +21,8 @@ import { handOverRefused } from '@/features/holding/handOver';
 import { answerCodeOf } from './refusalAnswer';
 import { getSendKind, type SendContext, type SendKind, type SendOutcome } from './sendKinds';
 import { takeWriteSeenWhileQuiet, withoutWriteNote } from '@/config/facilityWrite';
-import { getUnsentDb } from './unsentDb';
+import { hasCapability } from '@/config/facilityCapabilities';
+import { getUnsentDb, unsentFileExists } from './unsentDb';
 import { cannotSendUnsent } from './unsentRole';
 import {
   itemById,
@@ -380,6 +381,7 @@ async function onePass(): Promise<boolean | 'session-changed'> {
   // The session this pass starts in: a session change replaces `engine.abort`, so a pass that ended in another one arms nothing.
   const sessionAbort = engine.abort;
   if (isCopyOffline() || cannotSendUnsent()) return false;
+  if (!hasCapability('sync') && unsentFileExists() === false) return false;
   const scope = await getSessionCacheScope();
   if (!scope) return false;
   try {
