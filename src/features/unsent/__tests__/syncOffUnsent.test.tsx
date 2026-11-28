@@ -14,7 +14,7 @@
 import { env, eraseEverything, resetEnv, setForeground, setReachable } from '@/tests/phoneCopy/phoneEnv';
 import { fakeDatabaseNames } from '@/tests/phoneCopy/fakeExpoSqlite';
 import { files } from '@/tests/phoneCopy/fakeFiles';
-import { bootUnsent, NO_NETWORK, server } from '@/tests/unsent/unsentPhone';
+import { bootUnsent, NO_NETWORK, rawRows, server } from '@/tests/unsent/unsentPhone';
 import { bootNewRecords, grnPayload, grnSaved } from '@/tests/unsent/newRecordPhone';
 
 const SAVE = 'save_grn';
@@ -104,6 +104,9 @@ describe('feature off, own unsent GRN work on the phone', () => {
 
     // The phone has told the app nothing about its network yet, so one send is tried; the server cannot be reached, the item stays.
     expect(await itemStates(phone)).toEqual(['saved']);
+    // The one attempt made before the phone's network state was heard did not count: the item is untried and can still be merged into.
+    expect((await rawRows<{ state: string; attempts: number }>('items')).map(r => [r.state, r.attempts])).toEqual([['saved', 0]]);
+    expect(await phone.queue.mergeInto((await phone.queue.listItems())[0].id, body => body)).toBe(true);
     expect(phone.store.getUnsentSummary()).toMatchObject({ count: 1, unreadable: false });
     const { loadUnsentList } = require('@/features/unsent/unsentList') as typeof import('@/features/unsent/unsentList');
     const list = await loadUnsentList();
