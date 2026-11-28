@@ -73,7 +73,7 @@ export function ReplacedStrip({ entries, canMarkChecked, needsConnection, onMark
           ) : null}
         </View>
         {canMarkChecked && needsConnection ? (
-          <NeedsConnectionLine testID="grn-details-replaced-mark-checked-needs-connection" text={tr('components.offlineRead.needsConnection')} />
+          <NeedsConnectionLine insetTo="button" testID="grn-details-replaced-mark-checked-needs-connection" text={tr('components.offlineRead.needsConnection')} />
         ) : null}
       </InlineValidation>
     </View>

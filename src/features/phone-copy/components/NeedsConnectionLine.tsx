@@ -13,6 +13,8 @@ const makeStyles = (t: ThemeTokens) => ({
   row: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm, paddingVertical: space.xs },
   text: { ...typography.footnote, color: t.text.secondary, flexShrink: 1 },
   inset: { paddingHorizontal: layout.marginCompact },
+  // A Button's own side padding (Button container, space.lg): the line starts where the button's text starts.
+  insetToButton: { paddingLeft: space.lg },
 });
 
 interface Props {
@@ -22,13 +24,16 @@ interface Props {
   icon?: boolean;
   /** The line stands on its own at the screen's edge (a list's footnote): it takes the screen's side margin. Inside a padded section it stays off. */
   inset?: boolean;
+  /** The line stands under a left-aligned Button: it starts at that button's text ("button"). Off by default; wins over `inset`. */
+  insetTo?: 'button';
 }
 
-export const NeedsConnectionLine: React.FC<Props> = ({ testID, text, icon = false, inset = false }) => {
+export const NeedsConnectionLine: React.FC<Props> = ({ testID, text, icon = false, inset = false, insetTo }) => {
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
+  const rowStyle = insetTo === 'button' ? [styles.row, styles.insetToButton] : inset ? [styles.row, styles.inset] : styles.row;
   return (
-    <View style={inset ? [styles.row, styles.inset] : styles.row} testID={testID}>
+    <View style={rowStyle} testID={testID}>
       {icon ? <Icon name="cloud-off-outline" size={iconSize.sm} color={tokens.icon.secondary} importantForAccessibility="no" /> : null}
       <Text style={styles.text} maxFontSizeMultiplier={1.6}>
         {text}
