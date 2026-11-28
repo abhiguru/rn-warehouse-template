@@ -33,7 +33,17 @@ const entries = (count: number): RpcGrnReplacement[] => Array.from({ length: cou
 
 const props = { canMarkChecked: true, needsConnection: false, onMarkChecked: jest.fn() };
 
+// The fixture's entries are of 27 Nov 2026: today is fixed to that day (only the clock is faked), so a time reads without its
+// date, as the app says it for today.
+beforeEach(() => {
+  jest.useFakeTimers({
+    now: new Date('2026-11-27T12:00:00+05:30'),
+    doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'requestIdleCallback', 'cancelIdleCallback', 'performance', 'hrtime'],
+  });
+});
+
 afterEach(() => {
+  jest.useRealTimers();
   jest.clearAllMocks();
   setLanguage('en');
 });
