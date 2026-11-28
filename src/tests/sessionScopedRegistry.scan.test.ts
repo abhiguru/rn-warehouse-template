@@ -156,6 +156,9 @@ const ALLOWED: Record<string, { why: string; clearedBy?: readonly string[] }> = 
   'src/config/lanKey.ts': {
     why: "held: the warehouse network key of the session (WH-133); forgetLanKey is called by clearStoredTokensRaw in supabaseConfig.ts, which every sign-out and server switch goes through, and the stored copy is deleted with the session's other keys",
   },
+  'src/features/users/phoneDisplayName.ts': {
+    why: "markInFlight: the read-or-create of the per-install mark (key install_mark_v1, WH-410), shared so concurrent callers get one id; not session or facility data, reset nowhere",
+  },
   'src/config/lanPhotos.ts': {
     why: "settled: photo links already written to a cache file on the warehouse network (WH-133); emptied, with the files, by sweepLanPhotos, which src/store/sessionScopedState.ts registers as 'lan-photos'", clearedBy: ["sweepLanPhotos"],
   },

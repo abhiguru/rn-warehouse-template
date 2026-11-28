@@ -56,7 +56,9 @@ async function phoneWith(...saves: ReturnType<typeof record>[]) {
 
 describe('S1: what is saved is still there', () => {
   it('after the app is killed and opened again, the item is listed with its request key and its place in the order', async () => {
-    const { made } = await phoneWith(record(), record('Dispatch for Bina Fictional Stores'));
+    const { phone, made } = await phoneWith(record(), record('Dispatch for Bina Fictional Stores'));
+    // The pass the saves started has ended (its transient answer put the item back) before the app is closed.
+    await phone.engine.sendNow('send-now');
     const next = await restart();
     next.kinds.registerSendKind('testRecord', { lane: 'record', send: async () => ({ kind: 'transient' }) });
     const items = await next.queue.listItems();

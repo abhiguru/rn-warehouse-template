@@ -160,6 +160,8 @@ describe('the places the host is rewritten', () => {
         "app/reports/statement.tsx: const query = useLiveReport('', fetch, tr(''));",
         'app/reports/temperature-report.tsx: const fetch = useCallback(', // a callback named fetch (calls getReportSensors, or resolves empty while offline)
         'app/reports/temperature-report.tsx: fetch,',
+        // a pattern that recognises a network library's user agent ("node-fetch"), not a call (WH-304)
+        'src/features/holding/holdingApi.ts: const LOOKS_LIKE_USER_AGENT = /^(okhttp|Dalvik|Mozilla|CFNetwork|Darwin|Expo|axios|node-fetch|undici)\\b/i;',
         'src/features/reports/useLiveReport.ts: const fetchRef = useRef(fetch);',
         'src/features/reports/useLiveReport.ts: fetchRef.current = fetch;',
         'src/features/reports/useReportQuery.ts: fetch,', // the callback named fetch, destructured
