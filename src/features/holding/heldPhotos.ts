@@ -120,7 +120,14 @@ async function reportMissing(heldId: string, photo: PhotoRow, reason: MissingRea
     options?.onWrite?.();
     return 'missing';
   }
-  if (reply.kind === 'code') return reply.code === 'HELD_ALREADY_DECIDED' ? 'decided' : 'transient';
+  if (reply.kind === 'code') {
+    if (reply.code === 'HELD_ALREADY_DECIDED') return 'decided';
+    // Not this person's: asked again until one full sync run has ended (PQ11(b)), then given up like any refusal.
+    if (reply.code === 'HELD_PHOTO_NOT_YOURS' && !blockedForGood(heldId, photo)) return 'transient';
+    // A refusal never changes on a repeat: the report is finished, so the row can reach `held` (PQ11; WH-385).
+    logger.warn('The server refused to record a missing held photo; it is not asked again', { code: reply.code });
+    return 'missing';
+  }
   return reply.kind;
 }
 
