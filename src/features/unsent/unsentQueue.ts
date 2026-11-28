@@ -260,6 +260,14 @@ export async function deleteItem(id: string): Promise<void> {
 }
 
 /**
+ * Deletes an item for an undo (WH-387): only while it is still `saved` with no attempt, decided in the same transaction as the
+ * delete. False when it was not deleted (sending has begun, or it is gone); the undo is then a new change.
+ */
+export async function deleteUntriedItem(id: string): Promise<boolean> {
+  return deleteItems(await ownScope(), [id], true);
+}
+
+/**
  * The section of a row (Design 4.2, 4.6, 7.9). Sent rows are "Sent today"; a row the server holds is "Held"; a refused row is
  * "Held" too, except while its hand-over is still to come and the holding list is on (Product PQ1: it is "Not sent yet", counted,
  * until the server holds it).

@@ -12,7 +12,7 @@ import { closeSaveWait } from '@/features/unsent/saveWait';
 import { refusalCodeOf } from '@/features/unsent/refusalTags';
 import { classify, sendNow } from '@/features/unsent/sendEngine';
 import { registerSendKind, type SendKind, type SendOutcome } from '@/features/unsent/sendKinds';
-import { deleteItem, enqueue, mergeInto } from '@/features/unsent/unsentQueue';
+import { deleteItem, deleteUntriedItem, enqueue, mergeInto } from '@/features/unsent/unsentQueue';
 import { itemsOfScope, type ItemRow } from '@/features/unsent/unsentRows';
 import { loadedUnsentRows, refreshUnsent } from '@/features/unsent/unsentStore';
 import { t, formatIdentifier } from '@/i18n';
@@ -112,11 +112,11 @@ async function save(grnId: string, body: GrnEditBody | null, photos: GrnEditPhot
     const old = parse(own);
     const merged = isGrnEditBody(old) ? mergeGrnEdit(old, body) : body;
     if (merged === null) {
-      // Everything was undone before anything was sent: nothing is kept.
-      await deleteItem(own.id);
-      return { id: own.id, requestKey: own.request_key, merged: true };
+      // Everything was undone before anything was sent: nothing is kept. When sending has begun (the delete reports false), the
+      // undo is a new change that waits for the item, as below (WH-387).
+      if (await deleteUntriedItem(own.id)) return { id: own.id, requestKey: own.request_key, merged: true };
     }
-    const done = await mergeInto(own.id, () => merged, whatOf(meta.grnNumber, merged));
+    const done = merged === null ? false : await mergeInto(own.id, () => merged, whatOf(meta.grnNumber, merged));
     if (done) {
       void sendNow('saved');
       current = merged;

@@ -492,20 +492,26 @@ export function removePhotoFile(uri: string): void {
 
 /**
  * Deletes the items `ids` (and the items that wait for them, to any depth) with their photo rows, and their photo files
- * after the rows are gone. Only rows of `scope` are touched.
+ * after the rows are gone. Only rows of `scope` are touched. With `untriedOnly` (an undo, WH-387) nothing at all is deleted unless
+ * every item of `ids` is still `saved` with no attempt, checked in the same transaction as the delete; gives back whether
+ * anything was deleted.
  */
-export async function deleteItems(scope: string, ids: string[]): Promise<void> {
+export async function deleteItems(scope: string, ids: string[], untriedOnly = false): Promise<boolean> {
   const db = await getUnsentDb();
   const files: string[] = [];
+  let deleted = false;
   await db.transaction(async tx => {
     const doomed = new Set<string>();
     let next = ids;
+    let first = true;
     while (next.length > 0) {
       // A row the server holds is never deleted here (WH-304): it is already on the server, with its own outcome.
       const own = await tx.all<{ id: string }>(
-        `SELECT id FROM items WHERE scope = ? AND state <> 'held' AND id IN (${next.map(() => '?').join(', ')})`,
+        `SELECT id FROM items WHERE scope = ? AND state <> 'held' AND id IN (${next.map(() => '?').join(', ')})${first && untriedOnly ? " AND state = 'saved' AND attempts = 0" : ''}`,
         [scope, ...next]
       );
+      if (first && untriedOnly && own.length !== new Set(next).size) return;
+      first = false;
       const fresh = own.map(row => row.id).filter(id => !doomed.has(id));
       for (const id of fresh) doomed.add(id);
       next = [];
@@ -519,10 +525,12 @@ export async function deleteItems(scope: string, ids: string[]): Promise<void> {
       files.push(...photos.map(photo => fileOfStored(photo.file)));
       await tx.run('DELETE FROM item_photos WHERE item_id = ?', [id]);
       await tx.run('DELETE FROM items WHERE id = ?', [id]);
+      deleted = true;
     }
   });
   for (const uri of files) removePhotoFile(uri);
   await announceUnsentChange();
+  return deleted;
 }
 
 /**

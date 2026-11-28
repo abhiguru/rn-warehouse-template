@@ -8,7 +8,7 @@ import { t, formatIdentifier } from '@/i18n';
 import { normalizeDigits } from '@/i18n/language';
 import { changedLotFields, isLotChangeBody, LOT_FIELD_LABELS, LOT_FIELDS, type FieldChange, type LotChangeBody, type LotField } from '@/features/unsent/lotChangeKind';
 import { sendNow } from '@/features/unsent/sendEngine';
-import { deleteItem, enqueue, mergeInto, reviveItem } from '@/features/unsent/unsentQueue';
+import { deleteItem, deleteUntriedItem, enqueue, mergeInto, reviveItem } from '@/features/unsent/unsentQueue';
 import { itemById, itemsOfScope, type ItemRow } from '@/features/unsent/unsentRows';
 import { getSessionCacheScope } from '@/utils/cacheManager';
 import { createLogger, loggableError } from '@/utils/logger';
@@ -141,11 +141,8 @@ export async function saveLotChange(input: SaveLotChangeInput): Promise<SaveLotC
     const next: LotChangeBody = { ...old, recordedAt, changes };
     const fields = changedLotFields(next);
     if (fields.length === 0) {
-      const fresh = await itemById(own.id);
-      if (fresh?.state === 'saved' && fresh.attempts === 0) {
-        await deleteItem(own.id);
-        return { id: own.id, requestKey: own.request_key, merged: true, dropped: true };
-      }
+      // The check and the delete are one transaction; false means sending has begun, so the undo is a new change below (WH-387).
+      if (await deleteUntriedItem(own.id)) return { id: own.id, requestKey: own.request_key, merged: true, dropped: true };
     } else {
       const merged = await mergeInto(
         own.id,
