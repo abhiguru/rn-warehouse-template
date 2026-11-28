@@ -158,6 +158,24 @@ describe('S12: the status bar\'s line 2 for held items (Design 7.9 DQ6)', () => 
     expect(phone.store.getUnsentSummary()).toMatchObject({ count: 0, held: 2 });
   });
 
+  it('WH-304 finding 6: a GRN held with its photo counts 1 (records only), in the bar and in the Held section', async () => {
+    const phone = await recorder([
+      own('grn-1'),
+      own('ph-1', { kind: 'photos', reason: 'followsHeld', follows: 'grn-1', needs_decision: false, what: { key: 'offline.unsent.whatPhotosNewGrn', params: { count: 1 } } }),
+    ]);
+    expect(phone.store.getUnsentSummary()).toMatchObject({ count: 0, held: 1 });
+    const { rows } = await loadList();
+    expect(rows.filter(r => r.section === 'held').map(r => r.id)).toEqual(['grn-1', 'ph-1']);
+  });
+
+  it('a held photos item whose record is not held counts on its own', async () => {
+    const phone = await recorder([
+      own('grn-1'),
+      own('ph-2', { kind: 'photos', reason: 'other', follows: 'not-in-the-list', needs_decision: true, what: { key: 'offline.unsent.whatPhotosNewGrn', params: { count: 1 } } }),
+    ]);
+    expect(phone.store.getUnsentSummary()).toMatchObject({ held: 2 });
+  });
+
   it('with only held rows: heldLine one / other, pressable to "Unsent items"', async () => {
     const one = deriveStatusBar(input({ held: 1 })).line2;
     expect(one).toEqual({ key: 'heldLine', count: 1 });

@@ -186,7 +186,6 @@ describe('Held: a refused item, its tag, and what follows it', () => {
     ['NUMBER_TAKEN', 'Number used'],
     ['LOT_NOT_FOUND', 'Deleted'],
     ['GRN_INVOICED', 'Locked'],
-    ['POSSIBLE_DUPLICATE', 'Duplicate?'],
     ['QTY_BELOW_DISPATCHED', 'Below dispatched'],
     ['SERIES_FULL', 'Series full'],
     ['CUSTOMER_INACTIVE', 'Customer inactive'],
@@ -195,6 +194,14 @@ describe('Held: a refused item, its tag, and what follows it', () => {
     await insert({ id: 'h1', seq: 1, state: 'refused', what: 'GRN 12: Rack changed', lastError: 'raw', result: { code } });
     await open();
     expect(screen.getByTestId('unsent-row-reason-h1')).toHaveTextContent(`Refused: ${tag}`);
+  });
+
+  // Design 7.11f: a refusal that names no other GRN reads the no-reference sentence.
+  it('POSSIBLE_DUPLICATE reads "Refused: Duplicate?" as the no-reference sentence, word for word', async () => {
+    await insert({ id: 'h1', seq: 1, state: 'refused', what: 'GRN 12: Rack changed', lastError: 'raw', result: { code: 'POSSIBLE_DUPLICATE' } });
+    await open();
+    expect(screen.getByTestId('unsent-row-reason-h1')).toHaveTextContent('A GRN for the same customer, item and quantity already exists.');
+    expect(screen.queryByText(/raw/)).not.toBeOnTheScreen();
   });
 
   it('a code with no row, or no code at all, shows the generic sentence', async () => {

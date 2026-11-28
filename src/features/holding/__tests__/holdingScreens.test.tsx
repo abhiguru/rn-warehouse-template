@@ -54,6 +54,14 @@ const mockServer = {
   answers: {} as Record<string, (args: Record<string, any>) => Answer | Promise<Answer>>,
 };
 let mockRole = 'admin';
+/** What the screen last asked of its stack header (title, whether it is shown). */
+// The Jest environment's font scale is 2 (buttons stack); a case sets 1 for the single row of buttons.
+const mockWindow = { fontScale: 2 };
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 360, height: 800, scale: 2, fontScale: mockWindow.fontScale }),
+}));
+const mockHeader: { options: Record<string, unknown> | undefined } = { options: undefined };
 const mockStorage = { sign: (path: string): { data: { signedUrl: string } | null; error: unknown } => ({ data: { signedUrl: `https://files.example.test/${path}` }, error: null }) };
 const mockGrn = { answer: (_grnId: string): unknown => ({ success: false, message: 'none', error: 'none' }) };
 
@@ -125,7 +133,12 @@ jest.mock('expo-router', () => ({
   useRouter: () => mockRouter,
   useLocalSearchParams: () => mockParams,
   useIsFocused: () => true,
-  Stack: { Screen: require('@/tests/helpers/stackScreenMock').StackScreenMock },
+  Stack: {
+    Screen: (props: { options?: Record<string, unknown> }) => {
+      mockHeader.options = props.options;
+      return require('@/tests/helpers/stackScreenMock').StackScreenMock(props);
+    },
+  },
   useFocusEffect: require('@/tests/components/focusHarness').useFocusEffect,
 }));
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'Icon');
@@ -232,6 +245,7 @@ afterEach(async () => {
   await AsyncStorage.clear();
   resetFacilityCapabilities();
   await setLanguage('en');
+  mockWindow.fontScale = 2;
   jest.restoreAllMocks();
 });
 
@@ -507,6 +521,102 @@ describe('S4 wording (Design 7.11a (c)): the Held item\'s header facts are label
       expect(screen.getByText(value)).toBeOnTheScreen();
     }
     expect(screen.getByText('નોંધ્યાનો સમય')).toBeOnTheScreen();
+  });
+});
+
+describe('WH-304 Design findings on the Held item page (7.3, 7.5, 7.11f)', () => {
+  const grnBody = (items: unknown) => ({ v: 1, args: { p_customer_id: 'c1', p_items: items } });
+
+  it('finding 2: the stack header is shown, titled "Held item", with Back that goes back', async () => {
+    await openItem(listRow('h1'), { accept_possible: false });
+    expect(mockHeader.options).toMatchObject({ title: 'Held item', headerShown: true });
+    await user.press(screen.getByRole('button', { name: /Back/ }));
+    expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  it('finding 2, Gujarati: the header title is "રોકેલી એન્ટ્રી"', async () => {
+    await setLanguage('gu');
+    await openItem(listRow('h1'), { accept_possible: false });
+    expect(mockHeader.options).toMatchObject({ title: 'રોકેલી એન્ટ્રી', headerShown: true });
+  });
+
+  it('finding 3: a held new GRN lists its lines, with mark and rack when it has them and without when not', async () => {
+    await openItem(
+      listRow('h1', { reason: 'duplicate', reason_data: {} }),
+      { accept_possible: true, body: grnBody([{ item_name: 'Apple', qty: 1, packaging: 'bag', package_mark: 'ZZ-1', rack: 'D-4' }, { item_name: 'Beans', qty: 2, packaging: 'bag' }]) }
+    );
+    const record = screen.getByTestId('held-item-record');
+    expect(within(record).getByText('Apple, ZZ-1, 1 Bag, Rack D-4')).toBeOnTheScreen();
+    expect(within(record).getByText('Beans, 2 Bag')).toBeOnTheScreen();
+  });
+
+  it('finding 3: a malformed p_items (missing, not an array, odd fields) shows an empty record and does not crash', async () => {
+    for (const body of [{ v: 1, args: {} }, { v: 1, args: { p_items: 'Apple' } }, { v: 1, args: { p_items: [null, 5, { qty: {} }, { item_name: 'Apple', qty: [], rack: 7 }] } }]) {
+      mockServer.calls = [];
+      await openItem(listRow('h1'), { accept_possible: false, body });
+      expect(screen.getByTestId('held-item-record')).toBeOnTheScreen();
+      expect(screen.getByTestId('held-item-reject')).toBeEnabled();
+      await screen.unmount();
+    }
+  });
+
+  it('finding 5, large text: the buttons stack, each the full width', async () => {
+    await openItem(listRow('h1', { reason: 'duplicate', reason_data: {} }), { accept_possible: true });
+    for (const id of ['held-item-reject', 'held-item-correct', 'held-item-accept']) {
+      expect(StyleSheet.flatten(screen.getByTestId(id).props.style)).toMatchObject({ width: '100%' });
+    }
+  });
+
+  it('finding 5: the three buttons share the full width of the bar (each grows)', async () => {
+    mockWindow.fontScale = 1;
+    await openItem(listRow('h1', { reason: 'duplicate', reason_data: {} }), { accept_possible: true });
+    for (const id of ['held-item-reject', 'held-item-correct', 'held-item-accept']) {
+      expect(StyleSheet.flatten(screen.getByTestId(id).props.style)).toMatchObject({ flex: 1 });
+    }
+  });
+
+  it('finding 4: a duplicate with the other GRN names it and its day, and the hint says which to open', async () => {
+    await openItem(
+      listRow('h1', { reason: 'duplicate', reason_data: { existing_number: 'A-3', existing_created_at: '2026-11-27T03:20:00+00:00' } }),
+      { accept_possible: true }
+    );
+    expect(screen.getByTestId('held-item-reason')).toHaveTextContent('GRN A-3 for the same customer, item and quantity was saved on 27/11/26.');
+    expect(screen.getByTestId('held-item-hint')).toHaveTextContent('Open GRN A-3 to compare; Accept if both are real, or reject.');
+  });
+
+  it('finding 4, 7.11f: a duplicate missing either field reads the no-reference words', async () => {
+    await openItem(listRow('h1', { reason: 'duplicate', reason_data: { existing_number: 'A-3' } }), { accept_possible: true });
+    expect(screen.getByTestId('held-item-reason')).toHaveTextContent('A GRN for the same customer, item and quantity already exists.');
+    expect(screen.getByTestId('held-item-hint')).toHaveTextContent('Look for it in the GRN list to compare; Accept if both are real, or reject.');
+  });
+
+  it('finding 4, Gujarati: the date in Gujarati digits, the GRN number in 0-9', async () => {
+    await setLanguage('gu');
+    await openItem(
+      listRow('h1', { reason: 'duplicate', reason_data: { existing_number: 'A-3', existing_created_at: '2026-11-27T03:20:00+00:00' } }),
+      { accept_possible: true }
+    );
+    expect(screen.getByTestId('held-item-reason')).toHaveTextContent('૨૭/૧૧/૨૬ એ એ જ વેપારી, આઇટમ અને જથ્થા માટે આવક પાવતી A-3 સાચવાઈ છે.');
+  });
+
+  it('finding 1: a user agent as the phone is left out of the page, with no "Phone" label (no okhttp text anywhere)', async () => {
+    await openItem(listRow('h1', { phone: 'okhttp/4.9.2' }), { accept_possible: false });
+    expect(screen.queryByText('Phone')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/okhttp/)).not.toBeOnTheScreen();
+  });
+
+  it('finding 1: the server\'s device_name is the Phone fact, even beside a user agent in phone', async () => {
+    await openItem(listRow('h1', { phone: 'okhttp/4.9.2', device_name: 'Fictional Android phone' }), { accept_possible: false });
+    expect(screen.getByText('Phone')).toBeOnTheScreen();
+    expect(screen.getByText('Fictional Android phone')).toBeOnTheScreen();
+  });
+
+  it('finding 1: the Holding list footnote of a row with a user agent is "name · time" with no phone', async () => {
+    mockServer.answers.get_held_items = () => listAnswer([listRow('h1', { phone: 'Mozilla/5.0 (Linux; Android 14)' })]);
+    await show(HoldingListScreen());
+    const row = await screen.findByTestId('holding-row-h1');
+    expect(row).toHaveTextContent(/Ravi Fictional · [^·]+$/);
+    expect(screen.queryByText(/Mozilla/)).not.toBeOnTheScreen();
   });
 });
 
