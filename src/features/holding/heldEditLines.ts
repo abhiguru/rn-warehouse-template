@@ -28,10 +28,14 @@ export interface LineGroup {
   rows: string[];
 }
 
-const quantityText = (qty: unknown, packaging: string | null): string => formatQuantity(typeof qty === 'number' ? qty : Number(qty ?? 0), displayPackaging(packaging));
+/** The quantity of a line, or null when the payload carries none or not a number: the figure is left out, never shown as 0 (Design 7.11g). A real 0 stays. */
+const quantityText = (qty: unknown, packaging: string | null): string | null => {
+  const figure = typeof qty === 'number' ? qty : typeof qty === 'string' && qty.trim() !== '' ? Number(qty) : NaN;
+  return Number.isFinite(figure) ? formatQuantity(figure, displayPackaging(packaging)) : null;
+};
 
-/** "Potato, AB-12, 40 bags": the item, its mark when there is one, the quantity. */
-function rowText(item: string, mark: string | null, quantity: string): string {
+/** "Potato, AB-12, 40 bags": the item, its mark when there is one, the quantity when there is one. */
+function rowText(item: string, mark: string | null, quantity: string | null): string {
   return [item, mark, quantity].filter((part): part is string => part !== null && part !== '').join(', ');
 }
 

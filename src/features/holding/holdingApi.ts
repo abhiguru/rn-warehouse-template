@@ -78,7 +78,7 @@ export class HoldingCallError extends Error {
  * `phone` is the sign-in's user agent ("okhttp/4.9.2", "Mozilla/5.0 ..."): a value that looks like one is never shown. Without a
  * name the fact is left out.
  */
-const LOOKS_LIKE_USER_AGENT = /[A-Za-z][\w.-]*\/\d|Mozilla|okhttp|Dalvik|CFNetwork/i;
+const LOOKS_LIKE_USER_AGENT = /^(okhttp|Dalvik|Mozilla|CFNetwork|Darwin|Expo|axios|node-fetch|undici)\b/i;
 export const phoneNameOf = (raw: Record<string, unknown>): string | null => {
   const name = textOf(raw.device_name);
   if (name !== null) return name;

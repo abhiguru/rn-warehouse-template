@@ -259,8 +259,8 @@ function OwnHeldItem() {
           <Hero row={row} styles={styles} />
           <ItemReason row={row} styles={styles} follower={false} />
           <View testID="held-item-record" style={styles.record}>
-            {recordLines(row, isFields(raw) ? raw.body : null).map(line => (
-              <Text key={line} style={styles.recordLine}>
+            {recordLines(row, isFields(raw) ? raw.body : null).map((line, index) => (
+              <Text key={index} style={styles.recordLine}>
                 {line}
               </Text>
             ))}
@@ -451,8 +451,8 @@ function ManagerHeldItem() {
           <Hero row={item} styles={styles} />
           <ItemReason row={item} styles={styles} follower={waiting} />
           <View testID="held-item-record" style={styles.record}>
-            {recordLines(item, item.acceptedBody ?? item.body).map(line => (
-              <Text key={line} style={styles.recordLine}>
+            {recordLines(item, item.acceptedBody ?? item.body).map((line, index) => (
+              <Text key={index} style={styles.recordLine}>
                 {line}
               </Text>
             ))}
