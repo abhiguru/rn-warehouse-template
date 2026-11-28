@@ -32,6 +32,7 @@ import { isUpgrading, noteServerAnswered, noteUpgradeAnswer, waitForRetry } from
 import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 import { noteRequestNetworkFailure } from './netReachability';
 import { noteExpiredTokenRenewal } from './sessionRenewal';
+import { noteDataWrite } from './facilityWrite';
 import { parseSessionEnd, SESSION_ENDS_AT_KEY, storeSessionEnd } from './sessionEnd';
 import { awaitRoleRecheck, isRoleRecheckPending, WRITE_HOLD_LIMIT_MS } from './roleRecheck';
 import { isOfflineLimitPassed, isStoredTime, type ConfirmationTimes } from './offlineLimit';
@@ -481,6 +482,7 @@ async function sessionFetch(
   mutation: boolean
 ): Promise<Response> {
   const response = await gatedFetch(input, init, { generation, mutation, honorSwitch: true });
+  if (mutation && response.ok) noteDataWrite(input);
   const refused = bearerOf(init);
   if (!refused || !(await isExpiredTokenResponse(response))) return response;
   const renewed = await accessTokenAfterExpiry(refused, generation);

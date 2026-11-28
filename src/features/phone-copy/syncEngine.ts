@@ -11,6 +11,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { getLanStatus } from '@/config/lanTransport';
 import { isOfflineState } from '@/config/netOffline';
+import { subscribeFacilityWrite } from '@/config/facilityWrite';
 import { hasCapability } from '@/config/facilityCapabilities';
 import { noteRpcSupport } from '@/config/facilityRpcSupport';
 import { captureMessage } from '@/config/sentryConfig';
@@ -33,7 +34,7 @@ import {
 } from './syncApi';
 import { getSyncSnapshot, resetSyncSnapshot, updateSyncSnapshot, type CopyPhase, type SyncSnapshot } from './syncStore';
 
-export type SyncTrigger = 'open' | 'foreground' | 'reconnect' | 'interval' | 'pull-to-refresh' | 'after-send' | 'retry' | 'checksum' | 'orders';
+export type SyncTrigger = 'open' | 'foreground' | 'reconnect' | 'interval' | 'pull-to-refresh' | 'after-send' | 'after-write' | 'retry' | 'checksum' | 'orders';
 export type SyncOutcome = 'done' | 'offline' | 'failed' | 'busy-queued' | 'off' | 'stopped';
 
 const logger = createLogger('[phone-copy]');
@@ -121,7 +122,15 @@ const engine = {
   currentTimer: null as ReturnType<typeof setTimeout> | null,
   /** The same local write failed this many runs in a row (contract 6.5): at three the copy is loaded again. */
   writeFailures: 0,
+  /** Online writes accepted by the server (WH-299): counted, so a run that began before one does not clear it. */
+  writeSeq: 0,
+  writePending: false,
+  writeTimer: null as ReturnType<typeof setTimeout> | null,
+  writeWaiters: new Set<() => void>(),
 };
+
+/** Several writes close together make one sync. */
+const WRITE_SYNC_DELAY_MS = 400;
 
 // ---------- meta ----------
 
@@ -719,6 +728,7 @@ export async function syncNow(trigger: SyncTrigger): Promise<SyncOutcome> {
   if (trigger === 'retry' || trigger === 'reconnect') engine.backoff = 0;
   clearScheduleTimer();
   const epoch = engine.epoch;
+  const writesBefore = engine.writeSeq;
   const running = runMarkingRetry();
   engine.run = running;
   let outcome: SyncOutcome;
@@ -737,6 +747,12 @@ export async function syncNow(trigger: SyncTrigger): Promise<SyncOutcome> {
         logger.warn('A listener of the end of a sync run failed', loggableError(error));
       }
     }
+  }
+  // A run that began after the last online write has brought it in; one that failed or went offline will not, so a
+  // screen waiting for it goes on (it reads the server or the copy as it did before).
+  if (outcome !== 'done' || (engine.writeSeq === writesBefore && !engine.again)) {
+    if (outcome === 'done') engine.writePending = false;
+    flushWriteWaiters();
   }
   if (engine.again && outcome !== 'off' && outcome !== 'stopped') {
     engine.again = false;
@@ -797,7 +813,67 @@ export function subscribeCopyOffline(listener: () => void): () => void {
   };
 }
 
+function flushWriteWaiters(): void {
+  for (const done of [...engine.writeWaiters]) done();
+}
+
+function clearWriteTimer(): void {
+  if (engine.writeTimer) clearTimeout(engine.writeTimer);
+  engine.writeTimer = null;
+}
+
+/** True when the screens read the copy and the phone is online: only then does a write need a sync to be seen. */
+function copyFollowsWrites(): boolean {
+  return engine.started && !engine.halted && !engine.offline && isCopyReadable();
+}
+
+/**
+ * The request layer says the server accepted a write (src/config/facilityWrite.ts). The copy holds what the write
+ * changed (and stock, for the writes it does not hold), so ask for a sync once the writes stop coming (WH-299, contract
+ * "After an online write"). Reads never reach here; several writes make one sync.
+ */
+function noteOnlineWrite(): void {
+  if (!copyFollowsWrites()) return;
+  engine.writeSeq += 1;
+  engine.writePending = true;
+  clearWriteTimer();
+  engine.writeTimer = setTimeout(() => {
+    engine.writeTimer = null;
+    void syncNow('after-write');
+  }, WRITE_SYNC_DELAY_MS);
+  (engine.writeTimer as { unref?: () => void }).unref?.();
+}
+
+/**
+ * Resolves once a sync run that began after the last online write has ended, or after `maxMs`, or at once when nothing
+ * is owed (no write, offline, copy not readable). Never rejects. A save screen waits here before it shows a list or opens
+ * the new record, so it does not show the state from before the save.
+ */
+export function waitForSyncAfterWrite(maxMs = 3000): Promise<void> {
+  if (!engine.writePending || !copyFollowsWrites()) return Promise.resolve();
+  return new Promise<void>(resolve => {
+    const finish = () => {
+      clearTimeout(timer);
+      engine.writeWaiters.delete(finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, maxMs);
+    (timer as { unref?: () => void }).unref?.();
+    engine.writeWaiters.add(finish);
+    // Do not sit out the delay that coalesces writes: the person is waiting.
+    if (engine.writeTimer) {
+      clearWriteTimer();
+      void syncNow('after-write');
+    }
+  });
+}
+
+subscribeFacilityWrite(noteOnlineWrite);
+
 setBeforeErase(async () => {
+  clearWriteTimer();
+  engine.writePending = false;
+  flushWriteWaiters();
   await stopPhoneCopy();
   forgetCopyChanges();
   engine.halted = false;
