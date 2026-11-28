@@ -263,7 +263,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   // A create, an edit save or a photo retry is running: the form is locked. No field, photo or rate changes, and the
   // header's X, the step pills, Previous, the Back key and every other way off this step do nothing until it ends
   // (leaving would reset the form under the save).
-  const isSubmittingState = (isCreateMode ? isSubmitting : isSaving) || isRetryingPhotos;
+  // An edit that was saved stays locked until the screen is left: its success dialog and the bounded wait for the sync
+  // (WH-299) must not leave Save live, or a second tap would send update_grn again (WH-394).
+  const [editSaved, setEditSaved] = useState(false);
+  const isSubmittingState = (isCreateMode ? isSubmitting : isSaving || editSaved) || isRetryingPhotos;
   // The save got no answer (owner rule D22): the form stays locked while the server is asked about that request.
   // The X alone leaves, with a warning that the GRN may be saved, and stops the check.
   const [lostChecking, setLostChecking] = useState(false);
@@ -540,7 +543,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   };
 
   const handleSubmit = async () => {
-    if ((isCreateMode && isSubmitting) || (!isCreateMode && isSaving)) return;
+    if ((isCreateMode && isSubmitting) || (!isCreateMode && (isSaving || editSaved))) return;
     if (isCreateMode && createdRef.current) {
       if (!photosNotUploaded) setShowSuccessDialog(true);
       return;
@@ -609,7 +612,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     setShowConfirmDialog(false);
     // One save at a time. A second tap on Confirm before the dialog closes would save again,
     // and every photo picked in the form would be uploaded twice.
-    if (saveInFlightRef.current || (isCreateMode && createdRef.current)) return;
+    if (saveInFlightRef.current || (isCreateMode ? createdRef.current : editSaved)) return;
     saveInFlightRef.current = true;
     // The form's session as Confirm is pressed: if it has changed when the save answers, the form was left (and
     // maybe a new one started), and the answer must not touch the form, its photo files or this screen.
@@ -1434,6 +1437,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       }
 
       if (result.success) {
+        setEditSaved(true);
         markItemRatesStale();
         // The server lists every dispatched line on every save; only a quantity that differs from the kept one was really refused.
         const skippedItems = result.data?.stats?.items_skipped_stock?.filter((entry) => {
@@ -1958,8 +1962,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         onDismiss={() => {
           setShowPrintDialog(false);
           if (!isCreateMode) {
-            resetFormState();
-            void waitForSyncAfterWrite().then(() => router.replace('/grn'));
+            // The form is reset only when the screen is left, so no empty form shows during the wait (WH-394).
+            void waitForSyncAfterWrite().then(() => {
+              resetFormState();
+              router.replace('/grn');
+            });
           } else {
             // Back to the choices of the created GRN, not to a form that could be sent again.
             setShowSuccessDialog(true);
