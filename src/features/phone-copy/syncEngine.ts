@@ -11,7 +11,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { getLanStatus } from '@/config/lanTransport';
 import { isOfflineState } from '@/config/netOffline';
-import { subscribeFacilityWrite, subscribeQuietWrite } from '@/config/facilityWrite';
+import { subscribeFacilityWrite, subscribeQuietWrite, type FacilityWriteKind } from '@/config/facilityWrite';
 import { hasCapability } from '@/config/facilityCapabilities';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { noteRpcSupport } from '@/config/facilityRpcSupport';
@@ -127,6 +127,8 @@ const engine = {
   writeSeq: 0,
   writePending: false,
   writeTimer: null as ReturnType<typeof setTimeout> | null,
+  /** In-flight registered photo uploads whose confirm/cancel has not yet arrived (WH-397). */
+  pendingUploads: 0,
   writeWaiters: new Set<() => void>(),
 };
 
@@ -534,6 +536,8 @@ async function readOffline(): Promise<boolean> {
 /** The feature is off for this session: no copy, today's banner (criterion 14). */
 async function turnOff(): Promise<void> {
   clearScheduleTimer();
+  clearWriteTimer();
+  engine.pendingUploads = 0;
   setCurrent(false);
   await eraseCopyFiles();
   resetSyncSnapshot({ feature: 'off' });
@@ -627,6 +631,8 @@ async function runOnce(): Promise<SyncOutcome> {
       // Today's forced sign-out ends the session and erases the copy; nothing more is asked meanwhile.
       engine.halted = true;
       clearScheduleTimer();
+      clearWriteTimer();
+      engine.pendingUploads = 0;
       return 'stopped';
     }
     if (isDiskFull(error)) publish({ storageLow: true });
@@ -713,6 +719,7 @@ export async function stopPhoneCopy(): Promise<void> {
   engine.stop = makeStop();
   clearScheduleTimer();
   clearWriteTimer();
+  engine.pendingUploads = 0;
   const running = engine.run;
   if (running) await running.catch(() => undefined);
   engine.writePending = false;
@@ -798,6 +805,8 @@ export function setCopyOffline(offline: boolean): void {
   engine.offline = offline;
   if (offline) {
     if (!getSyncSnapshot().pending) clearScheduleTimer();
+    clearWriteTimer();
+    engine.pendingUploads = 0;
     setCurrent(false);
   }
   if (changed) for (const listener of [...engine.offlineListeners]) listener();
@@ -837,23 +846,42 @@ function copyFollowsWrites(): boolean {
   return engine.started && !engine.halted && !engine.offline && isCopyReadable();
 }
 
+function armWriteTimer(ms: number): void {
+  clearWriteTimer();
+  engine.writeTimer = later(ms, () => {
+    engine.writeTimer = null;
+    engine.pendingUploads = 0;
+    void syncNow('after-write');
+  });
+}
+
 /**
  * The request layer says the server accepted a write (src/config/facilityWrite.ts). The copy holds what the write
  * changed (and stock, for the writes it does not hold), so ask for a sync once the writes stop coming (WH-299, contract
  * "After an online write"). Reads never reach here; several writes make one sync.
  */
-function noteOnlineWrite(uploadStarting = false): void {
+function noteOnlineWrite(kind: FacilityWriteKind = 'write'): void {
   if (!copyFollowsWrites()) return;
   engine.writeSeq += 1;
   engine.writePending = true;
-  clearWriteTimer();
-  // A photo's register call is followed by the file upload (not a write we see) and then its confirm, which restarts the
-  // timer at the normal delay; so one save with many photos makes one sync (WH-397). A failed upload ends the hold at its limit.
-  engine.writeTimer = setTimeout(() => {
-    engine.writeTimer = null;
-    void syncNow('after-write');
-  }, uploadStarting ? UPLOAD_HOLD_MS : WRITE_SYNC_DELAY_MS);
-  (engine.writeTimer as { unref?: () => void }).unref?.();
+  // Photo uploads run concurrently (WH-397): hold for UPLOAD_HOLD_MS while any registered upload is still in flight,
+  // then wait WRITE_SYNC_DELAY_MS once the last confirm/cancel lands. A failed/hung upload ends the hold at its limit.
+  switch (kind) {
+    case 'upload-start':
+      engine.pendingUploads += 1;
+      armWriteTimer(UPLOAD_HOLD_MS);
+      return;
+    case 'upload-end':
+      engine.pendingUploads = Math.max(0, engine.pendingUploads - 1);
+      break;
+    case 'write':
+      break;
+  }
+  if (engine.pendingUploads > 0) {
+    if (engine.writeTimer === null) armWriteTimer(UPLOAD_HOLD_MS);
+  } else {
+    armWriteTimer(WRITE_SYNC_DELAY_MS);
+  }
 }
 
 /**
@@ -875,6 +903,7 @@ export function waitForSyncAfterWrite(maxMs = 3000): Promise<void> {
     // Do not sit out the delay that coalesces writes: the person is waiting.
     if (engine.writeTimer) {
       clearWriteTimer();
+      engine.pendingUploads = 0;
       void syncNow('after-write');
     }
   });
@@ -893,6 +922,7 @@ function noteQuietWrite(): void {
 // The writes noted so far, the timer and the waiting screens belong to one session: nothing of it acts in the next (WH-395).
 registerSessionScoped('after-write-sync', () => {
   clearWriteTimer();
+  engine.pendingUploads = 0;
   engine.writePending = false;
   engine.writeSeq = 0;
   flushWriteWaiters();
@@ -903,6 +933,7 @@ subscribeQuietWrite(noteQuietWrite);
 
 setBeforeErase(async () => {
   clearWriteTimer();
+  engine.pendingUploads = 0;
   engine.writePending = false;
   flushWriteWaiters();
   await stopPhoneCopy();

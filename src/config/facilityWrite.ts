@@ -7,8 +7,10 @@
 
 import { registerSessionScoped } from './sessionScopedRegistry';
 
-/** `uploadStarting` is true for the register call of a photo upload: its confirm follows once the file is sent (WH-397). */
-type FacilityWriteListener = (uploadStarting?: boolean) => void;
+/** What kind of facility data write succeeded (WH-397): photo upload register/end bracket the Storage upload. */
+export type FacilityWriteKind = 'write' | 'upload-start' | 'upload-end';
+
+type FacilityWriteListener = (kind: FacilityWriteKind) => void;
 
 const listeners = new Set<FacilityWriteListener>();
 
@@ -34,10 +36,10 @@ export function subscribeQuietWrite(listener: () => void): () => void {
 }
 
 /** Called by the request layer once the server accepted a write. Never throws. */
-export function noteFacilityWrite(uploadStarting = false): void {
+export function noteFacilityWrite(kind: FacilityWriteKind = 'write'): void {
   for (const listener of [...listeners]) {
     try {
-      listener(uploadStarting);
+      listener(kind);
     } catch {
       // A listener's failure must not fail the write that already succeeded.
     }
@@ -81,8 +83,17 @@ export async function withoutWriteNote<T>(fn: () => Promise<T>): Promise<T> {
 const NOT_COPY_RPC =
   /^(can_make_bills|suggest_document_number|mark_held_item_seen|make_pairing_code|set_my_language|revoke_session|operator_review_enrollment|review_enrollment_again|submit_connection_notes)$/;
 
-/** The first write of a photo's upload; the file goes to Storage (not noted) before the confirm write. */
+/** The first write of a photo's upload; the file goes to Storage (not noted) before the confirm/cancel write. */
 const PHOTO_REGISTER_RPC = /^register_(grn|dispatch)_image_upload$/;
+/** The closing write of a photo's upload after Storage transfer succeeds or fails. */
+const PHOTO_END_RPC = /^(confirm|cancel)_(grn|dispatch)_image_upload$/;
+
+function writeKindOf(rpc: string | undefined): FacilityWriteKind {
+  if (rpc === undefined) return 'write';
+  if (PHOTO_REGISTER_RPC.test(rpc)) return 'upload-start';
+  if (PHOTO_END_RPC.test(rpc)) return 'upload-end';
+  return 'write';
+}
 
 /**
  * Called for each request the request layer classed as a write (`mutation`: not `isReadRequest`, so a GET, a HEAD, a read
@@ -106,5 +117,5 @@ export function noteDataWrite(input: RequestInfo | URL): void {
     }
     return;
   }
-  noteFacilityWrite(rpc !== undefined && PHOTO_REGISTER_RPC.test(rpc));
+  noteFacilityWrite(writeKindOf(rpc));
 }
