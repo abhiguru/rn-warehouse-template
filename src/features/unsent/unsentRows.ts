@@ -537,8 +537,28 @@ export async function deleteItems(scope: string, ids: string[], untriedOnly = fa
  * At start-up (no form is open yet): removes the `form-*` files of the unsent folder that no photo row, no unfinished form and
  * no kept `form_row` names, such as a photo given back with no saved form when the app was then closed. Never touches any other
  * file or a file a row names. Never throws.
+ *
+ * WH-390: it runs under `withFormFileGuard`, which a form save also holds from copying its files to committing its row, so the
+ * sweep sees a save wholly before (files and row both there) or wholly after it. In addition a file changed since this run began is
+ * kept: a file of this run cannot be an orphan of an earlier one.
  */
-export async function sweepOrphanFormFiles(): Promise<void> {
+export function sweepOrphanFormFiles(): Promise<void> {
+  return withFormFileGuard(sweepOrphanFormFilesGuarded);
+}
+
+/** When this run of the app began; files changed after it are never swept. */
+const RUN_STARTED_AT = Date.now();
+
+let formFileGuard: Promise<unknown> = Promise.resolve();
+
+/** Runs `work` after every earlier guarded work has finished (one at a time); a failure of one does not stop the next. */
+export function withFormFileGuard<T>(work: () => Promise<T>): Promise<T> {
+  const run = formFileGuard.then(() => work());
+  formFileGuard = run.catch(() => undefined);
+  return run;
+}
+
+async function sweepOrphanFormFilesGuarded(): Promise<void> {
   try {
     const db = await getUnsentDb();
     const named = new Set<string>();
@@ -562,7 +582,9 @@ export async function sweepOrphanFormFiles(): Promise<void> {
     const folder = unsentPhotoDirectory();
     if (!folder.exists) return;
     for (const entry of folder.list()) {
-      if (entry instanceof File && entry.name.startsWith('form-') && !named.has(entry.uri)) removePhotoFile(entry.uri);
+      if (!(entry instanceof File) || !entry.name.startsWith('form-') || named.has(entry.uri)) continue;
+      if ((entry.lastModified ?? 0) >= RUN_STARTED_AT) continue;
+      removePhotoFile(entry.uri);
     }
   } catch (error) {
     logger.warn('The unsent folder could not be swept', loggableError(error));

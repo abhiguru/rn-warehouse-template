@@ -10,7 +10,7 @@ import { isAppOwnedFileUri } from '@/utils/localPhotoFiles';
 import { createLogger, loggableError } from '@/utils/logger';
 import { getUnsentDb, unsentPhotoDirectory, type UnsentDb } from './unsentDb';
 import { formTextFromStored, formTextToStored, fromStored, ownFilesInText, toStoredOrNull } from './storedPath';
-import { announceUnsentChange, removePhotoFile } from './unsentRows';
+import { announceUnsentChange, removePhotoFile, withFormFileGuard } from './unsentRows';
 
 const logger = createLogger('[unsent-forms]');
 
@@ -104,7 +104,20 @@ async function keepPhotoFiles(text: string): Promise<{ text: string; files: stri
  * Saves the form (one per kind, and per GRN for an edit). Never throws; false when nothing could be saved. Photo files the
  * form no longer names are removed.
  */
-export async function saveFormDraft(input: { kind: FormKind; grnId?: string | null; state: unknown; customer?: string | null; at?: number }): Promise<boolean> {
+export function saveFormDraft(input: SaveFormDraftInput): Promise<boolean> {
+  // The copies and the row are written under the guard the start-up sweep takes, so the sweep never sees the files without the row (WH-390).
+  return withFormFileGuard(() => saveFormDraftGuarded(input));
+}
+
+interface SaveFormDraftInput {
+  kind: FormKind;
+  grnId?: string | null;
+  state: unknown;
+  customer?: string | null;
+  at?: number;
+}
+
+async function saveFormDraftGuarded(input: SaveFormDraftInput): Promise<boolean> {
   try {
     const scope = await ownScope();
     if (!scope) return false;
