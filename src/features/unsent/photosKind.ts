@@ -202,7 +202,7 @@ const photosKind: SendKind = {
   send: async (body, ctx) => {
     const outcome = await sendPhotos(body, ctx);
     // At once (WH-385); what cannot go now goes at the end of a sync run. Always resolves.
-    await sendPhotoReports();
+    await sendPhotoReports({ quietWrite: true, onWrite: ctx.noteWrite });
     return outcome;
   },
 };
