@@ -144,7 +144,7 @@ async function callHoldItems(items: readonly HoldItem[], recorder?: string): Pro
   let answer: { data: unknown; error: unknown; status?: number };
   try {
     const client = await getAuthenticatedClient();
-    const deviceName = backendHasFeature('heldDeviceName') ? phoneDisplayName() : null;
+    const deviceName = backendHasFeature('heldDeviceName') ? await phoneDisplayName() : null;
     answer = (await client.rpc('hold_items', {
       p_items: items,
       ...(recorder === undefined ? {} : { p_recorder: recorder }),
