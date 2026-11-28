@@ -25,8 +25,11 @@ const LOT_STOCK = 19;
 
 const overlay = () =>
   (require('@/features/phone-copy/unsentOverlay') as typeof import('@/features/phone-copy/unsentOverlay')).getUnsentOverlay();
-const netLotStock = (lotId: string, copyStock: number) =>
-  (require('@/features/phone-copy/reads/rows') as typeof import('@/features/phone-copy/reads/rows')).netLotStock(lotId, copyStock);
+// The stock a lot shows (`netStock` of the overlay; it was `netLotStock` in phone-copy/reads/rows before WH-381).
+const netLotStock = (lotId: string, copyStock: number) => {
+  const mod = require('@/features/phone-copy/unsentOverlay') as typeof import('@/features/phone-copy/unsentOverlay');
+  return mod.netStock(mod.getUnsentOverlay(), lotId, copyStock);
+};
 
 const managerRow = (id: string, qty: number): FeedRow => heldDispatchFeedRow(id, [{ lot_id: LOT, qty }]);
 const staffRow = (id: string, qty: number): FeedRow => {

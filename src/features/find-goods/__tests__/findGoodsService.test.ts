@@ -21,38 +21,12 @@
 import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { LOTS, lotNamed, seedWarehouse, serverRow } from '@/tests/phoneCopy/grnDataset';
 import { statementLog } from '@/tests/phoneCopy/fakeExpoSqlite';
-import { bootWarehouse, copySource, goOffline, loadCopy, loadUpTo, type Role, type Warehouse } from '@/tests/phoneCopy/wh299Phone';
-
-const mockOverlay = {
-  lessUnsent: new Map<string, number>(),
-  lessHeld: new Map<string, number>(),
-};
-jest.mock('@/features/phone-copy/unsentOverlay', () => {
-  const actual = jest.requireActual('@/features/phone-copy/unsentOverlay');
-  return {
-    ...actual,
-    getUnsentOverlay: () => ({
-      grn: () => null,
-      lot: () => null,
-      dispatch: () => null,
-      lessUnsent: (id: string) => mockOverlay.lessUnsent.get(id) ?? 0,
-      lessHeld: (id: string) => mockOverlay.lessHeld.get(id) ?? 0,
-      deductions: () => {
-        const sum = new Map<string, number>();
-        for (const map of [mockOverlay.lessUnsent, mockOverlay.lessHeld]) {
-          for (const [id, n] of map) sum.set(id, (sum.get(id) ?? 0) + n);
-        }
-        for (const [id, n] of [...sum]) if (n <= 0) sum.delete(id);
-        return sum;
-      },
-    }),
-  };
-});
+import { bootWarehouse, copySource, goOffline, loadCopy, loadUpTo, type Role } from '@/tests/phoneCopy/wh299Phone';
 
 type Row = ReturnType<typeof serverRow>;
 type Page = { data: Row[]; total_count: number; limit: number; offset: number };
 type Answer =
-  | { kind: 'page'; page: Page; source: unknown; copyId: string; olderLoading: boolean }
+  | { kind: 'page'; page: Page; source: unknown; copyId: string }
   | { kind: 'not-ready' }
   | { kind: 'failed' };
 const service = () => require('@/features/find-goods/findGoodsService') as { findGoods(query: string, offset: number): Promise<Answer> };
@@ -69,8 +43,6 @@ const grnService = () => require('@/services/grn-service') as GrnService;
 beforeEach(() => {
   resetEnv();
   seedWarehouse();
-  mockOverlay.lessUnsent.clear();
-  mockOverlay.lessHeld.clear();
 });
 afterEach(async () => { await eraseEverything(); });
 
@@ -122,7 +94,7 @@ describe('G: when Find goods is offered', () => {
 
   // WH-381 (step 2, criterion 14a) replaces "ready while older records still load (stage two)": there is no second stage,
   // so a load held after grn_images (where stage one used to end) is still 'loading', online and offline, and ready at the end.
-  it('G1: ready while older records still load (stage two), online and offline', async () => {
+  it('G1: still loading (not ready) after grn_images, online and offline: there is no stage two', async () => {
     const w = await bootWarehouse();
     const load = await loadUpTo(w, 'grn_lock');
     expect(gate().findGoodsState()).toBe('loading');
@@ -132,7 +104,7 @@ describe('G: when Find goods is offered', () => {
     expect(gate().findGoodsState()).toBe('ready');
   });
 
-  it('G2: loading before the first load and during stage one', async () => {
+  it('G2: loading before the first load and during initial load', async () => {
     const w = await bootWarehouse();
     expect(gate().findGoodsState()).toBe('loading');
     await w.phone.engine.startPhoneCopy();
@@ -195,7 +167,7 @@ describe('F2 and F3: the rows and their order', () => {
     expect(answer.source).toEqual(copySource());
     expect(answer.copyId).toEqual(expect.any(String));
     expect(answer.copyId).not.toBe('');
-    expect(answer.olderLoading).toBeUndefined();   // WH-381 (step 2, criterion 14a): no second stage, so no older-records flag
+    expect(answer).not.toHaveProperty('olderLoading');   // WH-381 (step 2, criterion 14a): no second stage, so no older-records flag
   });
 
   it.each([
@@ -281,12 +253,20 @@ describe('F4: pages', () => {
   });
 });
 
-describe('F5: this phone\'s unsent dispatches and held dispatches (the overlay seam)', () => {
-  it('a lot whose whole stock is deducted drops to the second group with 0; a partial deduction lowers the number and keeps the group', async () => {
-    mockOverlay.lessUnsent.set('l08', 2);   // all of its 2
-    mockOverlay.lessUnsent.set('l06', 4);   // 9 -> 5
-    mockOverlay.lessHeld.set('l07', 3);     // 8 -> 5
+describe('F5: WH-381 stock in Find goods (no dispatch deductions)', () => {
+  it('lot stock stays at server goodsreceived_trl.stock with zero dispatch deductions even if a legacy item emits lessUnsent', async () => {
     await ready();
+    const { registerSendKind } = require('@/features/unsent/sendKinds') as typeof import('@/features/unsent/sendKinds');
+    const { initUnsent } = require('@/features/unsent/unsentStore') as typeof import('@/features/unsent/unsentStore');
+    const { enqueue } = require('@/features/unsent/unsentQueue') as typeof import('@/features/unsent/unsentQueue');
+    registerSendKind('legacyDispatch', {
+      lane: 'record',
+      send: async () => ({ kind: 'transient' }),
+      overlay: () => ({ lessUnsent: { l08: 2, l06: 4 } }),
+    } as never);
+    await initUnsent();
+    await enqueue({ kind: 'legacyDispatch', body: {}, what: 'Legacy dispatch' });
+
     const answer = await service().findGoods('a', 0);
     // WH-381 item 4: the server's figure, no deduction, so l08 keeps its 2 and stays in the stock group
     expect(ids(answer)).toEqual(['l08', 'l07', 'l05', 'l06', 'l04', 'l03', 'l01', 'l02']);
@@ -294,18 +274,7 @@ describe('F5: this phone\'s unsent dispatches and held dispatches (the overlay s
     expect(byId.get('l08')).toBe(stockOf('l08'));
     expect(byId.get('l06')).toBe(stockOf('l06'));
     expect(byId.get('l07')).toBe(stockOf('l07'));
-    expect(byId.get('l05')).toBe(stockOf('l05'));
     expect(pageOf(answer).total_count).toBe(8);
-  });
-
-  it('unsent and held deductions of one lot add up', async () => {
-    mockOverlay.lessUnsent.set('l04', 5);
-    mockOverlay.lessHeld.set('l04', 15);    // 20 -> 0
-    await ready();
-    const answer = await service().findGoods('c-1', 0);
-    expect(pageOf(answer).data.map(r => [r.grn_item_id, r.stock])).toEqual([['l04', stockOf('l04')]]);
-    const all = await service().findGoods('a', 0);
-    expect(ids(all).slice(-2)).toEqual(['l01', 'l02']);
   });
 });
 
@@ -316,11 +285,11 @@ describe('F6: no network, whatever the connection', () => {
     if (mode.endsWith('offline')) await goOffline(w);
     const answer = await service().findGoods('peas', 0);
     expect(ids(answer)).toEqual(['l08', 'l06', 'l01', 'l02']);
-    expect((answer as Extract<Answer, { kind: 'page' }>).olderLoading).toBeUndefined();   // WH-381: no second stage
+    expect(answer).not.toHaveProperty('olderLoading');   // WH-381: no second stage
     expect(w.serverCalls).toEqual([]);
   });
 
-  it('not ready (no copy yet, or only stage one loaded): not-ready, and still no call to the server', async () => {
+  it('not ready (no copy yet, or initial load in progress): not-ready, and still no call to the server', async () => {
     const w = await bootWarehouse();
     expect(await service().findGoods('peas', 0)).toEqual({ kind: 'not-ready' });
     const load = await loadUpTo(w, 'goodsreceived');
@@ -350,13 +319,20 @@ describe('F6: no network, whatever the connection', () => {
 describe('F7: readCopyOnly', () => {
   // WH-381 (step 2, criterion 14a) replaces the stage-two case: while the single load is held after grn_images the copy is
   // not readable, online, and readCopyOnly answers not-ready, never a server path.
-  it('in stage two, online, answers from the copy where readVia (stage one need) answers the server', async () => {
+  it('while the single load is held after grn_images, online: not-ready, never a server path', async () => {
     const w = await bootWarehouse();
     const load = await loadUpTo(w, 'grn_lock');
     expect(await route().readCopyOnly(async q => q.get<{ n: number }>('SELECT 1 AS n'))).toEqual({ kind: 'not-ready' });
     expect(w.serverCalls).toEqual([]);
     await load.finish();
     expect(await route().readCopyOnly(async q => q.get<{ n: number }>('SELECT 1 AS n'))).toEqual({ kind: 'answer', answer: { value: { n: 1 }, source: copySource() } });
+  });
+
+  it('when the copy is ready, answers from the copy with zero server calls', async () => {
+    const w = await ready();
+    const result = await route().readCopyOnly(async q => q.get<{ n: number }>('SELECT 1 AS n'));
+    expect(result).toEqual({ kind: 'answer', answer: { value: { n: 1 }, source: copySource() } });
+    expect(w.serverCalls).toEqual([]);
   });
 
   it('before the first load answers not-ready, never a server path', async () => {
