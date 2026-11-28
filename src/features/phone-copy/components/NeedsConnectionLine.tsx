@@ -2,7 +2,6 @@
  * One footnote line that says something needs a connection (WH-299; Design offline-capture.md 2.5 and 2.10 DS1): an
  * action's reason, a section of a page the copy cannot give, or a whole screen. Never an error: no red, no retry.
  */
-import React from 'react';
 import { Text, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -33,7 +32,7 @@ interface Props {
   align?: 'center';
 }
 
-export const NeedsConnectionLine: React.FC<Props> = ({ testID, text, icon = false, inset = false, insetTo, align }) => {
+export function NeedsConnectionLine({ testID, text, icon = false, inset = false, insetTo, align }: Props) {
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
   const centered = align === 'center';
@@ -50,4 +49,4 @@ export const NeedsConnectionLine: React.FC<Props> = ({ testID, text, icon = fals
       </Text>
     </View>
   );
-};
+}
