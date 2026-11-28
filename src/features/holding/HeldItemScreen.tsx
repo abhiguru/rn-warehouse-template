@@ -36,7 +36,7 @@ import { showToast } from '@/utils/toast';
 import { QuickChangeSheet } from '@/features/quick-change/QuickChangeSheet';
 import { acceptToast, acceptWithChanges, heldRouteId } from './heldForm';
 import { correctedLotBody, heldLotTarget } from './heldLot';
-import { decideHeldItem, getHeldItem, type HeldCurrent, type HeldItemDetail, type HeldListRow } from './holdingApi';
+import { decideHeldItem, getHeldItem, phoneNameOf, type HeldCurrent, type HeldItemDetail, type HeldListRow } from './holdingApi';
 import { describeReason } from './heldReason';
 import { heldCopyRows, markHeldSeen } from './heldRows';
 import { heldFieldLabel, heldWhatText } from './heldWhat';
@@ -234,7 +234,7 @@ function OwnHeldItem() {
           customerName: textOf(raw.customer_name),
           recordedByName: textOf(raw.recorded_by_name),
           recordedAt: textOf(raw.recorded_at),
-          phone: textOf(raw.phone),
+          phone: phoneNameOf(raw),
           reason: textOf(raw.reason) ?? 'other',
           reasonData: raw.reason_data ?? null,
           state: found.state,
