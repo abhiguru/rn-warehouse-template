@@ -45,7 +45,8 @@ afterEach(async () => { await eraseEverything(); });
 describe('a direct online save made while a send pass runs', () => {
   it('the pass\'s own send does not ask for a sync, and the pass asks for exactly one afterwards', async () => {
     await startWithOneUnsent();
-    w.answers.set_lot_rack_and_mark = () => SENT;
+    // the request layer notes every accepted write: the send itself is one, and it must not ask for a sync of its own
+    w.answers.set_lot_rack_and_mark = () => { directSave(); return SENT; };
     const before = syncs();
     await sendNow();
     await sleep(1200);
