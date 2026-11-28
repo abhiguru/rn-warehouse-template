@@ -312,3 +312,139 @@ describe('with the offline feature off (no copy): nothing here runs', () => {
     expect(env.feed.calls).toEqual([]);
   });
 });
+
+// WH-397: a photo's register call is followed by the file upload (not a write the app sees) and then its confirm.
+describe('the hold between a photo upload\'s register and its confirm', () => {
+  afterEach(() => { jest.useRealTimers(); });
+  const advance = (ms: number) => jest.advanceTimersByTimeAsync(ms);
+  const register = (kind: 'grn' | 'dispatch' = 'grn') => note(`/rpc/register_${kind}_image_upload`);
+  const confirm = () => note('/rpc/confirm_grn_image_upload');
+
+  it.each(['grn', 'dispatch'] as const)('a registered %s photo holds the sync until its confirm, then the normal 400 ms', async kind => {
+    await ready();
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    const before = syncs();
+    register(kind);
+    await advance(5000);
+    expect(syncs()).toBe(before);              // held: the file is still going up
+    confirm();
+    await advance(300);
+    expect(syncs()).toBe(before);
+    await advance(300);
+    expect(syncs()).toBe(before + 1);
+  });
+
+  it('a cancel (any write after the register) restarts the normal 400 ms in the same way', async () => {
+    await ready();
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    const before = syncs();
+    register();
+    await advance(2000);
+    note('/rpc/cancel_grn_image_upload');
+    await advance(700);
+    expect(syncs()).toBe(before + 1);
+  });
+
+  it('a save with 3 photos makes ONE sync', async () => {
+    await ready();
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    const before = syncs();
+    note('/rpc/save_grn');
+    for (let i = 0; i < 3; i += 1) {
+      register();
+      await advance(800);                      // the file goes up
+      confirm();
+      await advance(100);
+    }
+    await advance(3000);
+    expect(syncs()).toBe(before + 1);
+  });
+
+  it('a screen that waits does not sit out the hold', async () => {
+    const w = await ready();
+    pushNewGrnPage();
+    register();
+    const started = Date.now();
+    await w.phone.engine.waitForSyncAfterWrite();
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(syncs()).toBeGreaterThan(0);
+  });
+
+  it('an upload that never confirms still gets its sync, at 30 s', async () => {
+    await ready();
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    const before = syncs();
+    register();
+    await advance(29_900);
+    expect(syncs()).toBe(before);
+    await advance(300);
+    expect(syncs()).toBe(before + 1);
+  });
+});
+
+// WH-395: the timer, the pending state and the waiters belong to one session and to the run they wait for.
+describe('the after-write sync ends with the session and with every run', () => {
+  const clearSession = () =>
+    (require('@/config/sessionScopedRegistry') as { runSessionScopedClears(context: { dispatch: () => void }): Promise<void> })
+      .runSessionScopedClears({ dispatch: () => undefined });
+
+  it('is registered as a session-scoped module', async () => {
+    await ready();
+    expect((require('@/config/sessionScopedRegistry') as { registeredSessionScopedNames(): string[] }).registeredSessionScopedNames()).toContain('after-write-sync');
+  });
+
+  it('a 400 ms timer from the old session does not fire a sync after a facility switch', async () => {
+    await ready();
+    const before = syncs();
+    note('/rpc/save_grn');
+    await clearSession();
+    await sleep(900);
+    expect(syncs()).toBe(before);
+  });
+
+  it('what a session noted does not make the next one wait or count', async () => {
+    const w = await ready();
+    note('/rpc/save_grn');
+    await clearSession();
+    const started = Date.now();
+    await w.phone.engine.waitForSyncAfterWrite();
+    expect(Date.now() - started).toBeLessThan(100);
+  });
+
+  it('a wait pending at a session change resolves at once, not after 3 s', async () => {
+    const w = await ready();
+    env.feed.hold(call => call.name === 'get_sync_changes');       // the sync never ends
+    note('/rpc/save_grn');
+    const started = Date.now();
+    const waiting = w.phone.engine.waitForSyncAfterWrite(3000);
+    await sleep(100);
+    await clearSession();
+    await waiting;
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+
+  it('a wait pending at stopPhoneCopy resolves at once', async () => {
+    const w = await ready();
+    note('/rpc/save_grn');
+    const started = Date.now();
+    const waiting = w.phone.engine.waitForSyncAfterWrite(3000);
+    await sleep(100);
+    await w.phone.engine.stopPhoneCopy();
+    await waiting;
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+
+  it('a wait pending when the app goes to the background (the run is cut) resolves at once', async () => {
+    const w = await ready();
+    const gate = env.feed.hold(call => call.name === 'get_sync_changes');
+    note('/rpc/save_grn');
+    const started = Date.now();
+    const waiting = w.phone.engine.waitForSyncAfterWrite(3000);
+    await gate.opened;
+    const stopping = w.phone.engine.stopPhoneCopy();     // the background stop cuts the run in flight
+    gate.release();
+    await stopping;
+    await waiting;
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+});

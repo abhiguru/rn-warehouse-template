@@ -6,7 +6,7 @@
  */
 import { resetSessionRenewalForTests } from '../sessionRenewal';
 import { subscribeFacilityWrite } from '../facilityWrite';
-import { getAuthenticatedClient, initializeSupabase, storeTokens } from '../supabaseConfig';
+import { beginOperatorSwitch, createAuthenticatedFetch, endOperatorSwitch, getAuthenticatedClient, initializeSupabase, storeTokens } from '../supabaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { createClient } from '@supabase/supabase-js';
@@ -21,6 +21,7 @@ jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 jest.mock('@/utils/secureSessionMarker', () => ({ clearSecureSessionMarker: jest.fn() }));
 
 const secure = new Map<string, string>();
+const rpc = jest.fn();
 const originalFetch = global.fetch;
 const BASE = 'http://localhost:18000/rest/v1';
 const reply = (status: number, body: unknown = {}) => ({ ok: status >= 200 && status < 300, status, json: async () => body, headers: new Headers() }) as unknown as Response;
@@ -39,7 +40,8 @@ beforeEach(async () => {
   jest.mocked(SecureStore.getItemAsync).mockImplementation(async key => secure.get(key) ?? null);
   jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => { secure.set(key, value); });
   jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async key => { secure.delete(key); });
-  jest.mocked(createClient).mockReturnValue({ rpc: jest.fn(), from: jest.fn() } as unknown as ReturnType<typeof createClient>);
+  rpc.mockReset();
+  jest.mocked(createClient).mockReturnValue({ rpc, from: jest.fn() } as unknown as ReturnType<typeof createClient>);
   initializeSupabase('http://localhost:18000', 'local-test-anon');
   global.fetch = jest.fn() as typeof fetch;
   await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
@@ -121,5 +123,70 @@ describe('sessionFetch tells the copy about an accepted write', () => {
     } finally {
       stop();
     }
+  });
+});
+
+// WH-299 review Medium: createAuthenticatedFetch (the print and document services) classes each request with the same rule.
+describe('createAuthenticatedFetch', () => {
+  const FACILITY = 'http://localhost:18000';
+  const edge = createAuthenticatedFetch;
+  const through = async (fetcher: ReturnType<typeof createAuthenticatedFetch>, path: string, status = 200) => {
+    jest.mocked(global.fetch).mockResolvedValueOnce(reply(status));
+    await (await fetcher(`${FACILITY}${path}`, { method: 'POST' })).json();
+  };
+
+  it('polling get_print_jobs (a read RPC) is never noted as a write, however often it runs', async () => {
+    const fetcher = edge();
+    for (let i = 0; i < 6; i += 1) await through(fetcher, '/rest/v1/rpc/get_print_jobs');
+    expect(heard).toBe(0);
+  });
+
+  it('a real write through the same fetch is noted once', async () => {
+    await through(edge(), '/rest/v1/rpc/save_grn');
+    expect(heard).toBe(1);
+  });
+
+  it.each([
+    'cancel-print-job', 'generate-accountant-pack', 'generate-customer-stock-pdf', 'generate-dispatch-pdf', 'generate-grn-pdf',
+    'generate-invoice-pdf', 'generate-report-pdf', 'generate-statement-pdf', 'generate-temperature-report-pdf', 'get-printer-status',
+    'print-grn-preprinted',
+  ])('the edge function %s is not the facility\'s data: no note, and it is still a write for a server switch', async name => {
+    const slow = new Promise<Response>(resolve => setTimeout(() => resolve(reply(200)), 20));
+    jest.mocked(global.fetch).mockImplementationOnce(() => slow);
+    const request = edge()(`${FACILITY}/functions/v1/${name}`, { method: 'POST' });
+    expect(beginOperatorSwitch()).toBe(false);     // a write holds a server switch back, as before
+    await (await request).json();
+    expect(heard).toBe(0);
+    expect(beginOperatorSwitch()).toBe(true);
+    endOperatorSwitch();
+  });
+
+  it('a read through it is aborted by a server switch (it no longer holds the switch back)', async () => {
+    let signal: AbortSignal | undefined;
+    jest.mocked(global.fetch).mockImplementationOnce((_, init) => {
+      signal = init?.signal || undefined;
+      return new Promise<Response>((_, reject) => signal?.addEventListener('abort', () => reject(new Error('Aborted'))));
+    });
+    const read = edge()(`${FACILITY}/rest/v1/rpc/get_print_jobs`, { method: 'POST' });
+    expect(beginOperatorSwitch()).toBe(true);
+    expect(signal?.aborted).toBe(true);
+    await expect(read).rejects.toThrow('Aborted');
+    expect(heard).toBe(0);
+    endOperatorSwitch();
+  });
+
+  it('a read refused as expired is sent again once with the renewed token; a write is not', async () => {
+    const expired = () => { const r = { ...reply(401, { message: 'jwt expired' }) } as unknown as Response & { clone: () => Response }; r.clone = () => r; return r; };
+    rpc.mockResolvedValue({ data: { success: true, access_token: jwt(), refresh_token: 'b'.repeat(64) }, error: null });
+    jest.mocked(global.fetch).mockResolvedValueOnce(expired()).mockResolvedValueOnce(reply(200));
+    const read = await edge()(`${FACILITY}/rest/v1/rpc/get_print_jobs`, { method: 'POST', headers: { Authorization: `Bearer ${jwt()}` } });
+    await read.json();
+    expect(jest.mocked(global.fetch)).toHaveBeenCalledTimes(2);
+    expect(heard).toBe(0);                          // the replayed read is still not a write
+
+    jest.mocked(global.fetch).mockClear();
+    jest.mocked(global.fetch).mockResolvedValueOnce(expired()).mockResolvedValueOnce(reply(200));
+    await edge()(`${FACILITY}/functions/v1/generate-grn-pdf`, { method: 'POST', headers: { Authorization: `Bearer ${jwt()}` } });
+    expect(jest.mocked(global.fetch)).toHaveBeenCalledTimes(1);   // a change is never sent again
   });
 });

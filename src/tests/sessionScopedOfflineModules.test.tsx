@@ -44,7 +44,7 @@ jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: () => ne
 let mockNumbering: unknown = null;
 jest.mock('@/features/phone-copy/copyQueries', () => ({ readSetting: async () => mockNumbering }));
 jest.mock('@/config/lanSigner', () => ({ sha256Hex: () => new Promise(() => undefined) }));
-jest.mock('@/features/phone-copy/copyDb', () => ({ currentCopy: () => ({}) }));
+jest.mock('@/features/phone-copy/copyDb', () => ({ currentCopy: () => ({}), setBeforeErase: () => undefined }));
 jest.mock('@/features/phone-copy/photoFolder', () => ({ photoDirectory: () => ({ exists: true }), erasePhotoFolder: async () => undefined }));
 jest.mock('@/config/facilityCapabilities', () => ({ hasCapability: () => true }));
 jest.mock('@/utils/alert', () => ({ askAlert: jest.fn(async () => 'continue'), showAlert: jest.fn() }));
@@ -183,5 +183,21 @@ describe('the facility\'s numbering rule (numberingCache, WH-391)', () => {
     await endSession();
 
     expect([real.serverIssues('grn'), real.serverIssues('dispatch')]).toEqual([null, null]);
+  });
+});
+
+describe('the after-write sync and the write seen while quiet (WH-299, WH-395)', () => {
+  it('the real sync engine registers its after-write state with the session teardown', () => {
+    jest.requireActual('@/features/phone-copy/syncEngine');
+    const { registeredSessionScopedNames } = require('@/config/sessionScopedRegistry') as typeof import('@/config/sessionScopedRegistry');
+    expect(registeredSessionScopedNames()).toContain('after-write-sync');
+    expect(registeredSessionScopedNames()).toContain('facility-write-seen-while-quiet');
+  });
+
+  it('a write seen while quiet by the first person is gone after the session ends', async () => {
+    const real = jest.requireActual('@/config/facilityWrite') as typeof import('@/config/facilityWrite');
+    await real.withoutWriteNote(async () => real.noteDataWrite('https://warehouse.example.test/rest/v1/rpc/save_grn'));
+    await endSession();
+    expect(real.takeWriteSeenWhileQuiet()).toBe(false);
   });
 });
