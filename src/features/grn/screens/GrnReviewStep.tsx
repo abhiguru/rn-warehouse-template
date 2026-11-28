@@ -769,10 +769,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
    */
   const reportSavedAfterLeaving = (grNo: string | undefined, photos: GRNPhotoSaveReport | undefined) => {
     markItemRatesStale();
-    showAlert(
-      tr('grn.review.savedAfterLeavingTitle'),
-      tr(photos && photos.failed.length > 0 ? 'grn.review.savedAfterLeavingPhotos' : 'grn.review.savedAfterLeaving', { number: formatIdentifier(grNo ?? '') })
-    );
+    const withPhotos = !!photos && photos.failed.length > 0;
+    const pending = isGrnNumberPending(grNo);
+    let key: string;
+    if (withPhotos) key = pending ? 'grn.review.savedAfterLeavingPhotosPending' : 'grn.review.savedAfterLeavingPhotos';
+    else key = pending ? 'grn.review.savedAfterLeavingPending' : 'grn.review.savedAfterLeaving';
+    showAlert(tr('grn.review.savedAfterLeavingTitle'), tr(key, { number: formatIdentifier(grNo ?? '') }));
   };
 
   /**

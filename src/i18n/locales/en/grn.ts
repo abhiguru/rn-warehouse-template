@@ -296,6 +296,9 @@ export const grn = {
     savedAfterLeaving: 'GRN {{number}} was saved before you left the form. Find it in the GRN list.',
     savedAfterLeavingPhotos:
       'GRN {{number}} was saved, but its photos were not uploaded. Open it in the GRN list and add them under Images.',
+    savedAfterLeavingPending: 'The GRN was saved before you left the form. Find it in the GRN list.',
+    savedAfterLeavingPhotosPending:
+      'The GRN was saved, but its photos were not uploaded. Open it in the GRN list and add them under Images.',
     photosNotUploadedMessage: 'GRN {{number}} is saved, but these photos were not uploaded:\n{{photos}}',
     photosNotUploadedMessageNoNumber: 'The GRN is saved, but these photos were not uploaded:\n{{photos}}',
     failedGrnPhoto: 'GRN photo {{position}}',

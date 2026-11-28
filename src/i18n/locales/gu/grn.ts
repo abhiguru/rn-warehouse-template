@@ -297,6 +297,9 @@ export const grn: Translation<typeof source> = {
     savedAfterLeaving: 'તમે ફોર્મ છોડ્યું તે પહેલાં આવક પાવતી {{number}} સચવાઈ ગઈ. તે આવક પાવતીની યાદીમાં છે.',
     savedAfterLeavingPhotos:
       'આવક પાવતી {{number}} સચવાઈ ગઈ, પણ તેના ફોટો અપલોડ થયા નથી. તેને આવક પાવતીની યાદીમાં ખોલો અને ફોટો ટૅબમાં ફોટો ઉમેરો.',
+    savedAfterLeavingPending: 'તમે ફોર્મ છોડ્યું તે પહેલાં આવક પાવતી સચવાઈ ગઈ. તે આવક પાવતીની યાદીમાં છે.',
+    savedAfterLeavingPhotosPending:
+      'આવક પાવતી સચવાઈ ગઈ, પણ તેના ફોટો અપલોડ થયા નથી. તેને આવક પાવતીની યાદીમાં ખોલો અને ફોટો ટૅબમાં ફોટો ઉમેરો.',
     photosNotUploadedMessage: 'આવક પાવતી {{number}} સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     photosNotUploadedMessageNoNumber: 'આવક પાવતી સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     failedGrnPhoto: 'આવક પાવતીનો ફોટો {{position}}',
