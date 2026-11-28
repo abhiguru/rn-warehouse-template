@@ -14,10 +14,11 @@ import { act, render, screen, userEvent } from '@testing-library/react-native';
 import '@/tests/helpers/fakeTimersFirst';
 import RootLayout from '../../../app/_layout';
 import { beginNativeHandoff } from '@/config/nativeHandoff';
-import { clearOfflineStarted } from '@/config/offlineStart';
+import { clearOfflineStarted, onRoleUnconfirmed } from '@/config/offlineStart';
 import { operatorResumeGate } from '@/config/operatorResume';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
+import { setFacilityCapabilities } from '@/config/facilityCapabilities';
 import { cacheUserProfile, getAuthenticatedClient, storeTokens } from '@/config/supabaseConfig';
 import { store } from '@/store';
 import { logout, setUserProfile } from '@/store/slices/authSlice';
@@ -755,5 +756,66 @@ describe('with no connection while the app stays in front', () => {
     await wait(16 * MINUTE);
 
     shownOnScreen();
+  });
+});
+
+// WH-389: with the offline feature off the app behaves as before it: the limit and the clock check close nothing and hold no write.
+describe('a facility without the offline feature (WH-389)', () => {
+  const netGone = async () => {
+    server.up = false;
+    await act(async () => {
+      mockNetListeners.forEach(listener => listener({ type: 'none', isConnected: false, isInternetReachable: false, details: null }));
+    });
+    await wait();
+  };
+  let marked: jest.Mock;
+  let stop: () => void;
+  beforeEach(() => {
+    server.sync = false;
+    marked = jest.fn();
+    stop = onRoleUnconfirmed(marked);
+  });
+  afterEach(() => { stop(); });
+
+  it.each([
+    ['31 days on', CONFIRMED + 31 * DAY],
+    ['with the date set back a day', CONFIRMED - DAY],
+  ])('in front and offline, %s: the screens stay through the 15-minute check and a brief stay away, and writes are not held', async (_label, date) => {
+    await openApp();
+    await phoneDate(date);
+
+    await netGone();
+    await wait(16 * 60_000);
+    const endHandoff = beginNativeHandoff();
+    await goBack();
+    await wait(60_000);
+    await goFront();
+    endHandoff();
+
+    shownOnScreen();
+    expect(marked).not.toHaveBeenCalled();
+  });
+
+  it('back at the front past the limit: the screens stay and writes are not held', async () => {
+    await openApp();
+    await phoneDate(CONFIRMED + 31 * DAY);
+
+    await resumeOffline();
+
+    shownOnScreen();
+    expect(marked).not.toHaveBeenCalled();
+  });
+
+  it('the feature turned on while offline past the limit starts the check, which closes', async () => {
+    await openApp();
+    await phoneDate(CONFIRMED + 31 * DAY);
+    await netGone();
+    shownOnScreen();
+
+    await act(async () => { setFacilityCapabilities(FACILITY, { sync: true }); });
+    await wait();
+
+    shownClosed();
+    expect(marked).toHaveBeenCalled();
   });
 });

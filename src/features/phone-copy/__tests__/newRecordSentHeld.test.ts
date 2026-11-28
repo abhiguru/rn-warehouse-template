@@ -8,7 +8,7 @@
  * The copy's sync run is made while the overlay is NOT subscribed, so the sent document stays in the overlay as it does on the phone
  * between the sync that brings the record and the run that ends after the send.
  */
-import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
+import { env, eraseEverything, idsOf, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
 import { grnFeedRow, GRNS } from '@/tests/phoneCopy/grnDataset';
 import { rawRows, server } from '@/tests/unsent/unsentPhone';
@@ -194,5 +194,54 @@ describe('WH-404: edges (what the code does)', () => {
     expect(lines.data.aggregations).toMatchObject({ includes_unsent: 40 });
     const all: any = await stockSummary().getAllStockSummary();
     expect(all.data.summary).toMatchObject({ includes_unsent: 40 });
+  });
+});
+
+describe('WH-407: a sent GRN whose header is in the copy and whose lines are not yet', () => {
+  const record = { id: 'grn-server-1', gr_no: '312' };
+  async function copyBringsHeader(phone: NewRecordPhone) {
+    const row = { ...grnFeedRow(GRNS[0]), id: record.id, gr_no: record.gr_no, customer_id: 'c1', customer_name: 'asha Traders' };
+    env.feed.changeAnswers.push({
+      position: '1048600', as_of: env.feed.asOf, more: false, reload_all: null, reload: [],
+      changes: [{ e: 'goodsreceived', id: record.id, op: 'upsert', v: 'a3f09c2b11d4e5f6', row }],
+    });
+    expect(await phone.phone.engine.syncNow('pull-to-refresh')).toBe('done');
+  }
+
+  it('is not held: it stays in the list once, with its bags in the totals and both summaries, until a line arrives', async () => {
+    const phone = await sent();
+    await copyBringsHeader(phone);
+    expect(await idsOf(phone.phone, 'goodsreceived')).toContain(record.id);
+    const lines = await list();
+    expect(mine(lines)).toHaveLength(1);
+    expect(mine(lines)[0]).toMatchObject({ grn_id: LOCAL, gr_no: '312' });
+    expect(lines.data.aggregations).toMatchObject({ total_stock: 109, includes_unsent: 40 });
+    const all: any = await stockSummary().getAllStockSummary();
+    expect(all.data.summary).toMatchObject({ total_quantity: 109, includes_unsent: 40 });
+    const one: any = await stockSummary().getCustomerStockSummary('c1');
+    expect(one.data.summary).toMatchObject({ total_quantity: 70, includes_unsent: 40 });
+
+    // The line arrives: the copy's row replaces the overlay's, still once.
+    await copyBrings(phone, record);
+    const after = await list();
+    expect(mine(after)).toHaveLength(1);
+    expect(after.data.items.some(item => item.grn_id === LOCAL)).toBe(false);
+    expect(after.data.aggregations).toMatchObject({ total_stock: 109 });
+    expect(after.data.aggregations).not.toHaveProperty('includes_unsent');
+  });
+
+  it('a line deleted from the copy leaves the sent GRN listed from the overlay again, once', async () => {
+    const phone = await sent();
+    await copyBrings(phone, record);
+    env.feed.changeAnswers.push({
+      position: '1048700', as_of: env.feed.asOf, more: false, reload_all: null, reload: [],
+      changes: [{ e: 'goodsreceived_trl', id: 'item-server-0', op: 'delete' }],
+    });
+    expect(await phone.phone.engine.syncNow('pull-to-refresh')).toBe('done');
+    expect(await idsOf(phone.phone, 'goodsreceived_trl')).not.toContain('item-server-0');
+    const lines = await list();
+    expect(mine(lines)).toHaveLength(1);
+    expect(mine(lines)[0]).toMatchObject({ grn_id: LOCAL });
+    expect(lines.data.aggregations).toMatchObject({ total_stock: 109, includes_unsent: 40 });
   });
 });

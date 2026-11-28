@@ -74,6 +74,7 @@ const rowOf = async (phone: Phone, entity: string, id: string) => (await rowsOf(
 const parsed = async (phone: Phone, entity: string, id: string) => JSON.parse((await rowOf(phone, entity, id))!.row) as Record<string, unknown>;
 const sql = async <T>(phone: Phone, text: string, params: Array<string | number | null> = []) =>
   (await phone.copyDb.openCopy((await phone.scope())!)).all<T>(text, params);
+const stagedSteps = async (phone: Phone) => (await sql<{ kind: string }>(phone, 'SELECT kind FROM stage_changes ORDER BY seq')).map(r => r.kind);
 
 describe('T21 to T27: applying a page of changes', () => {
   it('T21: upsert inserts and replaces; the same id twice ends with the last row; extracted columns follow the row', async () => {
@@ -153,10 +154,15 @@ describe('T21 to T27: applying a page of changes', () => {
     const phone = await loaded();
     env.feed.changeAnswers.push(page('1048600', [upsert('goodsreceived', 'g1', { gr_no: 'G-001', rack: 'A' })], true), { error: { message: 'Network request failed' } });
     expect(await phone.engine.syncNow('pull-to-refresh')).toBe('failed');
-    expect(await metaOf(phone, 'position')).toBe('1048600');
+    // WH-409: the page is kept aside, unread, until the last one arrives; the copy and its position have not moved.
+    expect(await metaOf(phone, 'position')).toBe(env.feed.startPosition);
+    expect(await parsed(phone, 'goodsreceived', 'g1')).not.toHaveProperty('rack');
+    expect(await stagedSteps(phone)).toEqual(['page']);
     env.feed.calls.length = 0;
     expect(await phone.engine.syncNow('retry')).toBe('done');
     expect(env.feed.named('get_sync_changes')[0].args.p_position).toBe('1048600');
+    expect(await parsed(phone, 'goodsreceived', 'g1')).toMatchObject({ rack: 'A' });
+    expect(await stagedSteps(phone)).toEqual([]);
   });
 
   it('T26: applying the same changes page twice leaves the same copy', async () => {
@@ -410,5 +416,112 @@ describe('T33: no room on the phone', () => {
   it('reports the size of the file the copy occupies', async () => {
     const phone = await loaded();
     expect(phone.syncStore.getSyncSnapshot().copyBytes).toBeGreaterThan(0);
+  });
+});
+
+describe('WH-409: no read sees a half-applied catch-up', () => {
+  const lot = (id: string, rack: string) => upsert('goodsreceived_trl', id, { gr_id: 'g3', item_name: 'Fictional Rice', rack }, `v-${id}-new`);
+  const held = (position: string) => env.feed.hold(c => c.name === 'get_sync_changes' && c.args.p_position === position);
+
+  it('a page boundary inside one GRN\'s lines: between the pages the GRN is absent and an edited line is as before; then both are whole', async () => {
+    const phone = await loaded();
+    env.feed.changeAnswers.push(
+      page('1048600', [upsert('goodsreceived', 'g3', { gr_no: 'G-003' }), lot('l4', 'C-1'), upsert('goodsreceived_trl', 'l1', { gr_id: 'g1', item_name: 'Fictional Peas', rack: 'NEW' })], true),
+      page('1048700', [lot('l5', 'C-2')]),
+    );
+    const second = held('1048600');
+    const run = phone.engine.syncNow('pull-to-refresh');
+    await second.opened;
+    expect(phone.engine.isCopyReadable()).toBe(true);
+    expect(await idsOf(phone, 'goodsreceived')).toEqual(['g1', 'g2']);
+    expect(await idsOf(phone, 'goodsreceived_trl')).toEqual(['l1', 'l2', 'l3']);
+    expect(await parsed(phone, 'goodsreceived_trl', 'l1')).toMatchObject({ rack: 'A-1' });
+    expect(await metaOf(phone, 'position')).toBe(env.feed.startPosition);
+    second.release();
+    expect(await run).toBe('done');
+    expect(await idsOf(phone, 'goodsreceived')).toEqual(['g1', 'g2', 'g3']);
+    expect(await idsOf(phone, 'goodsreceived_trl')).toEqual(['l1', 'l2', 'l3', 'l4', 'l5']);
+    expect(await parsed(phone, 'goodsreceived_trl', 'l1')).toMatchObject({ rack: 'NEW' });
+    expect(await metaOf(phone, 'position')).toBe('1048700');
+  });
+
+  it('after a kill the staged catch-up goes on from its last page: no page is asked twice and all of it is applied', async () => {
+    const phone = await loaded();
+    env.feed.changeAnswers.push(page('1048600', [upsert('goodsreceived', 'g3', { gr_no: 'G-003' }), lot('l4', 'C-1')], true), { error: { message: 'Network request failed' } });
+    expect(await phone.engine.syncNow('pull-to-refresh')).toBe('failed');
+    env.feed.calls.length = 0;
+    env.feed.changeAnswers.push(page('1048700', [lot('l5', 'C-2')]));
+    const again = bootPhone();
+    await again.engine.startPhoneCopy();
+    expect(await again.engine.syncNow('open')).toBe('done');
+    expect(env.feed.named('get_sync_changes').map(c => c.args.p_position)).toEqual(['1048600']);
+    expect(await idsOf(again, 'goodsreceived_trl')).toEqual(['l1', 'l2', 'l3', 'l4', 'l5']);
+    expect(await metaOf(again, 'position')).toBe('1048700');
+    expect(await stagedSteps(again)).toEqual([]);
+  });
+
+  it('a reload of an entity and the pages after it become visible together', async () => {
+    const phone = await loaded();
+    env.feed.rows.items = [{ id: 'it2', row: { id: 'it2', name: 'Fictional Rice', active: true } }];
+    env.feed.changeAnswers.push(
+      page('1048600', [], false, { reload: ['items'] }),
+      page('1048650', [upsert('goodsreceived', 'g3', { gr_no: 'G-003' })], true),
+      page('1048700', []),
+    );
+    const last = held('1048650');
+    const run = phone.engine.syncNow('pull-to-refresh');
+    await last.opened;
+    expect(await idsOf(phone, 'items')).toEqual(['it1']);
+    expect(await idsOf(phone, 'goodsreceived')).toEqual(['g1', 'g2']);
+    expect(await stagedSteps(phone)).toEqual(['reload', 'page']);
+    last.release();
+    expect(await run).toBe('done');
+    expect(await idsOf(phone, 'items')).toEqual(['it2']);
+    expect(await idsOf(phone, 'goodsreceived')).toEqual(['g1', 'g2', 'g3']);
+  });
+
+  it('a whole reload followed by a reload of one entity keeps the new copy id and the whole entity list', async () => {
+    const phone = await loaded();
+    const entities = await metaOf(phone, 'entities');
+    expect(JSON.parse(entities!).length).toBeGreaterThan(1);
+    env.feed.copy = '1.6f1c0000-0000-4000-8000-000000000002.9e107d9d372bb6826bd81d3542a419d6';
+    env.feed.rows.items = [{ id: 'it2', row: { id: 'it2', name: 'Fictional Rice', active: true } }];
+    env.feed.changeAnswers.push(
+      { position: '1048600', as_of: env.feed.asOf, more: false, reload_all: { reason: 'BULK_IMPORT' }, reload: [], changes: [] } as never,
+      page('1048650', [], false, { reload: ['items'] }),
+      page('1048700', []),
+    );
+    expect(await phone.engine.syncNow('pull-to-refresh')).toBe('done');
+    expect(env.feed.named('get_sync_start')).toHaveLength(1);                // not reloaded a second time
+    expect(await metaOf(phone, 'copy')).toBe(env.feed.copy);
+    expect(await metaOf(phone, 'entities')).toBe(entities);
+    expect(await idsOf(phone, 'items')).toEqual(['it2']);
+    expect(await idsOf(phone, 'goodsreceived')).toEqual(['g1', 'g2']);
+  });
+
+  it('an entity reloaded by the daily comparison is applied in the same run, by the catch-up that follows it', async () => {
+    const phone = await loaded();
+    await sql(phone, "DELETE FROM meta WHERE k IN ('checksum_at', 'checksum_partial_at')");
+    env.feed.rows.items = [{ id: 'it1', row: { id: 'it1', name: 'Fictional Peas', active: true } }, { id: 'it2', row: { id: 'it2', name: 'Fictional Rice', active: true } }];
+    expect(await phone.engine.syncNow('pull-to-refresh')).toBe('done');
+    expect(env.feed.named('get_sync_checksums')).toHaveLength(1);
+    expect(await idsOf(phone, 'items')).toEqual(['it1', 'it2']);
+    expect(await stagedSteps(phone)).toEqual([]);
+  });
+
+  it('the first load is not readable until its first catch-up has been applied, and the pages are not loaded again', async () => {
+    env.feed.changeAnswers.push({ error: { message: 'Network request failed' } });
+    const phone = bootPhone();
+    await phone.engine.startPhoneCopy();
+    expect(await phone.engine.syncNow('open')).toBe('failed');
+    expect(env.feed.named('get_sync_page').length).toBeGreaterThan(0);
+    expect(phone.engine.isCopyReadable()).toBe(false);
+    expect(await metaOf(phone, 'phase')).not.toBe('ready');
+    env.feed.calls.length = 0;
+    expect(await phone.engine.syncNow('retry')).toBe('done');
+    expect(phone.engine.isCopyReadable()).toBe(true);
+    expect(await metaOf(phone, 'phase')).toBe('ready');
+    expect(env.feed.named('get_sync_page')).toEqual([]);
+    expect(env.feed.named('get_sync_start')).toEqual([]);
   });
 });

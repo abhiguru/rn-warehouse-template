@@ -1698,3 +1698,68 @@ describe('P2-AUTH-001: a failed local facility sign-out cannot sign the person b
     expect(await getStoredToken()).toMatchObject({ isValid: true, refreshToken: 'c'.repeat(64) });
   });
 });
+
+describe('WH-405: a token refresh that waits for a connection is not an error', () => {
+  const OFFLINE = { data: null, error: { message: 'fetch failed: java.net.UnknownHostException: Unable to resolve host "warehouse.example.test"' } };
+  const renewed = () => ({ data: { success: true, access_token: jwt(), refresh_token: 'b'.repeat(64) }, error: null });
+  const logged = (spy: jest.Spied<typeof console.warn>) =>
+    spy.mock.calls.map(call => call.map(String).join(' ')).filter(line => /token refresh/i.test(line));
+  let warnings: jest.Spied<typeof console.warn>;
+  let errors: jest.Spied<typeof console.error>;
+
+  /** A refresh that succeeds ends an offline spell (and drops the waiting retry). */
+  const succeed = async () => {
+    await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+    rpc.mockResolvedValue(renewed());
+    expect(await refreshCustomJWT()).not.toBeNull();
+    await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  };
+  beforeEach(async () => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    warnings = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await succeed();
+    warnings.mockClear();
+    errors.mockClear();
+  });
+  afterEach(async () => {
+    await succeed();
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    ['the answer is a lost connection', () => rpc.mockResolvedValue(OFFLINE)],
+    ['the call fails with a lost connection', () => rpc.mockRejectedValue(new Error(OFFLINE.error.message))],
+    ['the call is refused for want of the identity check', () => rpc.mockRejectedValue(new Error('Warehouse identity verification required'))],
+  ])('four refreshes while %s give one warning and no error, and keep the token', async (_name, fail) => {
+    fail();
+    for (let i = 0; i < 4; i++) expect(await refreshCustomJWT()).toBeNull();
+    expect(logged(warnings)).toHaveLength(1);
+    expect(logged(errors)).toEqual([]);
+    expect(secure.get('secure_refresh_token')).toBe('a'.repeat(64));
+  });
+
+  it('a refresh that succeeds ends the spell: the next one warns again, once', async () => {
+    rpc.mockResolvedValue(OFFLINE);
+    await refreshCustomJWT();
+    await succeed();
+    warnings.mockClear();
+    rpc.mockResolvedValue(OFFLINE);
+    await refreshCustomJWT();
+    await refreshCustomJWT();
+    expect(logged(warnings)).toHaveLength(1);
+  });
+
+  it('a server fault that is not a connection is still logged as an error', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'permission denied for function refresh_jwt_token', code: '42501' } });
+    expect(await refreshCustomJWT()).toBeNull();
+    expect(logged(errors).length).toBeGreaterThan(0);
+  });
+
+  it('a refused token is still an error and signs out', async () => {
+    rpc.mockResolvedValue({ data: { success: false, message: 'Invalid refresh token' }, error: null });
+    expect(await ensureValidTokens()).toBe(false);
+    expect(logged(errors).length).toBeGreaterThan(0);
+    expect(secure.has('secure_refresh_token')).toBe(false);
+  });
+});

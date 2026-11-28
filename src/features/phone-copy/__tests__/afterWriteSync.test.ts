@@ -362,22 +362,76 @@ describe('the hold while online photo uploads are running (tokens)', () => {
     expect(syncs()).toBe(before + 1);
   });
 
-  it('a save made before the upload starts is held too, and the 30 s deadline is not pushed out by later writes', async () => {
+  it('a photo step during an upload is held, and the 30 s deadline is not pushed out by later photo steps', async () => {
     await ready();
     fake();
     const before = syncs();
-    note('/rpc/save_grn');                     // the 400 ms timer starts
-    const release = hold();                    // the photos start before it fires
+    const release = hold();
+    note('/rpc/register_grn_image_upload');    // the hold starts here
     await advance(10_000);
-    expect(syncs()).toBe(before);              // promoted to the hold
-    note('/rpc/confirm_grn_image_upload');     // a write during the hold
-    await advance(20_300);                     // 30 s from the promotion at 400 ms is 30.4 s: 30.3 s in total
+    expect(syncs()).toBe(before);
+    note('/rpc/confirm_grn_image_upload');     // a later photo step during the hold
+    await advance(19_900);                     // 29.9 s after the first photo step
     expect(syncs()).toBe(before);
     await advance(200);
     expect(syncs()).toBe(before + 1);          // the deadline stood
     release();
     await advance(1000);
     expect(syncs()).toBe(before + 1);          // the late release owes nothing more
+  });
+
+  it('WH-401: a save made just before the upload starts is not held: it syncs after the normal 400 ms', async () => {
+    await ready();
+    fake();
+    const before = syncs();
+    note('/rpc/save_grn');
+    hold();                                    // the photos start before the timer fires
+    await advance(399);
+    expect(syncs()).toBe(before);
+    await advance(2);
+    expect(syncs()).toBe(before + 1);
+  });
+
+  it.each(['/customers', '/rpc/save_grn', '/rpc/update_item'])('WH-401: another write (%s) during a photo hold syncs after 400 ms, replacing the hold', async path => {
+    await ready();
+    fake();
+    const before = syncs();
+    const release = hold();
+    note('/rpc/register_grn_image_upload');
+    await advance(5000);
+    expect(syncs()).toBe(before);
+    note(path);
+    await advance(399);
+    expect(syncs()).toBe(before);
+    await advance(2);
+    expect(syncs()).toBe(before + 1);          // not after the 25 s left of the hold
+    await advance(30_000);
+    expect(syncs()).toBe(before + 1);          // the replaced hold owes nothing
+    release();
+  });
+
+  it('WH-399: a photo registration the server refuses holds nothing back: the upload releases its hold and the sync follows', async () => {
+    const w = await ready();
+    const supabase = require('@/config/supabaseConfig') as Record<string, unknown>;
+    supabase.beginOperatorMutation = () => () => undefined;
+    // The request layer notes every HTTP 200, a refusal included; then the service reads `success: false`.
+    w.answers.register_grn_image_upload = () => {
+      note('/rpc/register_grn_image_upload');
+      return { data: { success: false, error: 'Fictional refusal' }, error: null };
+    };
+    const { uploadGRNPhotos } = require('@/features/grn/services/imageUploadService') as typeof import('@/features/grn/services/imageUploadService');
+    fake();
+    const before = syncs();
+    note('/rpc/save_grn');
+    const outcome = await uploadGRNPhotos('g-A2', [{
+      image: { id: 'temp_book', imageUrl: 'file:///phone/cache/book.webp', uploadStatus: 'completed', fileSize: 1200, mimeType: 'image/webp' } as never,
+      imageType: 'header',
+    } as never]);
+    expect(w.serverCalls.map(c => c.name)).toEqual(['register_grn_image_upload']);
+    expect(outcome.failed).toHaveLength(1);
+    await advance(401);
+    expect(facilityWrite().hasActiveUploadHold()).toBe(false);
+    expect(syncs()).toBe(before + 1);
   });
 
   it('a save with 3 photos makes ONE sync', async () => {
@@ -427,7 +481,7 @@ describe('the hold while online photo uploads are running (tokens)', () => {
     const before = syncs();
     const a = hold();
     hold();                                    // b never releases in this test
-    note('/rpc/save_grn');
+    note('/rpc/register_grn_image_upload');
     a();
     a();
     await advance(5000);
@@ -508,7 +562,7 @@ describe('the hold while online photo uploads are running (tokens)', () => {
       await loadCopy(w);                       // the next session's copy
       fake();
       const before = syncs();
-      note('/rpc/save_grn');
+      note('/rpc/register_grn_image_upload');   // a photo step: only a leaked token would hold it
       await advance(500);
       expect(syncs()).toBe(before + 1);
     });
@@ -521,7 +575,7 @@ describe('the hold while online photo uploads are running (tokens)', () => {
       fake();
       const before = syncs();
       hold();                                  // the new session's upload
-      note('/rpc/save_grn');
+      note('/rpc/register_grn_image_upload');
       stale();
       await advance(5000);
       expect(syncs()).toBe(before);
