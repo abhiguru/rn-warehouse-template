@@ -121,8 +121,9 @@ async function signIn(role: 'admin' | 'staff') {
   mockStore = store as unknown as typeof mockStore;
   store.dispatch(setUserProfile({ id: 'profile-1', role, name: 'Asha Fictional' } as never));
 }
+const consoleSpy = {} as Record<'log' | 'info' | 'warn' | 'error' | 'debug' | 'time' | 'timeEnd', jest.SpyInstance>;
 beforeEach(async () => {
-  for (const level of ['log', 'info', 'warn', 'error', 'debug', 'time', 'timeEnd'] as const) jest.spyOn(console, level).mockImplementation(() => undefined);
+  for (const level of ['log', 'info', 'warn', 'error', 'debug', 'time', 'timeEnd'] as const) consoleSpy[level] = jest.spyOn(console, level).mockImplementation(() => undefined);
   resetEnv();
   seedWarehouse();
   seedDocuments();
@@ -240,7 +241,7 @@ describe('Users from the copy, one statement at a time (WH-348, Design finding)'
     expect(guard.rejected).toBe(0);
     expect(screen.queryByText("Couldn't load users")).not.toBeOnTheScreen();
     expect(serverUserCalls()).toHaveLength(0);
-    expect(console.error).not.toHaveBeenCalled();
+    expect(consoleSpy.error).not.toHaveBeenCalled();
   });
 
   it('offline, a copy read that fails: the quiet "Couldn\'t load users", a warning in the log, no server call, no console.error', async () => {
@@ -249,9 +250,9 @@ describe('Users from the copy, one statement at a time (WH-348, Design finding)'
     failStatement(/users_customers_new/, new Error('disk I/O error'));
     await render(<UsersScreen />);
     expect(await screen.findByText("Couldn't load users")).toBeOnTheScreen();
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('A read of the copy failed'), expect.anything());
+    expect(consoleSpy.warn).toHaveBeenCalledWith(expect.stringContaining('A read of the copy failed'), expect.anything());
     expect(serverUserCalls()).toHaveLength(0);
-    expect(console.error).not.toHaveBeenCalled();
+    expect(consoleSpy.error).not.toHaveBeenCalled();
   });
 
   it('online (reachable): the same list, no error', async () => {

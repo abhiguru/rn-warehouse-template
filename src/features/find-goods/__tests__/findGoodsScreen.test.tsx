@@ -335,7 +335,7 @@ describe('S2: typing', () => {
     await userEvent.type(screen.getByTestId('find-goods-search'), 'a');
     await wait(450);
     await userEvent.type(screen.getByTestId('find-goods-search'), 's');
-    await waitFor(() => expect(screen.queryByTestId('find-goods-row-l02')).toBeOnTheScreen(), { timeout: 1500 });
+    expect(await screen.findByTestId('find-goods-row-l02', {}, { timeout: 1500 })).toBeOnTheScreen();
     expect(screen.queryByTestId('find-goods-row-l07')).not.toBeOnTheScreen();   // "a" alone would have shown it
     await act(async () => { release(); });
     await wait(200);
