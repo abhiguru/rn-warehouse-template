@@ -13,7 +13,7 @@ import { StatusTag } from '@/components/ui';
 import { Button } from '@/components/ui/Button';
 import { DatePickerInput } from '@/components/ui/DatePickerInput';
 import { entryFieldLabel, replacedLineText } from '@/components/grn-details/replacedLineText';
-import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
+import { ScreenNeedsConnection } from '@/features/phone-copy/components/ScreenNeedsConnection';
 import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { getReplacedEntries, type ReplacedEntryRow } from '@/services/replacedEntriesService';
 import { useThemedStyles } from '@/hooks/useTheme';
@@ -96,9 +96,7 @@ export default function ReplacedEntriesScreen() {
     <View style={styles.container} testID="replaced-entries-screen">
       <ReportHeader title={tr('offline.replacedList.title')} />
       {needsConnection ? (
-        <View style={styles.centre}>
-          <NeedsConnectionLine testID="replaced-entries-needs-connection" text={tr('components.offlineRead.screenNeedsConnection')} icon />
-        </View>
+        <ScreenNeedsConnection testID="replaced-entries-needs-connection" />
       ) : (
         <>
           <View style={styles.period}>
