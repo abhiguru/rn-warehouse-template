@@ -637,3 +637,24 @@ describe('WH-406, WH-413: a session that ends during a send', () => {
     expect(saves()).toHaveLength(2);
   });
 });
+
+describe('WH-428: one retry timer, at the earliest due time', () => {
+  it('two items the phone could not record both wait 5 s: one timer is armed, and it fires once at 5 s', async () => {
+    const armed: number[] = [];
+    const real = global.setTimeout;
+    jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void, wait?: number, ...rest: unknown[]) => {
+      if (wait === 5000) armed.push(wait);
+      return real(fn, wait, ...rest);
+    }) as typeof setTimeout);
+    const phone = await start();
+    let sends = 0;
+    phone.kinds.registerSendKind('testStoreFail', { lane: 'record', send: async (_body: never, ctx) => { sends += 1; (ctx as { noteStoreFailure?: () => void }).noteStoreFailure?.(); return { kind: 'sent', result: {} }; } });
+    await phone.queue.enqueue({ kind: 'testStoreFail', body: {}, what: 'First' });
+    await phone.queue.enqueue({ kind: 'testStoreFail', body: {}, what: 'Second' });
+    await advance(500);
+    expect(sends).toBe(2);
+    expect(armed).toHaveLength(1);
+    await advance(5000);
+    expect(sends).toBe(2); // both are sent; the one timer's pass finds nothing more to send
+  });
+});

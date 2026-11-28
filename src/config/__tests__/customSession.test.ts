@@ -59,6 +59,7 @@ import { getAppErrorCode } from '@/utils/appError';
 import { isOfflineFailure, categorizeError } from '@/utils/serviceErrorHandler';
 import { loadOperatorServer, saveOperatorServer } from '../operatorServer';
 import { setLanguage, t } from '@/i18n';
+import * as sessionDeviceName from '../sessionDeviceName';
 
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 jest.mock('@/utils/secureSessionMarker', () => ({
@@ -1780,6 +1781,32 @@ describe('WH-411: the phone names itself in the SMS code check body', () => {
       else expect(body.device_name).toMatch(name);
     } finally {
       restore();
+    }
+  });
+});
+
+describe('WH-426: the phone\'s name is read before the sign-in session starts', () => {
+  it('a session change during the slow read does not throw the sign-in away: the code is posted once and the person is signed in', async () => {
+    // The read is slowed at its edge (the install mark is cached for the whole run once any earlier case has read it).
+    const slowRead = deferred<{ device_name?: string }>();
+    const naming = jest.spyOn(sessionDeviceName, 'deviceNameField').mockImplementation(() => slowRead.promise);
+    try {
+      jest.mocked(global.fetch).mockResolvedValue(operatorResponse({
+        success: true,
+        data: { action: 'login', user: { role: 'customer' }, session: { access_token: jwt(), refresh_token: 'c'.repeat(64) } },
+      }) as Response);
+      rpc.mockResolvedValue({ data: [], error: null });
+      const pending = verifyOTP('0000000002', '123456');
+      await flush();
+      expect(global.fetch).not.toHaveBeenCalled();
+      advanceSessionGeneration(); // another sign-in or a server switch starts while the name is read
+      slowRead.resolve({ device_name: 'Samsung SM-A156E (7F3A)' });
+      expect(await pending).toMatchObject({ success: true });
+      const posts = jest.mocked(global.fetch).mock.calls.filter(each => String(each[0]).endsWith('/operator-otp/verify'));
+      expect(posts).toHaveLength(1);
+      expect(JSON.parse(String(posts[0][1]?.body)).device_name).toBe('Samsung SM-A156E (7F3A)');
+    } finally {
+      naming.mockRestore();
     }
   });
 });

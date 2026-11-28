@@ -696,3 +696,27 @@ describe('WH-413: a hand-over whose session ends while it is out', () => {
     expect((await rawRows<{ state: string; held_id: string | null }>('items'))[0]).toMatchObject({ state: 'held', held_id: 'again-1' });
   });
 });
+
+describe('WH-427: a hand-over that held nothing asks for no sync', () => {
+  it('REQUEST_KEY_REUSED for the item: no after-send sync, and no repeat without a pause', async () => {
+    const phone = await startStaff({ withCopy: true });
+    await phone.offline();
+    const item = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
+    // After 12 calls the server stops answering, so a loop without a pause ends here (and fails the counts below) instead of hanging.
+    server.answers.hold_items = args => rpcCalls('hold_items').length > 12 ? NO_NETWORK : ({
+      data: { success: true, held: (args.p_items as { request_key: string }[]).map(i => ({ request_key: i.request_key, id: null, reason: 'REQUEST_KEY_REUSED' })) },
+      error: null,
+    });
+    const syncs = () => env.feed.named('get_sync_changes').length;
+    await phone.online();
+    const before = syncs();
+    await phone.pass(10_000);
+    const calls = rpcCalls('hold_items').length;
+    expect(calls).toBeGreaterThan(0);
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(syncs()).toBe(before);
+    expect(rpcCalls('hold_items')).toHaveLength(calls);
+    expect((await allItemRows())[0]).toMatchObject({ request_key: item.requestKey, state: 'refused', held_id: null });
+  });
+});
