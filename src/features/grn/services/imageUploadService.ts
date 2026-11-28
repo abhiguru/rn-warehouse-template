@@ -25,6 +25,7 @@ import { logPhotoFailure } from '@/utils/photoUploadError';
 import { createLogger, loggableError } from '@/utils/logger';
 import { createLimiter } from '@/utils/concurrency';
 import { heldWriteCouldOutlive } from '@/config/roleRecheck';
+import { holdAfterWriteSync } from '@/config/facilityWrite';
 import { rollbackPendingUpload } from '@/services/uploadRollback';
 import { photoUploadFailureText } from '@/utils/photoUploadError';
 import { toCanonicalUrl, viaCurrentPath } from '@/config/lanTransport';
@@ -169,6 +170,7 @@ export const uploadGRNImage = async (
   onProgress?: (progress: ImageUploadProgress) => void
 ): Promise<ImageUploadResult> => {
   let finishMutation: (() => void) | undefined;
+  let releaseSyncHold: (() => void) | undefined;
   // The prepared copy is kept only when the form holds it for a later upload.
   let preparedUri: string | undefined;
   let keepPrepared = false;
@@ -236,7 +238,8 @@ export const uploadGRNImage = async (
       onProgress({ loaded: 25, total: 100, percentage: 25 });
     }
 
-    // Get authenticated Supabase client
+    // Get authenticated Supabase client and hold after-write sync across register -> Storage -> confirm/cancel
+    releaseSyncHold = holdAfterWriteSync();
     const supabase = await getAuthenticatedClient();
 
     // === THREE-STEP TRANSACTIONAL UPLOAD ===
@@ -420,6 +423,7 @@ export const uploadGRNImage = async (
   } finally {
     // Uploaded at once, refused, or too large: the copy is not needed any more.
     if (preparedUri && !keepPrepared) void releaseLocalPhotos([preparedUri]);
+    releaseSyncHold?.();
     finishMutation?.();
   }
 };
@@ -591,6 +595,7 @@ const uploadSingleDeferredImage = async (
   imageType: 'header' | 'item',
   itemId?: string
 ): Promise<{ success: boolean; error?: string }> => {
+  const releaseSyncHold = holdAfterWriteSync();
   try {
     const fileName = image.fileName || 'image.webp';
     const mimeType = image.mimeType || 'image/webp';
@@ -713,6 +718,8 @@ const uploadSingleDeferredImage = async (
       success: false,
       error: photoUploadFailureText(err, t('grn.details.imageUploadFailed')),
     };
+  } finally {
+    releaseSyncHold();
   }
 };
 
@@ -854,11 +861,15 @@ export const uploadGRNPhotos = async (
   });
 
   let finishMutation: (() => void) | undefined;
+  let releaseSyncHold: (() => void) | undefined;
+  let handedOff = false;
   let supabase: Awaited<ReturnType<typeof getAuthenticatedClient>>;
   try {
     finishMutation = beginOperatorMutation();
+    releaseSyncHold = holdAfterWriteSync();
     supabase = await getAuthenticatedClient();
   } catch (error) {
+    releaseSyncHold?.();
     finishMutation?.();
     log.error('uploadGRNPhotos could not start', loggableError(error));
     // Like a failed upload: each prepared file is kept for the retry, also
@@ -872,75 +883,86 @@ export const uploadGRNPhotos = async (
     };
   }
 
-  // When this call stops waiting and reports the rest.
-  const waitEnds = Date.now() + waitMs;
+  try {
+    // When this call stops waiting and reports the rest.
+    const waitEnds = Date.now() + waitMs;
 
-  /** One photo: its whole upload runs in a shared place, its file is held until it ends. */
-  const upload = async (photo: PendingGRNPhoto): Promise<{ success: boolean; error?: string }> => {
-    const file = photo.image.imageUrl;
-    // Taken while the photo waits for its turn too, so resetting the form
-    // meanwhile does not delete the file it is about to read.
-    const releaseHold = holdLocalPhoto(file);
-    let result: { success: boolean; error?: string } = { success: false, error: t('grn.photos.uploadFailed') };
-    try {
-      result = await grnPhotoUploadSlots(async () => {
-        // Writes are held and this photo's could go out after this save's wait has ended (WH-352): not started.
-        if (heldWriteCouldOutlive(waitEnds)) return { success: false, error: t('grn.photos.uploadFailed') };
-        return uploadSingleDeferredImage(supabase, realGrnId, photo.image, photo.imageType, photo.itemId);
-      });
-    } catch (error) {
-      log.error('Photo upload ended unexpectedly', loggableError(error));
-    } finally {
-      // Confirmed: the copy on the phone is not needed any more. Otherwise it
-      // stays for a retry.
-      localPhotoUploadEnded(file, result.success);
-      releaseHold();
-    }
-    return result;
-  };
+    /** One photo: its whole upload runs in a shared place, its file is held until it ends. */
+    const upload = async (photo: PendingGRNPhoto): Promise<{ success: boolean; error?: string }> => {
+      const file = photo.image.imageUrl;
+      // Taken while the photo waits for its turn too, so resetting the form
+      // meanwhile does not delete the file it is about to read.
+      const releaseHold = holdLocalPhoto(file);
+      let result: { success: boolean; error?: string } = { success: false, error: t('grn.photos.uploadFailed') };
+      try {
+        result = await grnPhotoUploadSlots(async () => {
+          // Writes are held and this photo's could go out after this save's wait has ended (WH-352): not started.
+          if (heldWriteCouldOutlive(waitEnds)) return { success: false, error: t('grn.photos.uploadFailed') };
+          return uploadSingleDeferredImage(supabase, realGrnId, photo.image, photo.imageType, photo.itemId);
+        });
+      } catch (error) {
+        log.error('Photo upload ended unexpectedly', loggableError(error));
+      } finally {
+        // Confirmed: the copy on the phone is not needed any more. Otherwise it
+        // stays for a retry.
+        localPhotoUploadEnded(file, result.success);
+        releaseHold();
+      }
+      return result;
+    };
 
-  const attempts = photos.map(async (photo): Promise<{ success: boolean; error?: string }> => {
-    // An upload from an earlier try may still be running or waiting: its result
-    // counts. It is awaited outside the shared places, so waiting never blocks one.
-    const earlier = (photo as FailedGRNPhoto).inFlight;
-    if (earlier) {
-      const earlierResult = await earlier;
-      if (earlierResult.success) return earlierResult;
-    }
-    if (photo.imageType === 'item' && !photo.itemId) {
-      return { success: false, error: t('grn.upload.lineNotFound') };
-    }
-    // Only the prepared copy is ever sent, whatever list the caller built.
-    if (!isDeferredGRNPhoto(photo.image)) {
-      return { success: false, error: t('grn.upload.notPrepared') };
-    }
-    return upload(photo);
-  });
-  // The uploads are not cancelled when the wait ends (queued ones still start
-  // later), so the mutation ends with the last of them.
-  void Promise.allSettled(attempts).then(() => finishMutation?.());
+    const attempts = photos.map(async (photo): Promise<{ success: boolean; error?: string }> => {
+      // An upload from an earlier try may still be running or waiting: its result
+      // counts. It is awaited outside the shared places, so waiting never blocks one.
+      const earlier = (photo as FailedGRNPhoto).inFlight;
+      if (earlier) {
+        const earlierResult = await earlier;
+        if (earlierResult.success) return earlierResult;
+      }
+      if (photo.imageType === 'item' && !photo.itemId) {
+        return { success: false, error: t('grn.upload.lineNotFound') };
+      }
+      // Only the prepared copy is ever sent, whatever list the caller built.
+      if (!isDeferredGRNPhoto(photo.image)) {
+        return { success: false, error: t('grn.upload.notPrepared') };
+      }
+      return upload(photo);
+    });
+    // The uploads are not cancelled when the wait ends (queued ones still start
+    // later), so the mutation and sync hold end with the last of them.
+    void Promise.allSettled(attempts).then(() => {
+      releaseSyncHold?.();
+      finishMutation?.();
+    });
+    handedOff = true;
 
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<null>(resolve => {
-    timer = setTimeout(() => resolve(null), waitMs);
-  });
-  const results = await Promise.all(attempts.map(attempt => Promise.race([attempt, deadline])));
-  if (timer !== undefined) clearTimeout(timer);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<null>(resolve => {
+      timer = setTimeout(() => resolve(null), waitMs);
+    });
+    const results = await Promise.all(attempts.map(attempt => Promise.race([attempt, deadline])));
+    if (timer !== undefined) clearTimeout(timer);
 
-  let uploadedCount = 0;
-  const failed: FailedGRNPhoto[] = [];
-  results.forEach((result, index) => {
-    if (result?.success) {
-      uploadedCount++;
-    } else if (result) {
-      failed.push({ ...describe(photos[index]), error: result.error });
-    } else {
-      log.warn('Photo upload still running when the wait ended');
-      failed.push({ ...describe(photos[index]), error: t('grn.upload.stillUploading'), inFlight: attempts[index] });
+    let uploadedCount = 0;
+    const failed: FailedGRNPhoto[] = [];
+    results.forEach((result, index) => {
+      if (result?.success) {
+        uploadedCount++;
+      } else if (result) {
+        failed.push({ ...describe(photos[index]), error: result.error });
+      } else {
+        log.warn('Photo upload still running when the wait ended');
+        failed.push({ ...describe(photos[index]), error: t('grn.upload.stillUploading'), inFlight: attempts[index] });
+      }
+    });
+
+    return { uploadedCount, failed };
+  } finally {
+    if (!handedOff) {
+      releaseSyncHold?.();
+      finishMutation?.();
     }
-  });
-
-  return { uploadedCount, failed };
+  }
 };
 
 // Note: imageToBase64 helper is defined at the top of this file

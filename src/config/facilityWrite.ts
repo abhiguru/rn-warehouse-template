@@ -7,10 +7,7 @@
 
 import { registerSessionScoped } from './sessionScopedRegistry';
 
-/** What kind of facility data write succeeded (WH-397): photo upload register/end bracket the Storage upload. */
-export type FacilityWriteKind = 'write' | 'upload-start' | 'upload-end';
-
-type FacilityWriteListener = (kind: FacilityWriteKind) => void;
+type FacilityWriteListener = () => void;
 
 const listeners = new Set<FacilityWriteListener>();
 
@@ -36,13 +33,64 @@ export function subscribeQuietWrite(listener: () => void): () => void {
 }
 
 /** Called by the request layer once the server accepted a write. Never throws. */
-export function noteFacilityWrite(kind: FacilityWriteKind = 'write'): void {
+export function noteFacilityWrite(): void {
   for (const listener of [...listeners]) {
     try {
-      listener(kind);
+      listener();
     } catch {
       // A listener's failure must not fail the write that already succeeded.
     }
+  }
+}
+
+const activeUploadHolds = new Set<symbol>();
+const holdReleaseListeners = new Set<() => void>();
+
+// Clear active upload hold tokens on session end so a stale release from the old session is a no-op.
+registerSessionScoped('facility-write-upload-holds', () => {
+  activeUploadHolds.clear();
+});
+
+/** True while at least one online photo upload hold token is active (WH-397). */
+export function hasActiveUploadHold(): boolean {
+  return activeUploadHolds.size > 0;
+}
+
+/** Told when the last active upload hold token is released (WH-397). */
+export function subscribeUploadHoldReleased(listener: () => void): () => void {
+  holdReleaseListeners.add(listener);
+  return () => {
+    holdReleaseListeners.delete(listener);
+  };
+}
+
+/**
+ * Acquires a unique hold token so the after-write sync waits for the photo upload (or batch) to finish rather than
+ * syncing once per photo (WH-397). Returns an idempotent release function for this token only.
+ */
+export function holdAfterWriteSync(): () => void {
+  const token = Symbol('upload-hold');
+  activeUploadHolds.add(token);
+  return () => {
+    if (!activeUploadHolds.delete(token)) return;
+    if (activeUploadHolds.size > 0) return;
+    for (const listener of [...holdReleaseListeners]) {
+      try {
+        listener();
+      } catch {
+        // A listener's failure must not fail upload cleanup.
+      }
+    }
+  };
+}
+
+/** Runs `fn` with an active after-write sync hold token, always releasing it on completion or failure (WH-397). */
+export async function withAfterWriteSyncHold<T>(fn: () => Promise<T>): Promise<T> {
+  const release = holdAfterWriteSync();
+  try {
+    return await fn();
+  } finally {
+    release();
   }
 }
 
@@ -83,18 +131,6 @@ export async function withoutWriteNote<T>(fn: () => Promise<T>): Promise<T> {
 const NOT_COPY_RPC =
   /^(can_make_bills|suggest_document_number|mark_held_item_seen|make_pairing_code|set_my_language|revoke_session|operator_review_enrollment|review_enrollment_again|submit_connection_notes)$/;
 
-/** The first write of a photo's upload; the file goes to Storage (not noted) before the confirm/cancel write. */
-const PHOTO_REGISTER_RPC = /^register_(grn|dispatch)_image_upload$/;
-/** The closing write of a photo's upload after Storage transfer succeeds or fails. */
-const PHOTO_END_RPC = /^(confirm|cancel)_(grn|dispatch)_image_upload$/;
-
-function writeKindOf(rpc: string | undefined): FacilityWriteKind {
-  if (rpc === undefined) return 'write';
-  if (PHOTO_REGISTER_RPC.test(rpc)) return 'upload-start';
-  if (PHOTO_END_RPC.test(rpc)) return 'upload-end';
-  return 'write';
-}
-
 /**
  * Called for each request the request layer classed as a write (`mutation`: not `isReadRequest`, so a GET, a HEAD, a read
  * RPC by NAME such as get_*, search_*, check_*, list_*, count_*, which includes every get_sync_* call of the sync feed,
@@ -117,5 +153,5 @@ export function noteDataWrite(input: RequestInfo | URL): void {
     }
     return;
   }
-  noteFacilityWrite(writeKindOf(rpc));
+  noteFacilityWrite();
 }
