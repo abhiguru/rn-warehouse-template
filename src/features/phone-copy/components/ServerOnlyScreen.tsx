@@ -16,13 +16,13 @@ const makeStyles = (t: ThemeTokens) => ({
   screen: { flex: 1, backgroundColor: t.background.base },
 });
 
-interface Props {
+interface ServerOnlyScreenProps {
   title: string;
   testID: string;
   children: React.ReactNode;
 }
 
-export const ServerOnlyScreen: React.FC<Props> = ({ title, testID, children }) => {
+export function ServerOnlyScreen({ title, testID, children }: ServerOnlyScreenProps) {
   const needsConnection = useNeedsConnection();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -43,4 +43,4 @@ export const ServerOnlyScreen: React.FC<Props> = ({ title, testID, children }) =
       <ScreenNeedsConnection testID={testID} />
     </View>
   );
-};
+}

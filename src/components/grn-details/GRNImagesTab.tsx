@@ -194,11 +194,17 @@ function deleteImageLabel(item: GRNImageData): string {
     : tr('grn.images.deletePhotoOfUnnamedItem');
 }
 
+interface NeedsConnectionTileProps {
+  item: GRNImageData;
+  styles: Styles;
+  t: ThemeTokens;
+}
+
 /**
  * A photo that is not on the phone while the server cannot be asked (WH-299; Design offline-capture.md 2.5): a frame that
  * says so. Nothing opens from it.
  */
-const NeedsConnectionTile: React.FC<{ item: GRNImageData; styles: Styles; t: ThemeTokens }> = ({ item, styles, t }) => {
+function NeedsConnectionTile({ item, styles, t }: NeedsConnectionTileProps) {
   const { width } = useWindowDimensions();
   const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
   const label = imageLabel(item);
@@ -216,7 +222,7 @@ const NeedsConnectionTile: React.FC<{ item: GRNImageData; styles: Styles; t: The
       </View>
     </View>
   );
-};
+}
 
 // Individual image tile with loading and error placeholders
 interface ImageTileProps {

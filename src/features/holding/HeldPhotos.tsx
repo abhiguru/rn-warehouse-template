@@ -28,7 +28,14 @@ const makeStyles = (t: ThemeTokens) => ({
   frameText: { ...typography.caption2, color: t.text.secondary, textAlign: 'center' as const, marginTop: space.xs },
 });
 
-function Tile({ photo, index, total, size }: { photo: HeldPhotoView; index: number; total: number; size: number }) {
+interface TileProps {
+  photo: HeldPhotoView;
+  index: number;
+  total: number;
+  size: number;
+}
+
+function Tile({ photo, index, total, size }: TileProps) {
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
   const uri = useViaCurrentPath(photo.url ?? '');
@@ -74,8 +81,12 @@ function Tile({ photo, index, total, size }: { photo: HeldPhotoView; index: numb
   );
 }
 
+interface HeldPhotosProps {
+  item: HeldItemDetail;
+}
+
 /** The photos of a held item; nothing at all when it has none (or while they load). */
-export function HeldPhotos({ item }: { item: HeldItemDetail }) {
+export function HeldPhotos({ item }: HeldPhotosProps) {
   const styles = useThemedStyles(makeStyles);
   const { width } = useWindowDimensions();
   const query = useQuery({ queryKey: [...queryKeys.holding.detail(item.id), 'photos', item], queryFn: () => loadHeldPhotos(item), retry: false });

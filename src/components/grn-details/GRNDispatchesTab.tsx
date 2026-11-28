@@ -385,10 +385,10 @@ const GRNDispatchesTabOnline: React.FC<GRNDispatchesTabProps> = ({
 };
 
 /** Offline the tab is one line: the dispatches need the server and none is kept (WH-381). */
-export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = props => {
+export function GRNDispatchesTab(props: GRNDispatchesTabProps) {
   const needsConnection = useNeedsConnection();
   if (needsConnection) return <SectionNeedsConnection testID="grn-details-section-needs-connection-dispatches" />;
   return <GRNDispatchesTabOnline {...props} />;
-};
+}
 
 export default GRNDispatchesTab;

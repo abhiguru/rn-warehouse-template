@@ -107,8 +107,14 @@ function editLines(body: Fields): string[] {
   return lines;
 }
 
+interface LineGroupsProps {
+  body: unknown;
+  server: readonly ServerLine[] | null;
+  styles: ReturnType<typeof makeStyles>;
+}
+
 /** The lines a held edit added and removed, each group under its title (Design 7.11d (a)). */
-function LineGroups({ body, server, styles }: { body: unknown; server: readonly ServerLine[] | null; styles: ReturnType<typeof makeStyles> }) {
+function LineGroups({ body, server, styles }: LineGroupsProps) {
   const groups = lineGroups(body, server);
   return (
     <>
@@ -117,9 +123,9 @@ function LineGroups({ body, server, styles }: { body: unknown; server: readonly 
           <Text accessibilityRole="header" style={styles.groupTitle}>
             {group.title}
           </Text>
-          {group.rows.map((rowText, index) => (
-            <Text key={`${rowText}-${index}`} style={styles.recordLine}>
-              {rowText}
+          {group.rows.map(row => (
+            <Text key={row.key} style={styles.recordLine}>
+              {row.text}
             </Text>
           ))}
         </View>
@@ -465,9 +471,9 @@ function ManagerHeldItem() {
             {current}
           </Text>
         ) : null}
-        {removedNow.map((text, index) => (
-          <Text key={`${text}-${index}`} testID="held-item-line-current" style={styles.current}>
-            {text}
+        {removedNow.map(line => (
+          <Text key={line.key} testID="held-item-line-current" style={styles.current}>
+            {line.text}
           </Text>
         ))}
         {open ? (

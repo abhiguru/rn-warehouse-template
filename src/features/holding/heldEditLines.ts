@@ -21,11 +21,16 @@ export interface ServerLine {
   package_mark: string | null;
 }
 
+export interface LineRow {
+  key: string;
+  text: string;
+}
+
 export interface LineGroup {
   /** `linesAdded` or `linesRemoved`: the testID suffix. */
   id: 'linesAdded' | 'linesRemoved';
   title: string;
-  rows: string[];
+  rows: LineRow[];
 }
 
 /** The quantity of a line, or null when the payload carries none or not a number: the figure is left out, never shown as 0 (Design 7.11g). A real 0 stays. */
@@ -67,14 +72,17 @@ export function lineGroups(body: unknown, server: readonly ServerLine[] | null):
   const groups: LineGroup[] = [];
   const added = listOf(body.linesAdded).flatMap(line => {
     const item = textOf(line.item_name);
-    return item === null ? [] : [rowText(item, textOf(line.package_mark), quantityText(line.qty, textOf(line.packaging)))];
+    if (item === null) return [];
+    const text = rowText(item, textOf(line.package_mark), quantityText(line.qty, textOf(line.packaging)));
+    return [{ key: textOf(line.clientLineId) ?? text, text }];
   });
   if (added.length > 0) groups.push({ id: 'linesAdded', title: tr('offline.linesAdded'), rows: added });
   const removed = listOf(body.linesRemoved).flatMap(line => {
     const item = textOf(line.item_name);
     if (item === null) return [];
     const there = server?.find(each => each.id === line.lotId);
-    return [rowText(item, there?.package_mark ?? null, quantityText(line.qty, there?.packaging ?? null))];
+    const text = rowText(item, there?.package_mark ?? null, quantityText(line.qty, there?.packaging ?? null));
+    return [{ key: textOf(line.lotId) ?? text, text }];
   });
   if (removed.length > 0) groups.push({ id: 'linesRemoved', title: tr('offline.linesRemoved'), rows: removed });
   return groups;
@@ -85,14 +93,14 @@ export function lineGroups(body: unknown, server: readonly ServerLine[] | null):
  * quantity differs from what was removed reads `holding.currentValue` with the item and the server's quantity; an unchanged line
  * and an added line have none. Empty until the server's lines are known.
  */
-export function removedLinesNow(body: unknown, server: readonly ServerLine[] | null): string[] {
+export function removedLinesNow(body: unknown, server: readonly ServerLine[] | null): LineRow[] {
   if (!isFields(body) || server === null) return [];
   return listOf(body.linesRemoved).flatMap(line => {
     const item = textOf(line.item_name);
     if (item === null || typeof line.lotId !== 'string') return [];
     const there = server.find(each => each.id === line.lotId);
-    if (!there) return [tr('offline.holding.lineGone')];
+    if (!there) return [{ key: line.lotId, text: tr('offline.holding.lineGone') }];
     if (Number(there.qty) === Number(line.qty)) return [];
-    return [tr('offline.holding.currentValue', { field: there.item_name, value: quantityText(there.qty, there.packaging) })];
+    return [{ key: line.lotId, text: tr('offline.holding.currentValue', { field: there.item_name, value: quantityText(there.qty, there.packaging) }) }];
   });
 }
