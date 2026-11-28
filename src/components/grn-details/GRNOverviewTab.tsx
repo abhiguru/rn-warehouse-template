@@ -41,7 +41,7 @@ interface GRNOverviewTabProps {
   note?: string | null;
   pricing_mode?: 'monthly' | 'one_time' | 'MONTHLY' | 'ONE_TIME' | string | null;
   grn_id?: string;
-  gr_no?: string;
+  gr_no?: string | null;
   can_edit?: boolean;
   /** The rates action (WH-180: stays available on an imported GRN, where `can_edit` is false). Defaults to `can_edit`. */
   can_edit_rates?: boolean;
@@ -182,7 +182,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: ACTIONS */}
       <ActionsSection
         entity="grn"
-        entityNumber={gr_no}
+        entityNumber={gr_no ?? undefined}
         entityId={grn_id}
         onSharePDF={onSharePDF}
         isShareLoading={is_share_loading}

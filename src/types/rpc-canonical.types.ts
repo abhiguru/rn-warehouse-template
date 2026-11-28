@@ -362,7 +362,7 @@ export interface RpcGrnItemRates {
  */
 export interface RpcGrnDetails {
   id: string;
-  gr_no: string;
+  gr_no: string | null; // null on a GRN saved on this phone and not yet sent (no number yet)
   date: string; // ISO 8601 timestamptz
   registration: string | null;
   note: string | null;

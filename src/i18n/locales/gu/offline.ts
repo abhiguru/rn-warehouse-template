@@ -213,6 +213,7 @@ export const offline: Translation<typeof source> = {
     savedGrnQueued: '{{customer}} ની આવક પાવતી તમારી પહેલાંની એન્ટ્રી પછી મોકલાશે અને ત્યારે તેનો નંબર મળશે. મોકલાયા પછી પ્રિન્ટ અને શેર કરી શકશો.',
     savedGrnTypedQueued: '{{customer}} ની આવક પાવતી {{number}} તમારી પહેલાંની એન્ટ્રી પછી મોકલાશે. મોકલાયા પછી પ્રિન્ટ અને શેર કરી શકશો.',
     heroNumberPending: 'મોકલતી વખતે નંબર',
+    heroNumberPendingSpoken: 'મોકલતી વખતે નંબર',
     docNotSent: 'હજુ મોકલાયું નથી. મોકલાશે ત્યારે નંબર મળશે.',
     grnUnsentInPicker: 'હજુ મોકલાઈ નથી. મોકલાયા પછી તેમાંથી જાવક કરો.',
     onceSent: 'મોકલાયા પછી થઈ શકશે',

@@ -567,7 +567,7 @@ function GRNDetailScreen() {
     invoiceRequestKey.current = invoiceKey;
     getGrnInvoiceRows({
       grnId: grn.id,
-      grnNo: grn.gr_no,
+      grnNo: grn.gr_no ?? '',
       customerId: grn.customer_details?.id,
       warehouseRole: isWarehouseRole,
       assignedCustomerIds,
@@ -633,7 +633,7 @@ function GRNDetailScreen() {
     startInvoiceFromGrn(
       {
         grnId: current.id,
-        grNo: current.gr_no,
+        grNo: current.gr_no ?? '',
         exitRoute: `/grn-details/${current.id}${entryTab ? `?tab=${encodeURIComponent(entryTab)}` : ''}`,
       },
       prepared.step === 'review' ? null : prepared.step

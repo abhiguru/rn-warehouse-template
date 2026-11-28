@@ -211,6 +211,7 @@ export const offline = {
     savedGrnQueued: 'The GRN for {{customer}} will be sent after your earlier entries and gets its number then. You can print and share it once it is sent.',
     savedGrnTypedQueued: 'GRN {{number}} for {{customer}} will be sent after your earlier entries. You can print and share it once it is sent.',
     heroNumberPending: 'Number when sent',
+    heroNumberPendingSpoken: 'number when sent',
     docNotSent: 'Not sent yet. It gets its number when sent.',
     grnUnsentInPicker: 'Not sent yet. Dispatch from it after it is sent.',
     onceSent: 'Available once this is sent',
