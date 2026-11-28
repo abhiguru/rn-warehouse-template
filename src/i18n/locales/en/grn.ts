@@ -258,6 +258,7 @@ export const grn = {
     fixHighlighted: 'Go back and fix the highlighted fields.',
     photoRequiredTitle: 'Add a photo of the GRN',
     photoRequiredMessage: 'Attach a photo of the GRN book entry for GRN {{number}}.',
+    photoRequiredMessagePending: 'Attach a photo of the GRN book entry.',
     ratesMissingTitle: 'Add the missing rates',
     ratesMissingMessage: 'Add the missing rates before saving.',
     ratesNotLoadedTitle: "The rates couldn't be loaded",

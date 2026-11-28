@@ -258,6 +258,7 @@ export const grn: Translation<typeof source> = {
     fixHighlighted: 'પાછા જાઓ અને ભૂલ બતાવેલી વિગતો સુધારો.',
     photoRequiredTitle: 'આવક પાવતીનો ફોટો ઉમેરો',
     photoRequiredMessage: 'આવક પાવતી {{number}} માટે પાવતી બુકની નોંધનો ફોટો જોડો.',
+    photoRequiredMessagePending: 'પાવતી બુકની નોંધનો ફોટો જોડો.',
     ratesMissingTitle: 'ખૂટતા દર ઉમેરો',
     ratesMissingMessage: 'સાચવતા પહેલાં ખૂટતા દર ઉમેરો.',
     ratesNotLoadedTitle: 'દર લોડ થઈ શક્યા નહીં',

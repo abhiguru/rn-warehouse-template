@@ -590,7 +590,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       if (heldId === null && (!header.gr_images || header.gr_images.length === 0)) {
         showAlert(
           tr('grn.review.photoRequiredTitle'),
-          tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
+          !header.gr_no || getFormNumberMode('grn') === 'pending'
+            ? tr('grn.review.photoRequiredMessagePending')
+            : tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
         );
         return;
       }
