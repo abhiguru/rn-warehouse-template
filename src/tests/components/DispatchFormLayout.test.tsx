@@ -12,9 +12,12 @@ import DispatchFormLayout from '../../../app/dispatch-form/_layout';
 
 const mockState = { dispatchForm: { header: { disp_no: 'DD0007' } } };
 jest.mock('@/store/hooks', () => ({
-  useAppDispatch: () => jest.fn(),
   useAppStore: () => ({ getState: () => mockState }),
+  useAppDispatch: () => jest.fn(),
+  // The layout draws OfflineFormGate, which reads the theme.
+  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 let mockCanCreate = true;
 jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ canCreate: mockCanCreate }) }));
 jest.mock('expo-router', () => {
