@@ -131,6 +131,8 @@ const engine = {
 
 /** Several writes close together make one sync. */
 const WRITE_SYNC_DELAY_MS = 400;
+/** The longest the sync waits for the confirm of a photo upload that has been registered. */
+const UPLOAD_HOLD_MS = 30_000;
 
 // ---------- meta ----------
 
@@ -832,15 +834,17 @@ function copyFollowsWrites(): boolean {
  * changed (and stock, for the writes it does not hold), so ask for a sync once the writes stop coming (WH-299, contract
  * "After an online write"). Reads never reach here; several writes make one sync.
  */
-function noteOnlineWrite(): void {
+function noteOnlineWrite(uploadStarting = false): void {
   if (!copyFollowsWrites()) return;
   engine.writeSeq += 1;
   engine.writePending = true;
   clearWriteTimer();
+  // A photo's register call is followed by the file upload (not a write we see) and then its confirm, which restarts the
+  // timer at the normal delay; so one save with many photos makes one sync (WH-397). A failed upload ends the hold at its limit.
   engine.writeTimer = setTimeout(() => {
     engine.writeTimer = null;
     void syncNow('after-write');
-  }, WRITE_SYNC_DELAY_MS);
+  }, uploadStarting ? UPLOAD_HOLD_MS : WRITE_SYNC_DELAY_MS);
   (engine.writeTimer as { unref?: () => void }).unref?.();
 }
 

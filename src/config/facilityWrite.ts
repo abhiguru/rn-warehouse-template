@@ -7,10 +7,13 @@
 
 import { registerSessionScoped } from './sessionScopedRegistry';
 
-const listeners = new Set<() => void>();
+/** `uploadStarting` is true for the register call of a photo upload: its confirm follows once the file is sent (WH-397). */
+type FacilityWriteListener = (uploadStarting?: boolean) => void;
+
+const listeners = new Set<FacilityWriteListener>();
 
 /** Told after each successful write to the facility's data (not Storage objects or edge functions). */
-export function subscribeFacilityWrite(listener: () => void): () => void {
+export function subscribeFacilityWrite(listener: FacilityWriteListener): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -31,10 +34,10 @@ export function subscribeQuietWrite(listener: () => void): () => void {
 }
 
 /** Called by the request layer once the server accepted a write. Never throws. */
-export function noteFacilityWrite(): void {
+export function noteFacilityWrite(uploadStarting = false): void {
   for (const listener of [...listeners]) {
     try {
-      listener();
+      listener(uploadStarting);
     } catch {
       // A listener's failure must not fail the write that already succeeded.
     }
@@ -78,6 +81,9 @@ export async function withoutWriteNote<T>(fn: () => Promise<T>): Promise<T> {
 const NOT_COPY_RPC =
   /^(can_make_bills|suggest_document_number|mark_held_item_seen|make_pairing_code|set_my_language|revoke_session|operator_review_enrollment|review_enrollment_again|submit_connection_notes)$/;
 
+/** The first write of a photo's upload; the file goes to Storage (not noted) before the confirm write. */
+const PHOTO_REGISTER_RPC = /^register_(grn|dispatch)_image_upload$/;
+
 /**
  * Called for each request the request layer classed as a write (`mutation`: not `isReadRequest`, so a GET, a HEAD, a read
  * RPC by NAME such as get_*, search_*, check_*, list_*, count_*, which includes every get_sync_* call of the sync feed,
@@ -100,5 +106,5 @@ export function noteDataWrite(input: RequestInfo | URL): void {
     }
     return;
   }
-  noteFacilityWrite();
+  noteFacilityWrite(rpc !== undefined && PHOTO_REGISTER_RPC.test(rpc));
 }
