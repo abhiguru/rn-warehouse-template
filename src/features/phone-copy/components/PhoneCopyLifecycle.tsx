@@ -21,10 +21,13 @@ import { isOfflineState } from '@/config/netOffline';
 import { FormDraftHost } from '@/features/unsent/FormDraftHost';
 import { initUnsent } from '@/features/unsent/unsentStore';
 import { sendNow } from '@/features/unsent/sendEngine';
+import { createLogger, loggableError } from '@/utils/logger';
 import { eraseCopy } from '../copyDb';
 import { startHeldPhotos, stopHeldPhotos } from '@/features/holding/heldPhotos';
 import { startMoneyRefresh, stopMoneyRefresh } from '../money/moneyRefresh';
 import { setCopyForeground, setCopyOffline, setSyncSchedule, startPhoneCopy, stopPhoneCopy, syncNow } from '../syncEngine';
+
+const logger = createLogger('[phone-copy-lifecycle]');
 
 export function PhoneCopyLifecycle() {
   useEffect(() => {
@@ -35,9 +38,6 @@ export function PhoneCopyLifecycle() {
 
     const begin = async () => {
       await startPhoneCopy();
-      // The unsent work is opened with the copy and sent at once when the person is connected (contract 4, triggers).
-      await initUnsent();
-      void sendNow('open');
       if (live && enabled && foreground) await syncNow('open');
     };
 
@@ -56,8 +56,6 @@ export function PhoneCopyLifecycle() {
       known = true;
       enabled = on;
       setSyncSchedule(on);
-      if (on) listenToNet();
-      else stopListening();
       if (on) {
         if (foreground) await begin();
       } else {
@@ -71,6 +69,7 @@ export function PhoneCopyLifecycle() {
       const was = offline;
       offline = now;
       setCopyOffline(now);
+      // The unsent work is sent on reconnecting whatever the facility's feature says (the engine hears the copy's offline flag).
       if (live && enabled && foreground && was === true && !now) void syncNow('reconnect');
     };
 
@@ -80,12 +79,11 @@ export function PhoneCopyLifecycle() {
       if (active === foreground) return;
       foreground = active;
       setCopyForeground(active);
+      // Unsent work is sent when the app comes forward, with the feature on or off.
+      if (active) void sendNow('foreground');
       if (!enabled) return;
       if (active) {
-        void startPhoneCopy().then(() => {
-          void sendNow('foreground');
-          return live && foreground ? syncNow('foreground') : undefined;
-        });
+        void startPhoneCopy().then(() => (live && foreground ? syncNow('foreground') : undefined));
       }
       else void stopPhoneCopy();
     };
@@ -112,6 +110,13 @@ export function PhoneCopyLifecycle() {
     const appState = AppState.addEventListener('change', onAppState);
     const stopCapabilities = subscribeFacilityCapabilities(() => void applyCapability());
     setCopyForeground(foreground);
+    // The unsent work does not depend on the phone copy (WH-301): it is opened and sent for any signed-in warehouse session,
+    // with the feature on or off, and the connection is followed for it either way (contract 4, triggers).
+    listenToNet();
+    void initUnsent().then(
+      () => sendNow('open'),
+      error => logger.warn('The unsent work could not be started', loggableError(error))
+    );
     void applyCapability();
 
     return () => {
