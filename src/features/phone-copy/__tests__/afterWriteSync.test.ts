@@ -313,72 +313,256 @@ describe('with the offline feature off (no copy): nothing here runs', () => {
   });
 });
 
-// WH-397: a photo's register call is followed by the file upload (not a write the app sees) and then its confirm.
-describe('the hold between a photo upload\'s register and its confirm', () => {
+// WH-397: online photo uploads hold the after-write sync with a token each (holdAfterWriteSync), released in a finally by the
+// upload service. The hold is not sniffed from the URLs of register/confirm/cancel: only a token holds.
+describe('the hold while online photo uploads are running (tokens)', () => {
   afterEach(() => { jest.useRealTimers(); });
   const advance = (ms: number) => jest.advanceTimersByTimeAsync(ms);
-  const register = (kind: 'grn' | 'dispatch' = 'grn') => note(`/rpc/register_${kind}_image_upload`);
-  const confirm = () => note('/rpc/confirm_grn_image_upload');
+  const hold = () => facilityWrite().holdAfterWriteSync();
+  const fake = () => jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+  const clearSession = () =>
+    (require('@/config/sessionScopedRegistry') as { runSessionScopedClears(context: { dispatch: () => void }): Promise<void> })
+      .runSessionScopedClears({ dispatch: () => undefined });
 
-  it.each(['grn', 'dispatch'] as const)('a registered %s photo holds the sync until its confirm, then the normal 400 ms', async kind => {
+  it('a plain write with no upload syncs after 400 ms, not before', async () => {
     await ready();
-    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    fake();
     const before = syncs();
-    register(kind);
+    note('/rpc/save_grn');
+    await advance(399);
+    expect(syncs()).toBe(before);
+    await advance(2);
+    expect(syncs()).toBe(before + 1);
+  });
+
+  it('a register or confirm URL alone holds nothing: only a token does', async () => {
+    await ready();
+    fake();
+    const before = syncs();
+    note('/rpc/register_grn_image_upload');
+    await advance(500);
+    expect(syncs()).toBe(before + 1);
+  });
+
+  it.each(['grn', 'dispatch'] as const)('a %s photo upload holds the sync until it releases, then the normal 400 ms', async kind => {
+    await ready();
+    fake();
+    const before = syncs();
+    const release = hold();
+    note(`/rpc/register_${kind}_image_upload`);
     await advance(5000);
     expect(syncs()).toBe(before);              // held: the file is still going up
-    confirm();
+    note(`/rpc/confirm_${kind}_image_upload`);
+    await advance(5000);
+    expect(syncs()).toBe(before);              // a confirm is just a write: the token is what holds
+    release();
     await advance(300);
     expect(syncs()).toBe(before);
     await advance(300);
     expect(syncs()).toBe(before + 1);
   });
 
-  it('a cancel (any write after the register) restarts the normal 400 ms in the same way', async () => {
+  it('a save made before the upload starts is held too, and the 30 s deadline is not pushed out by later writes', async () => {
     await ready();
-    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    fake();
     const before = syncs();
-    register();
-    await advance(2000);
-    note('/rpc/cancel_grn_image_upload');
-    await advance(700);
-    expect(syncs()).toBe(before + 1);
+    note('/rpc/save_grn');                     // the 400 ms timer starts
+    const release = hold();                    // the photos start before it fires
+    await advance(10_000);
+    expect(syncs()).toBe(before);              // promoted to the hold
+    note('/rpc/confirm_grn_image_upload');     // a write during the hold
+    await advance(20_300);                     // 30 s from the promotion at 400 ms is 30.4 s: 30.3 s in total
+    expect(syncs()).toBe(before);
+    await advance(200);
+    expect(syncs()).toBe(before + 1);          // the deadline stood
+    release();
+    await advance(1000);
+    expect(syncs()).toBe(before + 1);          // the late release owes nothing more
   });
 
   it('a save with 3 photos makes ONE sync', async () => {
     await ready();
-    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    fake();
     const before = syncs();
     note('/rpc/save_grn');
+    const batch = hold();                      // the batch, as uploadGRNPhotos takes it
     for (let i = 0; i < 3; i += 1) {
-      register();
+      const photo = hold();
+      note('/rpc/register_grn_image_upload');
       await advance(800);                      // the file goes up
-      confirm();
+      note('/rpc/confirm_grn_image_upload');
+      photo();
       await advance(100);
     }
+    await advance(10_000);
+    expect(syncs()).toBe(before);              // not one per photo
+    batch();
     await advance(3000);
+    expect(syncs()).toBe(before + 1);
+  });
+
+  it('two saves uploading at once: the hold lasts until both release, then there is one sync', async () => {
+    await ready();
+    fake();
+    const before = syncs();
+    const a = hold();
+    const b = hold();
+    note('/rpc/register_grn_image_upload');
+    note('/rpc/register_dispatch_image_upload');
+    a();
+    await advance(5000);
+    expect(syncs()).toBe(before);              // b is still uploading
+    b();
+    await advance(300);
+    expect(syncs()).toBe(before);
+    await advance(300);
+    expect(syncs()).toBe(before + 1);
+    await advance(3000);
+    expect(syncs()).toBe(before + 1);
+  });
+
+  it('a release called twice frees only its own token', async () => {
+    await ready();
+    fake();
+    const before = syncs();
+    const a = hold();
+    hold();                                    // b never releases in this test
+    note('/rpc/save_grn');
+    a();
+    a();
+    await advance(5000);
+    expect(syncs()).toBe(before);              // b still holds
+    expect(facilityWrite().hasActiveUploadHold()).toBe(true);
+  });
+
+  it('a release with no write owed makes no sync', async () => {
+    await ready();
+    fake();
+    const before = syncs();
+    hold()();
+    await advance(2000);
+    expect(syncs()).toBe(before);
+  });
+
+  it('the hold is released and the sync follows when the work throws (withAfterWriteSyncHold)', async () => {
+    await ready();
+    fake();
+    const before = syncs();
+    note('/rpc/save_grn');
+    await expect(facilityWrite().withAfterWriteSyncHold(async () => { throw new Error('upload failed'); })).rejects.toThrow('upload failed');
+    expect(facilityWrite().hasActiveUploadHold()).toBe(false);
+    await advance(1000);
+    expect(syncs()).toBe(before + 1);
+  });
+
+  it('a hold that is never released still syncs at the 30 s cap', async () => {
+    await ready();
+    fake();
+    const before = syncs();
+    hold();
+    note('/rpc/register_grn_image_upload');
+    await advance(29_900);
+    expect(syncs()).toBe(before);
+    await advance(300);
     expect(syncs()).toBe(before + 1);
   });
 
   it('a screen that waits does not sit out the hold', async () => {
     const w = await ready();
     pushNewGrnPage();
-    register();
+    hold();
+    note('/rpc/register_grn_image_upload');
     const started = Date.now();
     await w.phone.engine.waitForSyncAfterWrite();
     expect(Date.now() - started).toBeLessThan(1000);
     expect(syncs()).toBeGreaterThan(0);
   });
 
-  it('an upload that never confirms still gets its sync, at 30 s', async () => {
-    await ready();
-    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
-    const before = syncs();
-    register();
-    await advance(29_900);
-    expect(syncs()).toBe(before);
-    await advance(300);
-    expect(syncs()).toBe(before + 1);
+  it('a screen that waits gives up at its own limit when the held sync never lands', async () => {
+    const w = await ready();
+    pushNewGrnPage();
+    hold();
+    note('/rpc/save_grn');
+    env.feed.hold(call => call.name === 'get_sync_changes');
+    const started = Date.now();
+    await w.phone.engine.waitForSyncAfterWrite(1200);
+    const waited = Date.now() - started;
+    expect(waited).toBeGreaterThanOrEqual(1100);
+    expect(waited).toBeLessThan(2500);
+  }, 15000);
+
+  describe('the session and the copy', () => {
+    it('the token set is registered as a session-scoped module', async () => {
+      await ready();
+      expect((require('@/config/sessionScopedRegistry') as { registeredSessionScopedNames(): string[] }).registeredSessionScopedNames())
+        .toContain('facility-write-upload-holds');
+    });
+
+    it('a session clear drops every token: no hold leaks into the next session, a write there syncs at 400 ms', async () => {
+      const w = await ready();
+      hold();
+      hold();
+      expect(facilityWrite().hasActiveUploadHold()).toBe(true);
+      await clearSession();
+      expect(facilityWrite().hasActiveUploadHold()).toBe(false);
+      await loadCopy(w);                       // the next session's copy
+      fake();
+      const before = syncs();
+      note('/rpc/save_grn');
+      await advance(500);
+      expect(syncs()).toBe(before + 1);
+    });
+
+    it('a stale release from the old session does not free a token of the new one', async () => {
+      const w = await ready();
+      const stale = hold();
+      await clearSession();
+      await loadCopy(w);
+      fake();
+      const before = syncs();
+      hold();                                  // the new session's upload
+      note('/rpc/save_grn');
+      stale();
+      await advance(5000);
+      expect(syncs()).toBe(before);
+      expect(facilityWrite().hasActiveUploadHold()).toBe(true);
+    });
+
+    it('stopPhoneCopy cuts the held timer: the release afterwards makes no sync', async () => {
+      const w = await ready();
+      fake();
+      const before = syncs();
+      const release = hold();
+      note('/rpc/register_grn_image_upload');
+      await w.phone.engine.stopPhoneCopy();
+      release();
+      await advance(31_000);
+      expect(syncs()).toBe(before);
+    });
+
+    it('offline: no hold timer is armed and a release makes no sync', async () => {
+      const w = await ready();
+      await goOffline(w);
+      fake();
+      const before = syncs();
+      const release = hold();
+      note('/rpc/register_grn_image_upload');
+      await advance(31_000);
+      release();
+      await advance(1000);
+      expect(syncs()).toBe(before);
+    });
+
+    it('going offline while held cuts the 30 s timer', async () => {
+      const w = await ready();
+      fake();
+      const before = syncs();
+      hold();
+      note('/rpc/register_grn_image_upload');
+      await goOffline(w);
+      await advance(31_000);
+      expect(syncs()).toBe(before);
+    });
   });
 });
 

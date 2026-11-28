@@ -309,3 +309,169 @@ describe('rolling back a photo upload', () => {
     );
   });
 });
+
+// WH-397: every online photo upload holds the after-write sync with a token of its own (holdAfterWriteSync), released in a
+// finally, so a save with N photos makes one sync. The real facilityWrite is used; only the server's answers are faked.
+describe('the after-write sync hold of the dispatch photo uploads', () => {
+  const { hasActiveUploadHold, subscribeUploadHoldReleased } = jest.requireActual('@/config/facilityWrite') as typeof import('@/config/facilityWrite');
+  const asset = { uri: 'file:///cache/truck.jpg', fileName: 'truck.jpg', width: 800, height: 600 } as never;
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+  let released = 0;
+  let unsubscribe: () => void;
+  const waiting = new Map<string, () => void>();
+  const letAllThrough = async () => {
+    while (waiting.size > 0) {
+      [...waiting.values()].forEach((go) => go());
+      waiting.clear();
+      await settle();
+    }
+  };
+
+  /** register / confirm / cancel by file name; a storage upload waits for the test when `block(path)` says so. */
+  function backend(options: {
+    block?: (path: string) => boolean;
+    register?: (file: string) => unknown;
+    confirm?: (imageId: string) => unknown;
+    storageThrows?: boolean;
+  } = {}) {
+    const rpc = jest.fn(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'register_dispatch_image_upload') {
+        const custom = options.register?.(String(args.p_file_name));
+        if (custom !== undefined) return custom;
+        return { data: { success: true, image_id: `image-${args.p_file_name}`, storage_path: `path/${args.p_file_name}`, upload_token: 'token' }, error: null };
+      }
+      if (name === 'confirm_dispatch_image_upload') return options.confirm?.(String(args.p_image_id)) ?? { data: { success: true }, error: null };
+      if (name === 'cancel_dispatch_image_upload') return { data: { success: true, storage_path: 'path/x' }, error: null };
+      return { data: null, error: { message: `unexpected ${name}` } };
+    });
+    const storage = {
+      from: () => ({
+        upload: (path: string) => {
+          if (options.storageThrows) return Promise.reject(new Error('Network request failed'));
+          return options.block?.(path)
+            ? new Promise<{ error: null }>((resolve) => waiting.set(path, () => resolve({ error: null })))
+            : Promise.resolve({ error: null });
+        },
+        createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://facility.invalid/signed/${path}` }, error: null }),
+        remove: async (paths: string[]) => ({ data: paths.map((name) => ({ name })), error: null }),
+      }),
+    };
+    jest.mocked(getAuthenticatedClient).mockResolvedValue({ rpc, storage } as never);
+    return rpc;
+  }
+
+  beforeEach(() => {
+    released = 0;
+    waiting.clear();
+    unsubscribe = subscribeUploadHoldReleased(() => { released += 1; });
+    jest.mocked(compressPhoto).mockResolvedValue({ uri: 'file:///cache/prepared.webp', fileSize: 1200, mimeType: 'image/webp', extension: '.webp' } as never);
+    (global as any).fetch = jest.fn(async () => ({ blob: async () => ({ size: 1200 }) }));
+    (global as any).FileReader = class {
+      result: ArrayBuffer | null = null;
+      onload: (() => void) | null = null;
+      readAsArrayBuffer() {
+        this.result = new ArrayBuffer(8);
+        this.onload?.();
+      }
+    };
+  });
+  afterEach(async () => {
+    await letAllThrough();
+    unsubscribe();
+  });
+
+  const many = (count: number, prefix = 'crate') => Array.from({ length: count }, (_, index) => photo(`${prefix}-${index}`));
+
+  it('a save with 10 photos holds from the first photo to the last and releases once', async () => {
+    backend({ block: () => true });
+    const saving = uploadDeferredDispatchImages(DISPATCH_ID, many(10));
+    await settle();
+    expect(hasActiveUploadHold()).toBe(true);
+    await letAllThrough();
+    expect(await saving).toEqual({ success: true, uploadedCount: 10, errors: [], failed: [] });
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+  });
+
+  it('two saves at the same time: the hold lasts until both have ended, and is released once', async () => {
+    backend({ block: () => true });
+    const one = uploadDeferredDispatchImages(DISPATCH_ID, many(2, 'one'));
+    await settle();
+    const two = uploadDeferredDispatchImages(DISPATCH_ID, many(6, 'two'));
+    await settle();
+    [...waiting.entries()].slice(0, 2).forEach(([path, go]) => { go(); waiting.delete(path); });
+    await settle();
+    expect((await one).uploadedCount).toBe(2);
+    expect(hasActiveUploadHold()).toBe(true);
+    expect(released).toBe(0);
+    await letAllThrough();
+    expect((await two).uploadedCount).toBe(6);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+  });
+
+  it('a photo whose confirm is refused and rolled back by a cancel does not release the hold while another photo is uploading', async () => {
+    backend({
+      block: path => path === 'path/slow.webp',
+      confirm: id => (id === 'image-bad.webp' ? { data: { success: false, code: 'IMAGE_NOT_VERIFIED' }, error: null } : undefined),
+    });
+    const saving = uploadDeferredDispatchImages(DISPATCH_ID, [photo('bad'), photo('slow')]);
+    await settle();
+    expect(hasActiveUploadHold()).toBe(true);
+    expect(released).toBe(0);
+    await letAllThrough();
+    const outcome = await saving;
+    expect(outcome.uploadedCount).toBe(1);
+    expect(outcome.failed.map(p => p.id)).toEqual(['temp_bad']);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+  });
+
+  it('a register answered 200 with success false leaves no hold behind, and does not release it for the photo still uploading', async () => {
+    backend({
+      block: path => path === 'path/slow.webp',
+      register: file => (file === 'bad.webp' ? { data: { success: false, error: 'refused' }, error: null } : undefined),
+    });
+    const saving = uploadDeferredDispatchImages(DISPATCH_ID, [photo('bad'), photo('slow')]);
+    await settle();
+    expect(hasActiveUploadHold()).toBe(true);
+    expect(released).toBe(0);
+    await letAllThrough();
+    expect((await saving).uploadedCount).toBe(1);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+  });
+
+  it('an upload that throws still releases its token', async () => {
+    backend({ storageThrows: true });
+    const outcome = await uploadDeferredDispatchImages(DISPATCH_ID, many(3));
+    expect(outcome.uploadedCount).toBe(0);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+  });
+
+  it('a failure before any upload (no client) releases the token', async () => {
+    jest.mocked(getAuthenticatedClient).mockRejectedValue(new Error('Network request failed: session refresh unavailable'));
+    await uploadDeferredDispatchImages(DISPATCH_ID, many(2));
+    expect(hasActiveUploadHold()).toBe(false);
+  });
+
+  it('an immediate upload holds while it runs and releases when it ends, also when it fails', async () => {
+    backend({ block: () => true });
+    const ok = uploadDispatchImage(asset, DISPATCH_ID);
+    await settle();
+    expect(hasActiveUploadHold()).toBe(true);
+    await letAllThrough();
+    expect((await ok).success).toBe(true);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(1);
+
+    backend({ storageThrows: true });
+    const failed = await uploadDispatchImage(asset, DISPATCH_ID);
+    expect(failed.success).toBe(false);
+    expect(hasActiveUploadHold()).toBe(false);
+    expect(released).toBe(2);
+  });
+});
