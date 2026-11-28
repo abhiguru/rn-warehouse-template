@@ -128,6 +128,8 @@ const SERVER = { origin: 'https://warehouse.example.test', instanceId: 'instance
 const NEEDS = 'This needs a connection. It will load when you reconnect.';
 const NEEDS_GU = 'આ માટે કનેક્શન જોઈએ. ફરી જોડાશો ત્યારે લોડ થશે.';
 const serverCalls: string[] = [];
+/** What the fake server answers to a read a test names; every other read is a lost connection. */
+const serverAnswers: Record<string, unknown> = {};
 
 beforeEach(async () => {
   for (const level of ['log', 'info', 'warn', 'error', 'debug', 'time', 'timeEnd'] as const) jest.spyOn(console, level).mockImplementation(() => undefined);
@@ -136,11 +138,14 @@ beforeEach(async () => {
   seedWarehouse();
   seedDocuments();
   serverCalls.length = 0;
+  for (const key of Object.keys(serverAnswers)) delete serverAnswers[key];
   mockNet.offline = false;
   const feedRpc = env.feed.rpc;
   env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
     if (name.startsWith('get_sync_')) return feedRpc(name, args);
-    serverCalls.push(name);    return { data: null, error: { message: 'Network request failed' } };
+    serverCalls.push(name);
+    if (name in serverAnswers) return { data: serverAnswers[name], error: null };
+    return { data: null, error: { message: 'Network request failed' } };
   };
   await saveOperatorServer(SERVER);
   setFacilityCapabilities(SERVER, { sync: true });
@@ -364,5 +369,41 @@ describe('S4: photos offline', () => {
     expect(screen.queryByTestId('photo-needs-connection-ph-first')).not.toBeOnTheScreen();
     // The picture's source is the kept file (no role or text names an image's source).
     await waitFor(() => expect(JSON.stringify(screen.toJSON())).toContain(file as string));
+  });
+});
+
+// WH-381 gate (app/grn-details/[id].tsx: fetchAllDispatches and the invoice-rows effect wait for a connection, then run once).
+describe('WH-381: GRN details asks the server for lot dispatches only with a connection', () => {
+  const lotCalls = () => serverCalls.filter(name => name === 'get_grn_item_dispatches');
+  const dispatchAnswer = {
+    success: true,
+    data: {
+      dispatches: [{ id: 'srv-d1', disp_id: 'srv-d1', disp_no: 'D-9001', disp_date: '2026-11-26', quantity: 3, customer_name: 'asha Traders' }],
+      summary: { total_dispatched: 3, dispatch_count: 1 },
+    },
+  };
+
+  it.each([['Items'], ['Dispatches'], ['Invoices']])('offline, the %s tab: no read of lot dispatches or invoice rows, and no error state', async name => {
+    await connection(true);
+    await openGrn();
+    await tab(new RegExp(`^${name}`));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    expect(serverCalls).toEqual([]);
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
+    expect(screen.queryByText(/couldn.t load|failed/i)).not.toBeOnTheScreen();
+  });
+
+  it('opened offline on the Dispatches tab, then the connection returns: each lot is read once and the tab fills', async () => {
+    serverAnswers.get_grn_item_dispatches = dispatchAnswer;
+    await connection(true);
+    await openGrn();
+    await tab(/^Dispatches/);
+    expect(await screen.findByTestId('grn-details-section-needs-connection-dispatches')).toBeOnTheScreen();
+    expect(lotCalls()).toEqual([]);
+    await connection(false);
+    expect(await screen.findByText('D-9001')).toBeOnTheScreen();
+    expect(screen.queryByTestId('grn-details-section-needs-connection-dispatches')).not.toBeOnTheScreen();
+    // GRN A2 has two lots (the Items tab count): one read each, no repeat.
+    expect(lotCalls()).toHaveLength(2);
   });
 });
