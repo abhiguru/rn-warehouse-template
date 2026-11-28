@@ -13,7 +13,7 @@
 
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { COPY_FORMAT_V3 } from '@/features/phone-copy/copySchema';
-import { readVia } from '@/features/phone-copy/readRoute';
+import { copyRoute, readVia } from '@/features/phone-copy/readRoute';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
 import { readUserDetails, readUsersList } from '@/features/phone-copy/reads/users';
 import type { DataSource } from '@/features/phone-copy/sourced';
@@ -160,6 +160,11 @@ class AdminUserService {
         page: Math.floor(offset / Math.max(limit, 1)),
       });
       if (copy && 'restart' in copy) return { success: false, error: t('errors.user.fetchListFailed') };
+      // Offline over a copy that should answer: a read that failed does not go to the server (no raw network error).
+      if (!copy && isCopyOffline() && copyRoute({ stage: 'all', format: COPY_FORMAT_V3 }) === 'copy') {
+        log.warn('getUsersList: the phone copy could not answer while offline');
+        return { success: false, error: t('errors.user.fetchListFailed') };
+      }
 
       const client = await getAuthenticatedClient();
       const { data, error } = copy

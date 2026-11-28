@@ -64,9 +64,11 @@ export async function readUsersList(q: CopyReader, request: UserListRequest): Pr
   rows.sort((a, b) => Number(isDeleted(a)) - Number(isDeleted(b)) || enCompare(textOf(a.name), textOf(b.name)) || compareText(String(a.id), String(b.id)));
   const total = rows.length;
   const live = rows.filter(row => !isDeleted(row)).length;
-  const users = await Promise.all(rows.slice(offset, offset + limit).map(async row => ({
-    ...userOf(row), assigned_customers_count: await assignedCount(q, String(row.id)),
-  })));
+  // One statement at a time: the copy's connection runs a single statement at once (copyDriver.ts).
+  const users: Row[] = [];
+  for (const row of rows.slice(offset, offset + limit)) {
+    users.push({ ...userOf(row), assigned_customers_count: await assignedCount(q, String(row.id)) });
+  }
   return { users, pagination: { total_count: live, total_with_deleted: total, limit, offset, has_more: offset + limit < total } };
 }
 
