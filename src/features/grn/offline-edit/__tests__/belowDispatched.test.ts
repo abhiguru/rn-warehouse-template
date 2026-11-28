@@ -28,11 +28,13 @@ describe('belowDispatchedMessage', () => {
     expect(belowDispatchedMessage('l1', 20, 'Bag', locks(8))).toBeNull();
   });
 
-  it('counts the dispatches this phone has not sent as well as the ones the server knows', () => {
+  // WH-381 (owner, 2026-11-27): a dispatch is recorded only with the server, so nothing unsent on this phone adds to what has left a lot.
+  it('counts only the dispatches the server knows, whatever an overlay would deduct', () => {
     mockUnsent = new Map([['l1', 3]]);
-    expect(dispatchedFromLot('l1', locks(8))).toBe(11);
-    expect(belowDispatchedMessage('l1', 10, 'Bag', locks(8))).toBe('10 Bag is less than the 11 Bag already dispatched from this lot.');
-    expect(belowDispatchedMessage('l1', 11, 'Bag', locks(8))).toBeNull();
+    expect(dispatchedFromLot('l1', locks(8))).toBe(8);
+    expect(belowDispatchedMessage('l1', 7, 'Bag', locks(8))).toBe('7 Bag is less than the 8 Bag already dispatched from this lot.');
+    expect(belowDispatchedMessage('l1', 8, 'Bag', locks(8))).toBeNull();
+    expect(belowDispatchedMessage('l1', 10, 'Bag', locks(8))).toBeNull();
   });
 
   it('counts only the unsent dispatches of this lot', () => {

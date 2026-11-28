@@ -42,7 +42,8 @@ describe('the Settings entry in the list header', () => {
 describe('every header with a Settings entry', () => {
   const root = path.resolve(__dirname, '../../..');
   it.each([
-    'src/features/filters/components/FilteredListHeader.tsx',
+    // The list header's title row, gear included, is ListTitleRow since WH-381 (it stays above the needs-connection state).
+    'src/features/filters/components/ListTitleRow.tsx',
     'app/(tabs)/reports.tsx',
   ])('%s draws the gear and no avatar', file => {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
