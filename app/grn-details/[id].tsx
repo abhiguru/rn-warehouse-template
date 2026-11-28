@@ -405,7 +405,8 @@ function GRNDetailScreen() {
 
   // Fetch all dispatches for all items
   const fetchAllDispatches = async () => {
-    if (!data?.grn?.items) return;
+    // WH-381: a lot's dispatches are not asked of the server while a connection is needed (the tab says so, DS1).
+    if (!data?.grn?.items || phoneNeedsConnection) return;
 
     setLoadingDispatches(true);
     setDispatchError(null);
@@ -546,11 +547,12 @@ function GRNDetailScreen() {
     if (
       (activeTab === 'dispatches' || activeTab === 'items') &&
       data &&
+      !phoneNeedsConnection &&
       allDispatches.length === 0
     ) {
       fetchAllDispatches();
     }
-  }, [activeTab, data]);
+  }, [activeTab, data, phoneNeedsConnection]);
 
   // The summary the Invoices tab's rows must match; a refetch that changes it reads them again.
   const invoiceKey = data?.grn
@@ -558,7 +560,8 @@ function GRNDetailScreen() {
     : null;
   useEffect(() => {
     const grn = data?.grn;
-    if (activeTab !== 'invoices' || !grn || !invoiceKey) return;
+    // WH-381: the invoice rows are read from the server only with a connection (the tab says so, DS1).
+    if (activeTab !== 'invoices' || !grn || !invoiceKey || phoneNeedsConnection) return;
     if ((grn.invoices_summary?.total_invoices ?? 0) === 0) return;
     if (grnInvoices?.key === invoiceKey || invoiceRequestKey.current === invoiceKey) return;
     invoiceRequestKey.current = invoiceKey;
@@ -574,7 +577,7 @@ function GRNDetailScreen() {
       invoiceRequestKey.current = null;
       setGrnInvoices({ key: invoiceKey, invoices: result.success ? result.invoices : null });
     });
-  }, [activeTab, data, invoiceKey, grnInvoices, isWarehouseRole, assignedCustomerIds]);
+  }, [activeTab, data, invoiceKey, grnInvoices, isWarehouseRole, assignedCustomerIds, phoneNeedsConnection]);
 
   // WH-162: "Create invoice" opens the invoice form for this GRN straight at Review. The GRN's preview and the suggested
   // number are read first, here: when the preview fails or does not answer nothing opens and this page says why. A step
