@@ -9,6 +9,7 @@
  * facility's session: only the rows of the current scope go.
  */
 import { backendHasFeature } from '@/config/backendFeatures';
+import { noteFacilityWrite } from '@/config/facilityWrite';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type { PassWriteOptions } from '@/features/holding/heldPhotos';
@@ -63,13 +64,14 @@ export async function queuePhotoReports(
   });
 }
 
-/** What one call to the server ended in. */
-type ReportEnd = 'settled' | 'kept' | 'stop';
+/** What one call to the server ended in: `sent` was taken, `settled` was refused for good. Both end the report. */
+type ReportEnd = 'sent' | 'settled' | 'kept' | 'stop';
 
-async function sendOne(row: ReportRow, options?: PassWriteOptions): Promise<ReportEnd> {
+async function sendOne(row: ReportRow): Promise<ReportEnd> {
   let answer: { data: unknown; error: unknown; status?: number };
   try {
-    const client = await getAuthenticatedClient(options?.quietWrite ? { quietWrite: true } : undefined);
+    // Quiet: the sync is asked for only once the report is removed from the phone (WH-422).
+    const client = await getAuthenticatedClient({ quietWrite: true });
     answer = (await client.rpc('mark_grn_photo_missing', {
       p_grn_id: row.grn_id,
       p_client_photo_id: row.client_photo_id,
@@ -82,10 +84,7 @@ async function sendOne(row: ReportRow, options?: PassWriteOptions): Promise<Repo
   }
   const failure = answer.error ? withHttpStatus(answer.error, answer.status) : emptyAnswerAsError(answer);
   const outcome = classify(answer.data, failure);
-  if (outcome.kind === 'sent') {
-    options?.onWrite?.();
-    return 'settled';
-  }
+  if (outcome.kind === 'sent') return 'sent';
   if (outcome.kind === 'refused') return outcome.code !== undefined && SETTLED_CODES.has(outcome.code) ? 'settled' : 'kept';
   return outcome.kind === 'stop' ? 'stop' : 'kept';
 }
@@ -105,18 +104,23 @@ async function sendWaiting(options?: PassWriteOptions): Promise<void> {
   for (const row of rows) {
     // Still the same person and still connected: the answer to either may have changed during an earlier call.
     if (isCopyOffline() || (await getSessionCacheScope()) !== scope) return;
-    const end = await sendOne(row, options);
+    const end = await sendOne(row);
     if (end === 'stop') return;
-    if (end === 'settled') {
-      await db.run('DELETE FROM photo_reports WHERE scope = ? AND grn_id = ? AND client_photo_id = ?', [row.scope, row.grn_id, row.client_photo_id]);
-    }
+    if (end === 'kept') continue;
+    await db.run('DELETE FROM photo_reports WHERE scope = ? AND grn_id = ? AND client_photo_id = ?', [row.scope, row.grn_id, row.client_photo_id]);
+    // Only a report the server took, and only once it is gone: a store that keeps failing asks for no sync, so the
+    // end of that sync cannot send the same report again with no wait (WH-422).
+    if (end !== 'sent') continue;
+    if (options) options.onWrite?.();
+    else noteFacilityWrite();
   }
 }
 
 /**
  * Sends the waiting reports of the current person and facility. One run at a time; a call during a run asks for one more pass. Always
  * resolves. A send pass gives its `options`, so a report taken in it asks for no sync of its own (WH-393); a run started without them
- * (the end of a sync run) asks for its sync like any other write. A joining call keeps the running one's options.
+ * (the end of a sync run) asks for a sync for each report taken. Either asks only once the report is removed from the phone (WH-422).
+ * A joining call keeps the running one's options.
  */
 export function sendPhotoReports(options?: PassWriteOptions): Promise<void> {
   if (run.current) {
