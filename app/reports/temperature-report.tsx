@@ -24,6 +24,7 @@ import { needsConnectionLabel, useNeedsConnectionV3 } from '@/features/phone-cop
 import {
   PERIOD_TEXT,
   getReportSensors,
+  type ReportSensorsResult,
   periodProblem,
   periodTextForCode,
   type ReportSensor,
@@ -70,8 +71,18 @@ const makeStyles = (t: ThemeTokens) => ({
 
 export default function TemperatureReportScreen() {
   const { deviceId } = useLocalSearchParams<{ deviceId?: string }>();
-  const fetch = useCallback(() => getReportSensors(), []);
-  const query = useLiveReport('temperature-report-sensors', fetch, tr('reports.temperatureReport.loadError'));
+  // The scaffold's own signal: while it shows "needs a connection" no request goes out; the key changes when the connection
+  // is back, so the read runs once then.
+  const needsConnection = useNeedsConnectionV3();
+  const fetch = useCallback(
+    (): Promise<ReportSensorsResult> => (needsConnection ? Promise.resolve({ success: false, data: null, message: '' }) : getReportSensors()),
+    [needsConnection]
+  );
+  const query = useLiveReport(
+    needsConnection ? 'temperature-report-sensors-offline' : 'temperature-report-sensors',
+    fetch,
+    tr('reports.temperatureReport.loadError')
+  );
   const sensors = useMemo(() => query.data ?? [], [query.data]);
   const styles = useThemedStyles(makeStyles);
 
