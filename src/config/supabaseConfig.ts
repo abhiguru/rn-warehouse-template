@@ -1634,6 +1634,20 @@ function scheduleRefreshRetry(generation: number, token: string, sentAt: number)
 // not connectivity, so not a reason to send the refresh token again.
 const isGateSignal = (error: unknown): boolean =>
   /session changed|identity verification/i.test(String((error as { message?: unknown } | null)?.message ?? ''));
+// A refresh that failed for want of a connection (no answer, or the identity check that needs one) is not a
+// fault: it is noted once as a warning per offline spell, until a refresh succeeds. A refusal stays an error.
+let offlineRefreshNoted = false;
+const isNoConnection = (error: unknown): boolean =>
+  isNetworkError(error) || (error instanceof Error && /identity verification/i.test(error.message));
+function noteRefreshFailure(error: unknown, label: string): void {
+  if (!isNoConnection(error)) {
+    authLogger.error(label);
+    return;
+  }
+  if (offlineRefreshNoted) return;
+  offlineRefreshNoted = true;
+  authLogger.warn('Token refresh waits for a connection.');
+}
 export const refreshCustomJWT = (): Promise<RefreshedSession | null> => {
   const generation = getSessionGeneration();
   if (refreshInFlight?.generation === generation)
@@ -1730,7 +1744,7 @@ const refreshSession = async (
         return null;
       }
       if (error) {
-        authLogger.error('Token refresh RPC error:');
+        noteRefreshFailure(error, 'Token refresh RPC error:');
         if (isGateSignal(error)) return null;
         // No answer, or one that is not the server's decision: the token is
         // kept and sent again, like after a timeout.
@@ -1765,6 +1779,7 @@ const refreshSession = async (
       // Store the new tokens
       await storeTokens(newAccessToken, newRefreshToken, expiresAt, generation, { refresh: true });
       lastIssued = { token: newAccessToken, at: Date.now() };
+      offlineRefreshNoted = false;
       clearRefreshRetry();
 
       // Clear cached authenticated client so it picks up new token
@@ -1779,7 +1794,7 @@ const refreshSession = async (
       };
     }
   } catch (error) {
-    authLogger.error('Token refresh exception:');
+    noteRefreshFailure(error, 'Token refresh exception:');
     return null;
   }
 };
