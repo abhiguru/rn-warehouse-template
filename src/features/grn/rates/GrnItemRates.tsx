@@ -176,7 +176,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
         group.item_name,
         details,
         // A customer is never told where the rate comes from (default, customer or GRN rate).
-        priced ? (isCustomer ? null : t(SOURCE_LABEL[rate.source!])) : t('grn.rates.noRateSet'),
+        rate.source ? (isCustomer ? null : t(SOURCE_LABEL[rate.source])) : t('grn.rates.noRateSet'),
         rate.varies ? t('grn.rates.tagVaries') : null,
         priced ? t('grn.rates.rentAmount', { amount: money(rate.unit_price ?? 0) }) : null,
         priced && !oneTime ? t('pricing.row.labour', { amount: money(rate.labour_rate ?? 0) }) : null,
@@ -296,10 +296,10 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
                       managerTarget === 'item'
                         ? itemRatesPath(rate.item_id)
                         : managerTarget === 'customer'
-                          ? customerPricingPath(customerId as string, rate.item_id)
+                          ? customerPricingPath(customerId ?? '',rate.item_id)
                           : managerTarget === 'grn'
-                            ? grnRatesStepPath(grnId as string)
-                            : yourRatePath(grnId as string, rate.item_id, grnNumber ?? undefined, packagingByLot?.[rate.grn_item_id] ? cleanPackaging(packagingByLot[rate.grn_item_id]) : undefined),
+                            ? grnRatesStepPath(grnId ?? '')
+                            : yourRatePath(grnId ?? '',rate.item_id, grnNumber ?? undefined, packagingByLot?.[rate.grn_item_id] ? cleanPackaging(packagingByLot[rate.grn_item_id]) : undefined),
                     )
                   }
                   style={({ pressed }) => [table.row, pressed && table.rowPressed]}
@@ -337,7 +337,7 @@ export function GrnItemRates({ grnId, grnNumber, customerId, customerName, canEd
                   {t('grn.rates.setRates')}
                 </Button>
                 {needsConnection ? (
-                  <NeedsConnectionLine testID="grn-imported-set-rates-needs-connection" text={t('components.offlineRead.needsConnection')} />
+                  <NeedsConnectionLine align="center" testID="grn-imported-set-rates-needs-connection" text={t('components.offlineRead.needsConnection')} />
                 ) : null}
               </View>
             ) : null}

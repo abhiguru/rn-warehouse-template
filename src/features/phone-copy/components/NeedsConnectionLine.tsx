@@ -15,6 +15,9 @@ const makeStyles = (t: ThemeTokens) => ({
   inset: { paddingHorizontal: layout.marginCompact },
   // A Button's own side padding (Button container, space.lg): the line starts where the button's text starts.
   insetToButton: { paddingLeft: space.lg },
+  // Under a full-width button whose label is centred: icon and text sit centred together.
+  centered: { justifyContent: 'center' as const },
+  textCentered: { textAlign: 'center' as const },
 });
 
 interface Props {
@@ -26,16 +29,23 @@ interface Props {
   inset?: boolean;
   /** The line stands under a left-aligned Button: it starts at that button's text ("button"). Off by default; wins over `inset`. */
   insetTo?: 'button';
+  /** The line stands under a full-width button with a centred label: the icon and text are centred together ("center"). Off by default. */
+  align?: 'center';
 }
 
-export const NeedsConnectionLine: React.FC<Props> = ({ testID, text, icon = false, inset = false, insetTo }) => {
+export const NeedsConnectionLine: React.FC<Props> = ({ testID, text, icon = false, inset = false, insetTo, align }) => {
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
-  const rowStyle = insetTo === 'button' ? [styles.row, styles.insetToButton] : inset ? [styles.row, styles.inset] : styles.row;
+  const centered = align === 'center';
+  const rowStyle = [
+    styles.row,
+    insetTo === 'button' ? styles.insetToButton : inset ? styles.inset : null,
+    centered ? styles.centered : null,
+  ];
   return (
     <View style={rowStyle} testID={testID}>
       {icon ? <Icon name="cloud-off-outline" size={iconSize.sm} color={tokens.icon.secondary} importantForAccessibility="no" /> : null}
-      <Text style={styles.text} maxFontSizeMultiplier={1.6}>
+      <Text style={centered ? [styles.text, styles.textCentered] : styles.text} maxFontSizeMultiplier={1.6}>
         {text}
       </Text>
     </View>
