@@ -168,14 +168,18 @@ async function callHoldItems(
     case 'refused':
       return { kind: 'refused', code: outcome.code ?? answerCodeOf(answer.data) ?? 'refused' };
     case 'sent': {
-      options?.onWrite?.();
       const held = isFields(outcome.result) && Array.isArray(outcome.result.held) ? (outcome.result.held as unknown[]) : [];
       const answered = new Map<string, { id: string | null; reused: boolean }>();
+      let settledAny = false;
       for (const entry of held) {
         if (!isFields(entry) || typeof entry.request_key !== 'string') continue;
         const id = typeof entry.id === 'string' && entry.id !== '' ? entry.id : null;
-        answered.set(entry.request_key, { id, reused: entry.reason === 'REQUEST_KEY_REUSED' || id === null });
+        const reused = entry.reason === 'REQUEST_KEY_REUSED' || id === null;
+        answered.set(entry.request_key, { id, reused });
+        if (!reused) settledAny = true;
       }
+      // WH-427: note a write only when an item settled as held; a call that held nothing would be made again at once.
+      if (settledAny) options?.onWrite?.();
       return { kind: 'held', answered };
     }
   }
