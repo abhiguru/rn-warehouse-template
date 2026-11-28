@@ -250,6 +250,8 @@ export async function handOverRefused(
         deferMs = deferMs === null ? waiting : Math.min(deferMs, waiting);
         continue;
       }
+      // The phone's store failed on one of them: the whole group waits, so nothing goes ahead of what it follows (WH-421).
+      if (group.filter(row => options?.isHeld?.(row.id)).length > 0) continue;
       const sentIds = new Set<string>();
       for (let start = 0; start < group.length; start += CALL_LIMIT) {
         const chunk = group.slice(start, start + CALL_LIMIT);
@@ -260,7 +262,13 @@ export async function handOverRefused(
         // The answer came after the session ended: write nothing; the rows stay refused and not held, so a later run offers them again.
         if (signal?.aborted || result.kind === 'stop') return { stop: true, transient, deferMs };
         if (result.kind === 'held') {
-          await settle(chunk, result);
+          try {
+            await settle(chunk, result);
+          } catch (error) {
+            // The server holds them and the phone could not record it: they wait before they are handed over again (WH-421).
+            chunk.forEach(row => options?.onStoreFailure?.(row.id));
+            throw error;
+          }
           chunk.forEach(row => sentIds.add(row.id));
           continue;
         }

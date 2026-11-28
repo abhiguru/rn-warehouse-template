@@ -29,6 +29,8 @@ export interface SendContext {
    * other without a wait.
    */
   noteWrite?: () => void;
+  /** Told when the phone's store could not keep what the server accepted, so the item waits before it goes again (WH-421). */
+  noteStoreFailure?: () => void;
 }
 
 export interface SendKind {

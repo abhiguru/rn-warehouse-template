@@ -40,6 +40,12 @@ type Reply = { kind: 'ok'; data: Fields } | { kind: 'code'; code: string } | { k
 export interface PassWriteOptions {
   quietWrite?: boolean;
   onWrite?: () => void;
+  /** True while the item waits after the phone's store failed on it (WH-421): it is left alone, for a later pass. */
+  isHeld?: (itemId: string) => boolean;
+  /** Told when the phone's store failed on an item (WH-421). */
+  onStoreFailure?: (itemId: string) => void;
+  /** Told when an item was gone through with no store failure: its next wait starts short again (WH-421). */
+  onStored?: (itemId: string) => void;
 }
 
 async function rpc(name: string, args: Fields, options?: PassWriteOptions): Promise<Reply> {
@@ -194,6 +200,7 @@ export async function sendHeldPhotos(
   const result: HeldPhotosResult = { stop: false, transient: false, finished: new Set() };
   for (const row of rows) {
     if (row.kind !== 'photos' || row.state !== 'refused' || !row.held_id) continue;
+    if (options?.isHeld?.(row.id)) continue;
     try {
       let settled = true;
       let decided = false;
@@ -242,9 +249,12 @@ export async function sendHeldPhotos(
         result.finished.add(row.id);
         if (markHeld) await updateItem(row.id, { state: 'held' });
       }
+      options?.onStored?.(row.id);
     } catch (error) {
       logger.warn('Held photos could not be sent', loggableError(error));
       result.transient = true;
+      // What threw here is the phone's own (every server call answers): the row waits before it goes again (WH-421).
+      options?.onStoreFailure?.(row.id);
     }
     if (result.stop) break;
   }

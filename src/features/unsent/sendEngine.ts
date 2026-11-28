@@ -52,7 +52,10 @@ const engine = {
   sentAny: false,
   /** Items being sent now, or whose answer is being asked about. */
   active: new Set<string>(),
-  /** Items whose lost-answer check failed with an error: none is checked again before its wait is over (WH-420). */
+  /**
+   * Items whose lost-answer check failed with an error (WH-420), or on which the phone's store failed (WH-421): none is
+   * sent, handed over or asked about again before its wait is over.
+   */
   held: new Map<string, { failures: number; wait: number; until: number }>(),
   /** Aborts the questions about a lost answer when the session ends. */
   abort: new AbortController(),
@@ -127,7 +130,13 @@ const writeNoteFor = (signal: AbortSignal) => (): void => {
 /** Hands the refused items to the server's holding list (WH-304); a feature that is off hands over nothing. */
 async function handOver(pass: Pass): Promise<void> {
   if (pass.stop) return;
-  const handed = await handOverRefused(pass.scope, pass.signal, { quietWrite: true, onWrite: writeNoteFor(pass.signal) });
+  const handed = await handOverRefused(pass.scope, pass.signal, {
+    quietWrite: true,
+    onWrite: writeNoteFor(pass.signal),
+    isHeld: id => waits(pass, id),
+    onStoreFailure: id => holdItem(id, pass.signal),
+    onStored: id => engine.held.delete(id),
+  });
   if (handed.stop) pass.stop = true;
   if (handed.transient) pass.transient = true;
   if (handed.deferMs !== null) pass.deferMs = pass.deferMs === null ? handed.deferMs : Math.min(pass.deferMs, handed.deferMs);
@@ -208,7 +217,13 @@ async function apply(row: ItemRow, outcome: SendOutcome, before: ItemRow): Promi
  * Marks an attempt before the request leaves (a kill in flight must find it) and sends it. Once `signal` (the session's) is
  * aborted nothing is started or written for that session: the outcome is `stop` and the item is left as it is (WH-413).
  */
-async function sendOnce(row: ItemRow, kind: SendKind, byId: Map<string, ItemRow>, signal: AbortSignal): Promise<SendOutcome> {
+async function sendOnce(
+  row: ItemRow,
+  kind: SendKind,
+  byId: Map<string, ItemRow>,
+  signal: AbortSignal,
+  noteStoreFailure: () => void
+): Promise<SendOutcome> {
   const before = row;
   if (signal.aborted) return { kind: 'stop' };
   await markMissingPhotos(row);
@@ -221,6 +236,7 @@ async function sendOnce(row: ItemRow, kind: SendKind, byId: Map<string, ItemRow>
     requestKey: row.request_key,
     resolved: resolvedFor(row, byId),
     noteWrite: writeNoteFor(signal),
+    noteStoreFailure,
   };
   let outcome: SendOutcome;
   try {
@@ -247,7 +263,19 @@ function heldFor(id: string): number {
   return left > 0 && left <= held.wait ? left : 0;
 }
 
-/** A check that failed with an error waits like any other retry, longer each time, then the retry timer looks again. */
+/** True while the item waits; the pass then looks again when the wait is over. */
+function waits(pass: Pass, id: string): boolean {
+  const left = heldFor(id);
+  if (left > 0) deferPass(pass, left);
+  return left > 0;
+}
+
+/** Holds an item on which the phone's store failed (WH-421); nothing once its session ended. */
+function holdItem(id: string, signal: AbortSignal): void {
+  if (!signal.aborted) holdDoubt(id, engine.abort);
+}
+
+/** A failed check or store write waits like any other retry, longer each time, then the retry timer looks again. */
 function holdDoubt(id: string, abort: AbortController): void {
   const failures = engine.held.get(id)?.failures ?? 0;
   const wait = ROLE_RECHECK_BACKOFF_MS[Math.min(failures, ROLE_RECHECK_BACKOFF_MS.length - 1)];
@@ -275,7 +303,11 @@ async function resolveDoubt(id: string, byId: () => Promise<Map<string, ItemRow>
         }
       }
       if (signal.aborted) return;
-      const outcome = await sendOnce(row, kind, await byId(), signal);
+      const outcome = await sendOnce(row, kind, await byId(), signal, () => {
+        failed = true;
+      });
+      // The kind could not record on the phone what the server accepted: nothing more until the wait is over (WH-421).
+      if (failed) return;
       if (outcome.kind === 'sent' || outcome.kind === 'refused') return;
       if (outcome.kind === 'stop') return;
       // Lost again, or the request did not leave: ask again (each round waits at least 10 s after the send).
@@ -303,10 +335,10 @@ const rowsById = async (scope: string): Promise<Map<string, ItemRow>> => new Map
 async function handle(row: ItemRow, pass: Pass, byId: Map<string, ItemRow>): Promise<boolean> {
   const kind = getSendKind(row.kind);
   if (!kind) return false;
+  // A held record ends its lane: nothing saved after it goes ahead of it.
+  if (waits(pass, row.id)) return false;
   if (row.state === 'sending') {
-    const left = heldFor(row.id);
-    if (left > 0) deferPass(pass, left);
-    else if (!engine.active.has(row.id)) {
+    if (!engine.active.has(row.id)) {
       engine.active.add(row.id);
       void resolveDoubt(row.id, () => rowsById(pass.scope));
     }
@@ -319,11 +351,22 @@ async function handle(row: ItemRow, pass: Pass, byId: Map<string, ItemRow>): Pro
   }
   engine.active.add(row.id);
   let outcome: SendOutcome;
+  let storeFailed = false;
   try {
-    outcome = await sendOnce(row, kind, byId, pass.signal);
+    outcome = await sendOnce(row, kind, byId, pass.signal, () => {
+      storeFailed = true;
+    });
+  } catch (error) {
+    // The kind's own errors are outcomes: what throws here is the phone's store.
+    storeFailed = true;
+    throw error;
   } finally {
     engine.active.delete(row.id);
+    // The store may keep failing, and a write the server accepted asks for a sync whose end starts a pass (WH-421).
+    if (storeFailed) holdItem(row.id, pass.signal);
   }
+  // A lost answer keeps the count: the question about it clears or lengthens the wait.
+  if (!storeFailed && outcome.kind !== 'lost') engine.held.delete(row.id);
   switch (outcome.kind) {
     case 'sent':
     case 'refused':
@@ -335,8 +378,11 @@ async function handle(row: ItemRow, pass: Pass, byId: Map<string, ItemRow>): Pro
       pass.stop = true;
       return false;
     case 'lost':
-      engine.active.add(row.id);
-      void resolveDoubt(row.id, () => rowsById(pass.scope));
+      // A held item is asked about by the pass that follows its wait.
+      if (!storeFailed) {
+        engine.active.add(row.id);
+        void resolveDoubt(row.id, () => rowsById(pass.scope));
+      }
       return false;
   }
 }
@@ -357,11 +403,7 @@ async function pumpPhotos(pass: Pass): Promise<void> {
     }
     if (verdict === 'wait') continue;
     // A held item gets no task: a task that ends at once would start the next look at once (WH-420).
-    const left = heldFor(row.id);
-    if (left > 0) {
-      deferPass(pass, left);
-      continue;
-    }
+    if (waits(pass, row.id)) continue;
     const task = handle(row, pass, byId)
       .then(() => undefined)
       .catch(error => {

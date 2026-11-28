@@ -159,7 +159,14 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
         if (outcome.kind === 'sent') {
           // Attached, and not sent again: the pass asks for its sync even when other photos of the item wait (WH-393).
           ctx.noteWrite?.();
-          await markPhoto(row.item_id, row.client_photo_id, { done: 1 });
+          try {
+            await markPhoto(row.item_id, row.client_photo_id, { done: 1 });
+          } catch (error) {
+            // The phone's own failure, never a refusal of the photo: the item waits before it goes again (WH-421).
+            ctx.noteStoreFailure?.();
+            logger.warn('A sent photo could not be marked', loggableError(error));
+            return { kind: 'transient' } as const;
+          }
         }
         return outcome;
       }).catch((error: unknown) => {
