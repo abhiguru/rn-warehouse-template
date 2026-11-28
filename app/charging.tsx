@@ -32,7 +32,6 @@ import {
   type ChargingRule,
 } from '@/features/charging/chargingRule';
 import { useAppSelector } from '@/store/hooks';
-import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
 import { useNeedsConnectionV3 } from '@/features/phone-copy/useNeedsConnection';
 import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -263,10 +262,6 @@ export default function ChargingScreen() {
           />
         }
       >
-        {/* The one line sits at the top of the content, under the header (Design DQ4). */}
-        {needsConnection ? (
-          <NeedsConnectionLine testID="charging-needs-connection" text={tr('components.offlineRead.needsConnection')} />
-        ) : null}
         <Text style={styles.intro}>{tr('charging.screen.intro')}</Text>
         {stored === null && busy ? (
           <ActivityIndicator style={styles.loading} color={t.brand.tint} accessibilityLabel={tr('common.loading')} />
@@ -321,6 +316,7 @@ export default function ChargingScreen() {
           loading={saving}
           disabled={!dirty || saving || needsConnection}
           buttonTestID="charging-save"
+          needsConnectionTestID={needsConnection ? 'charging-needs-connection' : undefined}
         />
       ) : null}
       {sheet ? (
