@@ -448,3 +448,40 @@ describe('the after-write sync ends with the session and with every run', () => 
     expect(Date.now() - started).toBeLessThan(1500);
   });
 });
+
+// The 'after-write-sync' entry on its own: the whole teardown also stops the copy (which clears the timer too), so this runs
+// only that entry, taken from the registry as the module registers it.
+describe('the after-write-sync session entry, alone', () => {
+  const recorded = new Map<string, (context: { dispatch: () => void }) => void | Promise<void>>();
+  beforeEach(() => {
+    recorded.clear();
+    jest.doMock('@/config/sessionScopedRegistry', () => {
+      const actual = jest.requireActual('@/config/sessionScopedRegistry') as typeof import('@/config/sessionScopedRegistry');
+      return { ...actual, registerSessionScoped: (name: string, clear: never, options?: never) => { recorded.set(name, clear); return actual.registerSessionScoped(name, clear, options); } };
+    });
+  });
+  afterEach(() => { jest.dontMock('@/config/sessionScopedRegistry'); });
+  const endOnlyThisEntry = async () => { await recorded.get('after-write-sync')!({ dispatch: () => undefined }); };
+
+  it('a 400 ms timer from the old session does not fire a sync after a facility switch', async () => {
+    await ready();
+    expect(recorded.has('after-write-sync')).toBe(true);
+    const before = syncs();
+    note('/rpc/save_grn');
+    await endOnlyThisEntry();
+    await sleep(900);
+    expect(syncs()).toBe(before);
+  });
+
+  it('a wait pending at the session change resolves at once', async () => {
+    const w = await ready();
+    env.feed.hold(call => call.name === 'get_sync_changes');
+    note('/rpc/save_grn');
+    const started = Date.now();
+    const waiting = w.phone.engine.waitForSyncAfterWrite(3000);
+    await sleep(100);
+    await endOnlyThisEntry();
+    await waiting;
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+});
