@@ -7,7 +7,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { backendHasFeature } from '@/config/backendFeatures';
 import { hasCapability } from '@/config/facilityCapabilities';
-import { isCopyOffline } from '@/features/phone-copy/syncEngine';
+import { isCopyOffline, waitForSyncAfterWrite } from '@/features/phone-copy/syncEngine';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
 import { t as tr } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
@@ -102,6 +102,8 @@ export function useQuickChange(): {
             setSaving(false);
             return;
           }
+          // The sheet closes onto Find goods and the lot: let the sync that brings the change in end first (WH-299, bounded).
+          if (outcome.kind === 'sent') await waitForSyncAfterWrite();
           close();
           showToast(tr(outcome.kind === 'sent' ? 'offline.quickChange.saved' : 'offline.quickChange.savedOnPhone'));
         } finally {

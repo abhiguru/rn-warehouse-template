@@ -67,6 +67,7 @@ import { getLanguage } from '@/i18n/language';
 import { invoiceFileName } from '@/utils/invoiceLabel';
 import { refuseAtLimit } from '@/features/unsent/limitDialog';
 import { useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
+import { waitForSyncAfterWrite } from '@/features/phone-copy/syncEngine';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
@@ -551,15 +552,18 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     };
 
     // Success dialog handlers (create mode)
-    const handleCreateAnother = () => {
+    // A dispatch changes the stock the copy holds (WH-299): the next form and the lists read it after the sync that brings it in.
+    const handleCreateAnother = async () => {
         setShowSuccessDialog(false);
+        await waitForSyncAfterWrite();
         resetFormState();
         router.replace('/dispatch-form/step1');
         flushToasts();
     };
 
-    const handleViewList = () => {
+    const handleViewList = async () => {
         setShowSuccessDialog(false);
+        await waitForSyncAfterWrite();
         resetFormState();
         router.replace('/dispatch');
         flushToasts();
@@ -934,8 +938,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     isVisible={showSuccessDialog}
                     entity="dispatch"
                     documentData={successDialogData}
-                    onCreateAnother={handleCreateAnother}
-                    onViewList={handleViewList}
+                    onCreateAnother={() => void handleCreateAnother()}
+                    onViewList={() => void handleViewList()}
                     onPrint={handlePrint}
                     onSharePDF={handleSharePDF}
                     isShareLoading={isShareLoading}

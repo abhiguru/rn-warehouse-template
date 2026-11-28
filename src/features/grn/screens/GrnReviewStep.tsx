@@ -134,7 +134,7 @@ import { refuseAtLimit } from '@/features/unsent/limitDialog';
 import { backendHasFeature } from '@/config/backendFeatures';
 import { hasCapability } from '@/config/facilityCapabilities';
 import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConnectionLine';
-import { isCopyOffline } from '@/features/phone-copy/syncEngine';
+import { isCopyOffline, waitForSyncAfterWrite } from '@/features/phone-copy/syncEngine';
 import { offlineEditOf } from '@/features/grn/offline-edit/grnEditSave';
 import { saveGrnEditAndWait, saveGrnEditOffline } from '@/features/grn/offline-edit/grnEditKind';
 import { acceptWithChanges, heldIdOfRoute } from '@/features/holding/heldForm';
@@ -1526,8 +1526,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
   };
 
-  const handleCreateAnother = () => {
+  const handleCreateAnother = async () => {
     setShowSuccessDialog(false);
+    // The list this leaves onto must show the GRN just saved (WH-299): wait, bounded, for the sync that brings it in.
+    await waitForSyncAfterWrite();
     if (isCreateMode) {
       resetFormState();
       router.replace('/grn-form/step1');
@@ -1537,8 +1539,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     }
   };
 
-  const handleViewList = () => {
+  const handleViewList = async () => {
     setShowSuccessDialog(false);
+    // The list shows the GRN just saved (WH-299): wait, bounded, for the sync that brings it in.
+    await waitForSyncAfterWrite();
     if (!isCreateMode) {
       resetFormState();
     }
@@ -1941,8 +1945,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         isVisible={showSuccessDialog}
         entity="grn"
         documentData={successDialogData}
-        onCreateAnother={handleCreateAnother}
-        onViewList={handleViewList}
+        onCreateAnother={() => void handleCreateAnother()}
+        onViewList={() => void handleViewList()}
         onPrint={handlePrint}
         onSharePDF={handleSharePDF}
         isShareLoading={isShareLoading}
@@ -1955,7 +1959,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           setShowPrintDialog(false);
           if (!isCreateMode) {
             resetFormState();
-            router.replace('/grn');
+            void waitForSyncAfterWrite().then(() => router.replace('/grn'));
           } else {
             // Back to the choices of the created GRN, not to a form that could be sent again.
             setShowSuccessDialog(true);
