@@ -24,7 +24,7 @@ import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 import { allItems, deleteItems, itemsOfScope, photosOf, updateItem, type ItemRow } from '@/features/unsent/unsentRows';
 import { cannotSendUnsent, currentPersonRole } from '@/features/unsent/unsentRole';
 import { heldWhatOf } from './heldWhat';
-import { sendHeldPhotos } from './heldPhotos';
+import { sendHeldPhotos, type PassWriteOptions } from './heldPhotos';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 const logger = createLogger('[holding-handover]');
@@ -143,7 +143,7 @@ type CallResult =
 async function callHoldItems(
   items: readonly HoldItem[],
   recorder?: string,
-  options?: { quietWrite?: boolean }
+  options?: PassWriteOptions
 ): Promise<CallResult> {
   let answer: { data: unknown; error: unknown; status?: number };
   try {
@@ -168,6 +168,7 @@ async function callHoldItems(
     case 'refused':
       return { kind: 'refused', code: outcome.code ?? answerCodeOf(answer.data) ?? 'refused' };
     case 'sent': {
+      options?.onWrite?.();
       const held = isFields(outcome.result) && Array.isArray(outcome.result.held) ? (outcome.result.held as unknown[]) : [];
       const answered = new Map<string, { id: string | null; reused: boolean }>();
       for (const entry of held) {
@@ -219,12 +220,12 @@ async function settle(rows: readonly ItemRow[], result: Extract<CallResult, { ki
 
 /**
  * Hands over the refused items of `scope` the server does not hold yet. Always resolves. `signal` is the session's: once it
- * is aborted nothing more is sent or written (WH-413). `options.quietWrite` marks the calls as the send pass's own (WH-393).
+ * is aborted nothing more is sent or written (WH-413). `options` marks the calls as the send pass's own (WH-393).
  */
 export async function handOverRefused(
   scope: string,
   signal?: AbortSignal,
-  options?: { quietWrite?: boolean }
+  options?: PassWriteOptions
 ): Promise<HandOverResult> {
   try {
     if (!holdingOn() || isCopyOffline() || cannotSendUnsent()) return NOTHING;

@@ -23,6 +23,11 @@ export interface SendContext {
   requestKey: string;
   /** The `result` of each item this one depended on, by that item's id. */
   resolved: Record<string, unknown>;
+  /**
+   * Told when the server accepted a change that may not end in a `sent` item (WH-393: some photos of an item), so the pass
+   * still asks for its sync.
+   */
+  noteWrite?: () => void;
 }
 
 export interface SendKind {

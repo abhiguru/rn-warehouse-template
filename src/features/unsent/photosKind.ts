@@ -98,8 +98,8 @@ const asOutcome = (answer: Answer): SendOutcome => {
 };
 
 /** One photo through register, upload and confirm. `sent` means it is attached. */
-async function uploadOne(client: Client, recordId: string, photo: PhotoRow, resolved: Record<string, unknown>): Promise<SendOutcome> {
-  const itemId = lineItemOf(photo.line_ref, resolved);
+async function uploadOne(client: Client, recordId: string, photo: PhotoRow, ctx: SendContext): Promise<SendOutcome> {
+  const itemId = lineItemOf(photo.line_ref, ctx.resolved);
   if (itemId === undefined) return { kind: 'refused', reason: 'photos: the line of this photo is not known' };
   const file = new File(photo.file);
   const fileName = photo.file.slice(photo.file.lastIndexOf('/') + 1).replace(/^[0-9a-f-]{36}-/, '');
@@ -114,6 +114,7 @@ async function uploadOne(client: Client, recordId: string, photo: PhotoRow, reso
   });
   const registration = asOutcome(registered);
   if (registration.kind !== 'sent') return registration.kind === 'lost' ? { kind: 'transient' } : registration;
+  ctx.noteWrite?.();
   const { image_id: imageId, storage_path: storagePath, upload_token: uploadToken } = registration.result as Record<string, string>;
 
   let failure: SendOutcome;
@@ -144,14 +145,14 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
   const rows = (await photosOf(ctx.itemId)).filter(row => !row.done && !row.missing);
   const client = await getAuthenticatedClient({ quietWrite: true });
   if (rows.length === 0) {
-    const removal = await removePhotos(rawBody);
+    const removal = await removePhotos(rawBody, ctx);
     return removal ?? { kind: 'sent', result: { success: true, uploaded: 0 } };
   }
   const limit = createLimiter(SLOTS);
   const outcomes = await Promise.all(
     rows.map(row =>
       limit(async () => {
-        const outcome = await uploadOne(client, recordId, row, ctx.resolved);
+        const outcome = await uploadOne(client, recordId, row, ctx);
         if (outcome.kind === 'sent') await markPhoto(row.item_id, row.client_photo_id, { done: 1 });
         return outcome;
       }).catch((error: unknown) => {
@@ -166,14 +167,16 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
   if (refused) return refused;
   if (outcomes.some(outcome => outcome.kind !== 'sent')) return { kind: 'transient' };
   // Photos the person removed go after the new ones are up: the server keeps a GRN's last photo (GRN_PHOTO_REQUIRED).
-  const removal = await removePhotos(rawBody);
+  const removal = await removePhotos(rawBody, ctx);
   return removal ?? { kind: 'sent', result: { success: true, uploaded: outcomes.length } };
 }
 
 /** Deletes the photos an offline edit removed. Null when all are gone (a photo already gone counts); else what to do next. */
-async function removePhotos(body: PhotosBody): Promise<SendOutcome | null> {
+async function removePhotos(body: PhotosBody, ctx: SendContext): Promise<SendOutcome | null> {
   for (const imageId of body.remove ?? []) {
     const result = await deleteWarehouseImageDetailed('grn', imageId, { quietWrite: true });
+    // Gone from the record, even when only its stored file could not be confirmed deleted.
+    if (result.success || result.partial) ctx.noteWrite?.();
     // The record is gone and only the stored file could not be confirmed deleted: the photo no longer belongs to the GRN.
     if (!result.success && !result.partial) {
       // A refusal (the last photo of a GRN stays, not allowed) is not tried again; any other failure is the network's.

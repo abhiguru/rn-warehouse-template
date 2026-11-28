@@ -48,7 +48,7 @@ const engine = {
   retryTimer: null as ReturnType<typeof setTimeout> | null,
   retryStep: 0,
   started: false,
-  /** Something was sent since the last sync was asked for. */
+  /** An item was sent, or the server accepted another change of a pass, since the last sync was asked for. */
   sentAny: false,
   /** Items being sent now, or whose answer is being asked about. */
   active: new Set<string>(),
@@ -116,10 +116,18 @@ interface Pass {
   deferMs: number | null;
 }
 
+/**
+ * What a pass calls when the server accepted a change of its own that is not a sent item (a hand-over, some photos of an
+ * item): its requests are quiet, so the pass asks for the sync at its end (WH-393). Nothing once its session ended.
+ */
+const writeNoteFor = (signal: AbortSignal) => (): void => {
+  if (!signal.aborted) engine.sentAny = true;
+};
+
 /** Hands the refused items to the server's holding list (WH-304); a feature that is off hands over nothing. */
 async function handOver(pass: Pass): Promise<void> {
   if (pass.stop) return;
-  const handed = await handOverRefused(pass.scope, pass.signal, { quietWrite: true });
+  const handed = await handOverRefused(pass.scope, pass.signal, { quietWrite: true, onWrite: writeNoteFor(pass.signal) });
   if (handed.stop) pass.stop = true;
   if (handed.transient) pass.transient = true;
   if (handed.deferMs !== null) pass.deferMs = pass.deferMs === null ? handed.deferMs : Math.min(pass.deferMs, handed.deferMs);
@@ -208,7 +216,12 @@ async function sendOnce(row: ItemRow, kind: SendKind, byId: Map<string, ItemRow>
   const now = Date.now();
   await updateItem(row.id, { state: 'sending', attempts: row.attempts + 1, first_sent_at: row.first_sent_at ?? now, last_sent_at: now });
   if (signal.aborted) return { kind: 'stop' };
-  const context: SendContext = { itemId: row.id, requestKey: row.request_key, resolved: resolvedFor(row, byId) };
+  const context: SendContext = {
+    itemId: row.id,
+    requestKey: row.request_key,
+    resolved: resolvedFor(row, byId),
+    noteWrite: writeNoteFor(signal),
+  };
   let outcome: SendOutcome;
   try {
     outcome = await (kind as { send(body: unknown, ctx: SendContext): Promise<SendOutcome> }).send(JSON.parse(row.body) as unknown, context);
@@ -513,7 +526,7 @@ export function sendNow(reason: SendTrigger): Promise<void> {
       sendingShown = false;
       tellSending();
     }
-    // What was sent changes the numbers and stock the copy holds: ask for a sync (C298 6.6).
+    // What the passes changed on the server changes what the copy holds: ask for one sync (C298 6.6).
     if (engine.sentAny) {
       engine.sentAny = false;
       void syncNow('after-send');

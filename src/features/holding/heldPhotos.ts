@@ -31,7 +31,16 @@ type MissingReason = 'invalid' | 'file_missing' | 'not_yours' | 'line_gone' | 'd
 /** What a call to the server gave: its members when it succeeded, or why not. */
 type Reply = { kind: 'ok'; data: Fields } | { kind: 'code'; code: string } | { kind: 'transient' } | { kind: 'stop' };
 
-async function rpc(name: string, args: Fields, options?: { quietWrite?: boolean }): Promise<Reply> {
+/**
+ * How the send pass sends (WH-393): `quietWrite` keeps its requests from asking for an after-write sync each, and `onWrite` is
+ * told when the server accepted a change, so the pass asks for one sync at its end.
+ */
+export interface PassWriteOptions {
+  quietWrite?: boolean;
+  onWrite?: () => void;
+}
+
+async function rpc(name: string, args: Fields, options?: PassWriteOptions): Promise<Reply> {
   let answer: { data: unknown; error: unknown; status?: number };
   try {
     const client = await getAuthenticatedClient(options?.quietWrite ? { quietWrite: true } : undefined);
@@ -42,7 +51,10 @@ async function rpc(name: string, args: Fields, options?: { quietWrite?: boolean 
   const failure = answer.error ? withHttpStatus(answer.error, answer.status) : emptyAnswerAsError(answer);
   const outcome = classify(answer.data, failure);
   if (outcome.kind === 'stop') return { kind: 'stop' };
-  if (outcome.kind === 'sent') return { kind: 'ok', data: isFields(outcome.result) ? outcome.result : {} };
+  if (outcome.kind === 'sent') {
+    options?.onWrite?.();
+    return { kind: 'ok', data: isFields(outcome.result) ? outcome.result : {} };
+  }
   if (outcome.kind === 'refused') return { kind: 'code', code: outcome.code ?? 'refused' };
   return { kind: 'transient' };
 }
@@ -57,7 +69,7 @@ function endOfCode(code: string): PhotoEnd {
   return 'transient';
 }
 
-async function sendOne(heldId: string, photo: PhotoRow, options?: { quietWrite?: boolean }): Promise<PhotoEnd> {
+async function sendOne(heldId: string, photo: PhotoRow, options?: PassWriteOptions): Promise<PhotoEnd> {
   const file = new File(photo.file);
   if (!file.exists) return 'file_missing';
   const fileName = photo.file.slice(photo.file.lastIndexOf('/') + 1).replace(/^[0-9a-f-]{36}-/, '');
@@ -97,7 +109,7 @@ async function sendOne(heldId: string, photo: PhotoRow, options?: { quietWrite?:
  * Tells the server the photo is missing, so the held item page shows it as missing. Only a settled answer lets the phone mark the
  * photo done: a transient failure leaves it for the next pass, and an item already decided needs nothing more.
  */
-async function reportMissing(heldId: string, photo: PhotoRow, reason: MissingReason, options?: { quietWrite?: boolean }): Promise<PhotoEnd> {
+async function reportMissing(heldId: string, photo: PhotoRow, reason: MissingReason, options?: PassWriteOptions): Promise<PhotoEnd> {
   const reply = await rpc('mark_held_photo_missing', {
     p_held_id: heldId,
     p_client_photo_id: photo.client_photo_id,
@@ -168,7 +180,7 @@ function blockedForGood(heldId: string, photo: PhotoRow): boolean {
 export async function sendHeldPhotos(
   rows: readonly ItemRow[],
   markHeld = true,
-  options?: { quietWrite?: boolean }
+  options?: PassWriteOptions
 ): Promise<HeldPhotosResult> {
   const result: HeldPhotosResult = { stop: false, transient: false, finished: new Set() };
   for (const row of rows) {
