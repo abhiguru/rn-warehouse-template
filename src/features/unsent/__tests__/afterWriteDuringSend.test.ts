@@ -81,3 +81,96 @@ describe('a direct online save made while a send pass runs', () => {
     expect(await idsOf(w.phone, 'goodsreceived')).toContain('g-N1');
   }, 15000);
 });
+
+describe('waitForSyncAfterWrite for a save made during a send pass', () => {
+  const listHas = async (): Promise<boolean> => {
+    const list = await (require('@/services/grn-service') as typeof import('@/services/grn-service')).getGRNListPage({ p_limit: 50, p_offset: 0, p_filters: { search: 'N1' } }, null);
+    return list.data.items.map(i => i.grn_item_id).includes('l-N1');
+  };
+
+  it('waits for the sync at the pass\'s end: the new GRN is in the list the moment the wait resolves, and that is one sync', async () => {
+    await startWithOneUnsent();
+    const hold = gate<unknown>();
+    w.answers.set_lot_rack_and_mark = () => hold.promise as never;
+    const before = syncs();
+    const pass = sendNow();
+    await sleep(200);
+    pushNewGrn();
+    directSave();
+    let resolved = false;
+    const waiting = w.phone.engine.waitForSyncAfterWrite(3000).then(() => { resolved = true; });
+    await sleep(700);                    // longer than the 400 ms that coalesce writes: nothing may have synced or resolved
+    expect(resolved).toBe(false);
+    expect(syncs()).toBe(before);
+    hold.release(SENT);
+    await waiting;
+    expect(await listHas()).toBe(true);
+    await pass;
+    await sleep(1500);
+    expect(syncs()).toBe(before + 1);    // exactly one for the pass and the save together
+  }, 15000);
+
+  it('gives up after 3 s when the pass never ends', async () => {
+    await startWithOneUnsent();
+    const hold = gate<unknown>();
+    w.answers.set_lot_rack_and_mark = () => hold.promise as never;
+    const pass = sendNow();
+    await sleep(200);
+    directSave();
+    const started = Date.now();
+    await w.phone.engine.waitForSyncAfterWrite(3000);
+    const waited = Date.now() - started;
+    expect(waited).toBeGreaterThanOrEqual(2900);
+    expect(waited).toBeLessThan(4000);
+    hold.release(SENT);
+    await pass;
+  }, 15000);
+
+  it('offline it resolves at once', async () => {
+    await startWithOneUnsent();
+    const hold = gate<unknown>();
+    w.answers.set_lot_rack_and_mark = () => hold.promise as never;
+    const pass = sendNow();
+    await sleep(200);
+    directSave();
+    await goOffline(w);
+    const started = Date.now();
+    await w.phone.engine.waitForSyncAfterWrite(3000);
+    expect(Date.now() - started).toBeLessThan(150);
+    hold.release(SENT);
+    await pass;
+  });
+});
+
+describe('the "write seen while quiet" flag ends with the session', () => {
+  it('a write seen while quiet by one person does not make the next person\'s pass sync', async () => {
+    await startWithOneUnsent();
+    const hold = gate<unknown>();
+    w.answers.set_lot_rack_and_mark = () => hold.promise as never;
+    const pass = sendNow();
+    await sleep(200);
+    directSave();                         // seen while quiet
+    await (require('@/config/sessionScopedRegistry') as { runSessionScopedClears(context: { dispatch: () => void }): Promise<void> }).runSessionScopedClears({ dispatch: () => undefined });
+    const before = syncs();
+    hold.release({ data: null, error: { message: 'Network request failed' } });   // the pass sends nothing
+    await pass;
+    await sleep(1500);
+    expect(syncs()).toBe(before);
+    expect((require('@/config/facilityWrite') as typeof import('@/config/facilityWrite')).takeWriteSeenWhileQuiet()).toBe(false);
+  }, 15000);
+});
+
+describe('the flag itself', () => {
+  it('is set by a write accepted while quiet, taken once, and cleared by the session end', async () => {
+    w = await bootWarehouse({ role: 'staff' });
+    await loadCopy(w);
+    const fw = require('@/config/facilityWrite') as typeof import('@/config/facilityWrite');
+    expect(fw.takeWriteSeenWhileQuiet()).toBe(false);
+    await fw.withoutWriteNote(async () => directSave());
+    expect(fw.takeWriteSeenWhileQuiet()).toBe(true);
+    expect(fw.takeWriteSeenWhileQuiet()).toBe(false);                    // taken once
+    await fw.withoutWriteNote(async () => directSave());
+    await (require('@/config/sessionScopedRegistry') as { runSessionScopedClears(context: { dispatch: () => void }): Promise<void> }).runSessionScopedClears({ dispatch: () => undefined });
+    expect(fw.takeWriteSeenWhileQuiet()).toBe(false);                    // one person's flag is not the next person's
+  });
+});
