@@ -9,6 +9,8 @@ import type { RoleName } from '@/config/roles';
 export interface UserSession {
   id: string;
   user_agent: string | null;
+  /** The phone's own name from sign-in (WH-411, "Samsung SM-A156E (7F3A)"); null for a browser or an older session. */
+  device_name?: string | null;
   created_ip: string | null;
   created_at: string | null;
   last_refreshed_at: string | null;
@@ -71,6 +73,14 @@ export function describeUserAgent(userAgent: string | null | undefined): DeviceS
   if (product) return { app: `${product[1]} ${product[2]}`, system };
 
   return { app: text.length > 40 ? `${text.slice(0, 40)}…` : text, system };
+}
+
+/** The name a session is listed under: the phone's own name when it gave one, else the app and system the user agent tells of; '' when neither says anything. */
+export function sessionDisplayName(session: Pick<UserSession, 'device_name' | 'user_agent'>): string {
+  const own = session.device_name?.trim();
+  if (own) return own;
+  const device = describeUserAgent(session.user_agent);
+  return [device.app, device.system].filter(Boolean).join(' · ');
 }
 
 /** Whether the list still holds the session. */

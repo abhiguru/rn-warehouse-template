@@ -33,6 +33,7 @@ import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 import { noteRequestNetworkFailure } from './netReachability';
 import { noteExpiredTokenRenewal } from './sessionRenewal';
 import { noteDataWrite } from './facilityWrite';
+import { deviceNameField } from './sessionDeviceName';
 import { parseSessionEnd, SESSION_ENDS_AT_KEY, storeSessionEnd } from './sessionEnd';
 import { awaitRoleRecheck, isRoleRecheckPending, WRITE_HOLD_LIMIT_MS } from './roleRecheck';
 import { isOfflineLimitPassed, isStoredTime, type ConfirmationTimes } from './offlineLimit';
@@ -1238,6 +1239,7 @@ export const verifyOTP = async (
       phone_number: formattedPhone,
       otp_code: token,
       ...(userName ? { name: userName } : {}),
+      ...(await deviceNameField()),
     });
 
     if (generation !== getSessionGeneration()) {
@@ -1318,7 +1320,7 @@ export const exchangeCentralIdentity = async (
   try {
     const { response, result } = await operatorFunctionPost(
       'central-exchange',
-      { identity_token: identityToken, ...(options?.otpCode ? { otp_code: options.otpCode } : {}) },
+      { identity_token: identityToken, ...(options?.otpCode ? { otp_code: options.otpCode } : {}), ...(await deviceNameField()) },
       { mutation: true, honorSwitch: true },
       generation
     );
@@ -1377,7 +1379,7 @@ export const breakGlassSignIn = async (phone: string, code: string): Promise<Bre
   try {
     const { response, result } = await operatorFunctionPost(
       'operator-otp/break-glass',
-      { phone_number: formatPhoneNumber(phone), code },
+      { phone_number: formatPhoneNumber(phone), code, ...(await deviceNameField()) },
       { mutation: true, honorSwitch: true },
       generation
     );

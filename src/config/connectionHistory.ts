@@ -36,6 +36,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import type { NetInfoState } from '@react-native-community/netinfo';
 import { backendHasFeature } from './backendFeatures';
 import { getLanStatus, subscribeLanStatus } from './lanTransport';
+import { ensureSessionDeviceName } from './sessionDeviceName';
 import { getSessionGeneration, onCredentialsSettled } from './sessionLifecycle';
 import { registerSessionScoped } from './sessionScopedRegistry';
 import { createLogger } from '@/utils/logger';
@@ -372,7 +373,11 @@ async function refreshSignedIn(): Promise<void> {
     currentScope = scope;
     tracker.setFlags({ signedIn: scope !== null });
     // A sign-in hands over; the same signed-in session read again changes nothing (no gap closed, nothing re-stamped).
-    if (scope !== null && (changed || !wasSignedIn)) void handOverConnectionNotes();
+    if (scope !== null && (changed || !wasSignedIn)) {
+      void handOverConnectionNotes();
+      // The same moment names a session that was made without a phone name (WH-411).
+      void ensureSessionDeviceName();
+    }
   } catch (error) {
     // The history is an observer: a failure here is logged and never becomes an unhandled rejection.
     log.warn('Reading the signed-in state failed', { name: error instanceof Error ? error.name : undefined });

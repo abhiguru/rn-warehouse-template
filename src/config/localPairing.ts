@@ -22,6 +22,7 @@ import { getLanContext, setLanContext } from './lanTransport';
 import { localOnlyOrigin } from './localFacility';
 import { discoverOperator, getActiveOperatorServer } from './operatorServer';
 import { newPairingNonce, openPairingAnswer, PairingAnswerError, type PairingPayload } from './pairingCrypto';
+import { deviceNameField } from './sessionDeviceName';
 import { getStoredToken, initializeSupabase, pairedSignIn } from './supabaseConfig';
 import type { UserProfile } from '@/types/user.types';
 
@@ -54,7 +55,7 @@ async function redeem(payload: PairingPayload, nonce: string): Promise<{ data: u
     const response = await fetch(`${payload.addr}/functions/v1/pairing-redeem`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ code: payload.code, nonce }),
+      body: JSON.stringify({ code: payload.code, nonce, ...(await deviceNameField()) }),
       signal: controller.signal,
       redirect: 'error',
     });

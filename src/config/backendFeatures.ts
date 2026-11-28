@@ -79,6 +79,8 @@ export const INTRODUCED_BY_MIGRATION = {
   grnPhotoMissing: 245,
   /** `p_device_name` on `hold_items` and `device_name` on the held-item reads: the phone's own name (WH-410; topic "held item phone name"; 246 is a placeholder, the number is written at assembly). */
   heldDeviceName: 246,
+  /** `device_name` in the sign-in bodies, `set_session_device_name` and `device_name` in `list_user_sessions`: the phone's own name on its session (WH-411; topic "session device name"; 248 is a placeholder, the number is written at assembly). */
+  sessionDeviceName: 248,
 } as const;
 export type BackendFeature = keyof typeof INTRODUCED_BY_MIGRATION;
 

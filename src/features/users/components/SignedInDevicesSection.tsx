@@ -13,7 +13,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { SectionHeader, StatusTag } from '@/components/ui';
 import { fontWeight, space, touchTarget, typography, radius, type ThemeTokens } from '@/theme/tokens';
-import { describeUserAgent, revokeOutcome, type UserSession } from '@/features/users/sessionDevices';
+import { revokeOutcome, sessionDisplayName, type UserSession } from '@/features/users/sessionDevices';
 import { listUserSessions, revokeSession } from '@/services/session-devices-service';
 import { useAppDispatch } from '@/store/hooks';
 import { logout } from '@/store/slices/authSlice';
@@ -178,8 +178,7 @@ export function SignedInDevicesSection({ userId, onUnsupported }: SignedInDevice
       ) : (
         <View style={styles.card}>
           {sessions.map((session, index) => {
-            const device = describeUserAgent(session.user_agent);
-            const name = [device.app, device.system].filter(Boolean).join(' · ') || tr('users.devices.unknownDevice');
+            const name = sessionDisplayName(session) || tr('users.devices.unknownDevice');
             const lastUsed = session.last_refreshed_at ? tr('users.devices.lastUsed', { time: formatRelativeTime(session.last_refreshed_at) }) : null;
             const address = session.created_ip ? tr('users.devices.address', { address: session.created_ip }) : null;
             const busy = busyId === session.id;
