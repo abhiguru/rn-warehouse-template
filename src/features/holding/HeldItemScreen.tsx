@@ -9,7 +9,7 @@
  * working offline; a rejection is marked seen when it is opened, and then leaves the person's lists (Product, 2026-11-25).
  */
 import React, { useCallback, useRef, useState } from 'react';
-import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -71,9 +71,13 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingVertical: space.md,
     gap: space.sm,
     backgroundColor: t.surface.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.separator,
+    ...t.shadow[3],
   },
-  barRow: { flexDirection: 'row' as const },
-  barStack: { flexDirection: 'column' as const },
+  // The WizardBottomBar look: the buttons share the full width, with space.sm between them.
+  barRow: { flexDirection: 'row' as const, gap: space.sm },
+  barStack: { flexDirection: 'column' as const, gap: space.sm },
   follows: { ...typography.footnote, color: t.text.secondary },
   grow: { flex: 1 },
 });
@@ -480,16 +484,16 @@ function ManagerHeldItem() {
                   {tr('offline.holding.accept')}
                 </Button>
               ) : null}
-              <Button testID="held-item-reject" type="secondary" variant="negative" size={stacked ? 'fullWidth' : 'auto'} disabled={busy} onPress={() => setRejecting(true)}>
+              <Button testID="held-item-reject" type="secondary" variant="negative" size={stacked ? 'fullWidth' : 'auto'} style={stacked ? undefined : styles.grow} disabled={busy} onPress={() => setRejecting(true)}>
                 {tr('offline.holding.reject')}
               </Button>
               {showCorrect ? (
-                <Button testID="held-item-correct" type="secondary" size={stacked ? 'fullWidth' : 'auto'} disabled={waiting || busy} onPress={() => correct(item)}>
+                <Button testID="held-item-correct" type="secondary" size={stacked ? 'fullWidth' : 'auto'} style={stacked ? undefined : styles.grow} disabled={waiting || busy} onPress={() => correct(item)}>
                   {tr('offline.holding.correct')}
                 </Button>
               ) : null}
               {showAccept && !stacked ? (
-                <Button testID="held-item-accept" type="primary" size="auto" disabled={waiting || busy} loading={busy} onPress={() => void decide(item, 'accept')}>
+                <Button testID="held-item-accept" type="primary" size="auto" style={styles.grow} disabled={waiting || busy} loading={busy} onPress={() => void decide(item, 'accept')}>
                   {tr('offline.holding.accept')}
                 </Button>
               ) : null}
