@@ -133,12 +133,26 @@ jest.mock('expo-image', () => ({ Image: (props: object) => require('react').crea
 jest.mock('@/utils/shareDocument', () => ({ downloadAndSharePDF: jest.fn() }));
 jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('react-native-gesture-handler', () => ({ ...jest.requireActual('react-native-gesture-handler'), GestureDetector: ({ children }: { children: React.ReactNode }) => children }));
+// Passes everything through; it only records the query the temperature report hands its scaffold, so a test can call the screen's own refresh and Retry.
+const mockScaffold: { query?: { refresh: () => Promise<boolean>; retry: () => void } } = {};
+jest.mock('@/components/reports', () => {
+  const actual = jest.requireActual('@/components/reports');
+  const react = require('react');
+  return {
+    ...actual,
+    ReportScaffold: (props: { query: { refresh: () => Promise<boolean>; retry: () => void } }) => {
+      mockScaffold.query = props.query;
+      return react.createElement(actual.ReportScaffold, props);
+    },
+  };
+});
 jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => ({ __esModule: true, default: ({ children }: { children: React.ReactNode }) => children }));
 
 const SERVER = { origin: 'https://warehouse.example.test', instanceId: 'instance-a', displayName: 'Fictional Cold Store', companyName: 'Fictional Cold Store' };
 const OWN = [{ id: 'c1', name: 'asha Traders' }, { id: 'c2', name: 'Bhavin Foods' }];
 const SENSOR = { id: 'sensor-1', name: 'North chamber probe', location: 'Chamber 1', active: true, first_reading_at: '2026-11-01T00:00:00Z', last_reading_at: '2026-11-25T06:00:00Z' };
 
+let sensorCalls = 0;
 let restoreQueries: () => void;
 beforeAll(() => { restoreQueries = makeQueryUpdatesImmediate(); });
 afterAll(() => restoreQueries());
@@ -150,6 +164,7 @@ async function boot(role: 'customer' | 'staff' | 'admin') {
   const feedRpc = env.feed.rpc;
   env.feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
     if (name.startsWith('get_sync_')) return feedRpc(name, args);
+    if (name === 'get_sensor_report_devices') sensorCalls += 1;
     if (name === 'get_sensor_report_devices') return { data: { success: true, data: [SENSOR] }, error: null };
     return { data: null, error: { message: 'Network request failed' } };
   };
@@ -173,6 +188,8 @@ beforeEach(async () => {
   resetScreenFocus();
   mockNet.offline = false;
   mockParams = {};
+  sensorCalls = 0;
+  mockScaffold.query = undefined;
   await saveOperatorServer(SERVER);
   setFacilityCapabilities(SERVER, { sync: true });
 });
@@ -276,6 +293,58 @@ describe('reports for a customer account with two customers, offline (WH-306 + W
     expect(screen.getByLabelText('Share PDF, needs a connection')).toBeOnTheScreen();
     expect(screen.getByTestId('temperature-report-share-pdf-needs-connection')).toHaveTextContent('Needs a connection');
     expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();
+  });
+
+  describe('Temperature report: going offline and back (WH-348)', () => {
+    const quiet = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+
+    it('offline pull-to-refresh and Retry make no request and keep the sensor open, with Share PDF disabled', async () => {
+      await boot('customer');
+      await render(<TemperatureReportScreen />);
+      expect(await screen.findByText('North chamber probe')).toBeOnTheScreen();
+      expect(sensorCalls).toBe(1);
+      await connection(true);
+      expect(await screen.findByTestId('temperature-report-needs-connection')).toBeOnTheScreen();
+      const query = mockScaffold.query!;
+      let refreshed: boolean | undefined;
+      await act(async () => { refreshed = await query.refresh(); query.retry(); });
+      await quiet();
+      expect(refreshed).toBe(false);
+      expect(sensorCalls).toBe(1);
+
+      // The sensor opens now: its data is still there, so the form shows, not the whole-screen state.
+      mockParams = { deviceId: SENSOR.id };
+      await screen.rerender(<TemperatureReportScreen />);
+      expect(await screen.findByTestId('temperature-report-share-pdf')).toBeDisabled();
+      expect(screen.getByTestId('temperature-report-share-pdf-needs-connection')).toHaveTextContent('Needs a connection');
+      expect(screen.queryByTestId('temperature-report-needs-connection')).not.toBeOnTheScreen();
+    });
+
+    it('going back online makes exactly one request, and the open sensor stays', async () => {
+      await boot('customer');
+      mockParams = { deviceId: SENSOR.id };
+      await render(<TemperatureReportScreen />);
+      await screen.findByTestId('temperature-report-share-pdf');
+      expect(sensorCalls).toBe(1);
+      await connection(true);
+      await quiet();
+      expect(sensorCalls).toBe(1);
+      await connection(false);
+      await quiet();
+      expect(sensorCalls).toBe(2);
+      expect(await screen.findByTestId('temperature-report-share-pdf')).toBeEnabled();
+    });
+
+    it('a sensor opened while offline shows the needs-connection state and makes no request', async () => {
+      await boot('customer');
+      await connection(true);
+      mockParams = { deviceId: SENSOR.id };
+      await render(<TemperatureReportScreen />);
+      expect(await screen.findByTestId('temperature-report-needs-connection')).toBeOnTheScreen();
+      await quiet();
+      expect(screen.queryByTestId('temperature-report-share-pdf')).not.toBeOnTheScreen();
+      expect(sensorCalls).toBe(0);
+    });
   });
 
   it.each(['staff', 'admin'] as const)('Customer activity (%s, warehouse role) offline: whole-screen customer-activity-needs-connection (WH-381 Q1)', async (role) => {
