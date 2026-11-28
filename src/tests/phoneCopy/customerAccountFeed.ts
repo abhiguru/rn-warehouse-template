@@ -13,6 +13,8 @@ import { seedDocuments } from './documentsDataset';
 /** Contract 14.2, in the order of fakeFeed's ENTITIES (stage one ends at grn_images). */
 export const CUSTOMER_ENTITIES = ['customers', 'items', 'goodsreceived', 'goodsreceived_trl', 'grn_images', 'dispatch', 'dispatch_trl',
   'dispatch_images', 'invoice', 'invoice_trl', 'orders', 'order_items', 'payments', 'grn_rates'] as const;
+/** What a WH-381 (format 8) server lists for a customer account: the dispatch, invoice, order and payment entities are gone. */
+export const KEPT_CUSTOMER_ENTITIES = ['customers', 'items', 'goodsreceived', 'goodsreceived_trl', 'grn_images', 'grn_rates'] as const;
 /** Entities a customer account's copy never holds (contract 0, 14.2). */
 export const NEVER_FOR_CUSTOMER = ['settings', 'people', 'grn_lock', 'user_profiles', 'users_customers_new', 'item_storage_prices',
   'standard_rate_tiers', 'item_price_history', 'grn_replacements', 'held_items'] as const;
@@ -52,16 +54,17 @@ export function seedCustomerAccount(own: string[], format: number = CUSTOMER_FOR
   for (const entity of NEVER_FOR_CUSTOMER) feed.rows[entity] = [];
   for (const entity of CUSTOMER_ENTITIES) feed.rows[entity] ??= [];
 
-  // The server's start and checksums list exactly the customer entities.
+  // The server's start and checksums list exactly the customer entities (the old list only for a server not yet on format 8).
+  const listed = (): readonly string[] => (feed.legacyServer ? CUSTOMER_ENTITIES : KEPT_CUSTOMER_ENTITIES);
   const rpc = feed.rpc;
   feed.rpc = async (name: string, args: Record<string, unknown> = {}) => {
     const answer = await rpc(name, args);
     const data = answer.data as { entities?: unknown[] } | null;
     if (!data?.entities) return answer;
-    if (name === 'get_sync_start') return { ...answer, data: { ...data, entities: [...CUSTOMER_ENTITIES] } };
+    if (name === 'get_sync_start') return { ...answer, data: { ...data, entities: [...listed()] } };
     if (name === 'get_sync_checksums') {
       const have = new Map((data.entities as Array<{ e: string }>).map(e => [e.e, e]));
-      const entities = CUSTOMER_ENTITIES.map(e => have.get(e) ?? { e, count: 0, sum: '0', settled: true });
+      const entities = listed().map(e => have.get(e) ?? { e, count: 0, sum: '0', settled: true });
       return { ...answer, data: { ...data, entities } };
     }
     return answer;
