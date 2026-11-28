@@ -23,10 +23,10 @@ const isFields = (value: unknown): value is Fields => typeof value === 'object' 
 const mimeOf = (name: string): string => (/\.webp$/i.test(name) ? 'image/webp' : /\.png$/i.test(name) ? 'image/png' : 'image/jpeg');
 
 /** How one photo ended. */
-type PhotoEnd = 'done' | 'invalid' | 'file_missing' | 'not_yours' | 'missing' | 'decided' | 'blocked' | 'transient' | 'stop';
+type PhotoEnd = 'done' | 'invalid' | 'file_missing' | 'not_yours' | 'line_gone' | 'document_gone' | 'missing' | 'decided' | 'blocked' | 'transient' | 'stop';
 
 /** Why a photo is marked missing; the reason code the server keeps with it. */
-type MissingReason = 'invalid' | 'file_missing' | 'not_yours';
+type MissingReason = 'invalid' | 'file_missing' | 'not_yours' | 'line_gone' | 'document_gone';
 
 /** What a call to the server gave: its members when it succeeded, or why not. */
 type Reply = { kind: 'ok'; data: Fields } | { kind: 'code'; code: string } | { kind: 'transient' } | { kind: 'stop' };
@@ -51,6 +51,8 @@ async function rpc(name: string, args: Fields): Promise<Reply> {
 function endOfCode(code: string): PhotoEnd {
   if (code === 'HELD_ALREADY_DECIDED') return 'decided';
   if (code === 'HELD_PHOTO_INVALID') return 'invalid';
+  if (code === 'HELD_PHOTO_LINE_GONE') return 'line_gone';
+  if (code === 'HELD_PHOTO_DOCUMENT_GONE') return 'document_gone';
   if (code === 'HELD_PHOTO_NOT_YOURS') return 'blocked';
   return 'transient';
 }
@@ -174,7 +176,7 @@ export async function sendHeldPhotos(rows: readonly ItemRow[], markHeld = true):
         if (photo.done === 1 || photo.missing === 1) continue;
         let end = await sendOne(row.held_id, photo);
         if (end === 'blocked' && blockedForGood(row.held_id, photo)) end = 'not_yours';
-        if (end === 'invalid' || end === 'file_missing' || end === 'not_yours') end = await reportMissing(row.held_id, photo, end);
+        if (end === 'invalid' || end === 'file_missing' || end === 'not_yours' || end === 'line_gone' || end === 'document_gone') end = await reportMissing(row.held_id, photo, end);
         if (end === 'done') await markPhoto(row.id, photo.client_photo_id, { done: 1 });
         else if (end === 'missing') await markPhoto(row.id, photo.client_photo_id, { missing: 1 });
         else if (end === 'decided') {
