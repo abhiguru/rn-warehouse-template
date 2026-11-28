@@ -200,3 +200,31 @@ it('says Not confirmed when the sign out got no answer and the list cannot be re
   expect(showAlert).toHaveBeenLastCalledWith('Not confirmed', expect.stringContaining('not known'));
   expect(showToast).not.toHaveBeenCalled();
 });
+
+describe('WH-411: the list names a phone by its own name', () => {
+  // The service's reading of device_name is in src/services/__tests__/sessionDevicesService.test.ts.
+  it('shows device_name when the session has one, two phones of one model told apart by the mark, and no library name', async () => {
+    jest.mocked(listUserSessions).mockResolvedValue({ success: true, sessions: [
+      row('s1', { user_agent: 'okhttp/4.9.2', device_name: 'Samsung SM-A156E (7F3A)' }),
+      row('s2', { user_agent: 'okhttp/4.9.2', device_name: 'Samsung SM-A156E (0B91)' }),
+    ] });
+    await open();
+    expect(screen.getByText('Samsung SM-A156E (7F3A)')).toBeOnTheScreen();
+    expect(screen.getByText('Samsung SM-A156E (0B91)')).toBeOnTheScreen();
+    expect(screen.queryByText(/okhttp/)).not.toBeOnTheScreen();
+  });
+
+  it.each([
+    ['null', null],
+    ['absent', undefined],
+    ['blank', '   '],
+  ])('a device_name that is %s keeps the wording from the user agent, or "Unknown device" without one', async (_what, name) => {
+    jest.mocked(listUserSessions).mockResolvedValue({ success: true, sessions: [
+      row('s1', { device_name: name }),
+      row('s2', { user_agent: null, device_name: name }),
+    ] });
+    await open();
+    expect(screen.getByText('WarehouseApp 1.2 · Android 15')).toBeOnTheScreen();
+    expect(screen.getByText('Unknown device')).toBeOnTheScreen();
+  });
+});

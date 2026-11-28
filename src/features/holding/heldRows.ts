@@ -109,6 +109,13 @@ export function ownHeldCopyRows(): HeldCopyRow[] {
   });
 }
 
+/** The recorder's own decided (accepted or rejected) photos items that follow `parentId`: opening the parent clears them too (WH-414, the `countEntries` parent rule). */
+export function decidedFollowerIds(parentId: string): string[] {
+  return heldCopyRows()
+    .filter(row => row.own && row.kind === 'photos' && (row.state === 'rejected' || row.state === 'accepted') && row.raw.follows === parentId)
+    .map(row => row.id);
+}
+
 /** Held dispatches to decide, for a manager's strip (the decision of a photos item that follows another is not counted). */
 export function heldNeedingDecision(): number {
   return heldCopyRows().filter(row => row.state === 'held' && row.needsDecision).length;
@@ -147,13 +154,19 @@ async function tellSeen(id: string): Promise<boolean> {
  * The person opened an outcome (a rejection): it is hidden on this phone at once, and the server is told now; offline, the id
  * is kept in the unsent file (`meta` key `held_seen`) and told at the end of the next sync run.
  */
-export async function markHeldSeen(heldId: string): Promise<void> {
-  state.seen.add(heldId);
+export async function markHeldSeen(heldId: string, followerIds: readonly string[] = []): Promise<void> {
+  const ids = [heldId, ...followerIds];
+  for (const id of ids) state.seen.add(id);
   for (const listener of [...state.listeners]) listener();
-  if (!isCopyOffline() && (await tellSeen(heldId))) return;
+  const untold: string[] = [];
+  for (const id of ids) {
+    if (isCopyOffline() || !(await tellSeen(id))) untold.push(id);
+  }
+  if (untold.length === 0) return;
   try {
     const kept = await readSeenMeta();
-    if (!kept.includes(heldId)) await writeSeenMeta([...kept, heldId]);
+    const add = untold.filter(id => !kept.includes(id));
+    if (add.length > 0) await writeSeenMeta([...kept, ...add]);
   } catch (error) {
     logger.warn('An opened outcome could not be kept for later', loggableError(error));
   }

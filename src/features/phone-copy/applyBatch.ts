@@ -151,5 +151,6 @@ export async function finishReload(tx: CopyDriver, entities: readonly EntityName
   }
   const lotsChanged = whole || entities.includes('goodsreceived') || entities.includes('goodsreceived_trl');
   if (lotsChanged) await rebuildAllSearch(tx);
-  await tx.run('DELETE FROM stage_rows');
+  // Only this reload's rows: another reload of the same catch-up may still hold its own (WH-409).
+  if (entities.length) await tx.run(`DELETE FROM stage_rows WHERE entity IN (${entities.map(() => '?').join(', ')})`, [...entities]);
 }

@@ -4,6 +4,7 @@
  * under the old scope, and a note without a stamp is dropped.
  */
 import type { NetInfoState } from '@react-native-community/netinfo';
+import { asPhone } from '@/tests/helpers/phoneKind';
 import {
   handOverConnectionNotes,
   installConnectionHistory,
@@ -38,8 +39,9 @@ jest.mock('../supabaseConfig', () => ({ getAuthenticatedClient: async () => ({ r
 let mockOnSessionChange: (() => void) | null = null;
 jest.mock('../sessionLifecycle', () => ({
   onCredentialsSettled: (listener: () => void) => { mockOnSessionChange = listener; return () => undefined; },
-  getSessionGeneration: () => 0,
+  getSessionGeneration: () => mockGeneration,
 }));
+let mockGeneration = 0;
 jest.mock('../sessionScopedRegistry', () => ({ registerSessionScoped: jest.fn() }));
 jest.mock('../lanTransport', () => ({
   getLanStatus: () => ({ path: 'public', failure: null }),
@@ -80,6 +82,41 @@ beforeEach(async () => {
     error: null,
   }));
   await settle();
+});
+
+describe('WH-411: the moment of signing in also names the session', () => {
+  const namings = () => mockRpc.mock.calls.filter(([name]) => name === 'set_session_device_name');
+
+  it('once at sign-in, not again when the same session is read again, and for the next session', async () => {
+    const restore = asPhone('android');
+    try {
+      mockFeature = true;
+      mockGeneration = 41;
+      await switchTo(FACILITY_A);
+      expect(namings()).toEqual([['set_session_device_name', { p_device_name: expect.stringMatching(/^Samsung SM-A156E/) }]]);
+      await switchTo(FACILITY_A);
+      expect(namings()).toHaveLength(1);
+      mockGeneration = 42;
+      await switchTo(FACILITY_B);
+      expect(namings()).toHaveLength(2);
+    } finally {
+      restore();
+      mockGeneration = 0;
+    }
+  });
+
+  it('signed out names nothing', async () => {
+    const restore = asPhone('android');
+    try {
+      mockFeature = true;
+      mockGeneration = 43;
+      await switchTo(null);
+      expect(namings()).toEqual([]);
+    } finally {
+      restore();
+      mockGeneration = 0;
+    }
+  });
 });
 
 describe.each([

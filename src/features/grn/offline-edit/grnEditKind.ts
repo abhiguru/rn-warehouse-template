@@ -28,7 +28,7 @@ export const SERVER_TOO_OLD = 'SERVER_TOO_OLD';
 
 async function sendGrnEdit(body: unknown, requestKey: string): Promise<SendOutcome> {
   if (!isGrnEditBody(body)) return { kind: 'refused', reason: 'grnEdit: unreadable body' };
-  const client = await getAuthenticatedClient();
+  const client = await getAuthenticatedClient({ quietWrite: true });
   const answer = await client.rpc('apply_grn_changes', { p_grn_id: body.grnId, p_changes: body, p_request_key: requestKey });
   // An unreadable HTTP 200, an empty one and a gateway's 502 / 504 are a LOST answer (the edit may be applied), not a plain
   // transient failure: the item then stays tried and is checked by its request key.

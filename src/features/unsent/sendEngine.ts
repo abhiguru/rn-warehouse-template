@@ -20,8 +20,8 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { handOverRefused } from '@/features/holding/handOver';
 import { answerCodeOf } from './refusalAnswer';
 import { getSendKind, type SendContext, type SendKind, type SendOutcome } from './sendKinds';
-import { takeWriteSeenWhileQuiet, withoutWriteNote } from '@/config/facilityWrite';
-import { getUnsentDb } from './unsentDb';
+import { hasCapability } from '@/config/facilityCapabilities';
+import { getUnsentDb, unsentFileExists } from './unsentDb';
 import { cannotSendUnsent } from './unsentRole';
 import {
   itemById,
@@ -37,7 +37,7 @@ import {
 
 const logger = createLogger('[unsent-send]');
 
-export type SendTrigger = 'open' | 'foreground' | 'reconnect' | 'saved' | 'send-now' | 'sync' | 'retry-timer';
+export type SendTrigger = 'open' | 'foreground' | 'reconnect' | 'saved' | 'send-now' | 'sync' | 'retry-timer' | 'doubt-settled';
 
 /** Photo items sent at once (the same number as the GRN photo upload, `GRN_PHOTO_UPLOAD_CONCURRENCY`). */
 const PHOTO_LANE_SLOTS = 4;
@@ -46,12 +46,19 @@ const engine = {
   running: null as Promise<void> | null,
   again: false,
   retryTimer: null as ReturnType<typeof setTimeout> | null,
+  /** When the pending retry timer fires (Date.now() ms); null while none waits. */
+  retryDue: null as number | null,
   retryStep: 0,
   started: false,
-  /** Something was sent since the last sync was asked for. */
+  /** An item was sent, or the server accepted another change of a pass, since the last sync was asked for. */
   sentAny: false,
   /** Items being sent now, or whose answer is being asked about. */
   active: new Set<string>(),
+  /**
+   * Items whose lost-answer check failed with an error (WH-420), or on which the phone's store failed (WH-421): none is
+   * sent, handed over or asked about again before its wait is over.
+   */
+  held: new Map<string, { failures: number; wait: number; until: number }>(),
   /** Aborts the questions about a lost answer when the session ends. */
   abort: new AbortController(),
 };
@@ -105,6 +112,8 @@ const parse = (text: string | null): unknown => (text === null ? null : (JSON.pa
 
 interface Pass {
   scope: string;
+  /** The signal of the session the pass started in: nothing is started or written once it is aborted (WH-413). */
+  signal: AbortSignal;
   transient: boolean;
   stop: boolean;
   tasks: Set<Promise<void>>;
@@ -112,10 +121,24 @@ interface Pass {
   deferMs: number | null;
 }
 
+/**
+ * What a pass calls when the server accepted a change of its own that is not a sent item (a hand-over, some photos of an
+ * item): its requests are quiet, so the pass asks for the sync at its end (WH-393). Nothing once its session ended.
+ */
+const writeNoteFor = (signal: AbortSignal) => (): void => {
+  if (!signal.aborted) engine.sentAny = true;
+};
+
 /** Hands the refused items to the server's holding list (WH-304); a feature that is off hands over nothing. */
 async function handOver(pass: Pass): Promise<void> {
   if (pass.stop) return;
-  const handed = await handOverRefused(pass.scope);
+  const handed = await handOverRefused(pass.scope, pass.signal, {
+    quietWrite: true,
+    onWrite: writeNoteFor(pass.signal),
+    isHeld: id => waits(pass, id),
+    onStoreFailure: id => holdItem(id, pass.signal),
+    onStored: id => engine.held.delete(id),
+  });
   if (handed.stop) pass.stop = true;
   if (handed.transient) pass.transient = true;
   if (handed.deferMs !== null) pass.deferMs = pass.deferMs === null ? handed.deferMs : Math.min(pass.deferMs, handed.deferMs);
@@ -179,33 +202,94 @@ async function apply(row: ItemRow, outcome: SendOutcome, before: ItemRow): Promi
     case 'transient':
     case 'stop':
       // The request never ran: back to what it was, and mergeable again if it had not been tried.
-      await updateItem(row.id, { state: before.state, attempts: before.attempts, first_sent_at: before.first_sent_at, last_sent_at: before.last_sent_at });
+      // A resend of a lost answer (`before` is already `sending`) keeps its new time: the next question waits from it (WH-413).
+      await updateItem(row.id, {
+        state: before.state,
+        attempts: before.attempts,
+        first_sent_at: before.first_sent_at,
+        ...(before.state === 'sending' ? {} : { last_sent_at: before.last_sent_at }),
+      });
       return;
     case 'lost':
       return;
   }
 }
 
-/** Marks an attempt before the request leaves (a kill in flight must find it) and sends it. */
-async function sendOnce(row: ItemRow, kind: SendKind, byId: Map<string, ItemRow>): Promise<SendOutcome> {
+/**
+ * Marks an attempt before the request leaves (a kill in flight must find it) and sends it. Once `signal` (the session's) is
+ * aborted nothing is started or written for that session: the outcome is `stop` and the item is left as it is (WH-413).
+ */
+async function sendOnce(
+  row: ItemRow,
+  kind: SendKind,
+  byId: Map<string, ItemRow>,
+  signal: AbortSignal,
+  noteStoreFailure: () => void
+): Promise<SendOutcome> {
   const before = row;
+  if (signal.aborted) return { kind: 'stop' };
   await markMissingPhotos(row);
+  if (signal.aborted) return { kind: 'stop' };
   const now = Date.now();
   await updateItem(row.id, { state: 'sending', attempts: row.attempts + 1, first_sent_at: row.first_sent_at ?? now, last_sent_at: now });
-  const context: SendContext = { itemId: row.id, requestKey: row.request_key, resolved: resolvedFor(row, byId) };
+  if (signal.aborted) return { kind: 'stop' };
+  const context: SendContext = {
+    itemId: row.id,
+    requestKey: row.request_key,
+    resolved: resolvedFor(row, byId),
+    noteWrite: writeNoteFor(signal),
+    noteStoreFailure,
+  };
   let outcome: SendOutcome;
   try {
     outcome = await (kind as { send(body: unknown, ctx: SendContext): Promise<SendOutcome> }).send(JSON.parse(row.body) as unknown, context);
   } catch (error) {
     outcome = classify(null, error);
   }
+  // The answer came after the session ended: the store it would be written to belongs to that session.
+  if (signal.aborted) return { kind: 'stop' };
   await apply(row, outcome, before);
   return outcome;
 }
 
+/** The pass is to be looked at again after `ms`; the shortest wait counts. */
+function deferPass(pass: Pass, ms: number): void {
+  pass.deferMs = pass.deferMs === null ? ms : Math.min(pass.deferMs, ms);
+}
+
+/** What is left of an item's wait after a failed check; 0 when there is none, or the phone clock was set back. */
+function heldFor(id: string): number {
+  const held = engine.held.get(id);
+  if (!held) return 0;
+  const left = held.until - Date.now();
+  return left > 0 && left <= held.wait ? left : 0;
+}
+
+/** True while the item waits; the pass then looks again when the wait is over. */
+function waits(pass: Pass, id: string): boolean {
+  const left = heldFor(id);
+  if (left > 0) deferPass(pass, left);
+  return left > 0;
+}
+
+/** Holds an item on which the phone's store failed (WH-421); nothing once its session ended. */
+function holdItem(id: string, signal: AbortSignal): void {
+  if (!signal.aborted) holdDoubt(id, engine.abort);
+}
+
+/** A failed check or store write waits like any other retry, longer each time, then the retry timer looks again. */
+function holdDoubt(id: string, abort: AbortController): void {
+  const failures = engine.held.get(id)?.failures ?? 0;
+  const wait = ROLE_RECHECK_BACKOFF_MS[Math.min(failures, ROLE_RECHECK_BACKOFF_MS.length - 1)];
+  engine.held.set(id, { failures: failures + 1, wait, until: Date.now() + wait });
+  armRetry(abort, wait);
+}
+
 /** Asks what became of a request whose answer was lost; sends the identical request once more when the server never had it. */
 async function resolveDoubt(id: string, byId: () => Promise<Map<string, ItemRow>>): Promise<void> {
-  const { signal } = engine.abort;
+  const abort = engine.abort;
+  const { signal } = abort;
+  let failed = false;
   try {
     for (;;) {
       const row = await itemById(id);
@@ -216,20 +300,34 @@ async function resolveDoubt(id: string, byId: () => Promise<Map<string, ItemRow>
       if (answer.found) {
         const outcome = kind.outcomeOf ? kind.outcomeOf(answer.response) : classify(answer.response, null);
         if (outcome.kind === 'sent' || outcome.kind === 'refused') {
-          await apply(row, outcome, row);
+          if (!signal.aborted) await apply(row, outcome, row);
           return;
         }
       }
-      const outcome = await sendOnce(row, kind, await byId());
+      if (signal.aborted) return;
+      const outcome = await sendOnce(row, kind, await byId(), signal, () => {
+        failed = true;
+      });
+      // The kind could not record on the phone what the server accepted: nothing more until the wait is over (WH-421).
+      if (failed) return;
       if (outcome.kind === 'sent' || outcome.kind === 'refused') return;
       if (outcome.kind === 'stop') return;
       // Lost again, or the request did not leave: ask again (each round waits at least 10 s after the send).
     }
   } catch (error) {
+    failed = true;
     if (!isAbortError(error)) logger.warn('A lost answer could not be settled', loggableError(error));
   } finally {
     engine.active.delete(id);
-    void sendNow('retry-timer');
+    // A session that ended starts nothing (WH-413); a new one has its own triggers. After an error nothing starts at once:
+    // the phone's store may keep failing (WH-420).
+    if (!signal.aborted) {
+      if (failed) holdDoubt(id, abort);
+      else {
+        engine.held.delete(id);
+        void sendNow('doubt-settled');
+      }
+    }
   }
 }
 
@@ -239,6 +337,8 @@ const rowsById = async (scope: string): Promise<Map<string, ItemRow>> => new Map
 async function handle(row: ItemRow, pass: Pass, byId: Map<string, ItemRow>): Promise<boolean> {
   const kind = getSendKind(row.kind);
   if (!kind) return false;
+  // A held record ends its lane: nothing saved after it goes ahead of it.
+  if (waits(pass, row.id)) return false;
   if (row.state === 'sending') {
     if (!engine.active.has(row.id)) {
       engine.active.add(row.id);
@@ -253,11 +353,22 @@ async function handle(row: ItemRow, pass: Pass, byId: Map<string, ItemRow>): Pro
   }
   engine.active.add(row.id);
   let outcome: SendOutcome;
+  let storeFailed = false;
   try {
-    outcome = await sendOnce(row, kind, byId);
+    outcome = await sendOnce(row, kind, byId, pass.signal, () => {
+      storeFailed = true;
+    });
+  } catch (error) {
+    // The kind's own errors are outcomes: what throws here is the phone's store.
+    storeFailed = true;
+    throw error;
   } finally {
     engine.active.delete(row.id);
+    // The store may keep failing, and a write the server accepted asks for a sync whose end starts a pass (WH-421).
+    if (storeFailed) holdItem(row.id, pass.signal);
   }
+  // A lost answer keeps the count: the question about it clears or lengthens the wait.
+  if (!storeFailed && outcome.kind !== 'lost') engine.held.delete(row.id);
   switch (outcome.kind) {
     case 'sent':
     case 'refused':
@@ -269,8 +380,11 @@ async function handle(row: ItemRow, pass: Pass, byId: Map<string, ItemRow>): Pro
       pass.stop = true;
       return false;
     case 'lost':
-      engine.active.add(row.id);
-      void resolveDoubt(row.id, () => rowsById(pass.scope));
+      // A held item is asked about by the pass that follows its wait.
+      if (!storeFailed) {
+        engine.active.add(row.id);
+        void resolveDoubt(row.id, () => rowsById(pass.scope));
+      }
       return false;
   }
 }
@@ -290,9 +404,15 @@ async function pumpPhotos(pass: Pass): Promise<void> {
       continue;
     }
     if (verdict === 'wait') continue;
+    // A held item gets no task: a task that ends at once would start the next look at once (WH-420).
+    if (waits(pass, row.id)) continue;
     const task = handle(row, pass, byId)
       .then(() => undefined)
-      .catch(error => logger.warn('A photo item failed', loggableError(error)))
+      .catch(error => {
+        // The item may be as it was: it waits for the retry timer, not for the look that follows this task (WH-420).
+        pass.transient = true;
+        logger.warn('A photo item failed', loggableError(error));
+      })
       .finally(() => {
         pass.tasks.delete(task);
         // A transient answer waits for the next trigger; trying again here would loop.
@@ -341,30 +461,48 @@ function clearRetry(): void {
     clearTimeout(engine.retryTimer);
     engine.retryTimer = null;
   }
+  engine.retryDue = null;
   engine.retryStep = 0;
+  engine.held.clear();
 }
 
 /** Arms a retry for the session `abort` belongs to; the timer looks again at that session before it sends. */
 function armRetry(abort: AbortController, wait: number): void {
+  // One retry timer, at the earliest due time: a later, longer wait never pushes back a retry that is due sooner. Held items
+  // are still protected by their own wait (an early pass defers them).
+  const due = Date.now() + wait;
+  if (engine.retryTimer) {
+    if (engine.retryDue !== null && engine.retryDue <= due) return;
+    clearTimeout(engine.retryTimer);
+  }
   const timer = setTimeout(() => {
-    if (engine.retryTimer === timer) engine.retryTimer = null;
+    if (engine.retryTimer === timer) {
+      engine.retryTimer = null;
+      engine.retryDue = null;
+    }
     if (engine.abort !== abort || abort.signal.aborted) return;
     void sendNow('retry-timer');
   }, wait);
   // Under Node (tests) a waiting retry must not keep the process alive.
   (timer as { unref?: () => void }).unref?.();
   engine.retryTimer = timer;
+  engine.retryDue = due;
 }
 
-/** True when the pass ended clean: a trigger that arrived meanwhile may be answered with one more look. */
-async function onePass(): Promise<boolean> {
+/**
+ * True when the pass ended clean: a trigger that arrived meanwhile may be answered with one more look. 'session-changed'
+ * when the session changed while the pass ran: it armed nothing, and a trigger that joined it still gets a pass (WH-406).
+ */
+async function onePass(): Promise<boolean | 'session-changed'> {
   if (engine.retryTimer) {
     clearTimeout(engine.retryTimer);
     engine.retryTimer = null;
+    engine.retryDue = null;
   }
   // The session this pass starts in: a session change replaces `engine.abort`, so a pass that ended in another one arms nothing.
   const sessionAbort = engine.abort;
   if (isCopyOffline() || cannotSendUnsent()) return false;
+  if (!hasCapability('sync') && unsentFileExists() === false) return false;
   const scope = await getSessionCacheScope();
   if (!scope) return false;
   try {
@@ -373,7 +511,7 @@ async function onePass(): Promise<boolean> {
     return false;
   }
   await sweepSentRows(businessDate(Date.now()));
-  const pass: Pass = { scope, transient: false, stop: false, tasks: new Set(), deferMs: null };
+  const pass: Pass = { scope, signal: sessionAbort.signal, transient: false, stop: false, tasks: new Set(), deferMs: null };
   // Refused items go to the server's holding list at the start of a pass (a hand-over that failed is tried again) and at its end.
   await handOver(pass);
   await pumpPhotos(pass);
@@ -382,7 +520,7 @@ async function onePass(): Promise<boolean> {
   while (pass.tasks.size > 0) await Promise.all([...pass.tasks]);
   if (!pass.transient && !pass.stop) await handOver(pass);
   const sameSession = engine.abort === sessionAbort && !sessionAbort.signal.aborted;
-  if (!sameSession) return false;
+  if (!sameSession) return 'session-changed';
   if (pass.deferMs !== null && !pass.transient && !pass.stop) {
     // A form is still waiting for its record's answer: look again when that wait is over.
     armRetry(sessionAbort, pass.deferMs + 50);
@@ -422,6 +560,8 @@ registerSessionScoped('unsent-sending-flag', () => {
  * ends). It never rejects; what it could not do is tried again by the retry timer and by the next trigger.
  */
 export function sendNow(reason: SendTrigger): Promise<void> {
+  // The person asking ends a store-error wait: one check now. Its count is kept, so a failure waits longer again (WH-420).
+  if (reason === 'send-now') for (const held of engine.held.values()) held.until = 0;
   if (engine.running) {
     engine.again = true;
     return engine.running;
@@ -431,7 +571,10 @@ export function sendNow(reason: SendTrigger): Promise<void> {
       do {
         engine.again = false;
         logger.debug(`Send pass (${reason})`);
-        if (!(await withoutWriteNote(onePass))) engine.again = false;
+        // A pass ended by a session change keeps `again`: the joined trigger's next pass reads the new session's scope and
+        // controller from the start of onePass, and arms its retry only for that session.
+        const ended = await onePass();
+        if (ended === false) engine.again = false;
       } while (engine.again);
     } catch (error) {
       logger.warn('A send pass failed', loggableError(error));
@@ -440,10 +583,8 @@ export function sendNow(reason: SendTrigger): Promise<void> {
       sendingShown = false;
       tellSending();
     }
-    // What was sent changes the numbers and stock the copy holds: ask for a sync (C298 6.6).
-    // A write made during the pass was not noted (the pass is quiet), so a pass that sent nothing still asks once.
-    const foreignWrite = takeWriteSeenWhileQuiet();
-    if (engine.sentAny || foreignWrite) {
+    // What the passes changed on the server changes what the copy holds: ask for one sync (C298 6.6).
+    if (engine.sentAny) {
       engine.sentAny = false;
       void syncNow('after-send');
     }

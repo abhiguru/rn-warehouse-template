@@ -19,7 +19,6 @@ import { configureStore, type Middleware } from '@reduxjs/toolkit';
 import authReducer, { setUserProfile } from '@/store/slices/authSlice';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 import { verifySelectedOperator } from '@/config/operatorBootstrap';
-import { onOperatorServerChange } from '@/config/operatorServer';
 import { applyNetReachability, installNetReachability } from '@/config/netReachability';
 import { useColdStartDeepLink } from '@/hooks/useColdStartDeepLink';
 import { t } from '@/i18n';
@@ -195,8 +194,13 @@ jest.mock('@/navigation/RouteGuard', () => ({
   GuardedScreen: ({ children }: { children: React.ReactNode }) => children,
   useRootRouteGuard: jest.fn(),
 }));
+// Every subscriber of a server change, as the real module keeps them: the root's bootstrap and the capability hook (WH-389).
+const mockServerListeners = new Set<() => void>();
 jest.mock('@/config/operatorServer', () => ({
-  onOperatorServerChange: jest.fn(() => () => undefined),
+  onOperatorServerChange: (listener: () => void) => {
+    mockServerListeners.add(listener);
+    return () => mockServerListeners.delete(listener);
+  },
   getActiveOperatorServer: () => ({ origin: 'https://north-cold.example.test', instanceId: 'instance-north' }),
 }));
 // The unsent-work engine now starts for any signed-in warehouse session (WH-301) and listens to the connection: a stand-in for the native module.
@@ -230,12 +234,11 @@ const spinnerMounted = () => screen.queryAllByLabelText(t('nav.loading'), { incl
  * answered in its own turn, so the splash is drawn in between as on a phone.
  */
 async function switchFacility() {
-  const onServerChange = jest.mocked(onOperatorServerChange).mock.calls[0][0];
   let verified!: () => void;
   jest.mocked(verifySelectedOperator).mockImplementationOnce(
     () => new Promise(resolve => { verified = () => resolve(verifiedFacility as never); })
   );
-  await act(async () => { onServerChange(); });
+  await act(async () => { for (const listener of [...mockServerListeners]) listener(); });
   await turn();
   expect(count('app-stack')).toBe(0);
   await act(async () => { verified(); });
@@ -261,6 +264,9 @@ beforeAll(() => { (global as { __DEV__?: boolean }).__DEV__ = false; });
 afterAll(() => { (global as { __DEV__?: boolean }).__DEV__ = originalDev; });
 beforeEach(() => {
   jest.clearAllMocks();
+  mockServerListeners.clear();
+  // A check queued by a test that failed part way must not answer the next test's start.
+  jest.mocked(verifySelectedOperator).mockReset();
   mockStore = makeStore();
   mockRestores.length = 0;
   mockReadsAnswered = 0;

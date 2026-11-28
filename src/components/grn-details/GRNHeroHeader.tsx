@@ -160,7 +160,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
           {!compact && <Text style={styles.docType} maxFontSizeMultiplier={HEADER_TEXT_CAP}>{tr('common.grn')}</Text>}
           {!compact && (
             <Text style={[styles.number, numberPending && styles.numberPending]} maxFontSizeMultiplier={HEADER_TEXT_CAP}>
-              {numberPending ? pendingText : gr_no}
+              {numberPending ? pendingText : formatIdentifier(gr_no)}
             </Text>
           )}
           {meta ? (

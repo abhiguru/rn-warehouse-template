@@ -10,8 +10,9 @@
   * Wording: key `components.offlineStatus.unsentFeatureOff` (Design 2026-11-28, Dev 503f3f8f), told whether connected or not while nothing is being sent; the `sending` line while a send pass runs online.
  */
 import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
+import { failStatement } from '@/tests/phoneCopy/fakeExpoSqlite';
 import { files } from '@/tests/phoneCopy/fakeFiles';
-import { bootUnsent, rawRun, server, type UnsentPhone } from '@/tests/unsent/unsentPhone';
+import { bootUnsent, clearPlannedFailures, rawRun, server, type UnsentPhone } from '@/tests/unsent/unsentPhone';
 
 const mockPush = jest.fn();
 let mockOffline = false;
@@ -177,6 +178,32 @@ describe('the bar with the sync feature off', () => {
 
     await rtl.act(async () => { await phone.queue.deleteItem(id); });
     expect(rtl.screen.queryByTestId('offline-status-bar')).not.toBeOnTheScreen();
+  });
+
+  it('an unreadable file with no items known to be waiting draws no bar (WH-396)', async () => {
+    const phone = await phoneWithFeatureOff();
+    for (let i = 0; i < 200; i += 1) failStatement(/./, new Error('database disk image is malformed'));
+    await (require('@/features/unsent/unsentStore') as typeof import('@/features/unsent/unsentStore')).refreshUnsent();
+    expect(phone.store.getUnsentSummary()).toMatchObject({ unreadable: true });
+    const { rtl, React, Layout } = parts();
+    await rtl.render(React.createElement(Layout));
+    expect(rtl.screen.queryByTestId('offline-status-bar')).not.toBeOnTheScreen();
+    clearPlannedFailures();
+  });
+
+  it('an unreadable file with items known to be waiting draws the critical unreadable line (WH-396)', async () => {
+    const phone = await phoneWithFeatureOff();
+    await phone.queue.enqueue(waits);
+    await phone.engine.sendNow('send-now');
+    for (let i = 0; i < 200; i += 1) failStatement(/./, new Error('database disk image is malformed'));
+    await (require('@/features/unsent/unsentStore') as typeof import('@/features/unsent/unsentStore')).refreshUnsent();
+    const { rtl, React, Layout } = parts();
+    await rtl.render(React.createElement(Layout));
+    const { t } = require('@/i18n') as typeof import('@/i18n');
+    const { getTokens } = require('@/theme/tokens') as typeof import('@/theme/tokens');
+    expect(rtl.screen.getByTestId('offline-status-bar-line2')).toHaveTextContent(t('components.offlineStatus.unsentUnreadable'));
+    expect(rtl.screen.getByTestId('offline-status-bar')).toHaveStyle({ backgroundColor: getTokens('orange', 'light').status.critical.background });
+    clearPlannedFailures();
   });
 
   it('is not drawn at all with nothing unsent', async () => {

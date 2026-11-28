@@ -4,7 +4,7 @@
  * the sentence is the variant without it (Design gives the deleted and locked ones), or none; never a placeholder, "unknown" or an
  * empty value (DQ2). A hint that needs a figure it lacks falls back to the hint of `other`.
  */
-import { formatDate } from '@/utils/formatters';
+import { formatDate, toDate } from '@/utils/formatters';
 import { t as tr, formatIdentifier, type TranslationKey } from '@/i18n';
 
 export const HELD_REASONS = [
@@ -53,7 +53,7 @@ const numberOfWhat = (what: unknown): string | null => (isFields(what) && isFiel
 
 const dateOf = (value: unknown): string | null => {
   const raw = textOf(value);
-  return raw === null ? null : formatDate(raw);
+  return raw === null || toDate(raw) === null ? null : formatDate(raw);
 };
 
 /**

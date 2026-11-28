@@ -34,7 +34,7 @@ export function isNewGrnBody(value: unknown): value is NewGrnBody {
 
 async function sendNewGrn(body: NewGrnBody, requestKey: string): Promise<SendOutcome> {
   if (!isNewGrnBody(body)) return { kind: 'refused', reason: 'newGrn: unreadable body' };
-  const client = await getAuthenticatedClient();
+  const client = await getAuthenticatedClient({ quietWrite: true });
   const answer = await client.rpc('save_grn', { ...body.args, p_idempotency_key: requestKey });
   // An unreadable or empty HTTP 200 and a gateway's 502 / 504 are a LOST answer (the record may be saved), not a transient one.
   const error = answer.error ?? emptyAnswerAsError({ data: answer.data, error: answer.error, status: answer.status });

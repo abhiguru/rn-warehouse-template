@@ -80,7 +80,7 @@ export function UnsentItemsScreen() {
   const [sending, setSending] = useState(false);
   const [moving, setMoving] = useState(false);
   // The subject each other person's items are kept under: an administrator moves them by it (Design 4.2, 4.3).
-  const [subjects, setSubjects] = useState<{ subject: string; name: string }[]>([]);
+  const [subjects, setSubjects] = useState<{ subject: string; name: string; count: number }[]>([]);
   useEffect(() => {
     let live = true;
     void otherPeopleBySubject().then(
@@ -93,6 +93,7 @@ export function UnsentItemsScreen() {
       live = false;
     };
   }, [others]);
+  const otherPeople = others.length === 0 ? [] : subjects;
   const entries = useMemo(() => entriesOf(rows), [rows]);
   const anyToSend = rows.some(row => row.section === 'unsent');
 
@@ -108,9 +109,8 @@ export function UnsentItemsScreen() {
   }, [sending]);
 
   const move = useCallback(
-    async (name: string) => {
-      const subject = subjects.find(person => person.name === name)?.subject;
-      if (subject === undefined || moving) return;
+    async (subject: string, name: string) => {
+      if (moving) return;
       const answer = await askAlert(
         tr('offline.moveHolding.title', { name }),
         tr('offline.moveHolding.message'),
@@ -129,7 +129,7 @@ export function UnsentItemsScreen() {
         setMoving(false);
       }
     },
-    [subjects, moving]
+    [moving]
   );
 
   const open = useCallback((row: UnsentListRow) => {
@@ -192,8 +192,8 @@ export function UnsentItemsScreen() {
         {lastSentAt === null ? tr('offline.unsent.neverSent') : tr('offline.unsent.lastSent', { time: formatLoadedAt(lastSentAt) })}
       </Text>
       {/* Someone else's items on this phone: only their name and how many. Not listed, not sent, not deleted here (spec step 27). */}
-      {others.map(person => (
-        <React.Fragment key={person.name}>
+      {otherPeople.map(person => (
+        <React.Fragment key={person.subject}>
           <InfoStrip testID="unsent-other-person" text={tr('offline.unsent.otherPerson', { count: person.count, name: person.name })} />
           {isAdmin && holdingOn() ? (
             <>
@@ -203,7 +203,7 @@ export function UnsentItemsScreen() {
                 size="fullWidth"
                 disabled={offline || moving}
                 loading={moving}
-                onPress={() => void move(person.name)}
+                onPress={() => void move(person.subject, person.name)}
               >
                 {tr('offline.unsent.moveToHolding')}
               </Button>

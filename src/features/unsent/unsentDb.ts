@@ -8,7 +8,7 @@
  * One connection, one statement or transaction at a time (expo-sqlite's transaction on the same connection would let
  * another caller's statement join it), so every use waits in line until the one before has ended.
  */
-import { Directory, Paths } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as ExpoSqlite from 'expo-sqlite';
 import { createLogger, loggableError } from '@/utils/logger';
 import { removeFiles } from './legacyDispatchCleanup';
@@ -37,6 +37,25 @@ const holder: { open: Promise<UnsentDb> | null } = { open: null };
 
 /** The folder of the photo files. */
 export const unsentPhotoDirectory = (): Directory => new Directory(Paths.document, UNSENT_FOLDER, UNSENT_PHOTO_FOLDER);
+
+const fileUri = (path: string): string => (path.startsWith('file://') ? path : `file://${path}`);
+
+/**
+ * Whether the unsent-work file already exists on the phone: `true` if present, `false` if confirmed absent,
+ * `null` when the database directory is unavailable (e.g. unit tests) or the check throws. Never throws.
+ */
+export function unsentFileExists(): boolean | null {
+  try {
+    const rawDir = (ExpoSqlite as { defaultDatabaseDirectory?: unknown }).defaultDatabaseDirectory;
+    const directory = typeof rawDir === 'string' && rawDir !== '' ? rawDir : null;
+    if (!directory) return null;
+    const file = new File(fileUri(`${directory.replace(/\/$/, '')}/${UNSENT_FILE}`));
+    return typeof file.exists === 'boolean' ? file.exists : null;
+  } catch {
+    // Treated as unknown so an uncheckable path never falsely confirms the file absent.
+    return null;
+  }
+}
 
 function wrap(db: SqliteDatabase): UnsentDb {
   const tail: { line: Promise<unknown> } = { line: Promise.resolve() };

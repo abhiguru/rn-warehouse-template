@@ -15,7 +15,7 @@ import { NeedsConnectionLine } from '@/features/phone-copy/components/NeedsConne
 import { needsConnectionLabel, useNeedsConnection } from '@/features/phone-copy/useNeedsConnection';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useViaCurrentPath } from '@/hooks/useLanStatus';
-import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatNumber } from '@/utils/formatters';
 import { uiLogger } from '@/utils/logger';
@@ -46,6 +46,8 @@ interface GRNImagesTabProps {
   onUpload?: () => void;
   onDeleteImage?: (image: GRNImageData) => void;
   isUploading?: boolean;
+  /** Photos taken with this GRN that could not be sent (WH-385); the tab says so while this is above 0. */
+  missingCount?: number;
 }
 
 type FilterType = 'all' | 'header' | 'item';
@@ -54,6 +56,16 @@ const fill = { position: 'absolute' as const, top: 0, left: 0, right: 0, bottom:
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
+
+  // The lasting line about photos that could not be sent (Design offline-capture.md 14.1)
+  missingRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.md,
+  },
+  missingLine: { ...typography.footnote, color: t.text.secondary, flexShrink: 1 },
 
   // Quick filter chips (style guide §13.5)
   filterRow: {
@@ -194,11 +206,17 @@ function deleteImageLabel(item: GRNImageData): string {
     : tr('grn.images.deletePhotoOfUnnamedItem');
 }
 
+interface NeedsConnectionTileProps {
+  item: GRNImageData;
+  styles: Styles;
+  t: ThemeTokens;
+}
+
 /**
  * A photo that is not on the phone while the server cannot be asked (WH-299; Design offline-capture.md 2.5): a frame that
  * says so. Nothing opens from it.
  */
-const NeedsConnectionTile: React.FC<{ item: GRNImageData; styles: Styles; t: ThemeTokens }> = ({ item, styles, t }) => {
+function NeedsConnectionTile({ item, styles, t }: NeedsConnectionTileProps) {
   const { width } = useWindowDimensions();
   const imageSize = (width - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
   const label = imageLabel(item);
@@ -216,7 +234,7 @@ const NeedsConnectionTile: React.FC<{ item: GRNImageData; styles: Styles; t: The
       </View>
     </View>
   );
-};
+}
 
 // Individual image tile with loading and error placeholders
 interface ImageTileProps {
@@ -385,6 +403,7 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
   onUpload,
   onDeleteImage,
   isUploading = false,
+  missingCount = 0,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -403,18 +422,34 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
     return images.filter(img => img.category === filter);
   }, [images, filter]);
 
+  // The one sentence, for the line and for the empty state (count as a number: Gujarati digits come from `t`).
+  const missingSentence = missingCount > 0 ? tr('grn.photos.couldNotSend', { count: missingCount }) : null;
+  // Where the line sits in the tab: this one element, placed first in the tab's column below.
+  const missingLine = missingSentence ? (
+    <View style={styles.missingRow} accessible accessibilityLabel={missingSentence} testID="grn-photos-missing">
+      <Icon name="image-off-outline" size={iconSize.sm} color={t.icon.secondary} importantForAccessibility="no" />
+      <Text style={styles.missingLine} maxFontSizeMultiplier={1.6}>
+        {missingSentence}
+      </Text>
+    </View>
+  ) : null;
+
   if (images.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Icon name="image-off-outline" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle} accessibilityRole="header">
-          {tr('grn.images.emptyTitle')}
-        </Text>
-        <Text style={styles.emptySubtitle}>
-          {onUpload
-            ? tr('grn.images.emptyCanAdd')
-            : tr('grn.images.emptyReadOnly')}
-        </Text>
+        <Icon name="image-off-outline" size={iconSize.hero} color={t.icon.secondary} importantForAccessibility="no" />
+        {missingSentence ? (
+          <Text style={styles.emptyTitle} testID="grn-photos-missing">
+            {missingSentence}
+          </Text>
+        ) : (
+          <>
+            <Text style={styles.emptyTitle} accessibilityRole="header">
+              {tr('grn.images.emptyTitle')}
+            </Text>
+            <Text style={styles.emptySubtitle}>{onUpload ? tr('grn.images.emptyCanAdd') : tr('grn.images.emptyReadOnly')}</Text>
+          </>
+        )}
         {onUpload && (
           <Pressable
             accessibilityRole="button"
@@ -459,6 +494,7 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
 
   return (
     <View style={styles.container}>
+      {missingLine}
       {/* Quick filters and add action */}
       <View style={styles.filterRow}>
         <FilterButton label={tr('common.all')} count={images.length} selected={filter === 'all'} onSelect={() => setFilter('all')} styles={styles} t={t} />

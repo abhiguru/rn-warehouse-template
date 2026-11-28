@@ -33,6 +33,7 @@ import { transportFetch, WAREHOUSE_PATH_HEADER } from './lanTransport';
 import { noteRequestNetworkFailure } from './netReachability';
 import { noteExpiredTokenRenewal } from './sessionRenewal';
 import { noteDataWrite } from './facilityWrite';
+import { deviceNameField } from './sessionDeviceName';
 import { parseSessionEnd, SESSION_ENDS_AT_KEY, storeSessionEnd } from './sessionEnd';
 import { awaitRoleRecheck, isRoleRecheckPending, WRITE_HOLD_LIMIT_MS } from './roleRecheck';
 import { isOfflineLimitPassed, isStoredTime, type ConfirmationTimes } from './offlineLimit';
@@ -60,6 +61,7 @@ const SECURE_KEYS = {
 let __supabaseInstance: SupabaseClient | undefined;
 let __currentConfig: { url: string; anonKey: string } | undefined;
 let __authenticatedClientInstance: SupabaseClient | undefined;
+let __quietAuthenticatedClientInstance: SupabaseClient | undefined;
 let __cachedAuthToken: string | undefined;
 let operatorSwitching = false;
 const activeRequests = new Set<{ controller: AbortController; mutation: boolean }>();
@@ -479,10 +481,11 @@ async function sessionFetch(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   generation: number,
-  mutation: boolean
+  mutation: boolean,
+  quietWrite = false
 ): Promise<Response> {
   const response = await gatedFetch(input, init, { generation, mutation, honorSwitch: true });
-  if (mutation && response.ok) noteDataWrite(input);
+  if (mutation && response.ok && !quietWrite) noteDataWrite(input);
   const refused = bearerOf(init);
   if (!refused || !(await isExpiredTokenResponse(response))) return response;
   const renewed = await accessTokenAfterExpiry(refused, generation);
@@ -553,6 +556,7 @@ export const isOperatorSwitchFree = (): boolean =>
 
 export const clearAuthenticatedClientCache = () => {
   __authenticatedClientInstance = undefined;
+  __quietAuthenticatedClientInstance = undefined;
   __cachedAuthToken = undefined;
 };
 
@@ -607,7 +611,8 @@ export const getCurrentConfig = () => {
 
 export const getSupabaseRPCClient = getSupabaseClient;
 
-export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
+export const getAuthenticatedClient = async (options?: { quietWrite?: boolean }): Promise<SupabaseClient> => {
+  const quietWrite = options?.quietWrite ?? false;
   if (operatorSwitching) throw new AppError('SERVER_SWITCH', t('errors.auth.serverSwitchInProgress'));
   const generation = getSessionGeneration();
   const session = await acquireValidSession();
@@ -632,14 +637,20 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
     operatorSwitching
   )
     throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
-  if (!__authenticatedClientInstance || __cachedAuthToken !== session.authToken) {
+  if (__cachedAuthToken !== session.authToken) {
+    __authenticatedClientInstance = undefined;
+    __quietAuthenticatedClientInstance = undefined;
+    __cachedAuthToken = session.authToken;
+  }
+  const cached = quietWrite ? __quietAuthenticatedClientInstance : __authenticatedClientInstance;
+  if (!cached) {
     const config = getCurrentConfig();
-    __authenticatedClientInstance = createClient(config.url, config.anonKey, {
+    const client = createClient(config.url, config.anonKey, {
       global: {
         headers: { Authorization: 'Bearer ' + session.authToken },
         // Only a write holds a server switch back; a read is aborted by it.
         fetch: (input, init) =>
-          sessionFetch(input, init, generation, !isReadRequest(input, init)),
+          sessionFetch(input, init, generation, !isReadRequest(input, init), quietWrite),
       },
       // postgrest-js otherwise repeats a failed read up to 3 times and waits the gateway's Retry-After (120 s while the
       // facility upgrades), so one read could hang for minutes. The request layer decides on a repeat (gatedFetch).
@@ -650,9 +661,11 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
         detectSessionInUrl: false,
       },
     });
-    __cachedAuthToken = session.authToken;
+    if (quietWrite) __quietAuthenticatedClientInstance = client;
+    else __authenticatedClientInstance = client;
+    return client;
   }
-  return __authenticatedClientInstance;
+  return cached;
 };
 
 export const getSupabaseWithJWT = getAuthenticatedClient;
@@ -1218,6 +1231,9 @@ export const verifyOTP = async (
   token: string,
   userName?: string
 ): Promise<AuthResult> => {
+  // Read the device name before the session starts: nothing may wait between taking the generation and the post,
+  // so the number and code go only to the facility this sign-in began at.
+  const deviceName = await deviceNameField();
   const generation = await startNewSession();
   try {
     const formattedPhone = formatPhoneNumber(phone);
@@ -1226,6 +1242,7 @@ export const verifyOTP = async (
       phone_number: formattedPhone,
       otp_code: token,
       ...(userName ? { name: userName } : {}),
+      ...deviceName,
     });
 
     if (generation !== getSessionGeneration()) {
@@ -1306,7 +1323,7 @@ export const exchangeCentralIdentity = async (
   try {
     const { response, result } = await operatorFunctionPost(
       'central-exchange',
-      { identity_token: identityToken, ...(options?.otpCode ? { otp_code: options.otpCode } : {}) },
+      { identity_token: identityToken, ...(options?.otpCode ? { otp_code: options.otpCode } : {}), ...(await deviceNameField()) },
       { mutation: true, honorSwitch: true },
       generation
     );
@@ -1365,7 +1382,7 @@ export const breakGlassSignIn = async (phone: string, code: string): Promise<Bre
   try {
     const { response, result } = await operatorFunctionPost(
       'operator-otp/break-glass',
-      { phone_number: formatPhoneNumber(phone), code },
+      { phone_number: formatPhoneNumber(phone), code, ...(await deviceNameField()) },
       { mutation: true, honorSwitch: true },
       generation
     );
@@ -1634,6 +1651,20 @@ function scheduleRefreshRetry(generation: number, token: string, sentAt: number)
 // not connectivity, so not a reason to send the refresh token again.
 const isGateSignal = (error: unknown): boolean =>
   /session changed|identity verification/i.test(String((error as { message?: unknown } | null)?.message ?? ''));
+// A refresh that failed for want of a connection (no answer, or the identity check that needs one) is not a
+// fault: it is noted once as a warning per offline spell, until a refresh succeeds. A refusal stays an error.
+let offlineRefreshNoted = false;
+const isNoConnection = (error: unknown): boolean =>
+  isNetworkError(error) || (error instanceof Error && /identity verification/i.test(error.message));
+function noteRefreshFailure(error: unknown, label: string): void {
+  if (!isNoConnection(error)) {
+    authLogger.error(label);
+    return;
+  }
+  if (offlineRefreshNoted) return;
+  offlineRefreshNoted = true;
+  authLogger.warn('Token refresh waits for a connection.');
+}
 export const refreshCustomJWT = (): Promise<RefreshedSession | null> => {
   const generation = getSessionGeneration();
   if (refreshInFlight?.generation === generation)
@@ -1730,7 +1761,7 @@ const refreshSession = async (
         return null;
       }
       if (error) {
-        authLogger.error('Token refresh RPC error:');
+        noteRefreshFailure(error, 'Token refresh RPC error:');
         if (isGateSignal(error)) return null;
         // No answer, or one that is not the server's decision: the token is
         // kept and sent again, like after a timeout.
@@ -1765,6 +1796,7 @@ const refreshSession = async (
       // Store the new tokens
       await storeTokens(newAccessToken, newRefreshToken, expiresAt, generation, { refresh: true });
       lastIssued = { token: newAccessToken, at: Date.now() };
+      offlineRefreshNoted = false;
       clearRefreshRetry();
 
       // Clear cached authenticated client so it picks up new token
@@ -1779,7 +1811,7 @@ const refreshSession = async (
       };
     }
   } catch (error) {
-    authLogger.error('Token refresh exception:');
+    noteRefreshFailure(error, 'Token refresh exception:');
     return null;
   }
 };

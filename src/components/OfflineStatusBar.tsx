@@ -144,7 +144,7 @@ export function OfflineStatusBar({ unsentOnly = false }: { unsentOnly?: boolean 
   const view: StatusBarContent = onlyLine
     ? {
         tone: onlyLine.key === 'unsentUnreadable' ? 'critical' : 'neutral',
-        icon: offline ? 'cloud-off-outline' : 'sync',
+        icon: onlyLine.key === 'unsentUnreadable' ? 'clock-alert-outline' : offline ? 'cloud-off-outline' : 'sync',
         line1: [],
         line2: onlyLine,
         action: null,

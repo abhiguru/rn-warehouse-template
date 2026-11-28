@@ -23,7 +23,7 @@ const linesOf = (doc: NewDocRow): Row[] => (Array.isArray(doc.lines) ? (doc.line
 export type HeldBySync = ReadonlySet<string>;
 
 /**
- * The sent new GRNs whose record the copy already has, matched by the server's id only: a GRN number can repeat across
+ * The sent new GRNs whose record and lines the copy already has, matched by the server's id only: a GRN number can repeat across
  * financial years, so a number never matches. A sent save always answers its id (a success without grn_id is "lost", not
  * "sent"); a sent row with no id is not held and shows once until the sync clears it (WH-404).
  */
@@ -33,7 +33,12 @@ export async function sentHeldByCopy(q: CopyReader): Promise<HeldBySync> {
   const held = new Set<string>();
   for (const doc of sent) {
     if (typeof doc.serverId !== 'string' || doc.serverId === '') continue;
-    const found = await q.get<{ id: string }>('SELECT id FROM goodsreceived WHERE id = ?', [doc.serverId]);
+    // The header AND a line: a catch-up page can bring the header first, and the lists and stock figures join the lines, so
+    // until a line is in the copy the overlay keeps showing the GRN (WH-407). A deleted line is removed from the copy.
+    const found = await q.get<{ id: string }>(
+      'SELECT g.id FROM goodsreceived g WHERE g.id = ? AND EXISTS (SELECT 1 FROM goodsreceived_trl t WHERE t.gr_id = g.id)',
+      [doc.serverId]
+    );
     if (found) held.add(String(doc.localId));
   }
   return held;
@@ -162,6 +167,7 @@ export async function readNewGrnDetails(q: CopyReader, doc: NewDocRow): Promise<
     gr_image_url: null,
     invoiced: false,
     imported: false,
+    photos_missing: 0,
     leon: false,
     out_of_stock: false,
     pricing_mode: header.pricing_mode ?? null,

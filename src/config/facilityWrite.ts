@@ -1,13 +1,18 @@
 /**
  * "A write to the facility just succeeded" (WH-299). Every write the app sends passes `sessionFetch`
- * (src/config/supabaseConfig.ts), which calls `noteFacilityWrite` for each one the server accepted. The phone copy
- * listens (src/features/phone-copy/syncEngine.ts) and asks for a sync, so what a person saved online is in the copy
+ * (src/config/supabaseConfig.ts), which calls `noteFacilityWrite` for each one the server accepted (unless the caller
+ * opted out with `quietWrite: true`, as the unsent send pass does). The phone copy listens
+ * (src/features/phone-copy/syncEngine.ts) and asks for a sync, so what a person saved online is in the copy
  * the screens read. The listener list lives here so the config layer does not import the phone copy.
  */
 
 import { registerSessionScoped } from './sessionScopedRegistry';
 
-type FacilityWriteListener = () => void;
+/** `photoStep` is true for a register, confirm or cancel call of a photo upload (WH-401); the sync engine holds only those. */
+type FacilityWriteListener = (photoStep: boolean) => void;
+
+/** The three RPC steps of one photo upload (WH-397). Only these may be held back while a photo upload is active (WH-401). */
+const PHOTO_STEP_RPC = /^(register|confirm|cancel)_(grn|dispatch)_image_upload$/;
 
 const listeners = new Set<FacilityWriteListener>();
 
@@ -19,24 +24,11 @@ export function subscribeFacilityWrite(listener: FacilityWriteListener): () => v
   };
 }
 
-const quietListeners = new Set<() => void>();
-
-/**
- * Told when a data write was accepted while a quiet scope was open. No sync is asked for here (the send pass asks for one
- * at its end); the sync engine only marks a sync as owed, so a save screen's bounded wait covers the write.
- */
-export function subscribeQuietWrite(listener: () => void): () => void {
-  quietListeners.add(listener);
-  return () => {
-    quietListeners.delete(listener);
-  };
-}
-
 /** Called by the request layer once the server accepted a write. Never throws. */
-export function noteFacilityWrite(): void {
+export function noteFacilityWrite(photoStep = false): void {
   for (const listener of [...listeners]) {
     try {
-      listener();
+      listener(photoStep);
     } catch {
       // A listener's failure must not fail the write that already succeeded.
     }
@@ -94,42 +86,12 @@ export async function withAfterWriteSyncHold<T>(fn: () => Promise<T>): Promise<T
   }
 }
 
-let quietDepth = 0;
-let writeSeenWhileQuiet = false;
-registerSessionScoped('facility-write-seen-while-quiet', () => {
-  writeSeenWhileQuiet = false;
-});
-
-/**
- * True once if a data write was accepted while a quiet scope was open, then false again. The send engine asks at the end of
- * a pass: a person's own save made during the pass is indistinguishable from the pass's sends inside the scope, so the pass
- * always asks for one sync afterwards when this says yes, whether or not it sent anything (WH-299).
- */
-export function takeWriteSeenWhileQuiet(): boolean {
-  const seen = writeSeenWhileQuiet;
-  writeSeenWhileQuiet = false;
-  return seen;
-}
-
-/**
- * Runs `fn` with writes not noted. The send engine runs its pass inside it: it asks for its own sync after a pass, so its
- * sends must not each ask for one (WH-299). A counter, so nested or overlapping scopes end correctly.
- */
-export async function withoutWriteNote<T>(fn: () => Promise<T>): Promise<T> {
-  quietDepth += 1;
-  try {
-    return await fn();
-  } finally {
-    quietDepth -= 1;
-  }
-}
-
 /**
  * RPCs that are not reads by name (`READ_RPC` in supabaseConfig.ts) but change nothing the copy holds: checks, a number
- * suggestion, a seen marker, the sign-in and enrollment functions, the language and the connection notes.
+ * suggestion, a seen marker, the sign-in and enrollment functions, the language, the connection notes and the session's phone name.
  */
 const NOT_COPY_RPC =
-  /^(can_make_bills|suggest_document_number|mark_held_item_seen|make_pairing_code|set_my_language|revoke_session|operator_review_enrollment|review_enrollment_again|submit_connection_notes)$/;
+  /^(can_make_bills|suggest_document_number|mark_held_item_seen|make_pairing_code|set_my_language|revoke_session|operator_review_enrollment|review_enrollment_again|submit_connection_notes|set_session_device_name)$/;
 
 /**
  * Called for each request the request layer classed as a write (`mutation`: not `isReadRequest`, so a GET, a HEAD, a read
@@ -142,16 +104,5 @@ export function noteDataWrite(input: RequestInfo | URL): void {
   if (!url.includes('/rest/v1/')) return;
   const rpc = /\/rest\/v1\/rpc\/([A-Za-z0-9_]+)$/.exec(url)?.[1];
   if (rpc !== undefined && NOT_COPY_RPC.test(rpc)) return;
-  if (quietDepth > 0) {
-    writeSeenWhileQuiet = true;
-    for (const listener of [...quietListeners]) {
-      try {
-        listener();
-      } catch {
-        // A listener's failure must not fail the write that already succeeded.
-      }
-    }
-    return;
-  }
-  noteFacilityWrite();
+  noteFacilityWrite(rpc !== undefined && PHOTO_STEP_RPC.test(rpc));
 }

@@ -370,7 +370,6 @@ describe('K11, K12, PQ10: permanent hand-over refusal, list states, and person D
     server.answers.hold_items = () => holdPending;
 
     await phone.online();
-    const running = phone.engine.sendNow('send-now');
     await jest.advanceTimersByTimeAsync(1_000);
 
     const midList = await loadList();
@@ -380,7 +379,6 @@ describe('K11, K12, PQ10: permanent hand-over refusal, list states, and person D
 
     releaseHold(holdOk('srv-held')({ p_items: [{ request_key: item.requestKey }] }));
     await jest.advanceTimersByTimeAsync(1_000);
-    await running;
 
     const afterList = await loadList();
     const heldRow = afterList.rows.find(r => r.id === item.id);
@@ -634,5 +632,91 @@ describe('session end: what the hand-over remembered about the first person is g
     await endSession();
     await phone.pass();
     expect(rpcCalls('hold_items')).toHaveLength(2);
+  });
+});
+
+describe('WH-410: the phone names itself with a held item', () => {
+  const asSamsung = () => {
+    const { Platform } = require('react-native') as typeof import('react-native');
+    Object.defineProperty(Platform, 'OS', { configurable: true, get: () => 'android' });
+    Object.defineProperty(Platform, 'constants', { configurable: true, get: () => ({ Manufacturer: 'samsung', Model: 'SM-A156E' }) });
+  };
+  async function handedOver(schemaHead: string, named: boolean) {
+    const phone = await startStaff();
+    const features = require('@/config/backendFeatures') as typeof import('@/config/backendFeatures');
+    const { getActiveOperatorServer } = require('@/config/operatorServer') as typeof import('@/config/operatorServer');
+    features.setFacilityRelease(getActiveOperatorServer()!, { schemaHead });
+    if (named) asSamsung();
+    await phone.offline();
+    await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
+    server.answers.hold_items = holdOk();
+    await phone.online();
+    await phone.pass();
+    expect(rpcCalls('hold_items')).toHaveLength(1);
+    return rpcCalls('hold_items')[0].args;
+  }
+
+  it('sends p_device_name to a server that takes it', async () => {
+    const args = await handedOver('00000000000246_held_item_device_name', true);
+    expect(args.p_device_name).toMatch(/^Samsung SM-A156E \([0-9A-F]{4}\)$/);
+  });
+
+  it('sends no p_device_name to an older server', async () => {
+    const args = await handedOver('00000000000245_grn_missing_photos', true);
+    expect(args).not.toHaveProperty('p_device_name');
+  });
+
+  it('sends no p_device_name when the phone has no name', async () => {
+    const args = await handedOver('00000000000246_held_item_device_name', false);
+    expect(args).not.toHaveProperty('p_device_name');
+  });
+});
+
+describe('WH-413: a hand-over whose session ends while it is out', () => {
+  it('writes nothing: the row stays refused and not held, and a later pass hands it over', async () => {
+    const phone = await startStaff();
+    await phone.offline();
+    await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
+    let release!: () => void;
+    server.answers.hold_items = args => new Promise<RpcAnswer>(resolve => { release = () => resolve(holdOk('late')(args)); });
+    await phone.online();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(rpcCalls('hold_items')).toHaveLength(1);
+    (require('@/config/sessionLifecycle') as typeof import('@/config/sessionLifecycle')).advanceSessionGeneration();
+    release();
+    await jest.advanceTimersByTimeAsync(1000);
+    const [row] = await rawRows<{ state: string; held_id: string | null; handover_failed: number | null }>('items');
+    expect(row).toMatchObject({ state: 'refused', held_id: null });
+    expect(row.handover_failed ?? 0).toBe(0);
+
+    server.answers.hold_items = holdOk('again');
+    await phone.pass();
+    expect((await rawRows<{ state: string; held_id: string | null }>('items'))[0]).toMatchObject({ state: 'held', held_id: 'again-1' });
+  });
+});
+
+describe('WH-427: a hand-over that held nothing asks for no sync', () => {
+  it('REQUEST_KEY_REUSED for the item: no after-send sync, and no repeat without a pause', async () => {
+    const phone = await startStaff({ withCopy: true });
+    await phone.offline();
+    const item = await phone.queue.enqueue({ kind: 'newGrn', body: sampleGrnBody(), what: 'New GRN', customer: 'asha Traders' });
+    server.answers[SAVE] = () => serverRefusal('RATE_MISSING', 'Missing rate');
+    // After 12 calls the server stops answering, so a loop without a pause ends here (and fails the counts below) instead of hanging.
+    server.answers.hold_items = args => rpcCalls('hold_items').length > 12 ? NO_NETWORK : ({
+      data: { success: true, held: (args.p_items as { request_key: string }[]).map(i => ({ request_key: i.request_key, id: null, reason: 'REQUEST_KEY_REUSED' })) },
+      error: null,
+    });
+    const syncs = () => env.feed.named('get_sync_changes').length;
+    await phone.online();
+    const before = syncs();
+    await phone.pass(10_000);
+    const calls = rpcCalls('hold_items').length;
+    expect(calls).toBeGreaterThan(0);
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(syncs()).toBe(before);
+    expect(rpcCalls('hold_items')).toHaveLength(calls);
+    expect((await allItemRows())[0]).toMatchObject({ request_key: item.requestKey, state: 'refused', held_id: null });
   });
 });

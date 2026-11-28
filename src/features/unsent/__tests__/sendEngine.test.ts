@@ -21,7 +21,7 @@
  */
 import { env, eraseEverything, resetEnv, setReachable } from '@/tests/phoneCopy/phoneEnv';
 import { DOCUMENT_DIRECTORY, files } from '@/tests/phoneCopy/fakeFiles';
-import { addPhoto, bootUnsent, GATEWAY_TIMEOUT, NO_NETWORK, rawRows, restart, rpcKind, server, type RpcAnswer } from '@/tests/unsent/unsentPhone';
+import { addPhoto, bootUnsent, GATEWAY_TIMEOUT, NO_NETWORK, rawRows, rawRun, restart, rpcKind, server, type RpcAnswer } from '@/tests/unsent/unsentPhone';
 
 const advance = (ms: number) => jest.advanceTimersByTimeAsync(ms);
 const ok = (number: string): RpcAnswer => ({ data: { success: true, number }, error: null });
@@ -478,6 +478,10 @@ describe('WH-301 retry: a retry belongs to the session that armed it (d845cb1b)'
     await advance(100);
     await advance(120_000);
     expect(saves()).toHaveLength(1);
+    // WH-413: nothing was written for the session that ended, so the item is as the send left it.
+    expect(await states()).toEqual(['sending']);
+    // Put back by hand, so the new session's pass is a plain send that fails (a 'sending' item is asked about instead).
+    await rawRun(`UPDATE items SET state = 'saved'`);
     // The late pass must not have taken a back-off step: the new session's first failed pass waits the first step, 5 s.
     server.answers[SAVE] = () => NO_NETWORK;
     await phone.engine.sendNow('send-now');
@@ -544,5 +548,113 @@ describe('WH-301 retry: a retry belongs to the session that armed it (d845cb1b)'
     expect(saves()).toHaveLength(expected + 1);
     await advance(5000); // back to the first step
     expect(saves()).toHaveLength(expected + 2);
+  });
+});
+
+describe('WH-406, WH-413: a session that ends during a send', () => {
+  const sessionChange = () => (require('@/config/sessionLifecycle') as typeof import('@/config/sessionLifecycle')).advanceSessionGeneration();
+  const found = (number: string): RpcAnswer => ({ data: { found: true, response: { success: true, number } }, error: null });
+  const NOT_FOUND: RpcAnswer = { data: { found: false }, error: null };
+  const TOO_MANY: RpcAnswer = { data: null, error: { message: 'Too many requests', status: 429, code: '429' } };
+
+  it('WH-406: a trigger that joins the old pass while the session changes gets one pass in the new session, with no other trigger', async () => {
+    const phone = await start();
+    await offline(phone);
+    const a = await phone.queue.enqueue(input(1));
+    const b = await phone.queue.enqueue(input(2));
+    const hold = gate<RpcAnswer>();
+    server.answers[SAVE] = args => (args.p_key === a.requestKey ? hold.promise : ok('GRN 2'));
+    server.answers.get_submission_result = () => found('GRN 1');
+    await online(phone);
+    await advance(100);
+    expect(savedKeys()).toEqual([a.requestKey]);
+    sessionChange();
+    void phone.engine.sendNow('sync'); // joins the pass that is still finishing
+    hold.release(NO_NETWORK);
+    await advance(30_000);
+    // The joined trigger's pass asked about the item left in doubt, and the next one then went.
+    expect(lookups().map(c => c.args.p_key)).toEqual([a.requestKey]);
+    expect(savedKeys()).toEqual([a.requestKey, b.requestKey]);
+    expect(await states()).toEqual(['sent', 'sent']);
+  });
+
+  it('WH-413: an answer that comes after the session ended is not written, and starts nothing', async () => {
+    const phone = await start();
+    const hold = gate<RpcAnswer>();
+    server.answers[SAVE] = () => hold.promise;
+    await phone.queue.enqueue(input(1));
+    await advance(100);
+    sessionChange();
+    hold.release(ok('GRN 1'));
+    await advance(120_000);
+    expect(await states()).toEqual(['sending']);
+    expect((await rawRows<{ result: string | null }>('items'))[0].result).toBeNull();
+    expect(saves()).toHaveLength(1);
+    expect(lookups()).toHaveLength(0);
+  });
+
+  it('WH-413: a lost-answer wait ended by the session starts no pass: nothing is asked, sent or written afterwards', async () => {
+    const phone = await start();
+    server.answers[SAVE] = () => GATEWAY_TIMEOUT;
+    server.answers.get_submission_result = () => NOT_FOUND;
+    await phone.queue.enqueue(input(1));
+    await advance(3000); // waiting the 10 s before it asks
+    const before = await rawRows('items');
+    sessionChange();
+    await advance(120_000);
+    expect(lookups()).toHaveLength(0);
+    expect(saves()).toHaveLength(1);
+    expect(await rawRows('items')).toEqual(before);
+  });
+
+  it('WH-413: a session that ends while the resend of a lost answer is out: its answer is not written and nothing more starts', async () => {
+    const phone = await start();
+    const hold = gate<RpcAnswer>();
+    let n = 0;
+    server.answers[SAVE] = () => (n++ === 0 ? GATEWAY_TIMEOUT : hold.promise);
+    server.answers.get_submission_result = () => NOT_FOUND;
+    await phone.queue.enqueue(input(1));
+    await advance(11_000);
+    expect(saves()).toHaveLength(2);
+    sessionChange();
+    hold.release(ok('GRN 1'));
+    await advance(120_000);
+    expect(await states()).toEqual(['sending']);
+    expect(saves()).toHaveLength(2);
+    expect(lookups()).toHaveLength(1);
+  });
+
+  it('WH-413: a lost-answer wait never loops without a pause: a resend that did not leave is not tried again at once', async () => {
+    const phone = await start();
+    let n = 0;
+    // The first send is lost; the resends are refused as "not run" (429) until the twentieth, which ends any loop.
+    server.answers[SAVE] = () => (n === 0 ? (n++, GATEWAY_TIMEOUT) : n++ < 20 ? TOO_MANY : ok('GRN 1'));
+    server.answers.get_submission_result = () => NOT_FOUND;
+    await phone.queue.enqueue(input(1));
+    await advance(10_500);
+    await advance(1000);
+    // One first send and one resend: the next question waits at least 10 s after that resend.
+    expect(saves()).toHaveLength(2);
+  });
+});
+
+describe('WH-428: one retry timer, at the earliest due time', () => {
+  it('two items the phone could not record both wait 5 s: one timer is armed, and it fires once at 5 s', async () => {
+    const armed: number[] = [];
+    const real = global.setTimeout;
+    jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void, wait?: number, ...rest: unknown[]) => {
+      if (wait === 5000) armed.push(wait);
+      return real(fn, wait, ...rest);
+    }) as typeof setTimeout);
+    const phone = await start();
+    let sends = 0;
+    phone.kinds.registerSendKind('testStoreFail', { lane: 'record', send: async (_body: never, ctx) => { sends += 1; (ctx as { noteStoreFailure?: () => void }).noteStoreFailure?.(); return { kind: 'sent', result: {} }; } });
+    await phone.queue.enqueue({ kind: 'testStoreFail', body: {}, what: 'First' });
+    await phone.queue.enqueue({ kind: 'testStoreFail', body: {}, what: 'Second' });
+    await advance(500);
+    expect(sends).toBe(2);
+    expect(armed).toHaveLength(1);
+    await advance(5000);
+    expect(sends).toBe(2); // both are sent; the one timer's pass finds nothing more to send
   });
 });

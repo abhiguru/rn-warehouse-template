@@ -29,13 +29,13 @@ const makeStyles = (t: ThemeTokens) => ({
   title: { ...typography.headline, color: t.text.primary, flexShrink: 1 },
 });
 
-interface Props {
+interface OfflineFormGateProps {
   title: string;
   testID: string;
   children: React.ReactNode;
 }
 
-export const OfflineFormGate: React.FC<Props> = ({ title, testID, children }) => {
+export function OfflineFormGate({ title, testID, children }: OfflineFormGateProps) {
   const needsConnection = useNeedsConnection();
   const [openedOffline, setOpenedOffline] = useState(needsConnection);
   const styles = useThemedStyles(makeStyles);
@@ -54,4 +54,4 @@ export const OfflineFormGate: React.FC<Props> = ({ title, testID, children }) =>
       <ScreenNeedsConnection testID={testID} />
     </View>
   );
-};
+}

@@ -23,6 +23,14 @@ export interface SendContext {
   requestKey: string;
   /** The `result` of each item this one depended on, by that item's id. */
   resolved: Record<string, unknown>;
+  /**
+   * Told when the server accepted a change that may not end in a `sent` item (WH-393: some photos of an item), so the pass
+   * still asks for its sync. Only for a change the next pass does not make again, or the sync and the pass would repeat each
+   * other without a wait.
+   */
+  noteWrite?: () => void;
+  /** Told when the phone's store could not keep what the server accepted, so the item waits before it goes again (WH-421). */
+  noteStoreFailure?: () => void;
 }
 
 export interface SendKind {

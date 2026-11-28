@@ -45,6 +45,7 @@ function readSession(raw: unknown): UserSession | null {
   return {
     id,
     user_agent: text(r.user_agent),
+    device_name: text(r.device_name),
     created_ip: text(r.created_ip),
     created_at: text(r.created_at),
     last_refreshed_at: text(r.last_refreshed_at),

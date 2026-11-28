@@ -31,10 +31,27 @@ type MissingReason = 'invalid' | 'file_missing' | 'not_yours' | 'line_gone' | 'd
 /** What a call to the server gave: its members when it succeeded, or why not. */
 type Reply = { kind: 'ok'; data: Fields } | { kind: 'code'; code: string } | { kind: 'transient' } | { kind: 'stop' };
 
-async function rpc(name: string, args: Fields): Promise<Reply> {
+/**
+ * How the send pass sends (WH-393): `quietWrite` keeps its requests from asking for an after-write sync each, and `onWrite` is
+ * told when the server accepted a change that is not sent again (an item held, a photo done or missing), so the pass asks for one
+ * sync at its end. A step that is repeated until the photo goes (a registration) is not told: the sync after it would start the
+ * next pass at once, without the retry wait, for as long as the upload keeps failing.
+ */
+export interface PassWriteOptions {
+  quietWrite?: boolean;
+  onWrite?: () => void;
+  /** True while the item waits after the phone's store failed on it (WH-421): it is left alone, for a later pass. */
+  isHeld?: (itemId: string) => boolean;
+  /** Told when the phone's store failed on an item (WH-421). */
+  onStoreFailure?: (itemId: string) => void;
+  /** Told when an item was gone through with no store failure: its next wait starts short again (WH-421). */
+  onStored?: (itemId: string) => void;
+}
+
+async function rpc(name: string, args: Fields, options?: PassWriteOptions): Promise<Reply> {
   let answer: { data: unknown; error: unknown; status?: number };
   try {
-    const client = await getAuthenticatedClient();
+    const client = await getAuthenticatedClient(options?.quietWrite ? { quietWrite: true } : undefined);
     answer = (await client.rpc(name, args)) as typeof answer;
   } catch (error) {
     answer = { data: null, error };
@@ -57,7 +74,7 @@ function endOfCode(code: string): PhotoEnd {
   return 'transient';
 }
 
-async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
+async function sendOne(heldId: string, photo: PhotoRow, options?: PassWriteOptions): Promise<PhotoEnd> {
   const file = new File(photo.file);
   if (!file.exists) return 'file_missing';
   const fileName = photo.file.slice(photo.file.lastIndexOf('/') + 1).replace(/^[0-9a-f-]{36}-/, '');
@@ -70,7 +87,7 @@ async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
     p_file_size: file.size,
     p_mime_type: mimeType,
     p_line_ref: photo.line_ref,
-  });
+  }, options);
   if (registered.kind === 'stop') return 'stop';
   if (registered.kind === 'transient') return 'transient';
   if (registered.kind === 'code') return endOfCode(registered.code);
@@ -79,7 +96,7 @@ async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
   const { storage_path: storagePath, bucket } = registered.data;
   if (typeof storagePath !== 'string' || typeof bucket !== 'string') return 'transient';
   try {
-    const client = await getAuthenticatedClient();
+    const client = await getAuthenticatedClient(options?.quietWrite ? { quietWrite: true } : undefined);
     const bytes = await file.arrayBuffer();
     // upsert: a resend after a lost answer finds its file already there.
     const { error } = await client.storage.from(bucket).upload(storagePath, bytes, { contentType: mimeType, upsert: true });
@@ -88,7 +105,7 @@ async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
     logger.warn('A held photo could not be uploaded', loggableError(error));
     return 'transient';
   }
-  const confirmed = await rpc('confirm_held_photo_upload', { p_held_id: heldId, p_client_photo_id: photo.client_photo_id });
+  const confirmed = await rpc('confirm_held_photo_upload', { p_held_id: heldId, p_client_photo_id: photo.client_photo_id }, options);
   if (confirmed.kind === 'ok') return 'done';
   return confirmed.kind === 'code' ? endOfCode(confirmed.code) : confirmed.kind;
 }
@@ -97,16 +114,26 @@ async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
  * Tells the server the photo is missing, so the held item page shows it as missing. Only a settled answer lets the phone mark the
  * photo done: a transient failure leaves it for the next pass, and an item already decided needs nothing more.
  */
-async function reportMissing(heldId: string, photo: PhotoRow, reason: MissingReason): Promise<PhotoEnd> {
+async function reportMissing(heldId: string, photo: PhotoRow, reason: MissingReason, options?: PassWriteOptions): Promise<PhotoEnd> {
   const reply = await rpc('mark_held_photo_missing', {
     p_held_id: heldId,
     p_client_photo_id: photo.client_photo_id,
     p_role: photo.role,
     p_line_ref: photo.line_ref,
     p_reason: reason,
-  });
-  if (reply.kind === 'ok') return 'missing';
-  if (reply.kind === 'code') return reply.code === 'HELD_ALREADY_DECIDED' ? 'decided' : 'transient';
+  }, options);
+  if (reply.kind === 'ok') {
+    options?.onWrite?.();
+    return 'missing';
+  }
+  if (reply.kind === 'code') {
+    if (reply.code === 'HELD_ALREADY_DECIDED') return 'decided';
+    // Not this person's: asked again until one full sync run has ended (PQ11(b)), then given up like any refusal.
+    if (reply.code === 'HELD_PHOTO_NOT_YOURS' && !blockedForGood(heldId, photo)) return 'transient';
+    // A refusal never changes on a repeat: the report is finished, so the row can reach `held` (PQ11; WH-385).
+    logger.warn('The server refused to record a missing held photo; it is not asked again', { code: reply.code });
+    return 'missing';
+  }
   return reply.kind;
 }
 
@@ -165,20 +192,47 @@ function blockedForGood(heldId: string, photo: PhotoRow): boolean {
  * Sends the files of the `photos` rows that have a held id and are not held yet, then turns each row whose files are all done or
  * missing into `held` (unless `markHeld` is false: the move deletes them instead). Always resolves; what could not go is tried again.
  */
-export async function sendHeldPhotos(rows: readonly ItemRow[], markHeld = true): Promise<HeldPhotosResult> {
+export async function sendHeldPhotos(
+  rows: readonly ItemRow[],
+  markHeld = true,
+  options?: PassWriteOptions
+): Promise<HeldPhotosResult> {
   const result: HeldPhotosResult = { stop: false, transient: false, finished: new Set() };
   for (const row of rows) {
     if (row.kind !== 'photos' || row.state !== 'refused' || !row.held_id) continue;
+    if (options?.isHeld?.(row.id)) continue;
     try {
       let settled = true;
       let decided = false;
       for (const photo of await photosOf(row.id)) {
-        if (photo.done === 1 || photo.missing === 1) continue;
-        let end = await sendOne(row.held_id, photo);
+        if (photo.done === 1) continue;
+        if (photo.missing === 1) {
+          // Marked missing by the send engine before the hand-over (WH-385): the server is told once, so the accepted GRN counts it.
+          if (photo.report_queued === 1) continue;
+          const told = await reportMissing(row.held_id, photo, 'file_missing', options);
+          if (told === 'missing') await markPhoto(row.id, photo.client_photo_id, { report_queued: 1 });
+          else if (told === 'decided') {
+            decided = true;
+            break;
+          } else {
+            settled = false;
+            if (told === 'transient') result.transient = true;
+            if (told === 'stop') {
+              result.stop = true;
+              break;
+            }
+          }
+          continue;
+        }
+        let end = await sendOne(row.held_id, photo, options);
         if (end === 'blocked' && blockedForGood(row.held_id, photo)) end = 'not_yours';
-        if (end === 'invalid' || end === 'file_missing' || end === 'not_yours' || end === 'line_gone' || end === 'document_gone') end = await reportMissing(row.held_id, photo, end);
+        if (end === 'invalid' || end === 'file_missing' || end === 'not_yours' || end === 'line_gone' || end === 'document_gone') {
+          end = await reportMissing(row.held_id, photo, end, options);
+        }
+        // A report the server took is told in `reportMissing`.
+        if (end === 'done') options?.onWrite?.();
         if (end === 'done') await markPhoto(row.id, photo.client_photo_id, { done: 1 });
-        else if (end === 'missing') await markPhoto(row.id, photo.client_photo_id, { missing: 1 });
+        else if (end === 'missing') await markPhoto(row.id, photo.client_photo_id, { missing: 1, report_queued: 1 });
         else if (end === 'decided') {
           decided = true;
           break;
@@ -195,9 +249,12 @@ export async function sendHeldPhotos(rows: readonly ItemRow[], markHeld = true):
         result.finished.add(row.id);
         if (markHeld) await updateItem(row.id, { state: 'held' });
       }
+      options?.onStored?.(row.id);
     } catch (error) {
       logger.warn('Held photos could not be sent', loggableError(error));
       result.transient = true;
+      // What threw here is the phone's own (every server call answers): the row waits before it goes again (WH-421).
+      options?.onStoreFailure?.(row.id);
     }
     if (result.stop) break;
   }

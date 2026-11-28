@@ -2,7 +2,7 @@
  * The phone copy's published state for screens (WH-298, contract 7.2), and whether the copy and its status bar are on
  * for the signed-in person.
  */
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useFacilityCapabilities } from '@/hooks/useCapability';
 import { formatCopySize } from '@/features/phone-copy/copyStorage';
 import { getSyncSnapshot, subscribeSync, type SyncSnapshot } from '@/features/phone-copy/syncStore';
@@ -11,6 +11,7 @@ import { useAppSelector } from '@/store/hooks';
 import { isCopyRole } from '@/config/copyRoles';
 import { copyKindOf } from '@/features/phone-copy/copyKind';
 import { eraseCopy } from '@/features/phone-copy/copyDb';
+import { resumePhoneCopyIfScheduled } from '@/features/phone-copy/syncEngine';
 
 export function usePhoneCopyStatus(): SyncSnapshot {
   return useSyncExternalStore(subscribeSync, getSyncSnapshot, getSyncSnapshot);
@@ -31,10 +32,15 @@ export function useCopySession(): boolean {
 export function useEraseCopyForRole(): void {
   const role = useAppSelector(state => state.auth.userProfile?.role);
   const kind = usePhoneCopyStatus().kind;
+  const roleRef = useRef(role);
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
   useEffect(() => {
     if (role === undefined) return;
     if (isCopyRole(role) && (kind === undefined || kind === copyKindOf(role))) return;
-    void eraseCopy();
+    // Do not cancel the post-erase restart in cleanup: eraseCopy() resets kind to undefined before resolving (WH-388).
+    void eraseCopy().then(() => (isCopyRole(roleRef.current) ? resumePhoneCopyIfScheduled() : undefined));
   }, [role, kind]);
 }
 

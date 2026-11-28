@@ -97,3 +97,18 @@ describe('revokeSession', () => {
     expect(await revokeSession('s1')).toMatchObject({ success: false, lostAnswer: true });
   });
 });
+
+describe('WH-411: the phone name of a session', () => {
+  it('reads device_name beside the user agent; a session without one has null', async () => {
+    rpc.mockResolvedValue({
+      data: { success: true, data: { sessions: [
+        { id: 's1', user_agent: 'okhttp/4.9.2', device_name: 'Samsung SM-A156E (7F3A)', is_current: true },
+        { id: 's2', user_agent: 'okhttp/4.9.2', device_name: null, is_current: false },
+        { id: 's3', user_agent: 'okhttp/4.9.2', is_current: false },
+      ] } },
+      error: null,
+    });
+    const result = await listUserSessions('u1');
+    expect(result.success && result.sessions.map(s => [s.id, s.device_name])).toEqual([['s1', 'Samsung SM-A156E (7F3A)'], ['s2', null], ['s3', null]]);
+  });
+});

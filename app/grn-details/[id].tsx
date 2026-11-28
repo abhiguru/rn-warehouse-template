@@ -1114,6 +1114,7 @@ function GRNDetailScreen() {
               onUpload={canEdit && grn.imported !== true ? handleAddHeaderImage : undefined}
               onDeleteImage={canEdit && grn.imported !== true ? handleDeleteImage : undefined}
               isUploading={isUploadingImage}
+              missingCount={grn.photos_missing ?? 0}
             />
           )}
 

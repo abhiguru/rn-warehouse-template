@@ -8,6 +8,7 @@ import { getStoredToken, pairedSignIn } from '../supabaseConfig';
 import { switchOperatorServer } from '@/store/operatorSwitch';
 import { openPairingAnswer } from '../pairingCrypto';
 import { pairWithFacility } from '../localPairing';
+import { asPhone, SIGN_IN_PHONES } from '@/tests/helpers/phoneKind';
 
 let mockContext: unknown = null;
 jest.mock('../lanTransport', () => ({
@@ -84,4 +85,19 @@ it('a switch that fails after Yes puts the old context back', async () => {
   const result = await pairWithFacility(payload, dispatch, async () => true);
   expect(result).toEqual({ ok: false, reason: 'failed' });
   expect(getLanContext()).toBe(current);
+});
+
+describe('WH-411: the phone names itself when it redeems a pairing code', () => {
+  it.each(SIGN_IN_PHONES)('%s', async (kind, name) => {
+    const restore = asPhone(kind);
+    try {
+      await pairWithFacility(payload, dispatch, async () => true);
+      const body = JSON.parse(String((global.fetch as jest.Mock).mock.calls[0][1].body));
+      expect(body).toMatchObject({ code: '123456', nonce: 'nonce' });
+      if (name === null) expect(body).not.toHaveProperty('device_name');
+      else expect(body.device_name).toMatch(name);
+    } finally {
+      restore();
+    }
+  });
 });

@@ -24,6 +24,7 @@ jest.mock('@/store/sessionScopedState', () => ({
   clearSessionScopedState: jest.fn(async () => {}),
 }));
 import { store as appStore } from '@/store';
+import { asPhone, SIGN_IN_PHONES } from '@/tests/helpers/phoneKind';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { createClient } from '@supabase/supabase-js';
@@ -58,6 +59,7 @@ import { getAppErrorCode } from '@/utils/appError';
 import { isOfflineFailure, categorizeError } from '@/utils/serviceErrorHandler';
 import { loadOperatorServer, saveOperatorServer } from '../operatorServer';
 import { setLanguage, t } from '@/i18n';
+import * as sessionDeviceName from '../sessionDeviceName';
 
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 jest.mock('@/utils/secureSessionMarker', () => ({
@@ -1619,8 +1621,10 @@ describe('P2-AUTH-002: an enrollment token written late is refused after a switc
       secure.set(key, value);
     });
     const verifying = verifyOTP('0000000002', '654321');
-    await flush();
-    await flush();
+    // Until the write is the thing being waited on (how many microtasks that takes is not the test's business).
+    const holding = () => jest.mocked(SecureStore.setItemAsync).mock.calls.some(call => call[0] === 'secure_enrollment_token');
+    for (let i = 0; i < 20 && !holding(); i += 1) await flush();
+    expect(holding()).toBe(true);
     // What a server switch does: the logout advances the session generation.
     // (Its cleanup queues behind the held write, so it is awaited after the release.)
     const switching = signOut({ localOnly: true });
@@ -1696,5 +1700,113 @@ describe('P2-AUTH-001: a failed local facility sign-out cannot sign the person b
     await storeTokens(jwt(), 'c'.repeat(64), Date.now() + 3600000);
     expect(secure.has('secure_signed_out')).toBe(false);
     expect(await getStoredToken()).toMatchObject({ isValid: true, refreshToken: 'c'.repeat(64) });
+  });
+});
+
+describe('WH-405: a token refresh that waits for a connection is not an error', () => {
+  const OFFLINE = { data: null, error: { message: 'fetch failed: java.net.UnknownHostException: Unable to resolve host "warehouse.example.test"' } };
+  const renewed = () => ({ data: { success: true, access_token: jwt(), refresh_token: 'b'.repeat(64) }, error: null });
+  const logged = (spy: jest.Spied<typeof console.warn>) =>
+    spy.mock.calls.map(call => call.map(String).join(' ')).filter(line => /token refresh/i.test(line));
+  let warnings: jest.Spied<typeof console.warn>;
+  let errors: jest.Spied<typeof console.error>;
+
+  /** A refresh that succeeds ends an offline spell (and drops the waiting retry). */
+  const succeed = async () => {
+    await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+    rpc.mockResolvedValue(renewed());
+    expect(await refreshCustomJWT()).not.toBeNull();
+    await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  };
+  beforeEach(async () => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    warnings = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await succeed();
+    warnings.mockClear();
+    errors.mockClear();
+  });
+  afterEach(async () => {
+    await succeed();
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    ['the answer is a lost connection', () => rpc.mockResolvedValue(OFFLINE)],
+    ['the call fails with a lost connection', () => rpc.mockRejectedValue(new Error(OFFLINE.error.message))],
+    ['the call is refused for want of the identity check', () => rpc.mockRejectedValue(new Error('Warehouse identity verification required'))],
+  ])('four refreshes while %s give one warning and no error, and keep the token', async (_name, fail) => {
+    fail();
+    for (let i = 0; i < 4; i++) expect(await refreshCustomJWT()).toBeNull();
+    expect(logged(warnings)).toHaveLength(1);
+    expect(logged(errors)).toEqual([]);
+    expect(secure.get('secure_refresh_token')).toBe('a'.repeat(64));
+  });
+
+  it('a refresh that succeeds ends the spell: the next one warns again, once', async () => {
+    rpc.mockResolvedValue(OFFLINE);
+    await refreshCustomJWT();
+    await succeed();
+    warnings.mockClear();
+    rpc.mockResolvedValue(OFFLINE);
+    await refreshCustomJWT();
+    await refreshCustomJWT();
+    expect(logged(warnings)).toHaveLength(1);
+  });
+
+  it('a server fault that is not a connection is still logged as an error', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'permission denied for function refresh_jwt_token', code: '42501' } });
+    expect(await refreshCustomJWT()).toBeNull();
+    expect(logged(errors).length).toBeGreaterThan(0);
+  });
+
+  it('a refused token is still an error and signs out', async () => {
+    rpc.mockResolvedValue({ data: { success: false, message: 'Invalid refresh token' }, error: null });
+    expect(await ensureValidTokens()).toBe(false);
+    expect(logged(errors).length).toBeGreaterThan(0);
+    expect(secure.has('secure_refresh_token')).toBe(false);
+  });
+});
+
+describe('WH-411: the phone names itself in the SMS code check body', () => {
+  it.each(SIGN_IN_PHONES)('%s', async (kind, name) => {
+    const restore = asPhone(kind);
+    try {
+      jest.mocked(global.fetch).mockResolvedValue(operatorResponse({ success: false, error: 'Invalid code' }) as Response);
+      await verifyOTP('0000000002', '654321');
+      const call = jest.mocked(global.fetch).mock.calls.find(each => String(each[0]).endsWith('/functions/v1/operator-otp/verify'))!;
+      const body = JSON.parse(String(call[1]?.body));
+      expect(body).toMatchObject({ otp_code: '654321' });
+      if (name === null) expect(body).not.toHaveProperty('device_name');
+      else expect(body.device_name).toMatch(name);
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe('WH-426: the phone\'s name is read before the sign-in session starts', () => {
+  it('a session change during the slow read does not throw the sign-in away: the code is posted once and the person is signed in', async () => {
+    // The read is slowed at its edge (the install mark is cached for the whole run once any earlier case has read it).
+    const slowRead = deferred<{ device_name?: string }>();
+    const naming = jest.spyOn(sessionDeviceName, 'deviceNameField').mockImplementation(() => slowRead.promise);
+    try {
+      jest.mocked(global.fetch).mockResolvedValue(operatorResponse({
+        success: true,
+        data: { action: 'login', user: { role: 'customer' }, session: { access_token: jwt(), refresh_token: 'c'.repeat(64) } },
+      }) as Response);
+      rpc.mockResolvedValue({ data: [], error: null });
+      const pending = verifyOTP('0000000002', '123456');
+      await flush();
+      expect(global.fetch).not.toHaveBeenCalled();
+      advanceSessionGeneration(); // another sign-in or a server switch starts while the name is read
+      slowRead.resolve({ device_name: 'Samsung SM-A156E (7F3A)' });
+      expect(await pending).toMatchObject({ success: true });
+      const posts = jest.mocked(global.fetch).mock.calls.filter(each => String(each[0]).endsWith('/operator-otp/verify'));
+      expect(posts).toHaveLength(1);
+      expect(JSON.parse(String(posts[0][1]?.body)).device_name).toBe('Samsung SM-A156E (7F3A)');
+    } finally {
+      naming.mockRestore();
+    }
   });
 });

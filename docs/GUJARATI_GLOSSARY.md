@@ -98,6 +98,7 @@ in Gujarati script; **English** = left in English letters.
 | Warehouse network (the LAN fallback to the server) | વખારનું નેટવર્ક | translate | Draft (2026-10-26) |
 | Warehouse network key (the secret that signs requests on the warehouse network) | વખારના નેટવર્કની ચાવી | translate | Draft (2026-11-07) |
 | Photo | ફોટો | Gujarati letters | Checked |
+| Unsent or held item (a record or change saved on the phone, not yet accepted by the server) | એન્ટ્રી | Gujarati letters | Draft (2026-11-25); not વસ્તુ, which reads as a stock item |
 | Order status: open | બાકી | translate | Owner's choice |
 | Order status: closed | પૂર્ણ | translate | Owner's choice |
 | Fully dispatched | પૂરી જાવક થઈ | translate | Owner's choice (wording review) |

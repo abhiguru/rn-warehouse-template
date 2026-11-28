@@ -9,6 +9,7 @@ import { getUnsentSummary, oldestUnsentAgeMs, ownUnsentCount } from './unsentSto
 
 export type WorkGate = { ok: true } | { ok: false; count: number; oldestAgeMs: number | null };
 export type AccountGate = { ok: true } | { ok: false; count: number | null };
+export type RefusedAction = 'signOut' | 'leaveFacility' | 'switchFacility' | 'deleteAccount';
 
 /** May a new record, change or edit be started (or saved)? */
 export function canStartWork(): WorkGate {
@@ -21,9 +22,15 @@ export function canStartWork(): WorkGate {
 }
 
 /** May the person sign out, leave or switch the facility, or remove the account? Unfinished forms never refuse (Product PQ1). */
-export function accountActionAllowed(): AccountGate {
-  // Whatever the facility's feature says: work already on the phone is never left behind (WH-301, Product 2026-11-28).
-  if (getUnsentSummary().unreadable) return { ok: false, count: null };
+export function accountActionAllowed(action?: RefusedAction): AccountGate {
+  const summary = getUnsentSummary();
+  if (summary.unreadable) {
+    // With sync on, an unreadable file always refuses (WH-301). With sync off, deleting the account could destroy the file,
+    // while sign-out/leaving/switching only refuse when waiting items were last known for this person (WH-396).
+    if (hasCapability('sync')) return { ok: false, count: null };
+    if (action === 'deleteAccount') return summary.fileExists === false ? { ok: true } : { ok: false, count: null };
+    return summary.knownWaiting ? { ok: false, count: null } : { ok: true };
+  }
   const count = ownUnsentCount();
   return count === 0 ? { ok: true } : { ok: false, count };
 }

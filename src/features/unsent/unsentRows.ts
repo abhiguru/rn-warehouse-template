@@ -59,6 +59,8 @@ export interface PhotoRow {
   line_ref: string | null;
   done: number;
   missing: number;
+  /** 1 once the server was told this missing photo is missing (WH-385: the report, or `mark_held_photo_missing` of a held item). */
+  report_queued?: number;
 }
 
 export interface NewItem {
@@ -468,7 +470,7 @@ export async function updateItem(id: string, fields: Record<string, SqlValue>): 
   await announceUnsentChange();
 }
 
-export async function markPhoto(itemId: string, clientPhotoId: string, fields: { done?: 1; missing?: 1 }): Promise<void> {
+export async function markPhoto(itemId: string, clientPhotoId: string, fields: { done?: 1; missing?: 1; report_queued?: 1 }): Promise<void> {
   const db = await getUnsentDb();
   const names = Object.keys(fields);
   if (names.length === 0) return;

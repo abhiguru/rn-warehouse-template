@@ -153,6 +153,8 @@ export async function createSchema(tx: CopyDriver): Promise<void> {
   await tx.exec([
     'CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);',
     'CREATE TABLE IF NOT EXISTS stage_rows (entity TEXT NOT NULL, id TEXT NOT NULL, v TEXT NOT NULL, v_hi INTEGER NOT NULL, v_lo INTEGER NOT NULL, row TEXT NOT NULL, PRIMARY KEY (entity, id));',
+    // WH-409: the pages and reloads of one catch-up, kept aside until the last page arrives and applied together.
+    'CREATE TABLE IF NOT EXISTS stage_changes (seq INTEGER PRIMARY KEY, kind TEXT NOT NULL, body TEXT NOT NULL);',
     'CREATE TABLE IF NOT EXISTS money_stale (customer_id TEXT PRIMARY KEY);',
     MONEY_ANSWERS_SQL,
     ...ENTITY_NAMES.map(entityTableSql),

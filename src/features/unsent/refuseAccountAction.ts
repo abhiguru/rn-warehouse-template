@@ -5,9 +5,9 @@
 import { router } from 'expo-router';
 import { t } from '@/i18n';
 import { showAlert } from '@/utils/alert';
-import { accountActionAllowed } from './workGate';
+import { accountActionAllowed, type RefusedAction } from './workGate';
 
-export type RefusedAction = 'signOut' | 'leaveFacility' | 'switchFacility' | 'deleteAccount';
+export type { RefusedAction };
 
 const TITLES: Record<RefusedAction, 'signOutTitle' | 'leaveTitle' | 'switchTitle' | 'deleteAccountTitle'> = {
   signOut: 'signOutTitle',
@@ -32,7 +32,7 @@ export function refusedSubtitle(): string | null {
  * not shown, because the caller stops.
  */
 export function refuseIfUnsent(action: RefusedAction): boolean {
-  const gate = accountActionAllowed();
+  const gate = accountActionAllowed(action);
   if (gate.ok) return false;
   const title = t(`offline.refuse.${TITLES[action]}`);
   if (gate.count === null) {

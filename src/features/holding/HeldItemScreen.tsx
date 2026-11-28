@@ -38,7 +38,7 @@ import { acceptToast, acceptWithChanges, heldRouteId } from './heldForm';
 import { correctedLotBody, heldLotTarget } from './heldLot';
 import { decideHeldItem, getHeldItem, phoneNameOf, type HeldCurrent, type HeldItemDetail, type HeldListRow } from './holdingApi';
 import { describeReason } from './heldReason';
-import { heldCopyRows, markHeldSeen } from './heldRows';
+import { decidedFollowerIds, heldCopyRows, markHeldSeen } from './heldRows';
 import { heldFieldLabel, heldWhatText } from './heldWhat';
 import { lineGroups, newGrnLines, removedLinesNow, type ServerLine } from './heldEditLines';
 import { isGrnEditBody } from '@/features/grn/offline-edit/grnEditChanges';
@@ -107,8 +107,14 @@ function editLines(body: Fields): string[] {
   return lines;
 }
 
+interface LineGroupsProps {
+  body: unknown;
+  server: readonly ServerLine[] | null;
+  styles: ReturnType<typeof makeStyles>;
+}
+
 /** The lines a held edit added and removed, each group under its title (Design 7.11d (a)). */
-function LineGroups({ body, server, styles }: { body: unknown; server: readonly ServerLine[] | null; styles: ReturnType<typeof makeStyles> }) {
+function LineGroups({ body, server, styles }: LineGroupsProps) {
   const groups = lineGroups(body, server);
   return (
     <>
@@ -117,9 +123,9 @@ function LineGroups({ body, server, styles }: { body: unknown; server: readonly 
           <Text accessibilityRole="header" style={styles.groupTitle}>
             {group.title}
           </Text>
-          {group.rows.map((rowText, index) => (
-            <Text key={`${rowText}-${index}`} style={styles.recordLine}>
-              {rowText}
+          {group.rows.map(row => (
+            <Text key={row.key} style={styles.recordLine}>
+              {row.text}
             </Text>
           ))}
         </View>
@@ -220,7 +226,7 @@ function OwnHeldItem() {
   React.useEffect(() => {
     if (found && rejected && markedFor.current !== found.id) {
       markedFor.current = found.id;
-      void markHeldSeen(found.id);
+      void markHeldSeen(found.id, decidedFollowerIds(found.id));
     }
   }, [found, rejected]);
 
@@ -259,8 +265,8 @@ function OwnHeldItem() {
           <Hero row={row} styles={styles} />
           <ItemReason row={row} styles={styles} follower={false} />
           <View testID="held-item-record" style={styles.record}>
-            {recordLines(row, isFields(raw) ? raw.body : null).map(line => (
-              <Text key={line} style={styles.recordLine}>
+            {recordLines(row, isFields(raw) ? raw.body : null).map((line, index) => (
+              <Text key={`${index}:${line}`}style={styles.recordLine}>
                 {line}
               </Text>
             ))}
@@ -451,8 +457,8 @@ function ManagerHeldItem() {
           <Hero row={item} styles={styles} />
           <ItemReason row={item} styles={styles} follower={waiting} />
           <View testID="held-item-record" style={styles.record}>
-            {recordLines(item, item.acceptedBody ?? item.body).map(line => (
-              <Text key={line} style={styles.recordLine}>
+            {recordLines(item, item.acceptedBody ?? item.body).map((line, index) => (
+              <Text key={`${index}:${line}`}style={styles.recordLine}>
                 {line}
               </Text>
             ))}
@@ -465,9 +471,9 @@ function ManagerHeldItem() {
             {current}
           </Text>
         ) : null}
-        {removedNow.map((text, index) => (
-          <Text key={`${text}-${index}`} testID="held-item-line-current" style={styles.current}>
-            {text}
+        {removedNow.map(line => (
+          <Text key={line.key} testID="held-item-line-current" style={styles.current}>
+            {line.text}
           </Text>
         ))}
         {open ? (

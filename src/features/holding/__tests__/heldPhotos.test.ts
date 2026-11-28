@@ -9,7 +9,7 @@
  */
 import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
-import { addPhoto, keptPhotoFiles, NO_NETWORK, rawRows, rpcKind, server, type RpcAnswer } from '@/tests/unsent/unsentPhone';
+import { addPhoto, keptPhotoFiles, NO_NETWORK, rawRows, rawRun, rpcKind, server, type RpcAnswer } from '@/tests/unsent/unsentPhone';
 import { bootHolding, rpcCalls, serverRefusal, type HoldingPhone } from '@/tests/unsent/holdingPhone';
 
 const SAVE = 'save_held_photos_test';
@@ -229,18 +229,22 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
     const phone = await startStaff();
     // PhoneCopyLifecycle starts it with the copy; it does not listen at import. The phone's modules are loaded fresh at boot.
     (require('@/features/holding/heldPhotos') as typeof import('@/features/holding/heldPhotos')).startHeldPhotos();
+    // The hand-over asks for a sync at the end of its pass (WH-393), and that is a full run: it is kept from ending here.
+    const run = env.feed.hold(call => call.name === 'get_sync_changes');
     await refusedGrnWithPhotos(phone);
     server.answers.register_held_photo_upload = () => serverRefusal('HELD_PHOTO_NOT_YOURS', 'not yours');
     server.answers.mark_held_photo_missing = () => okAnswer;
 
-    await phone.pass();
-    await phone.pass();
+    // Short passes: the held call must not run into its time limit.
+    await phone.pass(1_000);
+    await phone.pass(1_000);
     expect(rpcCalls('register_held_photo_upload').length).toBeGreaterThanOrEqual(2);
     expect(missingCalls()).toHaveLength(0);
     expect((await itemRows()).find(row => row.kind === 'photos')?.state).toBe('refused');
     expect(phone.store.getUnsentSummary().count).toBe(1);
 
-    await phone.sync();
+    run.release();
+    await jest.advanceTimersByTimeAsync(1_000); // the run ends
     await phone.pass();
     expect(missingCalls().map(call => call.args.p_reason)).toEqual(['not_yours']);
     expect((await photoRows())[0]).toMatchObject({ missing: 1 });
@@ -267,14 +271,20 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
     const phone = await startStaff();
     (require('@/features/holding/heldPhotos') as typeof import('@/features/holding/heldPhotos')).startHeldPhotos();
     await refusedGrnWithPhotos(phone);
-    server.answers.register_held_photo_upload = () => serverRefusal('HELD_PHOTO_NOT_YOURS', 'not yours');
+    // Refused once; the tries after it get no answer, so the run that ends meanwhile releases nothing yet.
+    let registers = 0;
+    server.answers.register_held_photo_upload = () => (++registers === 1 ? serverRefusal('HELD_PHOTO_NOT_YOURS', 'not yours') : NO_NETWORK);
     server.answers.mark_held_photo_missing = () => okAnswer;
 
     await phone.pass(); // the first refusal, with no run ended yet
-    await phone.sync(); // one run ended: the next pass would mark the photo missing
+    await phone.sync(); // one run ended: the next refusal would mark the photo missing
+    expect(missingCalls()).toHaveLength(0);
     await (require('@/config/sessionScopedRegistry') as typeof import('@/config/sessionScopedRegistry')).runSessionScopedClears({ dispatch: () => undefined });
 
+    server.answers.register_held_photo_upload = () => serverRefusal('HELD_PHOTO_NOT_YOURS', 'not yours');
+    const registersBefore = rpcCalls('register_held_photo_upload').length;
     await phone.pass(); // as a first refusal again: tried, and not yet marked
+    expect(rpcCalls('register_held_photo_upload').length).toBeGreaterThan(registersBefore);
     expect(missingCalls()).toHaveLength(0);
     expect((await itemRows()).find(row => row.kind === 'photos')?.state).toBe('refused');
   });
@@ -296,14 +306,49 @@ describe('PQ11: a photo that cannot be sent is told to the server as missing', (
     expect((await itemRows()).find(row => row.kind === 'photos')?.state).toBe('held');
   });
 
-  it('a report the server refuses for another reason is not marked either: the photo keeps waiting', async () => {
+  it('a report the server refuses for another reason is finished, not retried for ever: the row is held (WH-385)', async () => {
     const phone = await startStaff();
     await refusedGrnWithPhotos(phone);
     for (const path of keptPhotoFiles()) files.held.delete(path);
     server.answers.mark_held_photo_missing = () => serverRefusal('HELD_NOT_FOUND', 'no such item');
     await phone.pass();
-    expect((await photoRows())[0]).toMatchObject({ missing: 0 });
+    expect((await photoRows())[0]).toMatchObject({ missing: 1, done: 0, report_queued: 1 });
+    expect((await itemRows()).find(row => row.kind === 'photos')?.state).toBe('held');
+    expect(phone.store.getUnsentSummary().count).toBe(0);
+
+    await phone.pass(120_000);
+    expect(missingCalls()).toHaveLength(1);
+  });
+
+  it('WH-385: a photo already marked missing on the phone before the hand-over is reported once, and the row reaches held', async () => {
+    const phone = await startStaff();
+    await refusedGrnWithPhotos(phone);
+    await rawRun('UPDATE item_photos SET missing = 1');
+    server.answers.mark_held_photo_missing = () => okAnswer;
+    await phone.pass();
+    const item = (await itemRows()).find(row => row.kind === 'photos')!;
+    expect(missingCalls().map(call => call.args)).toEqual([expect.objectContaining({ p_held_id: item.held_id, p_reason: 'file_missing', p_role: 'header' })]);
+    expect((await photoRows())[0]).toMatchObject({ missing: 1, report_queued: 1 });
+    expect(item.state).toBe('held');
+    expect(steps).not.toContain('register_held_photo_upload');
+    await phone.pass(120_000);
+    expect(missingCalls()).toHaveLength(1);
+  });
+
+  it('WH-385: that report is kept and retried after a transient failure, and settles on HELD_ALREADY_DECIDED', async () => {
+    const phone = await startStaff();
+    await refusedGrnWithPhotos(phone);
+    await rawRun('UPDATE item_photos SET missing = 1');
+    server.answers.mark_held_photo_missing = () => NO_NETWORK;
+    await phone.pass();
+    expect((await photoRows())[0]).toMatchObject({ report_queued: 0 });
     expect((await itemRows()).find(row => row.kind === 'photos')?.state).toBe('refused');
+
+    server.answers.mark_held_photo_missing = () => serverRefusal('HELD_ALREADY_DECIDED', 'decided');
+    const before = missingCalls().length;
+    await phone.pass(120_000);
+    expect(missingCalls().length).toBeGreaterThan(before);
+    expect((await itemRows()).find(row => row.kind === 'photos')?.state).toBe('held');
   });
 
   it('a report for an item decided meanwhile settles the row', async () => {

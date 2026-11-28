@@ -158,7 +158,7 @@ beforeAll(() => { restoreQueries = makeQueryUpdatesImmediate(); });
 afterAll(() => restoreQueries());
 
 /** Who is signed in, the feed the server sends that role, and the server's answers to anything but the feed. */
-async function boot(role: 'customer' | 'staff' | 'admin') {
+async function boot(role: 'customer' | 'staff' | 'admin', photosMissing?: number) {
   if (role === 'customer') seedCustomerAccount(OWN.map(c => c.id));
   else { seedWarehouse(); seedDocuments(); }
   const feedRpc = env.feed.rpc;
@@ -175,6 +175,9 @@ async function boot(role: 'customer' | 'staff' | 'admin') {
     id: 'profile-1', role, name: 'Fictional Person',
     assignedCustomerIds: customers.map(c => c.id), assignedCustomers: customers, assignedCustomersStatus: 'loaded',
   } as never));
+  if (photosMissing !== undefined) {
+    (env.feed.rows.goodsreceived.find(each => each.id === 'g-A2')!.row as Record<string, unknown>).photos_missing = photosMissing;
+  }
   await engine.startPhoneCopy();
   expect(await engine.syncNow('open')).toBe('done');
   expect(syncStore.getSyncSnapshot()).toMatchObject({ feature: 'on', phase: 'ready', kind: role === 'customer' ? 'customer' : 'warehouse' });
@@ -356,5 +359,29 @@ describe('reports for a customer account with two customers, offline (WH-306 + W
     );
     expect(screen.queryByTestId('customer-age-strip')).not.toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
+  });
+});
+
+// WH-385: the count travels from the GRN's copy row through the screen to the Images tab, for everyone who sees the photos.
+describe('GRN details › Images: photos that could not be sent (WH-385)', () => {
+  const openImages = async () => {
+    mockParams = { id: 'g-A2' };
+    await render(<GRNDetailScreen />);
+    await userEvent.press(await screen.findByRole('tab', { name: /images/i }));
+  };
+
+  it.each(['customer', 'staff'] as const)('%s, offline: the tab says how many', async role => {
+    await boot(role, 2);
+    await connection(true);
+    await openImages();
+    expect(await screen.findByTestId('grn-photos-missing')).toHaveTextContent('2 photos taken with this GRN could not be sent.');
+  });
+
+  it('a GRN with none says nothing', async () => {
+    await boot('staff');
+    await connection(true);
+    await openImages();
+    expect(screen.queryByTestId('grn-photos-missing')).not.toBeOnTheScreen();
+    expect(screen.queryByText(/could not be sent/)).not.toBeOnTheScreen();
   });
 });

@@ -4,6 +4,8 @@
  * actions read synchronously. Rebuilt from the file after every write and every change of session.
  */
 import { useSyncExternalStore } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { hasCapability, subscribeFacilityCapabilities } from '@/config/facilityCapabilities';
 import { getActiveOperatorServer } from '@/config/operatorServer';
 import { onSessionChange } from '@/config/sessionLifecycle';
 import { getSessionCacheScope } from '@/utils/cacheManager';
@@ -12,12 +14,13 @@ import './lotChangeKind';
 import './photosKind';
 import { ownHeldCopyRows, subscribeHeldRows } from '@/features/holding/heldRows';
 import { startSendEngine } from './sendEngine';
-import { getUnsentDb } from './unsentDb';
+import { getUnsentDb, unsentFileExists } from './unsentDb';
 import { allItems, onUnsentChange, sweepOrphanFormFiles, UNSENT_STATES, type ItemRow } from './unsentRows';
 import { cannotSendUnsent } from './unsentRole';
 import { startWorkClock, UNSENT_LIMIT_MS, workNow } from './workClock';
 
 const logger = createLogger('[unsent]');
+const KNOWN_WAITING_KEY = 'unsent_known_waiting_v1';
 
 export interface UnsentSummary {
   /** Own items not sent yet (a photo group is one); 0 while the file cannot be read or the items wait for an administrator. */
@@ -27,6 +30,10 @@ export interface UnsentSummary {
   limitReached: boolean;
   /** The file could not be read: nothing is known, the limit counts as passed (Design 4.6, DQ2). */
   unreadable: boolean;
+  /** Whether this scope was last seen with waiting own unsent items (persisted apart from the SQLite file). */
+  knownWaiting: boolean;
+  /** Whether the unsent file exists (or cannot be confirmed absent); `false` only when confirmed absent. */
+  fileExists: boolean;
   /** Own items kept but not sendable because the role is now customer (Product PQ5). */
   waitingForAdmin: number;
   /** Own items the server holds (and rejections not opened yet): the status bar says so when nothing is unsent (WH-304, Design 7.9 DQ6). */
@@ -35,12 +42,26 @@ export interface UnsentSummary {
 
 const state = {
   started: false,
+  dbInitialized: false,
+  swept: false,
   unreadable: false,
+  fileExists: true,
+  knownWaitingLoaded: false,
+  knownWaitingScopes: new Set<string>(),
   scope: null as string | null,
   rows: [] as ItemRow[],
   version: 0,
   loading: Promise.resolve(),
-  summary: { count: 0, sendBy: 0, limitReached: false, unreadable: false, waitingForAdmin: 0, held: 0 } as UnsentSummary,
+  summary: {
+    count: 0,
+    sendBy: 0,
+    limitReached: false,
+    unreadable: false,
+    knownWaiting: false,
+    fileExists: true,
+    waitingForAdmin: 0,
+    held: 0,
+  } as UnsentSummary,
 };
 
 function createListeners() {
@@ -98,10 +119,66 @@ export function ownHeldCount(): number {
 /** The count of the person's own unsent entries. */
 export const ownUnsentCount = (): number => countEntries(ownUnsentRows());
 
+async function ensureKnownWaitingLoaded(): Promise<void> {
+  if (state.knownWaitingLoaded) return;
+  try {
+    const raw = await AsyncStorage.getItem(KNOWN_WAITING_KEY);
+    if (raw !== null) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (typeof item === 'string') state.knownWaitingScopes.add(item);
+        }
+      }
+    }
+    state.knownWaitingLoaded = true;
+  } catch (error) {
+    logger.warn('The known-waiting marker could not be read', loggableError(error));
+  }
+}
+
+async function syncKnownWaitingForScope(scope: string, waiting: boolean): Promise<void> {
+  await ensureKnownWaitingLoaded();
+  const had = state.knownWaitingScopes.has(scope);
+  if (had === waiting) return;
+  if (waiting) state.knownWaitingScopes.add(scope);
+  else state.knownWaitingScopes.delete(scope);
+  // If AsyncStorage failed to load, keep the change in memory only so other scopes' persisted markers are not overwritten.
+  if (!state.knownWaitingLoaded) return;
+  try {
+    await AsyncStorage.setItem(KNOWN_WAITING_KEY, JSON.stringify([...state.knownWaitingScopes]));
+  } catch (error) {
+    logger.warn('The known-waiting marker could not be saved', loggableError(error));
+  }
+}
+
 function build(): UnsentSummary {
-  if (state.unreadable) return { count: 0, sendBy: 0, limitReached: true, unreadable: true, waitingForAdmin: 0, held: 0 };
+  const knownWaiting = state.scope !== null && state.knownWaitingScopes.has(state.scope);
+  if (state.unreadable) {
+    return {
+      count: 0,
+      sendBy: 0,
+      limitReached: true,
+      unreadable: true,
+      knownWaiting,
+      fileExists: state.fileExists,
+      waitingForAdmin: 0,
+      held: 0,
+    };
+  }
   const counted = ownUnsentRows();
-  if (counted.length > 0 && cannotSendUnsent()) return { count: 0, sendBy: 0, limitReached: false, unreadable: false, waitingForAdmin: counted.length, held: 0 };
+  if (counted.length > 0 && cannotSendUnsent()) {
+    return {
+      count: 0,
+      sendBy: 0,
+      limitReached: false,
+      unreadable: false,
+      knownWaiting,
+      fileExists: state.fileExists,
+      waitingForAdmin: counted.length,
+      held: 0,
+    };
+  }
   // Waiting photos are the only copy of a photo but never start the clock (Product PQ2).
   const starting = counted.filter(row => row.kind !== 'photos');
   let sendBy = 0;
@@ -111,7 +188,16 @@ function build(): UnsentSummary {
     limitReached = age >= UNSENT_LIMIT_MS;
     sendBy = Date.now() + (UNSENT_LIMIT_MS - age);
   }
-  return { count: countEntries(counted), sendBy, limitReached, unreadable: false, waitingForAdmin: 0, held: ownHeldCount() };
+  return {
+    count: countEntries(counted),
+    sendBy,
+    limitReached,
+    unreadable: false,
+    knownWaiting,
+    fileExists: state.fileExists,
+    waitingForAdmin: 0,
+    held: ownHeldCount(),
+  };
 }
 
 /** The summary now. The same object while nothing in it changed (for `useSyncExternalStore`). */
@@ -122,6 +208,8 @@ export function getUnsentSummary(): UnsentSummary {
     next.count === last.count &&
     next.limitReached === last.limitReached &&
     next.unreadable === last.unreadable &&
+    next.knownWaiting === last.knownWaiting &&
+    next.fileExists === last.fileExists &&
     next.waitingForAdmin === last.waitingForAdmin &&
     next.held === last.held &&
     Math.abs(next.sendBy - last.sendBy) < 1000;
@@ -144,17 +232,36 @@ export const subscribeUnsent = listeners.add;
 
 async function reload(): Promise<void> {
   const version = (state.version += 1);
+  let scope: string | null = null;
   try {
-    const scope = await getSessionCacheScope();
+    scope = await getSessionCacheScope();
+    if (!hasCapability('sync') && unsentFileExists() === false) {
+      if (version !== state.version) return;
+      state.scope = scope;
+      state.rows = [];
+      state.unreadable = false;
+      state.fileExists = false;
+      listeners.fire();
+      return;
+    }
     const rows = await allItems();
     if (version !== state.version) return;
     state.scope = scope;
     state.rows = rows;
     state.unreadable = false;
+    state.fileExists = true;
+    if (state.scope !== null) {
+      await syncKnownWaitingForScope(state.scope, ownUnsentCount() > 0);
+      if (version !== state.version) return;
+    }
   } catch (error) {
     if (version !== state.version) return;
     logger.warn('The unsent-work file could not be read', loggableError(error));
+    await ensureKnownWaitingLoaded();
+    if (version !== state.version) return;
+    state.scope = scope;
     state.unreadable = true;
+    state.fileExists = unsentFileExists() !== false;
     state.rows = [];
   }
   listeners.fire();
@@ -183,7 +290,17 @@ export async function initUnsent(): Promise<void> {
       listeners.fire();
       void refreshUnsent();
     });
+    subscribeFacilityCapabilities(() => {
+      if (hasCapability('sync') && !state.dbInitialized) {
+        void initUnsent().catch(error => logger.warn('The unsent-work file could not be started', loggableError(error)));
+      }
+    });
   }
+  if (!hasCapability('sync') && unsentFileExists() === false) {
+    await refreshUnsent();
+    return;
+  }
+  state.dbInitialized = true;
   try {
     const db = await getUnsentDb();
     const [newest] = await db.all<{ top: number | null; n: number }>('SELECT max(recorded_tick) AS top, count(*) AS n FROM items');
@@ -191,7 +308,10 @@ export async function initUnsent(): Promise<void> {
   } catch (error) {
     logger.warn('The unsent-work file could not be opened at start', loggableError(error));
   }
-  if (firstStart) await sweepOrphanFormFiles();
+  if (!state.swept) {
+    state.swept = true;
+    await sweepOrphanFormFiles();
+  }
   await refreshUnsent();
 }
 
@@ -207,6 +327,7 @@ export function useUnsentSummary(): UnsentSummary {
  * that cannot be read says nothing: the screen does not promise what cannot be checked.
  */
 export async function hasKeptWork(): Promise<boolean> {
+  if (!hasCapability('sync') && unsentFileExists() === false) return false;
   try {
     const db = await getUnsentDb();
     const scope = await getSessionCacheScope();

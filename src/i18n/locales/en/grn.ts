@@ -174,6 +174,11 @@ export const grn = {
 
   // Photo upload: the upload button, the preview grid and the item photo alerts
   photos: {
+    // WH-385: the line on the Images tab when a photo taken with the GRN could not be sent
+    couldNotSend: {
+      one: '1 photo taken with this GRN could not be sent.',
+      other: '{{count}} photos taken with this GRN could not be sent.',
+    },
     addPhotos: 'Add photos',
     addPhotoTitle: 'Add photo',
     addPhotoMessage: 'Take a new photo or choose one from your library.',

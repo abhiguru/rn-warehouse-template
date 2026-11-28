@@ -82,26 +82,38 @@ export default function TemperatureReportScreen() {
   const query = useLiveReport(
     'temperature-report-sensors',
     fetch,
-    tr('reports.temperatureReport.loadError')
+    tr('reports.temperatureReport.loadError'),
+    needsConnection
   );
-  const { refresh, retry } = query;
+  const { data, phase, refresh, retry } = query;
   // Offline no load runs at all (a failed load would clear the open sensor): pull-to-refresh and Retry return at once.
+  const { isRefreshing, isFetching, updatedAt, error } = query;
   const scaffoldQuery = useMemo(
     () => ({
-      ...query,
+      data,
+      phase,
+      isRefreshing,
+      isFetching,
+      updatedAt,
+      error,
       refresh: (): Promise<boolean> => (needsConnection ? Promise.resolve(false) : refresh()),
       retry: () => {
         if (!needsConnection) retry();
       },
     }),
-    [query, needsConnection, refresh, retry]
+    [data, phase, isRefreshing, isFetching, updatedAt, error, needsConnection, refresh, retry]
   );
+  // On reconnect a screen that is not showing figures (opened offline) reloads from the loading skeleton, never from the
+  // load-error state; one already showing a sensor refreshes in place.
   const wasOffline = useRef(needsConnection);
   useEffect(() => {
-    if (wasOffline.current && !needsConnection) void refresh();
+    if (wasOffline.current && !needsConnection) {
+      if (phase === 'ready') void refresh();
+      else retry();
+    }
     wasOffline.current = needsConnection;
-  }, [needsConnection, refresh]);
-  const sensors = useMemo(() => query.data ?? [], [query.data]);
+  }, [needsConnection, phase, refresh, retry]);
+  const sensors = useMemo(() => data ?? [], [data]);
   const styles = useThemedStyles(makeStyles);
 
   const renderRow = useCallback((sensor: ReportSensor) => <SensorRow sensor={sensor} />, []);

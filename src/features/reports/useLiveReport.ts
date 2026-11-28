@@ -34,8 +34,23 @@ interface State<T> {
   error: string | null;
 }
 
-export function useLiveReport<T>(key: string, fetch: () => Promise<LiveReportResult<T>>, fallbackError: string): LiveReport<T> {
+/**
+ * `keepOnFailure` (opt-in, default false): while true, a failed answer that arrives when figures are already on screen leaves
+ * them and the phase as they are (the connection dropped again after the request went out). Without it a failure clears them.
+ */
+export function useLiveReport<T>(
+  key: string,
+  fetch: () => Promise<LiveReportResult<T>>,
+  fallbackError: string,
+  keepOnFailure = false
+): LiveReport<T> {
   const [state, setState] = useState<State<T>>({ data: undefined, phase: 'loading', error: null });
+  const stateRef = useRef(state);
+  const keepRef = useRef(keepOnFailure);
+  useEffect(() => {
+    stateRef.current = state;
+    keepRef.current = keepOnFailure;
+  }, [state, keepOnFailure]);
   const [isFetching, setFetching] = useState(false);
   const [isRefreshing, setRefreshing] = useState(false);
   const fetchRef = useRef(fetch);
@@ -69,6 +84,7 @@ export function useLiveReport<T>(key: string, fetch: () => Promise<LiveReportRes
       setState({ data: result.data, phase: 'ready', error: null });
       return true;
     }
+    if (keepRef.current && stateRef.current.phase === 'ready') return false;
     // A failure takes the earlier figures away: they are no longer the facility's word.
     setState({ data: undefined, phase: 'error', error: result.message || fallbackRef.current });
     return false;

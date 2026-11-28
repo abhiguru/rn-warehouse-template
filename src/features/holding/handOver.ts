@@ -14,6 +14,7 @@ import { hasCapability } from '@/config/facilityCapabilities';
 import { normalizeRole } from '@/config/roles';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
+import { phoneDisplayName } from '@/features/users/phoneDisplayName';
 import { SAVE_WAIT_MS, saveWaitLeft } from '@/features/unsent/saveWait';
 import { answerFiguresOf, answerCodeOf } from '@/features/unsent/refusalAnswer';
 import { classify, DEPENDS_ON_REFUSED } from '@/features/unsent/sendEngine';
@@ -23,7 +24,7 @@ import { emptyAnswerAsError, withHttpStatus } from '@/utils/serverText';
 import { allItems, deleteItems, itemsOfScope, photosOf, updateItem, type ItemRow } from '@/features/unsent/unsentRows';
 import { cannotSendUnsent, currentPersonRole } from '@/features/unsent/unsentRole';
 import { heldWhatOf } from './heldWhat';
-import { sendHeldPhotos } from './heldPhotos';
+import { sendHeldPhotos, type PassWriteOptions } from './heldPhotos';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 
 const logger = createLogger('[holding-handover]');
@@ -139,11 +140,20 @@ type CallResult =
   | { kind: 'refused'; code: string };
 
 /** One `hold_items` call. Never throws: a call that fails is a result. */
-async function callHoldItems(items: readonly HoldItem[], recorder?: string): Promise<CallResult> {
+async function callHoldItems(
+  items: readonly HoldItem[],
+  recorder?: string,
+  options?: PassWriteOptions
+): Promise<CallResult> {
   let answer: { data: unknown; error: unknown; status?: number };
   try {
-    const client = await getAuthenticatedClient();
-    answer = (await client.rpc('hold_items', { p_items: items, ...(recorder === undefined ? {} : { p_recorder: recorder }) })) as typeof answer;
+    const client = await getAuthenticatedClient(options?.quietWrite ? { quietWrite: true } : undefined);
+    const deviceName = backendHasFeature('heldDeviceName') ? await phoneDisplayName() : null;
+    answer = (await client.rpc('hold_items', {
+      p_items: items,
+      ...(recorder === undefined ? {} : { p_recorder: recorder }),
+      ...(deviceName === null ? {} : { p_device_name: deviceName }),
+    })) as typeof answer;
   } catch (error) {
     answer = { data: null, error };
   }
@@ -160,11 +170,16 @@ async function callHoldItems(items: readonly HoldItem[], recorder?: string): Pro
     case 'sent': {
       const held = isFields(outcome.result) && Array.isArray(outcome.result.held) ? (outcome.result.held as unknown[]) : [];
       const answered = new Map<string, { id: string | null; reused: boolean }>();
+      let settledAny = false;
       for (const entry of held) {
         if (!isFields(entry) || typeof entry.request_key !== 'string') continue;
         const id = typeof entry.id === 'string' && entry.id !== '' ? entry.id : null;
-        answered.set(entry.request_key, { id, reused: entry.reason === 'REQUEST_KEY_REUSED' || id === null });
+        const reused = entry.reason === 'REQUEST_KEY_REUSED' || id === null;
+        answered.set(entry.request_key, { id, reused });
+        if (!reused) settledAny = true;
       }
+      // WH-427: note a write only when an item settled as held; a call that held nothing would be made again at once.
+      if (settledAny) options?.onWrite?.();
       return { kind: 'held', answered };
     }
   }
@@ -207,8 +222,15 @@ async function settle(rows: readonly ItemRow[], result: Extract<CallResult, { ki
   }
 }
 
-/** Hands over the refused items of `scope` the server does not hold yet. Always resolves. */
-export async function handOverRefused(scope: string): Promise<HandOverResult> {
+/**
+ * Hands over the refused items of `scope` the server does not hold yet. Always resolves. `signal` is the session's: once it
+ * is aborted nothing more is sent or written (WH-413). `options` marks the calls as the send pass's own (WH-393).
+ */
+export async function handOverRefused(
+  scope: string,
+  signal?: AbortSignal,
+  options?: PassWriteOptions
+): Promise<HandOverResult> {
   try {
     if (!holdingOn() || isCopyOffline() || cannotSendUnsent()) return NOTHING;
     const rows = await itemsOfScope(scope);
@@ -232,15 +254,25 @@ export async function handOverRefused(scope: string): Promise<HandOverResult> {
         deferMs = deferMs === null ? waiting : Math.min(deferMs, waiting);
         continue;
       }
+      // The phone's store failed on one of them: the whole group waits, so nothing goes ahead of what it follows (WH-421).
+      if (group.filter(row => options?.isHeld?.(row.id)).length > 0) continue;
       const sentIds = new Set<string>();
       for (let start = 0; start < group.length; start += CALL_LIMIT) {
         const chunk = group.slice(start, start + CALL_LIMIT);
         const inCall = new Set(chunk.map(row => row.id));
         const items = await Promise.all(chunk.map(row => itemOf(row, followsKeyOf(row, byId, inCall))));
-        const result = await callHoldItems(items);
-        if (result.kind === 'stop') return { stop: true, transient, deferMs };
+        if (signal?.aborted) return { stop: true, transient, deferMs };
+        const result = await callHoldItems(items, undefined, options);
+        // The answer came after the session ended: write nothing; the rows stay refused and not held, so a later run offers them again.
+        if (signal?.aborted || result.kind === 'stop') return { stop: true, transient, deferMs };
         if (result.kind === 'held') {
-          await settle(chunk, result);
+          try {
+            await settle(chunk, result);
+          } catch (error) {
+            // The server holds them and the phone could not record it: they wait before they are handed over again (WH-421).
+            chunk.forEach(row => options?.onStoreFailure?.(row.id));
+            throw error;
+          }
           chunk.forEach(row => sentIds.add(row.id));
           continue;
         }
@@ -257,8 +289,9 @@ export async function handOverRefused(scope: string): Promise<HandOverResult> {
       if (transient) break;
     }
     // Files of the photos items the server now holds go up under their held id; the row is held when they are all up (contract 3).
-    const photos = await sendHeldPhotos(await itemsOfScope(scope));
-    if (photos.stop) return { stop: true, transient, deferMs };
+    if (signal?.aborted) return { stop: true, transient, deferMs };
+    const photos = await sendHeldPhotos(await itemsOfScope(scope), true, options);
+    if (photos.stop || signal?.aborted) return { stop: true, transient, deferMs };
     return { stop: false, transient: transient || photos.transient, deferMs };
   } catch (error) {
     logger.warn('A hand-over failed', loggableError(error));
