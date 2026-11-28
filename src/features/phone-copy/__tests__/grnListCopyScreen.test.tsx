@@ -1,9 +1,9 @@
 /**
- * WH-299, the GRN list screen over the phone copy:
+ * WH-299 + WH-381, the GRN list screen over the phone copy:
  *  - R4 (contract product/tech/app-offline-read-from-copy.md 2.2): a restart drops the pages and asks page 0 again;
  *  - PR9 (contract 11.1, Q1 to Q4, Q6, Q7): the quiet re-read after a sync that changed something;
- *  - PR12 (WH-299 card; Design product/design/offline-capture.md 2.10a): the Invoicing filter offline while older
- *    records load.
+ *  - PR12 updated for WH-381 (Design product/design/offline-capture.md Part 13.3, contract Section 2.3 & 4.2): the
+ *    Invoicing filter is gated on `useNeedsConnection()` (never Stage 2) with updated English and Gujarati copy.
  *
  * Real: the list, its header, filter bar and filter store, the GRN service, the sync engine, the copy. Faked at the
  * edge: the server's answers, the phone's native modules, the connection as NetInfo and `useIsOffline` tell it, the
@@ -13,7 +13,7 @@
  *
  * ===== AGREE WITH DEVELOPMENT =====
  *  - The scroll is told to the list by the FlashList's `onScrollBeginDrag` and `onMomentumScrollEnd` (contract 11.1).
- *  - testIDs of Design 2.10a: `grn-invoicing-filter-off`, `grn-invoicing-wait`, `grn-invoicing-wait-clear`.
+ *  - testIDs of Design 2.10a / 13.1 B: `grn-invoicing-filter-off`, `grn-invoicing-wait`, `grn-invoicing-wait-clear`.
  * ==================================
  */
 import React from 'react';
@@ -350,9 +350,8 @@ describe('PR12: the Invoicing filter offline over a ready copy (Design 2.10a, Pa
     const chip = screen.getByRole('button', { name: OFF_LABEL });
     expect(chip).toBeDisabled();
     expect(screen.getByTestId('grn-invoicing-filter-off')).toHaveTextContent(FOOTNOTE);
-    const tagsBefore = screen.queryAllByText('Partly invoiced').length;
     await userEvent.press(chip);
-    expect(screen.queryAllByText('Partly invoiced')).toHaveLength(tagsBefore);
+    expect(screen.queryByRole('radio', { name: 'Partly invoiced' })).not.toBeOnTheScreen();
     expect(screen.queryByTestId('grn-invoicing-wait')).not.toBeOnTheScreen();
   });
 
@@ -367,15 +366,15 @@ describe('PR12: the Invoicing filter offline over a ready copy (Design 2.10a, Pa
     const empty = await screen.findByTestId('grn-invoicing-wait');
     expect(empty).toHaveTextContent(/Filtering by invoicing needs a connection/);
     expect(empty).toHaveTextContent(/Clear the filter to see GRNs offline\./);
+    expect(empty).not.toHaveTextContent(/They load when you reconnect\./);
     expect(screen.getByRole('button', { name: 'Clear Invoicing filter' })).toBeOnTheScreen();
     expect(screen.queryByTestId('grn-card-g-B1')).not.toBeOnTheScreen();
     expect(cards()).toEqual([]);
     expect(screen.queryByText('No GRNs match your filters')).not.toBeOnTheScreen();
     expect(screen.queryByTestId('grn-invoicing-filter-off')).not.toBeOnTheScreen();
     // The chip still shows its value and cannot be opened.
-    const tagsBefore = screen.queryAllByText('Partly invoiced').length;
     await userEvent.press(screen.getByText('Not invoiced'));
-    expect(screen.queryAllByText('Partly invoiced')).toHaveLength(tagsBefore);
+    expect(screen.queryByRole('radio', { name: 'Partly invoiced' })).not.toBeOnTheScreen();
     expect(serverCalls).toEqual([]);
   });
 
@@ -409,6 +408,18 @@ describe('PR12: the Invoicing filter offline over a ready copy (Design 2.10a, Pa
     expect(serverCalls).toEqual([]);
   });
 
+  it('Gujarati offline with Invoicing filter set: exact Design 13.3 wording and clear button', async () => {
+    await setLanguage('gu');
+    await loadCopy();
+    await connection(true);
+    setFilters({ invoicing: 'not_invoiced' });
+    await render(<GRNListFiori />);
+    const empty = await screen.findByTestId('grn-invoicing-wait');
+    expect(empty).toHaveTextContent(/ઇન્વૉઇસ પ્રમાણે ફિલ્ટર કરવા કનેક્શન જોઈએ/);
+    expect(empty).toHaveTextContent(/ઑફલાઇન આવક પાવતી જોવા ફિલ્ટર સાફ કરો\./);
+    expect(screen.getByTestId('grn-invoicing-wait-clear')).toHaveTextContent('ઇન્વૉઇસ ફિલ્ટર સાફ કરો');
+  });
+
   it('on reconnecting the footnote goes and the chip works', async () => {
     await loadCopy();
     await connection(true);
@@ -419,9 +430,8 @@ describe('PR12: the Invoicing filter offline over a ready copy (Design 2.10a, Pa
     await waitFor(() => expect(screen.queryByTestId('grn-invoicing-filter-off')).not.toBeOnTheScreen());
     const chip = screen.getByRole('button', { name: 'Filter by invoicing' });
     expect(chip).toBeEnabled();
-    const tagsBefore = screen.queryAllByText('Partly invoiced').length;
     await userEvent.press(chip);
-    await waitFor(() => expect(screen.queryAllByText('Partly invoiced').length).toBeGreaterThan(tagsBefore));
+    expect(await screen.findByRole('radio', { name: 'Partly invoiced' })).toBeOnTheScreen();
   });
 
   it.each([
@@ -437,7 +447,26 @@ describe('PR12: the Invoicing filter offline over a ready copy (Design 2.10a, Pa
     ['gu', 'clearInvoicingFilter', 'ઇન્વૉઇસ ફિલ્ટર સાફ કરો'],
   ] as const)('%s grn.offline.%s is Design\'s text', async (language, key, text) => {
     await setLanguage(language);
-    expect(t(`grn.offline.${key}` as never)).toBe(text);
+    const actual = t(`grn.offline.${key}` as never);
+    expect(actual).toBe(text);
+    expect(actual).not.toContain('They load when you reconnect.');
+  });
+});
+
+describe('WH-381: the invoice-state tag on a GRN card is the server\'s', () => {
+  it('offline over the copy: the card of a partly invoiced GRN shows no tag', async () => {
+    await loadCopy();
+    await connection(true);
+    await render(<GRNListFiori />);
+    expect(await screen.findByTestId('grn-card-g-A2')).toBeOnTheScreen();
+    expect(screen.queryByTestId('grn-card-invoice-state-g-A2')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Partly invoiced')).not.toBeOnTheScreen();
+  });
+
+  it('online over the same copy: the card shows its "Partly invoiced" tag', async () => {
+    await loadCopy();
+    await render(<GRNListFiori />);
+    expect(await screen.findByTestId('grn-card-invoice-state-g-A2')).toHaveTextContent('Partly invoiced');
   });
 });
 

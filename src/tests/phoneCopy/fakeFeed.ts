@@ -23,10 +23,13 @@ export const ENTITIES = ['customers', 'items', 'settings', 'people', 'goodsrecei
 export const FORMAT_3_ENTITIES = ['grn_rates', 'item_storage_prices', 'standard_rate_tiers', 'item_price_history', 'payments'] as const;
 /** What a format-4 feed adds (WH-303 contract section 5.6: the replaced entries, staff roles only). */
 export const FORMAT_4_ENTITIES = ['grn_replacements'] as const;
+/** The eight entities WH-381 takes out of the feed (a server on feed format 8 no longer lists them). */
+export const DROPPED_BY_WH381 = ['dispatch', 'dispatch_trl', 'dispatch_images', 'invoice', 'invoice_trl', 'payments', 'orders', 'order_items'] as const;
 const entitiesFor = (format: number): readonly string[] => {
   if (format >= 4) return [...ENTITIES, ...FORMAT_3_ENTITIES, ...FORMAT_4_ENTITIES];
   return format >= 3 ? [...ENTITIES, ...FORMAT_3_ENTITIES] : ENTITIES;
 };
+const served = (legacy: boolean, list: readonly string[]): readonly string[] => (legacy ? list : list.filter(e => !(DROPPED_BY_WH381 as readonly string[]).includes(e)));
 export const STAGE_ONE = ENTITIES.slice(0, 7);
 export const STAGE_TWO = ENTITIES.slice(7);
 
@@ -35,6 +38,8 @@ export const COPY_KEY = '1.6f1c0000-0000-4000-8000-000000000001.9e107d9d372bb682
 export function createFakeFeed() {
   const feed = {
     format: 1,
+    /** true: the server still lists the dropped entities, as one not yet on feed format 8 does (criterion 14). Default: a WH-381 server lists only the kept ones. */
+    legacyServer: false,
     copy: COPY_KEY,
     startPosition: '1048576',
     asOf: '2026-11-25T05:12:00.000+00:00',
@@ -73,7 +78,7 @@ export function createFakeFeed() {
       if (feed.failWhen?.(call)) return { data: null, error: { message: 'Network request failed' } };
       if (name === 'get_sync_start') {
         return { data: { success: true, format: feed.format, copy: feed.copy, position: feed.startPosition, as_of: feed.asOf,
-          page_limit: 2000, entities: [...entitiesFor(feed.format)] }, error: null };
+          page_limit: 2000, entities: [...served(feed.legacyServer, entitiesFor(feed.format))] }, error: null };
       }
       if (name === 'get_sync_page') {
         const entity = String(args.p_entity);
@@ -96,7 +101,7 @@ export function createFakeFeed() {
       }
       if (name === 'get_sync_checksums') {
         // What the server holds now, by the contract's rule: count, and the sum of the first 15 hex digits of v modulo 2^60.
-        const entities = entitiesFor(feed.format).map(e => {
+        const entities = served(feed.legacyServer, entitiesFor(feed.format)).map(e => {
           const sum = feed.rows[e].reduce((total, r) => total + BigInt(`0x${(r.v ?? defaultV(r.id)).slice(0, 15)}`), 0n) % (1n << 60n);
           return { e, count: feed.rows[e].length, sum: sum.toString(), settled: true };
         });

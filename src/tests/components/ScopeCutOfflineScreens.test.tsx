@@ -565,7 +565,7 @@ function installOnlineRpcFixtures() {
           },
           items: [
             {
-              id: 'invline-1',
+              item_id: 'invline-1', // the dispatch line's own id; get_invoice_data always sends it
               item_name: 'Fictional Peas',
               qty: 10,
               rate: 420,

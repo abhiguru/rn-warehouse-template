@@ -45,6 +45,7 @@ export function serveKeptEntitiesOnly(): void {
 
 /** `legacyServer: true` keeps the fake server listing the dropped entities, as a server not yet on format 8 does. */
 export async function bootWarehouse({ role = 'staff', capability = true, legacyServer = false }: { role?: Role; capability?: boolean; legacyServer?: boolean } = {}): Promise<Warehouse> {
+  env.feed.legacyServer = legacyServer;
   if (!legacyServer) serveKeptEntitiesOnly();
   for (const method of ['log', 'info', 'warn', 'error', 'debug', 'time', 'timeEnd'] as const) {
     jest.spyOn(console, method).mockImplementation(() => undefined);

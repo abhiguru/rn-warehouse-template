@@ -33,6 +33,7 @@ import { grnFeedRow, grnNamed, seedWarehouse } from '@/tests/phoneCopy/grnDatase
 import { seedDocuments } from '@/tests/phoneCopy/documentsDataset';
 import { saveOperatorServer } from '@/config/operatorServer';
 import { resetFacilityCapabilities, setFacilityCapabilities } from '@/config/facilityCapabilities';
+import { resetFacilityRelease, setFacilityRelease } from '@/config/backendFeatures';
 import { setLanguage } from '@/i18n';
 import authReducer from '@/store/slices/authSlice';
 import themeReducer from '@/store/slices/themeSlice';
@@ -143,6 +144,8 @@ beforeEach(async () => {
   };
   await saveOperatorServer(SERVER);
   setFacilityCapabilities(SERVER, { sync: true });
+  // The quick change of a lot's rack and mark is gated by the backend release (backendFeatures lotQuickChange, migration 226); below 233 so GRN Edit still needs a connection (S3).
+  setFacilityRelease(SERVER, { schemaHead: '00000000000226_lot_rack_and_mark' });
   const auth = {
     ...authReducer(undefined, { type: 'test/init' }),
     user: { id: 'profile-1' }, session: {}, userProfile: { id: 'profile-1', role: 'admin', name: 'Asha Fictional' },
@@ -160,6 +163,7 @@ afterEach(async () => {
   await copyDb.eraseCopy();
   await AsyncStorage.clear();
   resetFacilityCapabilities();
+  resetFacilityRelease();
   await setLanguage('en');
   jest.restoreAllMocks();
 });
@@ -198,7 +202,8 @@ describe('DS1: sections that need the server on GRN details (WH-299 + WH-381 Par
     expect(screen.getByText('RATES')).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: /try again/i })).not.toBeOnTheScreen();
     expect(screen.queryByTestId('grn-item-rates-loading')).not.toBeOnTheScreen();
-    expect(serverCalls).toEqual([]);
+    // Online the Items and Dispatches tabs read a lot's dispatches from the server (WH-381); offline nothing is asked of it.
+    expect(offline ? serverCalls : serverCalls.filter(name => name !== 'get_grn_item_dispatches')).toEqual([]);
   });
 
   it('GRNTabNavigator offline: omits dispatch and invoice count badges while keeping both tabs selectable', async () => {
@@ -313,7 +318,7 @@ describe('PR9: GRN details after a sync', () => {
     expect(await screen.findByText('Fictional note')).toBeOnTheScreen();
     await sync([upsert('goodsreceived', 'g-A2', { ...grnFeedRow(grnNamed('A2')), note: 'Changed fictional note' })]);
     expect(await screen.findByText('Changed fictional note')).toBeOnTheScreen();
-    expect(serverCalls).toEqual([]);
+    expect(serverCalls.filter(name => name !== 'get_grn_item_dispatches')).toEqual([]); // online, a lot's dispatches are read from the server (WH-381)
   });
 
   it('GRN: deleted meanwhile, it says it is not found', async () => {
