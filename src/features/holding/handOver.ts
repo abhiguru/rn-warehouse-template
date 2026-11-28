@@ -207,8 +207,11 @@ async function settle(rows: readonly ItemRow[], result: Extract<CallResult, { ki
   }
 }
 
-/** Hands over the refused items of `scope` the server does not hold yet. Always resolves. */
-export async function handOverRefused(scope: string): Promise<HandOverResult> {
+/**
+ * Hands over the refused items of `scope` the server does not hold yet. Always resolves. `signal` is the session's: once it
+ * is aborted nothing more is sent or written (WH-413).
+ */
+export async function handOverRefused(scope: string, signal?: AbortSignal): Promise<HandOverResult> {
   try {
     if (!holdingOn() || isCopyOffline() || cannotSendUnsent()) return NOTHING;
     const rows = await itemsOfScope(scope);
@@ -237,8 +240,10 @@ export async function handOverRefused(scope: string): Promise<HandOverResult> {
         const chunk = group.slice(start, start + CALL_LIMIT);
         const inCall = new Set(chunk.map(row => row.id));
         const items = await Promise.all(chunk.map(row => itemOf(row, followsKeyOf(row, byId, inCall))));
+        if (signal?.aborted) return { stop: true, transient, deferMs };
         const result = await callHoldItems(items);
-        if (result.kind === 'stop') return { stop: true, transient, deferMs };
+        // The answer came after the session ended: write nothing; the rows stay refused and not held, so a later run offers them again.
+        if (signal?.aborted || result.kind === 'stop') return { stop: true, transient, deferMs };
         if (result.kind === 'held') {
           await settle(chunk, result);
           chunk.forEach(row => sentIds.add(row.id));
@@ -257,8 +262,9 @@ export async function handOverRefused(scope: string): Promise<HandOverResult> {
       if (transient) break;
     }
     // Files of the photos items the server now holds go up under their held id; the row is held when they are all up (contract 3).
+    if (signal?.aborted) return { stop: true, transient, deferMs };
     const photos = await sendHeldPhotos(await itemsOfScope(scope));
-    if (photos.stop) return { stop: true, transient, deferMs };
+    if (photos.stop || signal?.aborted) return { stop: true, transient, deferMs };
     return { stop: false, transient: transient || photos.transient, deferMs };
   } catch (error) {
     logger.warn('A hand-over failed', loggableError(error));

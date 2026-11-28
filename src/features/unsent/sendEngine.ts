@@ -117,7 +117,7 @@ interface Pass {
 /** Hands the refused items to the server's holding list (WH-304); a feature that is off hands over nothing. */
 async function handOver(pass: Pass): Promise<void> {
   if (pass.stop) return;
-  const handed = await handOverRefused(pass.scope);
+  const handed = await handOverRefused(pass.scope, pass.signal);
   if (handed.stop) pass.stop = true;
   if (handed.transient) pass.transient = true;
   if (handed.deferMs !== null) pass.deferMs = pass.deferMs === null ? handed.deferMs : Math.min(pass.deferMs, handed.deferMs);
