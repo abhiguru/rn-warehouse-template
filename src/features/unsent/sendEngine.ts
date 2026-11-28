@@ -465,6 +465,8 @@ function clearRetry(): void {
 
 /** Arms a retry for the session `abort` belongs to; the timer looks again at that session before it sends. */
 function armRetry(abort: AbortController, wait: number): void {
+  // One retry timer at a time: an older one left running would be orphaned, and could fire early or twice.
+  if (engine.retryTimer) clearTimeout(engine.retryTimer);
   const timer = setTimeout(() => {
     if (engine.retryTimer === timer) engine.retryTimer = null;
     if (engine.abort !== abort || abort.signal.aborted) return;
