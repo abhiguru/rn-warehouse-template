@@ -20,6 +20,7 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { handOverRefused } from '@/features/holding/handOver';
 import { answerCodeOf } from './refusalAnswer';
 import { getSendKind, type SendContext, type SendKind, type SendOutcome } from './sendKinds';
+import { withoutWriteNote } from '@/config/facilityWrite';
 import { getUnsentDb } from './unsentDb';
 import { cannotSendUnsent } from './unsentRole';
 import {
@@ -409,7 +410,7 @@ export function sendNow(reason: SendTrigger): Promise<void> {
       do {
         engine.again = false;
         logger.debug(`Send pass (${reason})`);
-        if (!(await onePass())) engine.again = false;
+        if (!(await withoutWriteNote(onePass))) engine.again = false;
       } while (engine.again);
     } catch (error) {
       logger.warn('A send pass failed', loggableError(error));

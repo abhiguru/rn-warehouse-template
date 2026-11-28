@@ -26,11 +26,39 @@ export function noteFacilityWrite(): void {
   }
 }
 
+let quietDepth = 0;
+
 /**
- * Called for each write the server accepted. Only the facility's data (PostgREST tables and functions) counts: a Storage
- * object or an edge function (photos, documents) changes nothing the copy holds.
+ * Runs `fn` with writes not noted. The send engine runs its pass inside it: it asks for its own sync after a pass, so its
+ * sends must not each ask for one (WH-299). A counter, so nested or overlapping scopes end correctly.
+ */
+export async function withoutWriteNote<T>(fn: () => Promise<T>): Promise<T> {
+  quietDepth += 1;
+  try {
+    return await fn();
+  } finally {
+    quietDepth -= 1;
+  }
+}
+
+/**
+ * RPCs that are not reads by name (`READ_RPC` in supabaseConfig.ts) but change nothing the copy holds: checks, a number
+ * suggestion, a seen marker, the sign-in and enrollment functions, the language and the connection notes.
+ */
+const NOT_COPY_RPC =
+  /^(can_make_bills|suggest_document_number|mark_held_item_seen|make_pairing_code|set_my_language|revoke_session|operator_review_enrollment|review_enrollment_again|submit_connection_notes)$/;
+
+/**
+ * Called for each request the request layer classed as a write (`mutation`: not `isReadRequest`, so a GET, a HEAD, a read
+ * RPC by NAME such as get_*, search_*, check_*, list_*, count_*, which includes every get_sync_* call of the sync feed,
+ * and Storage sign and list calls never arrive here) and that the server accepted. Only the facility's data (PostgREST
+ * tables and functions) counts: a Storage object or an edge function (photos, documents) changes nothing the copy holds.
  */
 export function noteDataWrite(input: RequestInfo | URL): void {
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-  if (url.split(/[?#]/)[0].includes('/rest/v1/')) noteFacilityWrite();
+  if (quietDepth > 0) return;
+  const url = (typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).split(/[?#]/)[0];
+  if (!url.includes('/rest/v1/')) return;
+  const rpc = /\/rest\/v1\/rpc\/([A-Za-z0-9_]+)$/.exec(url)?.[1];
+  if (rpc !== undefined && NOT_COPY_RPC.test(rpc)) return;
+  noteFacilityWrite();
 }
