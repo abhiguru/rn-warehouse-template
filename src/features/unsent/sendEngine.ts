@@ -491,6 +491,8 @@ registerSessionScoped('unsent-sending-flag', () => {
  * ends). It never rejects; what it could not do is tried again by the retry timer and by the next trigger.
  */
 export function sendNow(reason: SendTrigger): Promise<void> {
+  // The person asking ends a store-error wait: one check now. Its count is kept, so a failure waits longer again (WH-420).
+  if (reason === 'send-now') for (const held of engine.held.values()) held.until = 0;
   if (engine.running) {
     engine.again = true;
     return engine.running;
