@@ -47,7 +47,15 @@ const FORM_ROW = (scope: string, kind = 'grn') =>
   `INSERT INTO forms (id, scope, kind, grn_id, state, photos, customer, started_at, updated_at) VALUES ('form-1', '${scope.replace(/'/g, "''")}', '${kind}', NULL, '{}', '[]', 'Asha Fictional Traders', ${Date.now()}, ${Date.now()})`;
 
 beforeEach(() => { jest.useFakeTimers({ now: new Date('2026-11-26T09:00:00+05:30') }); resetEnv(); files.reset(); server.reset(); });
-afterEach(async () => { jest.useRealTimers(); await eraseEverything(); });
+afterEach(async () => {
+  // A send pass still running ends by setting a retry timer. Let it end on the fake clock and drop that timer, so none fires
+  // after the file is torn down (the engine does not clear its retry timer on a session change: sendEngine.ts:446-449).
+  await jest.advanceTimersByTimeAsync(50);
+  await eraseEverything();
+  await jest.advanceTimersByTimeAsync(50);
+  jest.clearAllTimers();
+  jest.useRealTimers();
+});
 
 describe('G1, G3: the 2-hour limit stops new work', () => {
   it('canStartWork is refused at the limit, with the count and the age, and allowed again once the items are gone', async () => {
