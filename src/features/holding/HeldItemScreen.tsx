@@ -245,7 +245,7 @@ function OwnHeldItem() {
 
   return (
     <View testID="held-item-screen" style={styles.screen}>
-      <Stack.Screen options={{ title: tr('offline.holding.title'), headerLeft: () => <HeaderBackButton /> }} />
+      <Stack.Screen options={{ title: tr('offline.holding.itemTitle'), headerShown: true, headerTitleAlign: 'center', headerLeft: () => <HeaderBackButton /> }} />
       <EdgeToEdgeStatusBar barStyle={tokens.statusBarStyle} />
       {row === null ? (
         <ReportEmptyState icon="cloud-alert-outline" message={tr('common.couldNotLoad')} />
@@ -533,7 +533,7 @@ function ManagerHeldItem() {
 
   return (
     <View testID={loaded ? 'held-item-screen' : undefined} style={styles.screen}>
-      <Stack.Screen options={{ title: tr('offline.holding.title'), headerLeft: () => <HeaderBackButton /> }} />
+      <Stack.Screen options={{ title: tr('offline.holding.itemTitle'), headerShown: true, headerTitleAlign: 'center', headerLeft: () => <HeaderBackButton /> }} />
       <EdgeToEdgeStatusBar barStyle={tokens.statusBarStyle} />
       {body}
     </View>
