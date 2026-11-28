@@ -25,7 +25,8 @@ export interface SendContext {
   resolved: Record<string, unknown>;
   /**
    * Told when the server accepted a change that may not end in a `sent` item (WH-393: some photos of an item), so the pass
-   * still asks for its sync.
+   * still asks for its sync. Only for a change the next pass does not make again, or the sync and the pass would repeat each
+   * other without a wait.
    */
   noteWrite?: () => void;
 }

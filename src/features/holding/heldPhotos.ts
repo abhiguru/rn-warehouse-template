@@ -33,7 +33,9 @@ type Reply = { kind: 'ok'; data: Fields } | { kind: 'code'; code: string } | { k
 
 /**
  * How the send pass sends (WH-393): `quietWrite` keeps its requests from asking for an after-write sync each, and `onWrite` is
- * told when the server accepted a change, so the pass asks for one sync at its end.
+ * told when the server accepted a change that is not sent again (an item held, a photo done or missing), so the pass asks for one
+ * sync at its end. A step that is repeated until the photo goes (a registration) is not told: the sync after it would start the
+ * next pass at once, without the retry wait, for as long as the upload keeps failing.
  */
 export interface PassWriteOptions {
   quietWrite?: boolean;
@@ -51,10 +53,7 @@ async function rpc(name: string, args: Fields, options?: PassWriteOptions): Prom
   const failure = answer.error ? withHttpStatus(answer.error, answer.status) : emptyAnswerAsError(answer);
   const outcome = classify(answer.data, failure);
   if (outcome.kind === 'stop') return { kind: 'stop' };
-  if (outcome.kind === 'sent') {
-    options?.onWrite?.();
-    return { kind: 'ok', data: isFields(outcome.result) ? outcome.result : {} };
-  }
+  if (outcome.kind === 'sent') return { kind: 'ok', data: isFields(outcome.result) ? outcome.result : {} };
   if (outcome.kind === 'refused') return { kind: 'code', code: outcome.code ?? 'refused' };
   return { kind: 'transient' };
 }
@@ -195,6 +194,7 @@ export async function sendHeldPhotos(
         if (end === 'invalid' || end === 'file_missing' || end === 'not_yours' || end === 'line_gone' || end === 'document_gone') {
           end = await reportMissing(row.held_id, photo, end, options);
         }
+        if (end === 'done' || end === 'missing') options?.onWrite?.();
         if (end === 'done') await markPhoto(row.id, photo.client_photo_id, { done: 1 });
         else if (end === 'missing') await markPhoto(row.id, photo.client_photo_id, { missing: 1 });
         else if (end === 'decided') {

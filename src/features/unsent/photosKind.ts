@@ -114,7 +114,6 @@ async function uploadOne(client: Client, recordId: string, photo: PhotoRow, ctx:
   });
   const registration = asOutcome(registered);
   if (registration.kind !== 'sent') return registration.kind === 'lost' ? { kind: 'transient' } : registration;
-  ctx.noteWrite?.();
   const { image_id: imageId, storage_path: storagePath, upload_token: uploadToken } = registration.result as Record<string, string>;
 
   let failure: SendOutcome;
@@ -153,7 +152,11 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
     rows.map(row =>
       limit(async () => {
         const outcome = await uploadOne(client, recordId, row, ctx);
-        if (outcome.kind === 'sent') await markPhoto(row.item_id, row.client_photo_id, { done: 1 });
+        if (outcome.kind === 'sent') {
+          // Attached, and not sent again: the pass asks for its sync even when other photos of the item wait (WH-393).
+          ctx.noteWrite?.();
+          await markPhoto(row.item_id, row.client_photo_id, { done: 1 });
+        }
         return outcome;
       }).catch((error: unknown) => {
         logger.warn('A photo could not be sent', loggableError(error));
@@ -173,17 +176,19 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
 
 /** Deletes the photos an offline edit removed. Null when all are gone (a photo already gone counts); else what to do next. */
 async function removePhotos(body: PhotosBody, ctx: SendContext): Promise<SendOutcome | null> {
+  let removed = false;
   for (const imageId of body.remove ?? []) {
     const result = await deleteWarehouseImageDetailed('grn', imageId, { quietWrite: true });
-    // Gone from the record, even when only its stored file could not be confirmed deleted.
-    if (result.success || result.partial) ctx.noteWrite?.();
     // The record is gone and only the stored file could not be confirmed deleted: the photo no longer belongs to the GRN.
     if (!result.success && !result.partial) {
       // A refusal (the last photo of a GRN stays, not allowed) is not tried again; any other failure is the network's.
-      return result.refusal
-        ? { kind: 'refused', reason: result.error ?? '', ...(result.refusal.code ? { code: result.refusal.code } : {}) }
-        : { kind: 'transient' };
+      if (!result.refusal) return { kind: 'transient' };
+      // The item ends refused with some photos already gone from the record: the copy still has to learn that (WH-393). A
+      // transient end asks for nothing, as the next pass deletes the same photos again and its sync would start it at once.
+      if (removed) ctx.noteWrite?.();
+      return { kind: 'refused', reason: result.error ?? '', ...(result.refusal.code ? { code: result.refusal.code } : {}) };
     }
+    removed = true;
   }
   return null;
 }
