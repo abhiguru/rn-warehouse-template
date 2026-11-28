@@ -56,6 +56,17 @@ const dateOf = (value: unknown): string | null => {
   return raw === null ? null : formatDate(raw);
 };
 
+/**
+ * The other GRN of a possible duplicate: its number and the day it was saved. The server's refusal carries them as
+ * `existing_number` and `existing_created_at` (migration 124); both must be there, else the sentence and hint say it exists without
+ * naming it (Design 7.11f).
+ */
+function duplicateRef(data: Fields): { other: string; date: string } | null {
+  const other = textOf(data.existing_number) ?? textOf(data.other) ?? textOf(data.other_gr_no);
+  const date = dateOf(data.existing_created_at) ?? dateOf(data.date) ?? dateOf(data.saved_at);
+  return other !== null && date !== null ? { other: formatIdentifier(other), date } : null;
+}
+
 function sentenceOf(reason: HeldReason, ctx: ReasonContext): string | null {
   const data = isFields(ctx.data) ? ctx.data : {};
   const document = documentWord(ctx.kind, ctx.what);
@@ -106,9 +117,8 @@ function sentenceOf(reason: HeldReason, ctx: ReasonContext): string | null {
       return date !== null && rule !== null ? tr('offline.holding.sentence.dateRefused', { date, rule }) : null;
     }
     case 'duplicate': {
-      const other = textOf(data.other) ?? textOf(data.other_gr_no);
-      const date = dateOf(data.date) ?? dateOf(data.saved_at);
-      return other !== null && date !== null ? tr('offline.holding.sentence.duplicate', { other, date }) : null;
+      const ref = duplicateRef(data);
+      return ref === null ? tr('offline.holding.sentence.duplicateNoRef') : tr('offline.holding.sentence.duplicate', ref);
     }
     case 'belowDispatched': {
       const quantity = numberOf(data.requested);
@@ -134,8 +144,8 @@ function hintOf(reason: HeldReason, ctx: ReasonContext): string {
     return ctx.customer === null ? tr('offline.holding.hint.other') : tr('offline.holding.hint.noRate', { customer: ctx.customer });
   }
   if (reason === 'duplicate') {
-    const other = textOf(data.other) ?? textOf(data.other_gr_no);
-    return other === null ? tr('offline.holding.hint.other') : tr('offline.holding.hint.duplicate', { other });
+    const ref = duplicateRef(data);
+    return ref === null ? tr('offline.holding.hint.duplicateNoRef') : tr('offline.holding.hint.duplicate', { other: ref.other });
   }
   return tr(`offline.holding.hint.${reason}` as TranslationKey);
 }
