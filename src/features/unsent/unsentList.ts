@@ -164,6 +164,11 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
       dependsOn: view.dependsOn,
     });
   }
+  // A photo of a new record not sent yet waits for it: "Waiting for its GRN" (Design 4.2); one whose GRN was sent keeps its tag.
+  const unsentIds = new Set(rows.filter(row => row.section === 'unsent').map(row => row.id));
+  for (const row of rows) {
+    if (row.kind === 'photos' && row.tag === 'saved' && row.dependsOn != null && unsentIds.has(row.dependsOn)) row.tag = 'waiting';
+  }
   // "Not sent yet" oldest first (the order they are sent); "Held": each refused item with what follows it directly under
   // it; "Sent today" newest first.
   const unsent = rows.filter(row => row.section === 'unsent');
