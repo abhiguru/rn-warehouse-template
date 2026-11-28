@@ -514,8 +514,10 @@ const bodyInOwnWords = (response: Response): Response =>
 
 export function createAuthenticatedFetch() {
   const generation = getSessionGeneration();
+  // Classed per request with the same rule as the client's fetch: a read RPC (get_print_jobs) is a read, so it is not
+  // noted as a write (no after-write sync) and a server switch aborts it. Edge functions stay writes.
   return (input: RequestInfo | URL, init?: RequestInit) =>
-    sessionFetch(input, init, generation, true).then(bodyInOwnWords, inOwnWords);
+    sessionFetch(input, init, generation, !isReadRequest(input, init)).then(bodyInOwnWords, inOwnWords);
 }
 
 export function createSessionReadFetch() {
