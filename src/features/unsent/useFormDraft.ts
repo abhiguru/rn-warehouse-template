@@ -2,7 +2,8 @@
  * Unfinished forms (WH-301, contract section 8): while a GRN or Edit GRN form is open, its state is saved to the
  * phone one second after the last change and at once when the app goes to the background or the form closes. It is kept by
  * every close but the person's own "Discard" and a successful save (`endFormDraft`), and offered again when that form is
- * opened. Where the facility has no phone copy the hook does nothing.
+ * opened. Where the facility has no phone copy nothing new is saved, but a form kept earlier is still offered, continued
+ * or discarded, and ended by a save.
  */
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
@@ -93,17 +94,16 @@ const confirmDiscard = async (kind: FormKind): Promise<boolean> => {
  */
 export function useFormDraft(kind: FormKind, grnId: string | null, enabled: boolean, stillOpen: () => boolean): { ready: boolean } {
   const store = useAppStore();
-  const on = hasCapability('sync');
   // The host's answer to "is the form's screen still the route?" is read when a form empties, not when it is made.
   const stillOpenRef = useRef(stillOpen);
   useEffect(() => {
     stillOpenRef.current = stillOpen;
   });
-  const [ready, setReady] = useState(!on);
+  const [ready, setReady] = useState(false);
 
   // Offer a kept form once.
   useEffect(() => {
-    if (!on || !enabled || ready) return undefined;
+    if (!enabled || ready) return undefined;
     let live = true;
     const decide = async () => {
       const draft = await loadFormDraft(kind, grnId);
@@ -136,16 +136,18 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
     return () => {
       live = false;
     };
-  }, [on, enabled, ready, kind, grnId, store]);
+  }, [enabled, ready, kind, grnId, store]);
 
   // Save as the person types.
   const latest = useRef<{ state: GRNFormState; epoch: number } | null>(null);
   useEffect(() => {
-    if (!on || !ready || !enabled) return undefined;
+    if (!ready || !enabled) return undefined;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const write = async () => {
       if (timer !== null) clearTimeout(timer);
       timer = null;
+      // A facility without the feature keeps no new unfinished form; one saved earlier is still offered and ended (WH-301).
+      if (!hasCapability('sync')) return;
       const kept = latest.current;
       // A form that was ended (discarded, saved) since this state was seen is not written again.
       if (kept?.epoch !== formDraftEpoch()) return;
@@ -192,7 +194,7 @@ export function useFormDraft(kind: FormKind, grnId: string | null, enabled: bool
       void write();
       if (kind === 'grn') clearRestoredFormNumberMode(kind);
     };
-  }, [on, ready, enabled, kind, grnId, store]);
+  }, [ready, enabled, kind, grnId, store]);
 
   return { ready };
 }
