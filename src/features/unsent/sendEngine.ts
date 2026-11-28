@@ -356,8 +356,11 @@ function armRetry(abort: AbortController, wait: number): void {
   engine.retryTimer = timer;
 }
 
-/** True when the pass ended clean: a trigger that arrived meanwhile may be answered with one more look. */
-async function onePass(): Promise<boolean> {
+/**
+ * True when the pass ended clean: a trigger that arrived meanwhile may be answered with one more look. 'session-changed'
+ * when the session changed while the pass ran: it armed nothing, and a trigger that joined it still gets a pass (WH-406).
+ */
+async function onePass(): Promise<boolean | 'session-changed'> {
   if (engine.retryTimer) {
     clearTimeout(engine.retryTimer);
     engine.retryTimer = null;
@@ -382,7 +385,7 @@ async function onePass(): Promise<boolean> {
   while (pass.tasks.size > 0) await Promise.all([...pass.tasks]);
   if (!pass.transient && !pass.stop) await handOver(pass);
   const sameSession = engine.abort === sessionAbort && !sessionAbort.signal.aborted;
-  if (!sameSession) return false;
+  if (!sameSession) return 'session-changed';
   if (pass.deferMs !== null && !pass.transient && !pass.stop) {
     // A form is still waiting for its record's answer: look again when that wait is over.
     armRetry(sessionAbort, pass.deferMs + 50);
@@ -431,7 +434,10 @@ export function sendNow(reason: SendTrigger): Promise<void> {
       do {
         engine.again = false;
         logger.debug(`Send pass (${reason})`);
-        if (!(await withoutWriteNote(onePass))) engine.again = false;
+        // A pass ended by a session change keeps `again`: the joined trigger's next pass reads the new session's scope and
+        // controller from the start of onePass, and arms its retry only for that session.
+        const ended = await withoutWriteNote(onePass);
+        if (ended === false) engine.again = false;
       } while (engine.again);
     } catch (error) {
       logger.warn('A send pass failed', loggableError(error));
