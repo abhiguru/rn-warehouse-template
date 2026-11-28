@@ -88,10 +88,10 @@ export async function withAfterWriteSyncHold<T>(fn: () => Promise<T>): Promise<T
 
 /**
  * RPCs that are not reads by name (`READ_RPC` in supabaseConfig.ts) but change nothing the copy holds: checks, a number
- * suggestion, a seen marker, the sign-in and enrollment functions, the language and the connection notes.
+ * suggestion, a seen marker, the sign-in and enrollment functions, the language, the connection notes and the session's phone name.
  */
 const NOT_COPY_RPC =
-  /^(can_make_bills|suggest_document_number|mark_held_item_seen|make_pairing_code|set_my_language|revoke_session|operator_review_enrollment|review_enrollment_again|submit_connection_notes)$/;
+  /^(can_make_bills|suggest_document_number|mark_held_item_seen|make_pairing_code|set_my_language|revoke_session|operator_review_enrollment|review_enrollment_again|submit_connection_notes|set_session_device_name)$/;
 
 /**
  * Called for each request the request layer classed as a write (`mutation`: not `isReadRequest`, so a GET, a HEAD, a read
