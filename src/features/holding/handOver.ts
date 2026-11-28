@@ -14,6 +14,7 @@ import { hasCapability } from '@/config/facilityCapabilities';
 import { normalizeRole } from '@/config/roles';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { isCopyOffline } from '@/features/phone-copy/syncEngine';
+import { phoneDisplayName } from '@/features/users/phoneDisplayName';
 import { SAVE_WAIT_MS, saveWaitLeft } from '@/features/unsent/saveWait';
 import { answerFiguresOf, answerCodeOf } from '@/features/unsent/refusalAnswer';
 import { classify, DEPENDS_ON_REFUSED } from '@/features/unsent/sendEngine';
@@ -143,7 +144,12 @@ async function callHoldItems(items: readonly HoldItem[], recorder?: string): Pro
   let answer: { data: unknown; error: unknown; status?: number };
   try {
     const client = await getAuthenticatedClient();
-    answer = (await client.rpc('hold_items', { p_items: items, ...(recorder === undefined ? {} : { p_recorder: recorder }) })) as typeof answer;
+    const deviceName = backendHasFeature('heldDeviceName') ? phoneDisplayName() : null;
+    answer = (await client.rpc('hold_items', {
+      p_items: items,
+      ...(recorder === undefined ? {} : { p_recorder: recorder }),
+      ...(deviceName === null ? {} : { p_device_name: deviceName }),
+    })) as typeof answer;
   } catch (error) {
     answer = { data: null, error };
   }
