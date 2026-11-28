@@ -31,10 +31,10 @@ type MissingReason = 'invalid' | 'file_missing' | 'not_yours' | 'line_gone' | 'd
 /** What a call to the server gave: its members when it succeeded, or why not. */
 type Reply = { kind: 'ok'; data: Fields } | { kind: 'code'; code: string } | { kind: 'transient' } | { kind: 'stop' };
 
-async function rpc(name: string, args: Fields): Promise<Reply> {
+async function rpc(name: string, args: Fields, options?: { quietWrite?: boolean }): Promise<Reply> {
   let answer: { data: unknown; error: unknown; status?: number };
   try {
-    const client = await getAuthenticatedClient();
+    const client = await getAuthenticatedClient(options?.quietWrite ? { quietWrite: true } : undefined);
     answer = (await client.rpc(name, args)) as typeof answer;
   } catch (error) {
     answer = { data: null, error };
@@ -57,7 +57,7 @@ function endOfCode(code: string): PhotoEnd {
   return 'transient';
 }
 
-async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
+async function sendOne(heldId: string, photo: PhotoRow, options?: { quietWrite?: boolean }): Promise<PhotoEnd> {
   const file = new File(photo.file);
   if (!file.exists) return 'file_missing';
   const fileName = photo.file.slice(photo.file.lastIndexOf('/') + 1).replace(/^[0-9a-f-]{36}-/, '');
@@ -70,7 +70,7 @@ async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
     p_file_size: file.size,
     p_mime_type: mimeType,
     p_line_ref: photo.line_ref,
-  });
+  }, options);
   if (registered.kind === 'stop') return 'stop';
   if (registered.kind === 'transient') return 'transient';
   if (registered.kind === 'code') return endOfCode(registered.code);
@@ -79,7 +79,7 @@ async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
   const { storage_path: storagePath, bucket } = registered.data;
   if (typeof storagePath !== 'string' || typeof bucket !== 'string') return 'transient';
   try {
-    const client = await getAuthenticatedClient();
+    const client = await getAuthenticatedClient(options?.quietWrite ? { quietWrite: true } : undefined);
     const bytes = await file.arrayBuffer();
     // upsert: a resend after a lost answer finds its file already there.
     const { error } = await client.storage.from(bucket).upload(storagePath, bytes, { contentType: mimeType, upsert: true });
@@ -88,7 +88,7 @@ async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
     logger.warn('A held photo could not be uploaded', loggableError(error));
     return 'transient';
   }
-  const confirmed = await rpc('confirm_held_photo_upload', { p_held_id: heldId, p_client_photo_id: photo.client_photo_id });
+  const confirmed = await rpc('confirm_held_photo_upload', { p_held_id: heldId, p_client_photo_id: photo.client_photo_id }, options);
   if (confirmed.kind === 'ok') return 'done';
   return confirmed.kind === 'code' ? endOfCode(confirmed.code) : confirmed.kind;
 }
@@ -97,14 +97,14 @@ async function sendOne(heldId: string, photo: PhotoRow): Promise<PhotoEnd> {
  * Tells the server the photo is missing, so the held item page shows it as missing. Only a settled answer lets the phone mark the
  * photo done: a transient failure leaves it for the next pass, and an item already decided needs nothing more.
  */
-async function reportMissing(heldId: string, photo: PhotoRow, reason: MissingReason): Promise<PhotoEnd> {
+async function reportMissing(heldId: string, photo: PhotoRow, reason: MissingReason, options?: { quietWrite?: boolean }): Promise<PhotoEnd> {
   const reply = await rpc('mark_held_photo_missing', {
     p_held_id: heldId,
     p_client_photo_id: photo.client_photo_id,
     p_role: photo.role,
     p_line_ref: photo.line_ref,
     p_reason: reason,
-  });
+  }, options);
   if (reply.kind === 'ok') return 'missing';
   if (reply.kind === 'code') return reply.code === 'HELD_ALREADY_DECIDED' ? 'decided' : 'transient';
   return reply.kind;
@@ -165,7 +165,11 @@ function blockedForGood(heldId: string, photo: PhotoRow): boolean {
  * Sends the files of the `photos` rows that have a held id and are not held yet, then turns each row whose files are all done or
  * missing into `held` (unless `markHeld` is false: the move deletes them instead). Always resolves; what could not go is tried again.
  */
-export async function sendHeldPhotos(rows: readonly ItemRow[], markHeld = true): Promise<HeldPhotosResult> {
+export async function sendHeldPhotos(
+  rows: readonly ItemRow[],
+  markHeld = true,
+  options?: { quietWrite?: boolean }
+): Promise<HeldPhotosResult> {
   const result: HeldPhotosResult = { stop: false, transient: false, finished: new Set() };
   for (const row of rows) {
     if (row.kind !== 'photos' || row.state !== 'refused' || !row.held_id) continue;
@@ -174,9 +178,11 @@ export async function sendHeldPhotos(rows: readonly ItemRow[], markHeld = true):
       let decided = false;
       for (const photo of await photosOf(row.id)) {
         if (photo.done === 1 || photo.missing === 1) continue;
-        let end = await sendOne(row.held_id, photo);
+        let end = await sendOne(row.held_id, photo, options);
         if (end === 'blocked' && blockedForGood(row.held_id, photo)) end = 'not_yours';
-        if (end === 'invalid' || end === 'file_missing' || end === 'not_yours' || end === 'line_gone' || end === 'document_gone') end = await reportMissing(row.held_id, photo, end);
+        if (end === 'invalid' || end === 'file_missing' || end === 'not_yours' || end === 'line_gone' || end === 'document_gone') {
+          end = await reportMissing(row.held_id, photo, end, options);
+        }
         if (end === 'done') await markPhoto(row.id, photo.client_photo_id, { done: 1 });
         else if (end === 'missing') await markPhoto(row.id, photo.client_photo_id, { missing: 1 });
         else if (end === 'decided') {

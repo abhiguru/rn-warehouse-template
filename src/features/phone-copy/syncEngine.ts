@@ -11,12 +11,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { getLanStatus } from '@/config/lanTransport';
 import { isOfflineState } from '@/config/netOffline';
-import {
-  hasActiveUploadHold,
-  subscribeFacilityWrite,
-  subscribeQuietWrite,
-  subscribeUploadHoldReleased,
-} from '@/config/facilityWrite';
+import { hasActiveUploadHold, subscribeFacilityWrite, subscribeUploadHoldReleased } from '@/config/facilityWrite';
 import { hasCapability } from '@/config/facilityCapabilities';
 import { registerSessionScoped } from '@/config/sessionScopedRegistry';
 import { noteRpcSupport } from '@/config/facilityRpcSupport';
@@ -1014,16 +1009,6 @@ export function waitForSyncAfterWrite(maxMs = 3000): Promise<void> {
   });
 }
 
-/**
- * A write accepted while a send pass runs: the pass syncs once at its end (sendEngine, takeWriteSeenWhileQuiet), so no timer
- * here; the sync is only marked as owed, and `waitForSyncAfterWrite` waits for that sync.
- */
-function noteQuietWrite(): void {
-  if (!copyFollowsWrites()) return;
-  engine.writeSeq += 1;
-  engine.writePending = true;
-}
-
 // The writes noted so far, the timer and the waiting screens belong to one session: nothing of it acts in the next (WH-395).
 registerSessionScoped('after-write-sync', () => {
   clearWriteTimer();
@@ -1033,7 +1018,6 @@ registerSessionScoped('after-write-sync', () => {
 });
 
 subscribeFacilityWrite(noteOnlineWrite);
-subscribeQuietWrite(noteQuietWrite);
 subscribeUploadHoldReleased(() => {
   if (engine.writePending && copyFollowsWrites()) {
     armWriteTimer(WRITE_SYNC_DELAY_MS, 'delay');

@@ -60,6 +60,7 @@ const SECURE_KEYS = {
 let __supabaseInstance: SupabaseClient | undefined;
 let __currentConfig: { url: string; anonKey: string } | undefined;
 let __authenticatedClientInstance: SupabaseClient | undefined;
+let __quietAuthenticatedClientInstance: SupabaseClient | undefined;
 let __cachedAuthToken: string | undefined;
 let operatorSwitching = false;
 const activeRequests = new Set<{ controller: AbortController; mutation: boolean }>();
@@ -479,10 +480,11 @@ async function sessionFetch(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   generation: number,
-  mutation: boolean
+  mutation: boolean,
+  quietWrite = false
 ): Promise<Response> {
   const response = await gatedFetch(input, init, { generation, mutation, honorSwitch: true });
-  if (mutation && response.ok) noteDataWrite(input);
+  if (mutation && response.ok && !quietWrite) noteDataWrite(input);
   const refused = bearerOf(init);
   if (!refused || !(await isExpiredTokenResponse(response))) return response;
   const renewed = await accessTokenAfterExpiry(refused, generation);
@@ -553,6 +555,7 @@ export const isOperatorSwitchFree = (): boolean =>
 
 export const clearAuthenticatedClientCache = () => {
   __authenticatedClientInstance = undefined;
+  __quietAuthenticatedClientInstance = undefined;
   __cachedAuthToken = undefined;
 };
 
@@ -607,7 +610,8 @@ export const getCurrentConfig = () => {
 
 export const getSupabaseRPCClient = getSupabaseClient;
 
-export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
+export const getAuthenticatedClient = async (options?: { quietWrite?: boolean }): Promise<SupabaseClient> => {
+  const quietWrite = options?.quietWrite ?? false;
   if (operatorSwitching) throw new AppError('SERVER_SWITCH', t('errors.auth.serverSwitchInProgress'));
   const generation = getSessionGeneration();
   const session = await acquireValidSession();
@@ -632,14 +636,20 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
     operatorSwitching
   )
     throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
-  if (!__authenticatedClientInstance || __cachedAuthToken !== session.authToken) {
+  if (__cachedAuthToken !== session.authToken) {
+    __authenticatedClientInstance = undefined;
+    __quietAuthenticatedClientInstance = undefined;
+    __cachedAuthToken = session.authToken;
+  }
+  const cached = quietWrite ? __quietAuthenticatedClientInstance : __authenticatedClientInstance;
+  if (!cached) {
     const config = getCurrentConfig();
-    __authenticatedClientInstance = createClient(config.url, config.anonKey, {
+    const client = createClient(config.url, config.anonKey, {
       global: {
         headers: { Authorization: 'Bearer ' + session.authToken },
         // Only a write holds a server switch back; a read is aborted by it.
         fetch: (input, init) =>
-          sessionFetch(input, init, generation, !isReadRequest(input, init)),
+          sessionFetch(input, init, generation, !isReadRequest(input, init), quietWrite),
       },
       // postgrest-js otherwise repeats a failed read up to 3 times and waits the gateway's Retry-After (120 s while the
       // facility upgrades), so one read could hang for minutes. The request layer decides on a repeat (gatedFetch).
@@ -650,9 +660,11 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
         detectSessionInUrl: false,
       },
     });
-    __cachedAuthToken = session.authToken;
+    if (quietWrite) __quietAuthenticatedClientInstance = client;
+    else __authenticatedClientInstance = client;
+    return client;
   }
-  return __authenticatedClientInstance;
+  return cached;
 };
 
 export const getSupabaseWithJWT = getAuthenticatedClient;

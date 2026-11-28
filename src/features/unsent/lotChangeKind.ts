@@ -48,7 +48,7 @@ export const changedLotFields = (body: LotChangeBody): LotField[] => LOT_FIELDS.
 
 async function sendLotChange(body: LotChangeBody, requestKey: string): Promise<SendOutcome> {
   if (!isLotChangeBody(body)) return { kind: 'refused', reason: 'lotChange: unreadable body' };
-  const client = await getAuthenticatedClient();
+  const client = await getAuthenticatedClient({ quietWrite: true });
   const answer = await client.rpc('set_lot_rack_and_mark', {
     p_lot_id: body.lotId,
     p_changes: { ...body.changes, recorded_at: body.recordedAt },

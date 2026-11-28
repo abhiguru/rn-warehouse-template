@@ -142,7 +142,7 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
   const recordId = recordIdOf(rawBody, ctx.resolved);
   if (!recordId) return { kind: 'refused', reason: 'photos: the record is not known' };
   const rows = (await photosOf(ctx.itemId)).filter(row => !row.done && !row.missing);
-  const client = await getAuthenticatedClient();
+  const client = await getAuthenticatedClient({ quietWrite: true });
   if (rows.length === 0) {
     const removal = await removePhotos(rawBody);
     return removal ?? { kind: 'sent', result: { success: true, uploaded: 0 } };
@@ -173,7 +173,7 @@ async function sendPhotos(rawBody: unknown, ctx: SendContext): Promise<SendOutco
 /** Deletes the photos an offline edit removed. Null when all are gone (a photo already gone counts); else what to do next. */
 async function removePhotos(body: PhotosBody): Promise<SendOutcome | null> {
   for (const imageId of body.remove ?? []) {
-    const result = await deleteWarehouseImageDetailed('grn', imageId);
+    const result = await deleteWarehouseImageDetailed('grn', imageId, { quietWrite: true });
     // The record is gone and only the stored file could not be confirmed deleted: the photo no longer belongs to the GRN.
     if (!result.success && !result.partial) {
       // A refusal (the last photo of a GRN stays, not allowed) is not tried again; any other failure is the network's.

@@ -26,12 +26,13 @@ export async function deleteWarehouseImage(kind: 'grn' | 'dispatch', imageId: st
 /** `deleteWarehouseImage`, telling a refusal from a failure of the network (the queue does not try a refusal again). */
 export async function deleteWarehouseImageDetailed(
   kind: 'grn' | 'dispatch',
-  imageId: string
+  imageId: string,
+  options?: { quietWrite?: boolean }
 ): Promise<DetailedImageDeletionResult> {
   let finishMutation: (() => void) | undefined;
   try {
     finishMutation = beginOperatorMutation();
-    const client = await getAuthenticatedClient();
+    const client = await getAuthenticatedClient(options?.quietWrite ? { quietWrite: true } : undefined);
     const { data, error } = await client.rpc(`delete_${kind}_image`, {
       p_image_id: imageId,
     });

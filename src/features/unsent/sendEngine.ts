@@ -20,7 +20,6 @@ import { createLogger, loggableError } from '@/utils/logger';
 import { handOverRefused } from '@/features/holding/handOver';
 import { answerCodeOf } from './refusalAnswer';
 import { getSendKind, type SendContext, type SendKind, type SendOutcome } from './sendKinds';
-import { takeWriteSeenWhileQuiet, withoutWriteNote } from '@/config/facilityWrite';
 import { hasCapability } from '@/config/facilityCapabilities';
 import { getUnsentDb, unsentFileExists } from './unsentDb';
 import { cannotSendUnsent } from './unsentRole';
@@ -120,7 +119,7 @@ interface Pass {
 /** Hands the refused items to the server's holding list (WH-304); a feature that is off hands over nothing. */
 async function handOver(pass: Pass): Promise<void> {
   if (pass.stop) return;
-  const handed = await handOverRefused(pass.scope, pass.signal);
+  const handed = await handOverRefused(pass.scope, pass.signal, { quietWrite: true });
   if (handed.stop) pass.stop = true;
   if (handed.transient) pass.transient = true;
   if (handed.deferMs !== null) pass.deferMs = pass.deferMs === null ? handed.deferMs : Math.min(pass.deferMs, handed.deferMs);
@@ -504,7 +503,7 @@ export function sendNow(reason: SendTrigger): Promise<void> {
         logger.debug(`Send pass (${reason})`);
         // A pass ended by a session change keeps `again`: the joined trigger's next pass reads the new session's scope and
         // controller from the start of onePass, and arms its retry only for that session.
-        const ended = await withoutWriteNote(onePass);
+        const ended = await onePass();
         if (ended === false) engine.again = false;
       } while (engine.again);
     } catch (error) {
@@ -515,9 +514,7 @@ export function sendNow(reason: SendTrigger): Promise<void> {
       tellSending();
     }
     // What was sent changes the numbers and stock the copy holds: ask for a sync (C298 6.6).
-    // A write made during the pass was not noted (the pass is quiet), so a pass that sent nothing still asks once.
-    const foreignWrite = takeWriteSeenWhileQuiet();
-    if (engine.sentAny || foreignWrite) {
+    if (engine.sentAny) {
       engine.sentAny = false;
       void syncNow('after-send');
     }
