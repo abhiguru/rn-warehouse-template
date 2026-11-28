@@ -10,7 +10,7 @@
  * with the last 30 days. The server is the authority on the period (12 months at most, 2 years back, today or earlier); the
  * screen checks the same rule first so a wrong period is told at once. The phone works out nothing of the report.
  */
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Pressable, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
@@ -71,18 +71,36 @@ const makeStyles = (t: ThemeTokens) => ({
 
 export default function TemperatureReportScreen() {
   const { deviceId } = useLocalSearchParams<{ deviceId?: string }>();
-  // The scaffold's own signal: while it shows "needs a connection" no request goes out; the key changes when the connection
-  // is back, so the read runs once then.
+  // The scaffold's own signal: while it shows "needs a connection" no request goes out and a sensor already open keeps its
+  // screen; the read runs once when the connection is back.
   const needsConnection = useNeedsConnectionV3();
   const fetch = useCallback(
     (): Promise<ReportSensorsResult> => (needsConnection ? Promise.resolve({ success: false, data: null, message: '' }) : getReportSensors()),
     [needsConnection]
   );
+  // The key never changes with the connection, so going offline leaves the open sensor's screen as it is.
   const query = useLiveReport(
-    needsConnection ? 'temperature-report-sensors-offline' : 'temperature-report-sensors',
+    'temperature-report-sensors',
     fetch,
     tr('reports.temperatureReport.loadError')
   );
+  const { refresh, retry } = query;
+  // Offline no load runs at all (a failed load would clear the open sensor): pull-to-refresh and Retry return at once.
+  const scaffoldQuery = useMemo(
+    () => ({
+      ...query,
+      refresh: (): Promise<boolean> => (needsConnection ? Promise.resolve(false) : refresh()),
+      retry: () => {
+        if (!needsConnection) retry();
+      },
+    }),
+    [query, needsConnection, refresh, retry]
+  );
+  const wasOffline = useRef(needsConnection);
+  useEffect(() => {
+    if (wasOffline.current && !needsConnection) void refresh();
+    wasOffline.current = needsConnection;
+  }, [needsConnection, refresh]);
   const sensors = useMemo(() => query.data ?? [], [query.data]);
   const styles = useThemedStyles(makeStyles);
 
@@ -98,7 +116,7 @@ export default function TemperatureReportScreen() {
       <ReportScaffold
         title={tr('reports.titles.temperatureReport')}
         subtitle={deviceId ? undefined : tr('reports.temperatureReport.chooseSensor')}
-        query={query}
+        query={scaffoldQuery}
         kpiPlaceholders={0}
         rows={deviceId ? [] : sensors}
         renderRow={renderRow}
