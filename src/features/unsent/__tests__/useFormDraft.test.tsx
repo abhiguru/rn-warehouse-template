@@ -15,7 +15,7 @@ import grnFormReducer, { resetForm as resetGrn, updateHeader, hydrateDraft } fro
 import dispatchFormReducer from '@/store/slices/dispatchFormSlice';
 import { env } from '@/tests/phoneCopy/phoneEnv';
 import { files } from '@/tests/phoneCopy/fakeFiles';
-import { rawRun, unsentFileNames } from '@/tests/unsent/unsentPhone';
+import { addPhoto, keptPhotoFiles, rawRun, unsentFileNames } from '@/tests/unsent/unsentPhone';
 import { loadFormDraft, saveFormDraft, whileSessionEnds, listOwnForms } from '@/features/unsent/formDrafts';
 import { initUnsent } from '@/features/unsent/unsentStore';
 import { useFormDraft, flushFormDraft, requestContinue } from '@/features/unsent/useFormDraft';
@@ -217,5 +217,64 @@ describe('ending a form', () => {
     await act(async () => { mockStore.dispatch(hydrateDraft(KEPT as never)); mockStore.dispatch(updateHeader({ note: 'went on' })); });
     await advance(1_000);
     expect(((await loadFormDraft('grn'))?.state as { header: { note: string } }).header.note).toBe('went on');
+  });
+});
+
+// WH-301 review Medium, Product 2026-11-28 (Dev a1866701, 2cc28b69): with the facility's sync feature off, a form kept earlier is still
+// offered (continue or discard) and ended by an online save; no NEW unfinished form is kept; a kept form never refuses sign-out.
+describe('with the offline feature off', () => {
+  const PICKED = () => addPhoto('feature-off-pick.jpg');
+  beforeEach(async () => {
+    const withPhoto = { header: { ...KEPT.header, gr_images: [{ uri: PICKED() }] }, items: [] };
+    await saveFormDraft({ kind: 'grn', state: withPhoto, customer: 'Asha Fictional Traders', at: Date.now() });
+    expect(keptPhotoFiles()).toHaveLength(1);
+    setFacilityCapabilities(SERVER, { sync: false });
+  });
+
+  it('a form kept earlier is still offered; Continue puts back its fields and its photo', async () => {
+    ask.mockResolvedValueOnce('continue');
+    const hook = await mount();
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(ask.mock.calls[0][0]).toBe(t('offline.resume.grnTitle'));
+    expect(hook.result.current.ready).toBe(true);
+    const header = mockStore.getState().grnForm.header;
+    expect(header).toMatchObject({ note: 'kept note', gr_no: 'RV15002' });
+    expect(header.gr_images).toHaveLength(1);
+    expect(keptPhotoFiles()).toHaveLength(1);
+  });
+
+  it('Discard removes the kept form and its photo files', async () => {
+    ask.mockResolvedValueOnce('new').mockResolvedValueOnce('discard');
+    await mount();
+    expect(await loadFormDraft('grn')).toBeNull();
+    expect(keptPhotoFiles()).toHaveLength(0);
+    expect(mockStore.getState().grnForm.header.note).toBe('');
+  });
+
+  it('an online save that empties the form ends the continued form and its files', async () => {
+    ask.mockResolvedValueOnce('continue');
+    await mount();
+    await act(async () => { mockStore.dispatch(resetGrn()); });
+    await flush();
+    expect(await forms()).toEqual([]);
+    expect(keptPhotoFiles()).toHaveLength(0);
+  });
+
+  it('writes no NEW unfinished form: typing into another form and leaving keeps nothing, however long or on closing', async () => {
+    await rawRun('DELETE FROM forms');
+    const hook = await mount();
+    await type('typed with the feature off');
+    await advance(5_000);
+    expect(await forms()).toEqual([]);
+    await hook.unmount();
+    await flush();
+    expect(await forms()).toEqual([]);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it('a kept form does not refuse sign-out, leaving the facility or deleting the account', async () => {
+    const { accountActionAllowed } = require('@/features/unsent/workGate') as typeof import('@/features/unsent/workGate');
+    expect(await forms()).toHaveLength(1);
+    expect(accountActionAllowed()).toEqual({ ok: true });
   });
 });

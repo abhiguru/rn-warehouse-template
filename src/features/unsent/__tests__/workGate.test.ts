@@ -99,11 +99,33 @@ describe('G4: what refuses an account action', () => {
     expect(phone.gate.accountActionAllowed()).toEqual({ ok: true });
   });
 
-  it('with the offline feature off nothing is refused', async () => {
+  // WH-301 review Medium, Product 2026-11-28 (replaces "with the offline feature off nothing is refused"): work already on the
+  // phone is never left behind, and with the feature off nothing new can pile up, so the 2-hour rule stops nothing.
+  it('with the offline feature off and nothing unsent, nothing is refused or stopped', async () => {
+    const phone = await start();
+    phone.setSyncCapability(false);
+    expect(phone.gate.accountActionAllowed()).toEqual({ ok: true });
+    expect(phone.gate.canStartWork()).toEqual({ ok: true });
+  });
+
+  it('with the offline feature off and items unsent, sign-out, leaving the facility and deleting the account are refused with the count', async () => {
+    const phone = await start();
+    await phone.queue.enqueue(waits);
+    await phone.queue.enqueue(waits);
+    phone.setSyncCapability(false);
+    expect(phone.gate.accountActionAllowed()).toEqual({ ok: false, count: 2 });
+  });
+
+  it('with the offline feature off the 2-hour rule stops no work, however long the items wait', async () => {
     const phone = await start();
     await phone.queue.enqueue(waits);
     phone.setSyncCapability(false);
-    expect(phone.gate.accountActionAllowed()).toEqual({ ok: true });
+    await advance(3 * HOUR);
+    expect(phone.gate.canStartWork()).toEqual({ ok: true });
+    expect(phone.gate.accountActionAllowed()).toEqual({ ok: false, count: 1 });
+    // Control: the same wait stops work with the feature on.
+    phone.setSyncCapability(true);
+    expect(phone.gate.canStartWork().ok).toBe(false);
   });
 });
 
