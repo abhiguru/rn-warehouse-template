@@ -38,7 +38,7 @@ import { acceptToast, acceptWithChanges, heldRouteId } from './heldForm';
 import { correctedLotBody, heldLotTarget } from './heldLot';
 import { decideHeldItem, getHeldItem, phoneNameOf, type HeldCurrent, type HeldItemDetail, type HeldListRow } from './holdingApi';
 import { describeReason } from './heldReason';
-import { heldCopyRows, markHeldSeen } from './heldRows';
+import { decidedFollowerIds, heldCopyRows, markHeldSeen } from './heldRows';
 import { heldFieldLabel, heldWhatText } from './heldWhat';
 import { lineGroups, newGrnLines, removedLinesNow, type ServerLine } from './heldEditLines';
 import { isGrnEditBody } from '@/features/grn/offline-edit/grnEditChanges';
@@ -220,7 +220,7 @@ function OwnHeldItem() {
   React.useEffect(() => {
     if (found && rejected && markedFor.current !== found.id) {
       markedFor.current = found.id;
-      void markHeldSeen(found.id);
+      void markHeldSeen(found.id, decidedFollowerIds(found.id));
     }
   }, [found, rejected]);
 
