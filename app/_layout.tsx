@@ -78,6 +78,7 @@ import { OfflineStatusBar } from '@/components/OfflineStatusBar';
 import { PhoneCopyLifecycle } from '@/features/phone-copy/components/PhoneCopyLifecycle';
 import { useCopyFeatureOn, useCopySession, useEraseCopyForRole } from '@/hooks/usePhoneCopyStatus';
 import { useCopyBarShown } from '@/features/phone-copy/useCopyBarShown';
+import { useUnsentOnlyBar } from '@/features/unsent/useUnsentOnlyBar';
 import { BelowCopyBarContext, WindowInsetsContext, useBelowCopyBar } from '@/hooks/useBelowCopyBar';
 import UpgradingBanner from '@/components/UpgradingBanner';
 import AppTooOldScreen from '@/components/AppTooOldScreen';
@@ -326,7 +327,9 @@ function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
   const copyBar = useCopyFeatureOn();
   // A customer account's bar is drawn only in its first-load states (WH-306): the inset follows what is drawn.
   const copyBarShown = useCopyBarShown();
-  const padded = upgrading || (copyBar ? copyBarShown : isOffline);
+  // With the copy off, unsent work still on the phone keeps its one-line bar (WH-301).
+  const unsentOnlyBar = useUnsentOnlyBar();
+  const padded = upgrading || (copyBar ? copyBarShown : isOffline || unsentOnlyBar);
   const value = React.useMemo(() => (padded ? { ...insets, top: 0 } : insets), [insets, padded]);
   // A Modal covers the strip, the banner and the bar alike, so it reads the window's insets in each case (WH-347).
   return (
@@ -460,6 +463,7 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: (centralU
   const copySession = useCopySession();
   const copyBar = useCopyFeatureOn();
   const copyBarShown = useCopyBarShown();
+  const unsentOnlyBar = useUnsentOnlyBar();
   useEraseCopyForRole();
 
   // Restore credentials before any route screen can redirect an initially
@@ -576,8 +580,9 @@ function ThemedContent({ onSessionUnreadable }: { onSessionUnreadable: (centralU
               <ForceUpdateModal />
               {/* The phone copy's bar where the feature is on (WH-298), today's banner elsewhere. */}
               {copyBar ? copyBarShown ? <OfflineStatusBar /> : null : <OfflineBanner />}
+              {unsentOnlyBar ? <OfflineStatusBar unsentOnly /> : null}
               {copySession ? <PhoneCopyLifecycle /> : null}
-              <UpgradingBanner belowCopyBar={copyBarShown} />
+              <UpgradingBanner belowCopyBar={copyBarShown || unsentOnlyBar} />
               <BottomSheetModalProvider>
                 <BelowOfflineBanner>
                   <NavigationStack key={language} screenBackground={screenBackground} />

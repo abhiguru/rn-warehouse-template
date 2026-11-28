@@ -21,7 +21,7 @@ import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { usePhoneCopyStatus } from '@/hooks/usePhoneCopyStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { syncNow } from '@/features/phone-copy/syncEngine';
-import { deriveOpeningBar, deriveStatusBar, joinSentences, line2OpensUnsent, type StatusBarContent } from '@/features/phone-copy/statusBarState';
+import { deriveOpeningBar, deriveStatusBar, deriveUnsentLine, joinSentences, line2OpensUnsent, type StatusBarContent } from '@/features/phone-copy/statusBarState';
 import { useUnsentSummary } from '@/features/unsent/unsentStore';
 import { iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
@@ -89,7 +89,11 @@ function lineTwoText(view: StatusBarContent): string | null {
   });
 }
 
-export function OfflineStatusBar() {
+/**
+ * `unsentOnly`: the facility's copy is off but unsent work is on the phone (WH-301): only line 2 is drawn, with its
+ * chevron and its tap into "Unsent items"; there is no line 1 and no "Try again".
+ */
+export function OfflineStatusBar({ unsentOnly = false }: { unsentOnly?: boolean }) {
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
   const insets = useSafeAreaInsets();
@@ -134,13 +138,23 @@ export function OfflineStatusBar() {
     openFailed || (awaitingOpen && openingSlow)
       ? deriveOpeningBar({ failed: openFailed, retrying: snapshot.openRetrying === true })
       : null;
-  const view: StatusBarContent = opening ?? row;
-  const empty = pending && opening === null;
+  const onlyLine = unsentOnly ? deriveUnsentLine(unsent, offline, false) : null;
+  const view: StatusBarContent = onlyLine
+    ? {
+        tone: onlyLine.key === 'unsentUnreadable' ? 'critical' : 'neutral',
+        icon: offline ? 'cloud-off-outline' : 'sync',
+        line1: [],
+        line2: onlyLine,
+        action: null,
+        actionDisabled: false,
+      }
+    : (opening ?? row);
+  const empty = !unsentOnly && pending && opening === null;
   const critical = !empty && view.tone === 'critical';
   const colors = critical ? tokens.status.critical : tokens.status.neutral;
-  const line1 = lineOneText(view);
+  const line1 = unsentOnly ? '' : lineOneText(view);
   const line2 = lineTwoText(view);
-  const label = line2 ? joinSentences(line1, line2) : line1;
+  const label = line2 && line1 ? joinSentences(line1, line2) : (line2 ?? line1);
   // Line 2 opens "Unsent items" (Design 4.1); the opening states have no line 2.
   const opensUnsent = !empty && opening === null && line2OpensUnsent(view.line2);
 
@@ -161,7 +175,7 @@ export function OfflineStatusBar() {
         testID="offline-status-bar"
         disabled={!opensUnsent}
         onPress={() => router.push('/unsent-items')}
-        style={[styles.status, { backgroundColor: colors.background, paddingTop: insets.top + space.sm }]}
+        style={[styles.status, { backgroundColor: colors.background, paddingTop: (unsentOnly && offline ? 0 : insets.top) + space.sm }]}
         accessible={!empty}
         accessibilityRole={opensUnsent ? 'button' : undefined}
         accessibilityHint={opensUnsent ? tr('offline.barHint') : undefined}
@@ -180,9 +194,11 @@ export function OfflineStatusBar() {
               <>
                 <Icon testID="offline-status-bar-icon" name={view.icon} size={iconSize.md} color={colors.text} importantForAccessibility="no" />
                 <View style={styles.texts}>
-                  <Text testID="offline-status-bar-line1" style={styles.text}>
-                    {line1}
-                  </Text>
+                  {unsentOnly ? null : (
+                    <Text testID="offline-status-bar-line1" style={styles.text}>
+                      {line1}
+                    </Text>
+                  )}
                   {line2 ? (
                     <View style={styles.lineTwo}>
                       <Text testID="offline-status-bar-line2" style={[styles.text, styles.lineTwoText]}>

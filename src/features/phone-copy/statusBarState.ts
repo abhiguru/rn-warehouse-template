@@ -79,6 +79,24 @@ export function deriveOpeningBar(input: { failed: boolean; retrying: boolean }):
 const timed = (key: OfflineStatusKey, asOf: number | null): { key: OfflineStatusKey; time?: number } =>
   asOf === null ? { key } : { key, time: asOf };
 
+/**
+ * Line 2 of the bar: what is unsent, held, waiting for an administrator or unreadable. `limitApplies` is false with the
+ * feature off, where the 2-hour limit stops nothing (WH-301, Product 2026-11-28): the count is told without the limit line.
+ */
+export function deriveUnsentLine(unsent: UnsentSummary | null, offline: boolean, limitApplies: boolean): StatusBarView['line2'] {
+  if (unsent === null) return null;
+  if (unsent.unreadable === true) return { key: 'unsentUnreadable', count: 0 };
+  if ((unsent.waitingForAdmin ?? 0) > 0) return { key: 'waitingForAdmin', count: unsent.waitingForAdmin ?? 0 };
+  if (unsent.count > 0) {
+    if (limitApplies && unsent.limitReached) return { key: 'unsentLimit', count: unsent.count };
+    if (offline) return { key: 'unsent', count: unsent.count, time: unsent.sendBy };
+    return { key: 'sending', count: unsent.count };
+  }
+  // Nothing unsent: the person's held items are told (the unsent text wins when there is one).
+  if ((unsent.held ?? 0) > 0) return { key: 'heldLine', count: unsent.held ?? 0 };
+  return null;
+}
+
 export function deriveStatusBar(input: StatusBarInput): StatusBarView {
   let row: StatusBarRow;
   let icon: StatusBarIcon;
@@ -118,22 +136,10 @@ export function deriveStatusBar(input: StatusBarInput): StatusBarView {
     action = null;
   }
 
-  let line2: StatusBarView['line2'] = null;
   const unsent = input.unsent;
   const unreadable = unsent?.unreadable === true;
   const limit = unsent !== null && (unreadable || (unsent.count > 0 && unsent.limitReached));
-  if (unreadable) {
-    line2 = { key: 'unsentUnreadable', count: 0 };
-  } else if (unsent && (unsent.waitingForAdmin ?? 0) > 0) {
-    line2 = { key: 'waitingForAdmin', count: unsent.waitingForAdmin ?? 0 };
-  } else if (unsent && unsent.count > 0) {
-    if (limit) line2 = { key: 'unsentLimit', count: unsent.count };
-    else if (input.offline) line2 = { key: 'unsent', count: unsent.count, time: unsent.sendBy };
-    else line2 = { key: 'sending', count: unsent.count };
-  } else if (unsent && (unsent.held ?? 0) > 0) {
-    // Nothing unsent: the person's held items are told (the unsent text wins when there is one).
-    line2 = { key: 'heldLine', count: unsent.held ?? 0 };
-  }
+  const line2 = deriveUnsentLine(unsent, input.offline, true);
   if (limit) {
     icon = 'clock-alert-outline';
     action = null;
