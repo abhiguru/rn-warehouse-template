@@ -53,7 +53,7 @@ describe('GRN hero header number', () => {
   it('speaks the pending number in the header label', async () => {
     await render(hero(''));
 
-    expect(screen.getByRole('header', { name: 'GRN, Number when sent, Fictional Traders, 9 Oct 2026' })).toBeOnTheScreen();
+    expect(screen.getByRole('header', { name: 'GRN, number when sent, Fictional Traders, 9 Oct 2026' })).toBeOnTheScreen();
   });
 
   it('shows the number, and no pending text, when there is one', async () => {
