@@ -61,7 +61,14 @@ beforeEach(() => {
   env.feed.rows.goodsreceived_trl.push(lotRow('l02', GRN_A, { gr_id: GRN_A, item_name: 'Fictional Beans', package_mark: 'PK-78', rack: 'A-2', stock: 10 }));
   env.feed.rows.goodsreceived_trl.push(lotRow('l03', GRN_B, { gr_id: GRN_B, item_name: 'Fictional Peas', package_mark: 'PK-90', rack: 'B-2', stock: 10 }));
 });
-afterEach(async () => { await eraseEverything(); });
+afterEach(async () => {
+  // End the test's own session while the copy is offline: a lost-answer wait stops, its retry is dropped, and the pass its
+  // end asks for returns at once, so nothing runs or logs after the file is torn down.
+  w?.phone.engine.setCopyOffline(true);
+  (require('@/config/sessionLifecycle') as typeof import('@/config/sessionLifecycle')).advanceSessionGeneration();
+  await new Promise(resolve => setTimeout(resolve, 100));
+  await eraseEverything();
+});
 
 describe('markers and the changed fields (O1)', () => {
   it('an unsent rack marks its lot and GRN "not sent" and names Rack; a lot nobody changed has no marker', async () => {

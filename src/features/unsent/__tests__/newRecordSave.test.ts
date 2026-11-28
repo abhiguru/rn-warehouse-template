@@ -45,8 +45,13 @@ beforeEach(() => {
   server.reset();
 });
 afterEach(async () => {
-  jest.useRealTimers();
+  // A send pass still running ends by arming a retry: let it end on the fake clock, reset the session, drop the timers,
+  // so no retry fires or logs after the file is torn down.
+  await jest.advanceTimersByTimeAsync(50);
   await eraseEverything();
+  await jest.advanceTimersByTimeAsync(50);
+  jest.clearAllTimers();
+  jest.useRealTimers();
 });
 
 /** Runs the Save and moves the clock, so the 8 s wait of section 3 can end. */

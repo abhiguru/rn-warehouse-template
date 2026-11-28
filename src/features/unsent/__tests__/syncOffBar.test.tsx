@@ -59,6 +59,10 @@ beforeEach(() => {
   mockPush.mockClear();
 });
 afterEach(async () => {
+  // End the session the test's own modules hold: a pass that ended with a transient answer has armed a retry, and that retry
+  // must not fire and log after the file is torn down.
+  (require('@/config/sessionLifecycle') as typeof import('@/config/sessionLifecycle')).advanceSessionGeneration();
+  await new Promise(resolve => setTimeout(resolve, 50));
   jest.restoreAllMocks();
   await eraseEverything();
 });

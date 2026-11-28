@@ -40,7 +40,14 @@ async function startWithOneUnsent(): Promise<void> {
 }
 
 beforeEach(() => { resetEnv(); files.reset(); seedWarehouse(); });
-afterEach(async () => { await eraseEverything(); });
+afterEach(async () => {
+  // End the test's own session while the copy is offline: a lost-answer wait stops, its retry is dropped, and the pass its
+  // end asks for returns at once, so nothing runs or logs after the file is torn down.
+  w?.phone.engine.setCopyOffline(true);
+  (require('@/config/sessionLifecycle') as typeof import('@/config/sessionLifecycle')).advanceSessionGeneration();
+  await sleep(100);
+  await eraseEverything();
+});
 
 describe('a direct online save made while a send pass runs', () => {
   it('the pass\'s own send does not ask for a sync, and the pass asks for exactly one afterwards', async () => {

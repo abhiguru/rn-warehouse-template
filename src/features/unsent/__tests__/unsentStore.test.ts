@@ -18,7 +18,13 @@ import path from 'node:path';
 import { env, eraseEverything, resetEnv } from '@/tests/phoneCopy/phoneEnv';
 import { failStatement, fakeDatabaseNames } from '@/tests/phoneCopy/fakeExpoSqlite';
 import { files } from '@/tests/phoneCopy/fakeFiles';
-import { addPhoto, bootUnsent, clearPlannedFailures, keptPhotoFiles, rawRows, restart, server, unsentFileNames } from '@/tests/unsent/unsentPhone';
+import { addPhoto, bootUnsent as bootUnsentRaw, clearPlannedFailures, keptPhotoFiles, rawRows, restart as restartRaw, server, unsentFileNames } from '@/tests/unsent/unsentPhone';
+
+// A kill or a new boot replaces the modules; the session of the ones being left ends first, so a retry they armed does not
+// fire and log after the file is torn down.
+const endSession = () => (require('@/config/sessionLifecycle') as typeof import('@/config/sessionLifecycle')).advanceSessionGeneration();
+const bootUnsent: typeof bootUnsentRaw = async (...args) => { endSession(); return bootUnsentRaw(...args); };
+const restart: typeof restartRaw = async () => { endSession(); return restartRaw(); };
 
 jest.mock('@/lib/queryClient', () => ({ queryClient: { cancelQueries: jest.fn(async () => {}), clear: jest.fn() } }));
 jest.mock('@/features/item-pricing/useItemRates', () => ({ clearItemRatesCache: jest.fn() }));
@@ -31,7 +37,13 @@ jest.mock('expo-image', () => ({ Image: { clearDiskCache: jest.fn(async () => tr
 const record = (what = 'GRN for Asha Fictional Traders') => ({ kind: 'testRecord', body: { lines: [{ item: 'Potato', bags: 40 }] }, what, customer: 'Asha Fictional Traders' });
 
 beforeEach(() => { resetEnv(); files.reset(); server.reset(); });
-afterEach(async () => { await eraseEverything(); });
+afterEach(async () => {
+  // End the session the test's own modules hold: a pass that ended with a transient answer has armed a retry, and that retry
+  // must not fire and log after the file is torn down.
+  (require('@/config/sessionLifecycle') as typeof import('@/config/sessionLifecycle')).advanceSessionGeneration();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  await eraseEverything();
+});
 
 async function phoneWith(...saves: ReturnType<typeof record>[]) {
   const phone = await bootUnsent();
