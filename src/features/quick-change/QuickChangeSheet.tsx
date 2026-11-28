@@ -3,8 +3,8 @@
  * Floor and Chamber chips, a Mark field, Cancel and Save. Nothing is focused when it opens. Save is disabled until a value
  * differs from the row's, and is never disabled for a wrong value (that is told at Save).
  */
-import React, { useMemo, useState } from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SheetFrame } from '@/features/filters/components/SheetFrame';
 import { RackChamberPicker } from '@/features/grn/components/item-form/RackChamberPicker';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
@@ -14,6 +14,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { formatIdentifier, identifierInput, t as tr } from '@/i18n';
 import { space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import type { ScrollViewRef } from '@/types/nativeRefs';
 import { showAlert } from '@/utils/alert';
 import { normaliseLotValue } from './lotChangeService';
 import type { QuickChangeTarget } from './useQuickChange';
@@ -24,6 +25,7 @@ const MARK_MAX = 60;
 const STACK_FROM_SCALE = 1.5;
 
 const makeStyles = (t: ThemeTokens) => ({
+  body: { flexGrow: 0, flexShrink: 1 },
   subtitle: { ...typography.subhead, color: t.text.secondary, marginBottom: space.md },
   field: { marginBottom: space.md },
   error: { ...typography.footnote, color: t.status.negative.text, marginTop: space.xs },
@@ -52,6 +54,11 @@ export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSa
   const [mark, setMark] = useState(formatIdentifier(target.shown.package_mark));
   const [rackError, setRackError] = useState<string | null>(null);
   const [markError, setMarkError] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
+  // Keep Mark in view when the keyboard shrinks the sheet (Android & iOS), without undoing a drag (STYLE_GUIDE §5.2).
+  const revealMarkRef = useRef(false);
+  const lastScrollHeightRef = useRef<number | null>(null);
+  const lastContentHeightRef = useRef<number | null>(null);
 
   const rackChanged = normaliseLotValue(rack) !== normaliseLotValue(target.shown.rack);
   const markChanged = normaliseLotValue(mark) !== normaliseLotValue(target.shown.package_mark);
@@ -120,7 +127,31 @@ export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSa
 
   return (
     <SheetFrame visible title={tr('offline.quickChange.title')} onClose={handleClose} footer={footer}>
-      <View testID="quick-change-sheet">
+      <ScrollView
+        ref={scrollRef}
+        style={styles.body}
+        bounces={false}
+        testID="quick-change-sheet"
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={() => {
+          revealMarkRef.current = false;
+        }}
+        onLayout={event => {
+          const height = event.nativeEvent.layout.height;
+          const previous = lastScrollHeightRef.current;
+          lastScrollHeightRef.current = height;
+          if (revealMarkRef.current && previous !== null && height < previous) {
+            scrollRef.current?.scrollToEnd({ animated: false });
+          }
+        }}
+        onContentSizeChange={(_width, height) => {
+          const previous = lastContentHeightRef.current;
+          lastContentHeightRef.current = height;
+          if (revealMarkRef.current && previous !== null && height > previous) {
+            scrollRef.current?.scrollToEnd({ animated: false });
+          }
+        }}
+      >
         <View testID="quick-change-subtitle">
           <Text style={styles.subtitle}>{title}</Text>
           {target.customer ? <Text style={styles.subtitle}>{target.customer}</Text> : null}
@@ -128,6 +159,10 @@ export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSa
         <View style={styles.field} testID="quick-change-rack">
           <RackChamberPicker
             value={rack}
+            onFocus={() => {
+              revealMarkRef.current = false;
+              scrollRef.current?.scrollTo({ y: 0, animated: true });
+            }}
             onChange={text => {
               setRack(text);
               setRackError(null);
@@ -145,6 +180,13 @@ export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSa
             label={tr('grn.item.mark')}
             autoCapitalize="characters"
             invalid={markError !== null}
+            onFocus={() => {
+              revealMarkRef.current = true;
+              scrollRef.current?.scrollToEnd({ animated: true });
+            }}
+            onBlur={() => {
+              revealMarkRef.current = false;
+            }}
             {...identifierInput(mark, text => {
               setMark(text);
               setMarkError(null);
@@ -158,7 +200,7 @@ export function QuickChangeSheet({ target, saving, refusal, onClearRefusal, onSa
             </Text>
           ) : null}
         </View>
-      </View>
+      </ScrollView>
     </SheetFrame>
   );
 }
