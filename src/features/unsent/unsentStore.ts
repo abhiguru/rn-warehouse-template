@@ -75,10 +75,24 @@ export const countEntries = (rows: readonly Pick<ItemRow, 'id' | 'kind' | 'depen
  * rejected and not opened yet, one per held id (the file's row and the copy's are the same item; WH-304).
  */
 export function ownHeldCount(): number {
-  const ids = new Set<string>();
-  for (const row of state.rows) if (row.scope === state.scope && row.state === 'held') ids.add(row.held_id ?? row.id);
-  for (const row of ownHeldCopyRows()) if (row.state === 'held' || row.state === 'rejected') ids.add(row.id);
-  return ids.size;
+  // Records only (WH-301): a photos item held with its record is not counted on its own, as `countEntries` does for unsent ones.
+  const entries = new Map<string, { id: string; kind: string; depends_on: string | null }>();
+  const heldIdOfRow = new Map<string, string>();
+  for (const row of state.rows) {
+    if (row.scope !== state.scope || row.state !== 'held') continue;
+    heldIdOfRow.set(row.id, row.held_id ?? row.id);
+  }
+  for (const row of state.rows) {
+    if (row.scope !== state.scope || row.state !== 'held') continue;
+    const id = row.held_id ?? row.id;
+    entries.set(id, { id, kind: row.kind, depends_on: row.depends_on === null ? null : (heldIdOfRow.get(row.depends_on) ?? null) });
+  }
+  for (const row of ownHeldCopyRows()) {
+    if (row.state !== 'held' && row.state !== 'rejected') continue;
+    const follows = row.raw.follows;
+    entries.set(row.id, { id: row.id, kind: row.kind, depends_on: typeof follows === 'string' && follows !== '' ? follows : null });
+  }
+  return countEntries([...entries.values()]);
 }
 
 /** The count of the person's own unsent entries. */

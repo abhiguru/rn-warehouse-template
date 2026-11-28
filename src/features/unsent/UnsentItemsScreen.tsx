@@ -63,8 +63,8 @@ function entriesOf(rows: UnsentListRow[]): Entry[] {
       key: `header-${section}`,
       testID: `unsent-section-${section}`,
       title: tr(SECTION_TITLES[section]),
-      // The same count as the bar and the sign-out gate: a photos item waiting for its unsent record is not counted on its own.
-      count: section === 'unsent' ? countEntries(own.map(entryOf)) : own.length,
+      // The same count as the bar and the sign-out gate: a photos item waiting for its record, unsent or held, is not counted on its own.
+      count: section === 'unsent' || section === 'held' ? countEntries(own.map(entryOf)) : own.length,
     });
     own.forEach((row, index) => out.push({ type: 'row', key: row.id, row, divider: index < own.length - 1 }));
   }

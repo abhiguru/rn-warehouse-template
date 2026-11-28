@@ -188,7 +188,11 @@ export async function loadUnsentList(): Promise<Omit<UnsentListState, 'loaded'>>
     ...views.filter(view => view.section === 'held').map(view => ({ id: view.id, parent: view.dependsOn })),
     ...fromCopy.filter(entry => entry.row.section === 'held').map(entry => ({ id: entry.row.id, parent: entry.follows === null ? null : (idOfHeld.get(entry.follows) ?? entry.follows) })),
   ];
-  const everyRow = [...rows, ...fromCopy.map(entry => entry.row)];
+  // A copy row says which held item it follows (for the section's count of records), by the id the list knows that item by.
+  const everyRow = [
+    ...rows,
+    ...fromCopy.map(entry => ({ ...entry.row, dependsOn: entry.follows === null ? null : (idOfHeld.get(entry.follows) ?? entry.follows) })),
+  ];
   const heldIds = new Set(heldRows.map(entry => entry.id));
   const roots = heldRows
     .filter(entry => !(entry.parent !== null && heldIds.has(entry.parent)))
@@ -240,7 +244,7 @@ function copyRow(held: HeldCopyRow): { row: UnsentListRow; follows: string | nul
     };
   }
   if (held.state === 'rejected') {
-    return { follows, row: { ...base, section: 'held', tag: 'rejected', reason: text(raw.reject_reason), target: {} } };
+    return { follows, row: { ...base, section: 'held', tag: 'rejected', reason: text(raw.reject_reason), target: {}, kind: held.kind } };
   }
   const reason = reasonOf(raw.reason);
   const words = describeReason(reason, { kind: held.kind, what: raw.what, customer: text(raw.customer_name), data: raw.reason_data, followsWhat: null });
@@ -250,6 +254,7 @@ function copyRow(held: HeldCopyRow): { row: UnsentListRow; follows: string | nul
       ...base,
       section: 'held',
       tag: 'held',
+      kind: held.kind,
       // What follows a held item says so in its own words, never the held item's reason (Design 4.6).
       reason: reason === 'followsHeld' ? tr('offline.unsent.dependsOnRefused') : (words.sentence ?? tr('offline.unsent.refusedTag', { tag: words.tag })),
       target: {},
