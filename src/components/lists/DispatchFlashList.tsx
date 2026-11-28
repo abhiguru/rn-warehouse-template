@@ -18,7 +18,7 @@
  */
 
 import { createLogger } from '@/utils/logger';
-import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
@@ -44,11 +44,6 @@ import {
   CUSTOMER_DISPATCH_MAX,
   Dispatch,
 } from '@/services/dispatch-service';
-
-// The phone copy (WH-299)
-import { syncNow } from '@/features/phone-copy/syncEngine';
-import { useQuietReread, type QuietReread } from '@/features/phone-copy/useQuietReread';
-import type { EntityName } from '@/features/phone-copy/copySchema';
 
 // Components
 import { MemoizedDispatchItem } from '@/components/list-items';
@@ -90,13 +85,6 @@ import { FAB_CLEARANCE } from '@/components/ui/Fab';
 import { animateExpand } from '@/utils/layoutMotion';
 
 const logger = createLogger('DispatchList');
-const PAGE_SIZE = 20;
-/** The most rows one read of the list may ask for (the server's own limit). */
-const MAX_READ = 200;
-/** The records of the phone copy the list's rows are made of (WH-299). */
-const LIST_KINDS: ReadonlySet<EntityName> = new Set<EntityName>(['goodsreceived', 'goodsreceived_trl']);
-/** What of the rows shows on screen: a re-read that gives the same replaces nothing. */
-const shownOf = (rows: readonly Dispatch[], hasMore: boolean) => JSON.stringify([rows, hasMore]);
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -185,12 +173,6 @@ const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId 
   const [loadedAt, setLoadedAt] = useState(() => Date.now());
   // The rows on screen came from the phone's saved copy (the server could not be reached): they always say when they were loaded.
   const [fromSavedCopy, setFromSavedCopy] = useState(false);
-  // The rows came from the phone copy (WH-299): the status bar tells their time, and they read again after a sync.
-  const [fromPhoneCopy, setFromPhoneCopy] = useState(false);
-  // A quiet re-read keeps the rows in view where they are; a list asked for anew starts at the top, as ever.
-  const [anchored, setAnchored] = useState(false);
-  /** Grows when a list that kept its place is replaced by one asked for anew, so it starts with no place to keep. */
-  const [listEpoch, setListEpoch] = useState(0);
   /** A customer account's history is capped: a lasting fact about the list, not an event. */
   const [historyLimited, setHistoryLimited] = useState(false);
   const isOffline = useIsOffline();
@@ -236,87 +218,11 @@ const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId 
       setLoadError(true);
     }
   }, []);
-  // What a quiet re-read looks at when it comes to be done, as of the latest render.
-  const shownRows = useRef({ dispatches, hasMore, count: 0 });
-  const phoneCopyShown = useRef(fromPhoneCopy);
-  const anchoredRef = useRef(anchored);
-  const busy = useRef(true);
-  useLayoutEffect(() => {
-    shownRows.current = { dispatches, hasMore, count: currentOffset };
-    phoneCopyShown.current = fromPhoneCopy;
-    anchoredRef.current = anchored;
-    busy.current = isLoading || isRefreshing || isLoadingMore;
-  });
-  /** Resolved when the list has been told to keep its place. */
-  const onAnchored = useRef<(() => void) | null>(null);
-  useEffect(() => {
-    if (!anchored) return;
-    onAnchored.current?.();
-    onAnchored.current = null;
-  }, [anchored]);
-
-  // The same request again, from the top, for as many rows as are loaded, with nothing on screen saying so (§11.1).
-  const readQuietly = async () => {
-    const asked = latestRequest.current;
-    const loaded = shownRows.current.count;
-    const target = Math.max(PAGE_SIZE, loaded);
-    const rows: Dispatch[] = [];
-    let more = true;
-    let asOf: string | null = null;
-    while (rows.length < target && more) {
-      const want = Math.min(MAX_READ, target - rows.length);
-      const result = await getDispatchListWithItems({ ...request, p_limit: want, p_customer_id: customerId, offset: rows.length });
-      // A load that began meanwhile replaces the rows itself; a failure leaves them as they are.
-      if (asked !== latestRequest.current || !result.success || result.fromCache || result.copyRestart || !result.source) return;
-      asOf = result.source.asOf;
-      rows.push(...result.data.dispatches);
-      more = result.data.pagination.has_more;
-      if (!result.data.dispatches.length) break;
-    }
-    if (shownOf(rows, more) === shownOf(shownRows.current.dispatches, shownRows.current.hasMore)) return;
-    // First the list is told to keep its place, then the rows are replaced.
-    if (!anchoredRef.current) {
-      await new Promise<void>(resolve => {
-        onAnchored.current = resolve;
-        setAnchored(true);
-      });
-      if (asked !== latestRequest.current) return;
-    }
-    // A finger came down, or more rows arrived, since the read: read again later.
-    if (!quiet.atRest() || loaded !== shownRows.current.count) {
-      quiet.markDue();
-      return;
-    }
-    setDispatches(rows);
-    setHasMore(more);
-    setCurrentOffset(rows.length);
-    setRefreshError(false);
-    setLoadMoreFailed(false);
-    if (asOf) setLoadedAt(Date.parse(asOf));
-  };
-  const quiet: QuietReread = useQuietReread({
-    kinds: LIST_KINDS,
-    active: () => phoneCopyShown.current && isWarehouseRole,
-    idle: () => !busy.current,
-    read: readQuietly,
-  });
-  const quietRef = useRef<QuietReread | null>(null);
-  /** Asks for the first page again (a list whose source changed between two pages). */
-  const restartRef = useRef<() => void>(() => undefined);
-  useLayoutEffect(() => {
-    quietRef.current = quiet;
-  });
-  useEffect(() => {
-    if (!isLoading && !isRefreshing && !isLoadingMore) quiet.settle();
-  }, [isLoading, isRefreshing, isLoadingMore, quiet]);
-
   // `fresh`: pull to refresh and a return to the screen read the server again;
   // a customer account's next page, sort and search use the history kept for it.
   const fetchDispatches = useCallback(async (offset: number = 0, append: boolean = false, fresh: boolean = false) => {
     const requestId = append ? latestRequest.current : ++latestRequest.current;
     const requestKey = JSON.stringify([request, customerId ?? null]);
-    // A load of the whole list brings what a sync changed.
-    if (!append) quietRef.current?.clear();
     try {
       if (append) setIsLoadingMore(true);
       else setIsLoading(true);
@@ -329,12 +235,6 @@ const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId 
         : await getAssignedCustomerDispatchList(customerId ? [customerId] : assignedCustomerIds, { ...params, p_fresh: fresh });
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
 
-      // The next page would come from somewhere else than the first (phone copy or server): drop the pages and ask
-      // for the first again, with no error (WH-299, one source per screen).
-      if (response.copyRestart) {
-        restartRef.current();
-        return;
-      }
       if (!response.success) {
         throw new Error(response.message || 'Failed to load dispatches');
       }
@@ -359,16 +259,8 @@ const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId 
         // A list answered from the phone's saved copy was loaded when that copy was stored, not now.
         setLoadedAt(response.fromCache && response.cachedAt ? response.cachedAt : Date.now());
         setFromSavedCopy(Boolean(response.fromCache));
-        // The phone copy's rows are as old as the copy.
-        if (response.source) setLoadedAt(Date.parse(response.source.asOf));
-        setFromPhoneCopy(Boolean(response.source));
         setHistoryLimited(Boolean(pagination.history_limit_reached));
         shownRequest.current = requestKey;
-        // A new search, filter or sort starts from its first row.
-        if (anchoredRef.current) {
-          setAnchored(false);
-          setListEpoch(epoch => epoch + 1);
-        }
         listRef.current?.scrollToOffset({ offset: 0, animated: false });
       }
       setHasMore(pagination.has_more);
@@ -393,11 +285,6 @@ const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId 
   // change as a return to the screen and load twice.
   const fetchDispatchesRef = useRef(fetchDispatches);
   fetchDispatchesRef.current = fetchDispatches;
-  useLayoutEffect(() => {
-    restartRef.current = () => {
-      void fetchDispatches(0, false);
-    };
-  });
   // The list is mounted by its screen, so it starts focused; a blur says otherwise.
   const screenFocusedRef = useRef(true);
   const blurredRef = useRef(false);
@@ -425,17 +312,13 @@ const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId 
         const fresh = !changedWhileHiddenRef.current;
         blurredRef.current = false;
         changedWhileHiddenRef.current = false;
-        // Rows of the phone copy are read again quietly, keeping their place (WH-299).
-        if (phoneCopyShown.current && !!fresh) quiet.markDue();
-        else fetchDispatchesRef.current(0, false, fresh);
+        fetchDispatchesRef.current(0, false, fresh);
       }
-      quiet.setFocused(true);
       return () => {
         screenFocusedRef.current = false;
         blurredRef.current = true;
-        quiet.setFocused(false);
       };
-    }, [quiet])
+    }, [])
   );
 
   // ============================================================================
@@ -444,16 +327,9 @@ const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId 
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    if (!fromPhoneCopy) {
-      // The offset stays until the answer sets it: a failed refresh keeps the rows, and the offset after them.
-      fetchDispatches(0, false, true);
-      return;
-    }
-    // Rows of the phone copy: bring the copy up to date, then read it (a sync that cannot run changes nothing).
-    void syncNow('pull-to-refresh')
-      .catch(() => undefined)
-      .then(() => fetchDispatchesRef.current(0, false, true));
-  }, [fetchDispatches, fromPhoneCopy]);
+    // The offset stays until the answer sets it: a failed refresh keeps the rows, and the offset after them.
+    fetchDispatches(0, false, true);
+  }, [fetchDispatches]);
 
   const handleLoadMore = useCallback(() => {
     if (!isLoadingMore && hasMore && !isLoading) {
@@ -566,8 +442,7 @@ const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId 
 
   // Offline with no failed refresh: the first heading (or, with no headings, the top of the list) says when the
   // cards were loaded (§14.9). A failed refresh says it in its strip instead.
-  // Rows of the phone copy have their time in the status bar (WH-299).
-  const offlineUpdatedAt = (isOffline || fromSavedCopy) && !refreshError && !fromPhoneCopy ? loadedAt : undefined;
+  const offlineUpdatedAt = (isOffline || fromSavedCopy) && !refreshError ? loadedAt : undefined;
 
   const renderItem = useCallback(({ item, index }: { item: FlattenedItem<Dispatch>; index: number }) => {
     if (item.type === 'header') {
@@ -670,15 +545,12 @@ const DispatchFlashListOnline: React.FC<DispatchFlashListProps> = ({ customerId 
             testID="dispatch-stale-strip"
           />
         ) : null}
-      <View style={styles.listHold} {...quiet.touchHandlers}>
+      <View style={styles.listHold}>
       <FlashList
-        key={listEpoch}
         ref={listRef}
         data={flattenedData}
-        // Re-sorted lists must not stay anchored on the row that was on top before. Only a quiet re-read keeps the
-        // rows in view where they are.
-        maintainVisibleContentPosition={{ disabled: !anchored }}
-        {...quiet.scrollHandlers}
+        // Re-sorted lists must not stay anchored on the row that was on top before.
+        maintainVisibleContentPosition={{ disabled: true }}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}

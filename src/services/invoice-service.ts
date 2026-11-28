@@ -83,10 +83,6 @@ export interface Invoice {
 export interface InvoiceListResponse {
   success: boolean;
   message: string;
-  /** Set when the phone copy answered (WH-348): the screen shows no time of its own, the status bar tells it. */
-  source?: DataSource;
-  /** The next page would come from another source than the first: the list asks for its first page again. */
-  copyRestart?: boolean;
   data: {
     invoices: Invoice[];
     pagination: {

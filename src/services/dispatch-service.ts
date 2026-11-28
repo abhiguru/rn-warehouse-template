@@ -18,7 +18,6 @@ import { isUnsettledFailure, serverText } from '@/utils/serverText';
 import { waitForServer } from '@/utils/lostAnswer';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 import { invalidateReportQueries } from '@/lib/queryClient';
-import type { DataSource } from '@/features/phone-copy/sourced';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
 const DISPATCH_CACHE_PREFIX = CACHE_PREFIXES.DISPATCH_LIST;
@@ -209,10 +208,6 @@ export interface DispatchListResponseNew {
   errorCode?: string;
   /** True when the network failed and this is the list kept on the phone from an earlier load, not a fresh answer. */
   fromCache?: boolean;
-  /** Answered by the phone copy (WH-299); absent when the server answered. */
-  source?: DataSource;
-  /** A later page whose source is no longer the first page's: drop the pages and ask for the first again (WH-299). */
-  copyRestart?: boolean;
   /** With `fromCache`: when (ms since 1970) the kept list was stored, i.e. really loaded. */
   cachedAt?: number;
   data: {
