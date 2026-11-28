@@ -612,7 +612,7 @@ export default function CustomersScreen() {
         ) : null}
         {/* The "+" is not offered offline: its reason is a lasting fact about the list (Design 2.5, 2.11). */}
         {needsConnection ? (
-          <NeedsConnectionLine testID="customers-new-needs-connection" text={tr('customers.offline.newNeedsConnection')} />
+          <NeedsConnectionLine inset testID="customers-new-needs-connection" text={tr('customers.offline.newNeedsConnection')} />
         ) : null}
         {isOffline && !state.refreshFailed && !state.fromPhoneCopy && state.loadedAt && state.data.length > 0 ? (
           <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="customers-last-updated" />

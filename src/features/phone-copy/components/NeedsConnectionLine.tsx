@@ -6,12 +6,13 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, space, typography } from '@/theme/tokens';
+import { iconSize, layout, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
 const makeStyles = (t: ThemeTokens) => ({
   row: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm, paddingVertical: space.xs },
   text: { ...typography.footnote, color: t.text.secondary, flexShrink: 1 },
+  inset: { paddingHorizontal: layout.marginCompact },
 });
 
 interface Props {
@@ -19,13 +20,15 @@ interface Props {
   text: string;
   /** The cloud icon of a section's line (DS1); an action's reason has none. */
   icon?: boolean;
+  /** The line stands on its own at the screen's edge (a list's footnote): it takes the screen's side margin. Inside a padded section it stays off. */
+  inset?: boolean;
 }
 
-export const NeedsConnectionLine: React.FC<Props> = ({ testID, text, icon = false }) => {
+export const NeedsConnectionLine: React.FC<Props> = ({ testID, text, icon = false, inset = false }) => {
   const styles = useThemedStyles(makeStyles);
   const tokens = useTokens();
   return (
-    <View style={styles.row} testID={testID}>
+    <View style={inset ? [styles.row, styles.inset] : styles.row} testID={testID}>
       {icon ? <Icon name="cloud-off-outline" size={iconSize.sm} color={tokens.icon.secondary} importantForAccessibility="no" /> : null}
       <Text style={styles.text} maxFontSizeMultiplier={1.6}>
         {text}

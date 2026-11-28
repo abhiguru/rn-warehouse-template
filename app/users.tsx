@@ -505,7 +505,7 @@ export default function UsersScreen() {
         ) : null}
         {/* New people register themselves with the server: its reason is a lasting fact about the list (Design 2.5, 2.11). */}
         {needsConnection ? (
-          <NeedsConnectionLine testID="users-new-needs-connection" text={tr('users.offline.newNeedsConnection')} />
+          <NeedsConnectionLine inset testID="users-new-needs-connection" text={tr('users.offline.newNeedsConnection')} />
         ) : null}
         {isOffline && !state.refreshFailed && !state.fromPhoneCopy && state.loadedAt && state.data.length > 0 ? (
           <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="users-last-updated" />

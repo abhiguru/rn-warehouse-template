@@ -669,7 +669,7 @@ export default function ItemsScreen() {
         ) : null}
         {/* The "+" is not offered offline: its reason is a lasting fact about the list (Design 2.5, 2.11). */}
         {needsConnection ? (
-          <NeedsConnectionLine testID="items-new-needs-connection" text={tr('items.offline.newNeedsConnection')} />
+          <NeedsConnectionLine inset testID="items-new-needs-connection" text={tr('items.offline.newNeedsConnection')} />
         ) : null}
         {offline && !noRateFilter && !state.refreshFailed && !state.fromPhoneCopy && state.loadedAt && state.data.length > 0 ? (
           <LastUpdatedLine at={state.loadedAt.getTime()} withDate top testID="items-last-updated" />
