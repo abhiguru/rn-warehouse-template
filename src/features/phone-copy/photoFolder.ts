@@ -9,11 +9,12 @@ export const PHOTO_FOLDER = 'phone-copy-photos';
 export const photoDirectory = (): Directory => new Directory(Paths.document, PHOTO_FOLDER);
 
 /** Removes every kept photo. Never throws. */
-export async function erasePhotoFolder(): Promise<void> {
+export function erasePhotoFolder(): Promise<void> {
   try {
     const directory = photoDirectory();
     if (directory.exists) directory.delete();
   } catch {
     // Teardown must not fail; a photo left behind is only a file nothing lists.
   }
+  return Promise.resolve();
 }

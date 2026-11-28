@@ -336,6 +336,8 @@ export function peekReportAnswer<T>(key: readonly unknown[]): T | undefined {
 const copyAnswers = new Map<string, number>();
 registerSessionScoped('report-copy-answers', () => copyAnswers.clear());
 const NO_KINDS: ReadonlySet<EntityName> = new Set();
+/** The time now in ms; read inside the request, never during render. */
+const nowMs = (): number => Date.now();
 
 /** The newest request's turn per report key: older ones still running answer into nothing. */
 let requestTurn = 0;
@@ -407,7 +409,7 @@ export function useReportQuery<T>({
         if (current && isObject(current.state.data)) keptAnswers.delete(current.state.data);
         // Not awaited. A failed request (thrown above) keeps the last good copy; a refused one removed it.
         if (money) void keepActivity(key, result.data);
-        else if (persist && fromCopy === undefined) void writeReportCache(key, { data: result.data, updatedAt: Date.now() }, generation);
+        else if (persist && fromCopy === undefined) void writeReportCache(key, { data: result.data, updatedAt: nowMs() }, generation);
         return result.data;
       },
       enabled: askServer,

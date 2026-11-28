@@ -788,7 +788,7 @@ export class StockService {
         if (customerId && !(await ownsInCopy(q, customerId))) return { refused: true as const };
         return {
           refused: false as const,
-          data: await readItemStock(q, { customerId: customerId || null, searchQuery: searchQuery || null, limit, offset, sortBy, sortOrder }),
+          data: await readItemStock(q, { customerId: customerId ? customerId : null, searchQuery: searchQuery ? searchQuery : null, limit, offset, sortBy, sortOrder }),
         };
       }),
       { key: JSON.stringify([customerId ?? null, searchQuery ?? null, sortBy ?? null, sortOrder ?? null]), page: offset > 0 ? 1 : 0 }
@@ -864,19 +864,19 @@ export class StockService {
       };
     }
 
-    return shapeItemList(result.data as RawItemData, offset, limit, sortApplied);
+    return shapeItemList(result.data, offset, limit, sortApplied);
   }
 }
 
 interface RawItemData {
-  items: Array<{
+  items: {
     item_id: string;
     item_name: string;
     packaging?: string;
     total_qty: number;
     total_stock: number;
     grn_count: number;
-  }>;
+  }[];
   total_count: number;
   summary?: unknown;
 }
@@ -888,7 +888,7 @@ function shapeItemList(
   limit: number,
   sortApplied: boolean
 ): StockServiceResponse<{
-  items: Array<{ item_id: string; item_name: string; packaging?: string; total_qty: number; total_stock: number; grn_count: number }>;
+  items: { item_id: string; item_name: string; packaging?: string; total_qty: number; total_stock: number; grn_count: number }[];
   pagination: { totalCount: number; hasMore: boolean; limit: number; offset: number };
   summary?: ItemStockSummary;
   sortApplied?: boolean;
