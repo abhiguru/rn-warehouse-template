@@ -236,7 +236,7 @@ export function UnsentItemsScreen() {
 
   return (
     <View testID="unsent-screen" style={styles.screen}>
-      <Stack.Screen options={{ title: tr('offline.unsent.title'), headerLeft: () => <HeaderBackButton /> }} />
+      <Stack.Screen options={{ title: tr('offline.unsent.title'), headerShown: true, headerTitleAlign: 'center', headerLeft: () => <HeaderBackButton /> }} />
       <EdgeToEdgeStatusBar barStyle={tokens.statusBarStyle} />
       <FlashList
         data={entries}
